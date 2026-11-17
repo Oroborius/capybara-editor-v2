@@ -28,6 +28,8 @@ from mxl_rules import (mod_ranges, mods_stats, item_type_codes, is_innate_damage
                        stat_range, unique_name, rare_name)
 from mxl_statnames import stat_text, param_kind, skilldesc_name
 
+HONORIFIC_STAT = 289                            # 'Orb Effects Applied to this Item are Doubled' (honorific items)
+RELIC_CODE = 'cotw'                             # the base of every relic (327 unique rows, 90 of them empty)
 QUALITY_ID = {'low': 1, 'normal': 2, 'superior': 3, 'magic': 4, 'set': 5, 'rare': 6, 'unique': 7, 'crafted': 8, 'tempered': 9}
 QUALITY_NAME = {v: k for k, v in QUALITY_ID.items()}
 ITEM_VERSION = 101
@@ -518,13 +520,20 @@ class Creator:
         for code, b in self.data.bases.items():
             if not code.strip() or not b.name or b.quest:
                 continue
+            if 'POLAR BUFFALO' in b.name.upper():
+                continue                    # 15 unused item rows whose name string is the game's placeholder
             out.append(b)
         return sorted(out, key=lambda b: (b.kind, b.name.lower()))
 
     def uniques(self):
+        """[(row, name, row dict)] of the uniques the creator lists. Left out: rows without a base or a name string,
+        and the 90 empty relic rows ('RelicX' on base cotw with no mod at all: table padding between the real
+        relics - built, they are a relic that grants nothing and all read "Relic - Relic")."""
         out = []
         for i, u in enumerate(self.data.uniques):
             if u['code'].strip() and u['code'] in self.data.bases and u['name'] in self.data._bykey:
+                if u['code'] == RELIC_CODE and not u['mods']:
+                    continue
                 out.append((i, self.data.key(u['name']).replace('\n', ' '), u))
         return sorted(out, key=lambda x: x[1].lower())
 
@@ -803,6 +812,32 @@ class Creator:
             if 0 <= p < len(self.data.props):
                 out.append((p, pa, lo, hi))
         return out
+
+    # ---- honorific items (quality 9, 'tempered' in this code; the game's own strings call it "Honorific")
+    def honorific_recipes(self):
+        """Cube rows whose output is a quality 9 item: magic / rare weapon or armor + Mark of Infusion ->
+        a blank item with a rare-style name, maximum sockets and the recipe's mods ("Orb Effects Applied to this
+        Item are Doubled" = stat 289 value 2, plus Physical Resist 0-1% on armor, a weapon bonus on weapons).
+        [(row, input item type index, [(prop, param, min, max)])]."""
+        if not hasattr(self, '_honorific'):
+            out = []
+            for i, r in enumerate(_rows(self.data, 'cubemain')):
+                if len(r) < 0x4C + 0x54 or not r[0] or r[0x4C + 6] != QUALITY_ID['tempered']:
+                    continue
+                fl, item, _q = self._cube_input(r, 0)
+                if fl & 2:
+                    out.append((i, item, self._cube_mods(r)))
+            self._honorific = out
+        return self._honorific
+
+    def honorific_stats(self, code, how='max'):
+        """Stats the honorific recipe gives this base ([] when no recipe takes it), at the mods' min or max."""
+        anc = self.types_of(code)
+        for _row, itype, mods in self.honorific_recipes():
+            if itype in anc:
+                return merge_stats(mods_stats([(p, pa, lo if how == 'min' else hi, lo if how == 'min' else hi)
+                                               for p, pa, lo, hi in mods], self.data, 'min'))
+        return []
 
     def _corrupt_tables(self):
         """(step rows, reveal rows): cube rows whose 2nd input is the Corrupted Crystal / the Oil of Craft alone."""
@@ -1750,7 +1785,12 @@ class Creator:
             spec = self.new_spec('runeword', it['code'], row)
             spec['superior'] = it.get('subquality') if q == 'superior' else None
         elif q in ('unique', 'set'):
-            spec = self.new_spec(q, it['code'], it.get('set_unique_id'))
+            row, table = it.get('set_unique_id'), (d.uniques if q == 'unique' else d.set_items)
+            if not isinstance(row, int) or not 0 <= row < len(table):
+                # e.g. a unique-quality Wirt's Leg whose id is 32767: no row to take the mods from
+                raise CreateError(T('cr.err.row_unknown', 'the item names no row of the {quality} table (id {row})',
+                                    quality=T(f'cr.quality.{q}', q), row=row))
+            spec = self.new_spec(q, it['code'], row)
         elif q in ('normal', 'superior', 'magic', 'rare'):
             spec = self.new_spec(q, it['code'])
             if q == 'superior':
@@ -2032,11 +2072,8 @@ class Creator:
             for m in u.get('mods') or ():
                 if not 0 <= m['prop'] < len(d.props) or sid not in d.props[m['prop']]:
                     continue
-                try:
-                    name = str(d.skill(m['param']) or '').strip()
-                except Exception:
-                    continue
-                if name and not name.startswith('skill #') and name not in out:
+                name = str(d.skill_names.get(m['param']) or '').strip()     # own names only: no hidden helpers
+                if name and 'POLAR BUFFALO' not in name.upper() and name not in out:
                     out.append(name)
             if out:
                 return out
