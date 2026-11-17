@@ -1,4 +1,4 @@
-# MXL Capybara Editor
+# MXL Capybara Editor V2
 
 An offline item creator and character editor for **Median XL**, built on top of MXL Item Collector.
 
@@ -34,11 +34,9 @@ Median XL game data belong to their respective authors.
 Hero Editor button art and the window layout come from Hero Editor 1.04 by ZonFire99 and Mastadex. Glory to the real Heroes.
 
 ## Building
-Run `src/repack.py` with **Python 3.10** (the exe's own version) on the original `MXL Item Collector.exe`:
+Windows exe and native Linux AppImage, both from this source tree: see [`docs/BUILDING.md`](docs/BUILDING.md).
 
 ```
-py -3.10 src/repack.py "MXL Item Collector.exe" "MXL Capybara Editor.exe" --icon=src/capybara.ico
+packaging/build_windows.sh      # dist/windows/MXL Capybara Editor V2/   (packaging\build_windows.ps1 on Windows)
+packaging/build_appimage.sh     # dist/linux/MXL_Capybara_Editor_V2-x86_64.AppImage
 ```
-
-Write the new exe into a copy of the release folder, next to `_internal/`. `repack.py` then also replaces ttkbootstrap's
-window icon in that `_internal/` with the capybara. Copy `lang/*.json` into the folder's `lang/` folder.

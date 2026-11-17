@@ -1,6 +1,6 @@
 """Rebuild a PyInstaller (6.x, onedir) exe: same bootloader, same CArchive entries, PYZ with extra modules,
 entry script replaced. Usage: repack.py in.exe out.exe [--identity] [--icon=capybara.ico]
-in.exe is the original MXL Item Collector.exe. Run it with Python 3.10, the exe's own version: the modules are
+in.exe is the original MXL Item Collector.exe, or a released MXL Capybara Editor.exe. Run it with Python 3.10, the exe's own version: the modules are
 compiled here and stored as 3.10 bytecode."""
 import os, struct, zlib, marshal, sys
 HERE = os.path.dirname(os.path.abspath(__file__))          # carch.py and the editor's modules (src/)
@@ -62,8 +62,11 @@ if __name__ == '__main__':
     for mod in ('mxl_creator', 'mxl_creator_gui', 'mxl_char', 'mxl_char_gui', 'mxl_inv_gui', 'mxl_he_art', 'mxl_app_icon', 'mxl_statparse', 'mxl_import', 'mxl_format_fix', 'mxl_lang', 'mxl_d2ui_dc6', 'mxl_d2look_art', 'mxl_d2look', 'mxl_splash', 'mxl_log', 'mxl_userdir'):
         extra[mod] = compile(open(f'{plugin}/{mod}.py', encoding='utf-8').read(), f'{mod}.py', 'exec')
     script = [e for e in ents if e['typ'] == 's' and e['name'] == 'mxl_gui'][0]
-    extra['mxl_gui'] = marshal.loads(zlib.decompress(script['data']))      # original GUI, now importable
     z = [e for e in ents if e['typ'] == 'z'][0]
+    zd = z['data']
+    if 'mxl_gui' not in dict(marshal.loads(zd[struct.unpack('!i', zd[8:12])[0]:])):
+        extra['mxl_gui'] = marshal.loads(zlib.decompress(script['data']))  # original GUI, now importable
+    # else: in.exe is an already repacked editor exe (its entry script is the launcher, the GUI is in the PYZ)
     pyz = build_pyz(z['data'], extra)
     launcher = compile("import sys\nimport mxl_userdir\nmxl_userdir.setup()\nimport mxl_splash\nif mxl_splash.FLAG_ARG in sys.argv:\n    mxl_splash.main()\nelse:\n"
                        "    mxl_splash.start()\n    import mxl_creator_gui\n    mxl_creator_gui.run()\n", 'mxl_gui.py', 'exec')

@@ -1,0 +1,6 @@
+#!/bin/sh
+# AppImage entry: the bundled Python 3.10 runs the editor; nothing is taken from the system Python.
+HERE="$(dirname "$(readlink -f "$0")")"
+unset PYTHONHOME PYTHONPATH PYTHONSTARTUP
+export PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1
+exec "$HERE/opt/python/bin/python3.10" "$HERE/opt/capybara/capybara_editor.py" "$@"

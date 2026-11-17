@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=MXL Capybara Editor V2
+Comment=Offline item creator and character editor for Median XL
+Exec=capybara_editor
+Icon=capybara-editor-v2
+Categories=Game;Utility;
+Terminal=false

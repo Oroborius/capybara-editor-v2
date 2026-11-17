@@ -49,7 +49,7 @@ class CharacterWindow:
         self.drag = None
         self.icons = {}
         self.top = tk.Toplevel(app.root)
-        self.top.title(f'Median XL Capybara Editor — {self.ch.name}')
+        self.top.title(f'Median XL Capybara Editor V2 — {self.ch.name}')
         self.top.geometry('1180x930')
         self.top.configure(bg=HE_BG)
         try:
@@ -769,7 +769,7 @@ class CharacterWindow:
                          + (T('he.saved_up', ' (+{n}: stat and skill points to spend in game)', n=ch.level - before)
                             if ch.level > before else '')
                          + (T('he.saved_rewards', ' — quest rewards: {rewards}', rewards=rewards) if rewards else ''))
-            self.top.title(f'Median XL Capybara Editor — {ch.name}')
+            self.top.title(f'Median XL Capybara Editor V2 — {ch.name}')
 
     def copy_char(self):
         name = self.copy_name.get().strip()

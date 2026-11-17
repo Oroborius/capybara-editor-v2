@@ -1291,7 +1291,7 @@ def remove_library(mxl_gui):
     App._build = _build
 
 
-APP_NAME = 'Median XL Capybara Editor'
+APP_NAME = 'Median XL Capybara Editor V2'
 
 
 def rename_app(mxl_gui):
