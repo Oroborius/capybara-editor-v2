@@ -2042,6 +2042,25 @@ class Creator:
                 return out
         return []
 
+    def bonus_text(self, q, row):
+        """Lower-case tooltip lines of the bonuses a unique / set item / runeword comes with ("+(18 to 32) to
+        stormlord"): what the creator's search matches besides the names. One row costs about a millisecond
+        (the catalog tooltip), so it is kept; the creator window fills the cache in the background."""
+        cache = self.__dict__.setdefault('_bonus_text', {})
+        if (q, row) not in cache:
+            d = self.data
+            try:
+                if q == 'runeword':
+                    mods, code = d.runeword_mods[row], None
+                else:
+                    u = (d.uniques if q == 'unique' else d.set_items)[row]
+                    mods, code = u['mods'], u['code']
+                lines = self.mods_text([(m['prop'], m['param'], m['min'], m['max']) for m in mods], code)
+            except Exception:
+                lines = []
+            cache[(q, row)] = '\n'.join(lines).lower()
+        return cache[(q, row)]
+
     def _orb_table(self):
         """Median XL Sigma mysticorbs.bin: one 143-byte row per mystic orb, in the order of the 'myst' items of
         misc.txt. Row: name (32 bytes), max orbs of this kind per item (u8 @43), then 6 property blocks of 16 bytes
