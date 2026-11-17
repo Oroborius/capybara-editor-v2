@@ -125,6 +125,7 @@ class MainInventory:
             cv.bind('<ButtonRelease-1>', self.on_release)
             cv.bind('<Motion>', self.on_motion)
             cv.bind('<Leave>', lambda e: self.drag is None and self.app.show_status())
+            cv.bind('<ButtonRelease-3>', self.on_menu)      # on release, like the stash menu (see mxl_rc_menu)
         self.hint = ttk.Label(fr, text=T('inv.hint', 'Drag items between the stash, the inventory and the equipment. '
                                          'It can stay open while the game runs; a backup is made before the first change.'),
                               justify='left', wraplength=INV_W * c)
@@ -526,6 +527,22 @@ class MainInventory:
         self.redraw()
         self.show_detail()
 
+    def on_menu(self, ev):
+        """Right-click: selects the item under the pointer (as a left click does, without a drag) and opens its
+        menu."""
+        e, merc = self.entry_at(ev.widget, ev.x, ev.y)
+        if e is None:
+            return
+        app = self.app
+        if app.selected is not None:
+            app.selected = None
+            app.draw_grid()
+        self.selected, self.sel_merc, self.drag = e, merc, None
+        self.redraw()
+        self.show_detail()
+        import mxl_rc_menu
+        mxl_rc_menu.inventory_menu(self, ev)
+
     def on_drag(self, ev):
         d = self.drag
         if not d:
@@ -662,6 +679,57 @@ class MainInventory:
         self.selected = None
         self._done(T('inv.moved_to', '{item} moved to {dest}', item=name, dest=self._dest(where, dst_merc)), [bak],
                    select_char=(where, dst_merc))
+
+    def edit(self):
+        """Edit the selected item of the character / mercenary / inventory where it is (the main window's Edit
+        item button and the panel's right-click menu): the Item Editor writes the result back through the
+        character editor's remove -> place -> save flow, like the Character window's own Edit."""
+        from mxl_creator_gui import CreatorWindow
+        e, merc = self.selected, self.sel_merc
+        if e is None or self.ch is None:
+            self.app.status.configure(text=T('ch.select_first', 'Select an item of the character first.'))
+            return
+        where = ('slot', e.it['equipped']) if e.it['location'] == MC.LOC_EQUIPPED else ('inv', e.it['x'], e.it['y'])
+        old, name = bytes(e.blob), clean(e.it['name'])
+
+        def write(blob):
+            self._check_char()
+            # the panel reloads the character whenever its file changes: the item is looked up again
+            # (same bytes, same place) instead of trusting the entry the editor was opened with
+            cur = (self.ch.equipped(merc).get(where[1]) if where[0] == 'slot' else
+                   next((x for x in self.ch.inventory() if (x.it['x'], x.it['y']) == where[1:]), None))
+            if cur is None or bytes(cur.blob) != old:
+                raise CharError(T('inv.err.item_gone', 'the item is no longer where it was: select it again'))
+            try:
+                self.ch.remove(cur, merc)
+                try:
+                    self.ch.place(blob, where, merc)
+                except CharError:
+                    new = mxl_save.blob_item(blob, self.data)
+                    if where[0] == 'slot':
+                        if new['code'] != e.it['code']:
+                            raise
+                        # same base in the slot the game itself put it in (Sigma mercenaries wear amulets,
+                        # rings... that the slot rules here do not know): it goes back there as it was
+                        ent = MC.Entry(new, blob)
+                        ent.blob = ent.moved(self.data, location=MC.LOC_EQUIPPED, equipped=where[1], x=where[1],
+                                             y=0, panel=0)
+                        ent.it = mxl_save.blob_item(ent.blob, self.data)
+                        self.ch.entries(merc).append(ent)
+                    else:
+                        spot = self.ch.free_inventory_spot(new)
+                        if spot is None:                  # grew (other base): no room where it was nor elsewhere
+                            raise
+                        self.ch.place(blob, ('inv',) + spot, merc)
+                bak = self._save_char()
+            except Exception:
+                self.reload()                             # nothing written: the character as it is on disk
+                raise
+            self.selected = None
+            msg = T('ch.item_replaced', '{name}: item replaced', name=self.ch.name)
+            self._done(msg, [bak])
+            return msg
+        CreatorWindow(self.app, edit_item=e.it, target=write, target_label=f'{self.ch.name}')
 
     def to_stash(self, e, src_merc, page, x, y):
         """Character (inventory or slot) -> stash page shown in the main window, at (x, y)."""

@@ -12,6 +12,7 @@ import os
 import re
 import sys
 import random
+import time
 import tkinter as tk
 from tkinter import ttk, messagebox
 
@@ -355,6 +356,7 @@ class CreatorWindow:
         self.top.minsize(min(900, sw), min(540, sh))
         self._build()
         self.top.after_idle(self._place_sashes)
+        self._bonus_warm()
         if edit_item is not None:
             try:
                 spec = self.cr.spec_from_item(edit_item)
@@ -526,7 +528,37 @@ class CreatorWindow:
             cache[i] = bool(self.cr.runeword_bases(i))
         return cache[i]
 
-    def fill_list(self):
+    def _bonus_warm(self):
+        """Fills Creator.bonus_text for every unique / set item / runeword in short slices between events (the
+        whole index takes ~2.5 s of tooltip building: done in one go it would freeze the first search). Started
+        when the window opens, so it is normally complete before anything is typed; kept on the Creator."""
+        cr = self.cr
+        if getattr(cr, '_bonus_done', False) or getattr(self, '_bonus_job', None):
+            return
+        keys = [(kind, i) for kind, rows in (('unique', cr.uniques()), ('set', cr.set_items()), ('runeword', cr.runewords()))
+                for i, _name, _x in rows]
+        keys.sort(key=lambda k: k[0] != self.qkey())         # the list on screen first
+        todo = iter(keys)
+
+        def step():
+            self._bonus_job = None
+            try:
+                if not self.top.winfo_exists():
+                    return
+                t0 = time.perf_counter()
+                for key in todo:
+                    cr.bonus_text(*key)
+                    if time.perf_counter() - t0 > 0.012:
+                        self._bonus_job = self.top.after(15, step)
+                        return
+                cr._bonus_done = True
+                if self.search.get().strip():
+                    self.fill_list(only_if_changed=True)
+            except tk.TclError:                              # window closed meanwhile: the next one goes on
+                pass
+        self._bonus_job = self.top.after(200, step)
+
+    def fill_list(self, only_if_changed=False):
         q = self.qkey()
         s = self.search.get().strip().lower()
         fk = dict(filters()).get(self.kind_filter.get())
@@ -541,7 +573,13 @@ class CreatorWindow:
                 if kind and b.kind != kind or orbs_only and cr.orb_effects(u['code']) is None or dyes_only:
                     continue
                 label = f"{clean(name)} - {clean(b.name)}"
+                if clean(name) == clean(b.name):                 # "Relic - Relic" x200: the granted skill instead
+                    skills = cr.granted_skills(u)
+                    if skills:
+                        label = f"{clean(name)} - {' / '.join(skills)}"
                 rows.append((label, i))
+            if q == 'unique':                                    # the relics by skill (their table order is none)
+                rows.sort(key=lambda r: r[0].lower())
         elif q == 'angelic':
             for b in cr.angelic_bases():
                 if kind and b.kind != kind:
@@ -600,8 +638,17 @@ class CreatorWindow:
             rows = [(f"{label[:-1]}, {code.strip()}]" if seen[label] > 1 and label.endswith(']') else label, code)
                     for label, code in named]
             rows.sort(key=lambda r: r[0].lower())
-        if s:
+        if s and q in ('unique', 'set', 'runeword'):
+            # also by the bonuses the item comes with ("stormlord" -> Arrogance): name matches first, then the
+            # rows whose bonus text matches, as far as the background index got (it refills the list at its end)
+            bonus = cr.__dict__.get('_bonus_text', {})
+            rows = ([r for r in rows if s in r[0].lower()]
+                    + [r for r in rows if s not in r[0].lower() and s in bonus.get((q, r[1]), '')])
+            self._bonus_warm()
+        elif s:
             rows = [r for r in rows if s in r[0].lower()]
+        if only_if_changed and rows == self.entries:
+            return                                           # nothing new: the list and its selection stay
         self.entries = rows
         self.listbox.delete(0, 'end')
         if rows:
@@ -2007,7 +2054,7 @@ class CreatorWindow:
         if self.spec is None:
             return
         self.spec['extra'] = []
-        for k in ('extra_rw', '_from_item', '_keep_zero', '_keep_zero_rw', '_defense_raw', '_warning'):
+        for k in ('extra_rw', '_from_item', '_keep_zero', '_keep_zero_rw', '_drop', '_defense_raw', '_warning'):
             self.spec.pop(k, None)               # a new roll: a normal, legit item
         self.cr.reroll_crafted(self.spec)
         self.render_options()
@@ -2320,6 +2367,10 @@ def delete_selected(app):
 
 def edit_selected(app):
     it = app.selected
+    inv = getattr(app, 'inventory', None)
+    if it is None and inv is not None and inv.selected is not None:
+        inv.edit()                       # an item of the character / mercenary / inventory panel: edited in place
+        return
     if it is None or not app.path:
         messagebox.showinfo(T('cr.edit', 'Edit item'), T('cr.select_first', 'Select an item of the stash first.'))
         return

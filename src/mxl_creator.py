@@ -1847,7 +1847,13 @@ class Creator:
             k = (x['id'], x.get('param'))
             have[k] = have.get(k, 0) + x['value']
         extra = []
-        for k in list(have) + [k for k in made if k not in have]:
+        # a stat the mods give but the item does not hold at all (the user deleted that attribute in an earlier
+        # edit - e.g. the skill of an Essence of Time): marked like the editor's own delete, so it stays off the
+        # stat list. As a cancelling delta row it came back in the list as a 0 on every re-edit.
+        gone = {k for k in made if k not in have}
+        if gone:
+            spec['_drop'] = gone
+        for k in list(have):
             dv = have.get(k, 0) - made.get(k, 0)
             if dv or (k not in made and have.get(k) == 0):
                 extra.append(dict(id=k[0], param=k[1], value=dv))
@@ -2015,6 +2021,45 @@ class Creator:
         if len(lines) == 1:
             return lines[0]
         return lines[-1] + ' - ' + ' / '.join(reversed(lines[:-1]))
+
+    def granted_skills(self, u):
+        """Names of the skills a unique's mods grant: what tells the 200+ uniques all named "Relic" apart. The skill
+        is the param of an oskill mod (stat 97, "+x to Bladestorm"); a relic without one is told by its class-only
+        skill bonus (stat 107). Unnamed skills ("skill #1905": hidden helper skills) are left out."""
+        d = self.data
+        for sid in (97, 107):
+            out = []
+            for m in u.get('mods') or ():
+                if not 0 <= m['prop'] < len(d.props) or sid not in d.props[m['prop']]:
+                    continue
+                try:
+                    name = str(d.skill(m['param']) or '').strip()
+                except Exception:
+                    continue
+                if name and not name.startswith('skill #') and name not in out:
+                    out.append(name)
+            if out:
+                return out
+        return []
+
+    def bonus_text(self, q, row):
+        """Lower-case tooltip lines of the bonuses a unique / set item / runeword comes with ("+(18 to 32) to
+        stormlord"): what the creator's search matches besides the names. One row costs about a millisecond
+        (the catalog tooltip), so it is kept; the creator window fills the cache in the background."""
+        cache = self.__dict__.setdefault('_bonus_text', {})
+        if (q, row) not in cache:
+            d = self.data
+            try:
+                if q == 'runeword':
+                    mods, code = d.runeword_mods[row], None
+                else:
+                    u = (d.uniques if q == 'unique' else d.set_items)[row]
+                    mods, code = u['mods'], u['code']
+                lines = self.mods_text([(m['prop'], m['param'], m['min'], m['max']) for m in mods], code)
+            except Exception:
+                lines = []
+            cache[(q, row)] = '\n'.join(lines).lower()
+        return cache[(q, row)]
 
     def _orb_table(self):
         """Median XL Sigma mysticorbs.bin: one 143-byte row per mystic orb, in the order of the 'myst' items of
