@@ -290,6 +290,101 @@ def exp_for_level(data, cls, level):
     return rows[level][cls] if 1 <= level < len(rows) else None
 
 
+EXP_MAX = 0xFFFFFFFF
+
+
+def level_exp_range(data, cls, level):
+    """(first, last) experience of a level in the game's table: from the experience that gives the level to one
+    below the next level's. At the table's top level, or above it, the range is open up to what the save stores."""
+    rows = _exp_table(data)
+    top = max_level(data, cls)
+    if level >= top or level + 1 >= len(rows):
+        return rows[min(max(top, 1), len(rows) - 1)][cls], EXP_MAX
+    level = max(1, level)
+    lo, hi = rows[level][cls], rows[level + 1][cls] - 1
+    return lo, max(lo, hi)
+
+
+def level_for_exp(data, cls, exp):
+    """Level the game's table gives for an experience value (1 .. the class's top level)."""
+    rows = _exp_table(data)
+    top = min(max_level(data, cls), len(rows) - 1)
+    level = 1
+    while level < top and exp >= rows[level + 1][cls]:
+        level += 1
+    return level
+
+
+# ---------------------------------------------------------------------- stat screen fields
+# Status byte (header 0x24). The other bits are kept as the file has them.
+STATUS_FLAGS = {'hardcore': 0x04, 'died': 0x08, 'expansion': 0x20, 'ladder': 0x40}
+STAT_LEVEL, STAT_EXP = 12, 13
+FRACTION_BITS = 8                       # life / mana / stamina: fixed point, 8 fractional bits
+# key, stat id, fractional bits, label
+FIELDS = (
+    ('level', 12, 0, 'Level'),
+    ('experience', 13, 0, 'Experience'),
+    ('strength', 0, 0, 'Strength'),
+    ('dexterity', 2, 0, 'Dexterity'),
+    ('vitality', 3, 0, 'Vitality'),
+    ('energy', 1, 0, 'Energy'),
+    ('stat_points', 4, 0, 'Stat points left'),
+    ('skill_points', 5, 0, 'Skill points left'),
+    ('life_cur', 6, FRACTION_BITS, 'Life'),
+    ('life_max', 7, FRACTION_BITS, 'Life (maximum)'),
+    ('mana_cur', 8, FRACTION_BITS, 'Mana'),
+    ('mana_max', 9, FRACTION_BITS, 'Mana (maximum)'),
+    ('stamina_cur', 10, FRACTION_BITS, 'Stamina'),
+    ('stamina_max', 11, FRACTION_BITS, 'Stamina (maximum)'),
+    ('gold', 14, 0, 'Gold'),
+    ('gold_stash', 15, 0, 'Gold in stash'),
+)
+FIELD_KEYS = tuple(f[0] for f in FIELDS)
+_FIELD = {f[0]: f for f in FIELDS}
+
+
+class StatField:
+    """One writable value of the stat screen. `value`, `min`, `max` are in the unit shown to the user (whole
+    points); `raw` / `raw_max` are the stored integers (`value` = raw >> `shift`). `present` tells whether the stat
+    is written in the file (a stat worth 0 is left out, except the level). `where`: 'stats' or 'header+stats'."""
+    __slots__ = ('key', 'label', 'sid', 'bits', 'shift', 'raw', 'raw_max', 'value', 'min', 'max', 'present',
+                 'where', 'stored', 'note')
+
+    def __init__(self, **kw):
+        for k in self.__slots__:
+            setattr(self, k, kw.get(k))
+
+    def as_dict(self):
+        return {k: getattr(self, k) for k in self.__slots__}
+
+    def __repr__(self):
+        return f'StatField({self.key}={self.value}, {self.min}..{self.max})'
+
+
+def check_name(name):
+    """The game's character name rule: 2 to 15 letters (A-Z), with at most one '-' or '_' that is neither the first
+    nor the last character. Raises CharError."""
+    ok = (isinstance(name, str) and 2 <= len(name) <= 15
+          and all(c in '-_' or (c.isascii() and c.isalpha()) for c in name)
+          and sum(c in '-_' for c in name) <= 1 and name[0] not in '-_' and name[-1] not in '-_')
+    if not ok:
+        raise CharError(T('ch.err.name_rule', 'name: 2 to 15 letters (A-Z), at most one - or _, not at the start '
+                          'or the end'))
+    return name
+
+
+def companion_files(path):
+    """Files of the save folder that belong to the character besides its .d2s (.key, .map, .ma0-.ma3, .stash)."""
+    folder = os.path.dirname(path)
+    old = os.path.splitext(os.path.basename(path))[0]
+    out = []
+    for fn in sorted(os.listdir(folder)):
+        stem, ext = os.path.splitext(fn)
+        if stem == old and (ext.lower() in ('.key', '.map', '.stash') or ext.lower().startswith('.ma')):
+            out.append(fn)
+    return out
+
+
 def item_bodylocs(data, code):
     """Body locations ('head', 'rarm'...) where an item type can be equipped (item type and its ancestors)."""
     if not hasattr(data, '_bodylocs'):
@@ -446,17 +541,242 @@ class Character:
     def stat(self, sid):
         return next((v for s, p, v in self.stats if s == sid), 0)
 
-    def set_stat(self, sid, value):
-        for st in self.stats:
-            if st[0] == sid:
-                st[2] = value
-                break
+    def set_stat(self, sid, value, param=None):
+        """Writes a stat of the 'gf' section the way the game stores it: sorted by id (then parameter), a stat worth 0
+        left out (the level is always written). `param` selects one entry of a stat with a parameter (88).
+        The value is not checked here (build() refuses what does not fit): set_field() is the checked way."""
+        if param is None:
+            for st in self.stats:
+                if st[0] == sid:
+                    st[2] = value
+                    break
+            else:
+                pb, vb = _csv(self.data)[sid]
+                self.stats.append([sid, 0 if pb else None, value])
+            if value == 0 and sid not in (12,):
+                self.stats = [st for st in self.stats if not (st[0] == sid and st[2] == 0)]
+            self.stats.sort(key=lambda st: st[0])
+            return
+        pb, vb = _csv(self.data).get(sid, (0, 0))
+        if not pb or not 0 <= param < (1 << pb) or not 0 <= value < (1 << vb):
+            raise CharError(T('ch.err.stat_param', 'stat {stat}: parameter {param} / value {value} cannot be stored',
+                              stat=sid, param=param, value=value))
+        self.stats = [st for st in self.stats if not (st[0] == sid and st[1] == param)]
+        if value:
+            self.stats.append([sid, param, value])
+        self.stats.sort(key=lambda st: (st[0], st[1] or 0))
+
+    # ------------------------------------------------------------------ stat screen (unrestricted)
+    def _field_raw(self, key):
+        f = _FIELD.get(key)
+        if f is None:
+            raise CharError(T('ch.err.field', 'unknown character value: {field}', field=key))
+        return f, self.stat(f[1])
+
+    def stat_field(self, key):
+        """Descriptor (StatField) of one stat-screen value: current value, storable range, where it is stored."""
+        f, raw = self._field_raw(key)
+        key, sid, shift, label = f
+        bits = _csv(self.data)[sid][1]
+        raw_max = (1 << bits) - 1
+        note = ''
+        lo = 0
+        where = 'stats'
+        if key == 'level':
+            lo = 1
+            where = 'header+stats'
+            top = max_level(self.data, self.cls) if self.cls < 7 else None
+            note = T('ch.note.level', 'stored twice (header byte 0x2B and stat 12), written together; the game '
+                     'table ends at level {top}', top=top)
+            if self.head[0x2B] != raw:
+                note += ' ' + T('ch.note.level_diff', '- the file disagrees: header {a}, stat {b}', a=self.head[0x2B],
+                                b=raw)
+        elif key == 'experience' and self.cls < 7:
+            a, b = level_exp_range(self.data, self.cls, self.level)
+            note = T('ch.note.exp', 'level {level} is {lo} to {hi} in the game table', level=self.level, lo=a, hi=b)
+        elif shift:
+            note = T('ch.note.fixed', 'base value without items; stored in 1/{n} of a point (raw {raw})',
+                     n=1 << shift, raw=raw)
+        elif key in ('strength', 'dexterity', 'vitality', 'energy'):
+            note = T('ch.note.base', 'base value without items')
+        return StatField(key=key, label=T('ch.field.' + key, label), sid=sid, bits=bits, shift=shift, raw=raw,
+                         raw_max=raw_max, value=raw >> shift, min=lo, max=raw_max >> shift,
+                         present=any(st[0] == sid for st in self.stats), where=where, stored=True, note=note)
+
+    def stat_fields(self):
+        """Descriptors of every writable stat-screen value, in screen order (see FIELDS for the keys)."""
+        return [self.stat_field(k) for k in FIELD_KEYS]
+
+    def field(self, key):
+        """Current value of a stat-screen field, in whole points (life / mana / stamina without their fraction)."""
+        f, raw = self._field_raw(key)
+        return raw >> f[2]
+
+    def set_field(self, key, value):
+        """Writes one stat-screen value as given, nothing else is recalculated ("unrestricted"). Limits are what
+        the file can store (stat_field(key).min / .max); anything else raises CharError and changes nothing.
+        Life / mana / stamina take whole points (a float sets the fraction too; an unchanged whole number keeps the
+        stored fraction). 'level' writes the header byte and the stat together; points, life and experience are
+        left alone (use set_level for the game's own level-up)."""
+        f, raw = self._field_raw(key)
+        key, sid, shift, label = f
+        fd = self.stat_field(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value != value or abs(value) > 1e15:
+            raise CharError(T('ch.err.field_number', '{label}: a number is expected', label=fd.label))
+        if isinstance(value, float) and not shift:
+            if value != int(value):
+                raise CharError(T('ch.err.field_int', '{label}: a whole number is expected', label=fd.label))
+            value = int(value)
+        if isinstance(value, float):
+            new = int(round(value * (1 << shift)))
+        elif shift and value == raw >> shift:
+            new = raw
         else:
-            pb, vb = _csv(self.data)[sid]
-            self.stats.append([sid, 0 if pb else None, value])
-        if value == 0 and sid not in (12,):
-            self.stats = [st for st in self.stats if not (st[0] == sid and st[2] == 0)]
-        self.stats.sort(key=lambda st: st[0])
+            new = value << shift if value >= 0 else -1
+        if not fd.min << shift <= new <= fd.raw_max:
+            raise CharError(T('ch.err.field_range', '{label}: {value} cannot be stored, the file holds {lo} to {hi}',
+                              label=fd.label, value=value, lo=fd.min, hi=fd.max))
+        self.set_stat(sid, new)
+        if key == 'level':
+            self.head[0x2B] = new
+
+    def set_field_raw(self, key, raw):
+        """Like set_field with the stored integer (life / mana / stamina in 1/256 of a point)."""
+        f, _cur = self._field_raw(key)
+        if isinstance(raw, bool) or not isinstance(raw, int):
+            raise CharError(T('ch.err.field_number', '{label}: a number is expected', label=f[3]))
+        self.set_field(key, raw / (1 << f[2]) if f[2] else raw)
+
+    def set_level_raw(self, level):
+        """Sets the level only (header byte and stat 12), down or up, without the game's level-up gains."""
+        self.set_field('level', level)
+
+    def exp_range(self, level=None):
+        """(first, last) experience of a level (default: the character's) in the game table."""
+        return level_exp_range(self.data, self.cls, self.level if level is None else level)
+
+    def match_exp_to_level(self):
+        """Moves the experience into the range of the current level when it is outside. Returns the experience."""
+        lo, hi = self.exp_range()
+        exp = self.stat(STAT_EXP)
+        if not lo <= exp <= hi:
+            exp = lo
+            self.set_field('experience', exp)
+        return exp
+
+    def match_level_to_exp(self):
+        """Sets the level the game table gives for the current experience (raw: nothing else changes)."""
+        level = level_for_exp(self.data, self.cls, self.stat(STAT_EXP))
+        self.set_field('level', level)
+        return level
+
+    def level_consistent(self):
+        """True when the header level byte and the level stat agree."""
+        return self.head[0x2B] == self.stat(STAT_LEVEL)
+
+    # ------------------------------------------------------------------ status flags / progression / name
+    @property
+    def status(self):
+        return self.head[0x24]
+
+    def flags(self):
+        """{'expansion', 'ladder', 'hardcore', 'died': bool} from the status byte (header 0x24)."""
+        return {k: bool(self.head[0x24] & bit) for k, bit in STATUS_FLAGS.items()}
+
+    def set_flag(self, key, on):
+        """Sets or clears one status flag; the other bits of the byte are kept."""
+        bit = STATUS_FLAGS.get(key)
+        if bit is None:
+            raise CharError(T('ch.err.flag', 'unknown character flag: {flag}', flag=key))
+        self.head[0x24] = (self.head[0x24] | bit) if on else (self.head[0x24] & ~bit & 0xFF)
+
+    def set_flags(self, **flags):
+        for k in flags:
+            if k not in STATUS_FLAGS:
+                raise CharError(T('ch.err.flag', 'unknown character flag: {flag}', flag=k))
+        for k, on in flags.items():
+            self.set_flag(k, on)
+
+    def set_progression(self, value):
+        """Progression / title byte (header 0x25), 0..255: 5 per finished difficulty plus the acts finished in the
+        current one (an expansion character: 5 = Normal done, 10 = Nightmare done, 15 = Hell done)."""
+        if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 255:
+            raise CharError(T('ch.err.progression', 'progression: 0 to 255'))
+        self.head[0x25] = value
+
+    @property
+    def difficulties_done(self):
+        """Number of difficulties finished (0..3): what unlocks Nightmare (1) and Hell (2)."""
+        return min(3, self.head[0x25] // 5)
+
+    def set_difficulties_done(self, n):
+        """Sets the number of finished difficulties (0..3). The acts part of the byte is kept when the count does
+        not change, and restarts at 0 otherwise."""
+        if isinstance(n, bool) or not isinstance(n, int) or not 0 <= n <= 3:
+            raise CharError(T('ch.err.difficulties', 'finished difficulties: 0 to 3'))
+        if self.difficulties_done != n:
+            self.head[0x25] = 5 * n
+
+    def set_name(self, name):
+        """Writes the name in the header only (game rule checked). The game needs the file to carry the same name:
+        use rename() to save under the new name and move the companion files."""
+        check_name(name)
+        self.head[0x14:0x24] = name.encode('ascii').ljust(16, b'\0')
+
+    def rename(self, new_name, backup=True):
+        """Renames the character on disk: the save is written (with any pending change) as <new_name>.d2s through
+        the safe writer, the companion files (.key, .map, .ma0-3, .stash) are renamed, the old .d2s is removed
+        (kept as a backup when `backup`). Returns (new path, backup or None). Nothing changes on a refusal."""
+        from mxl_save import commit_file, load_character, check_game_closed, make_backup, EditError
+        check_game_closed()
+        check_name(new_name)
+        old_path, old_name = self.path, bytes(self.head[0x14:0x24])
+        folder = os.path.dirname(old_path)
+        old = os.path.splitext(os.path.basename(old_path))[0]
+        if new_name == old:
+            raise CharError(T('ch.err.same_name', 'the character already has this name'))
+        mates = companion_files(old_path)
+        taken = {fn.lower() for fn in os.listdir(folder)}
+        same_file = new_name.lower() == old.lower()          # case-only change: same file on Windows
+        wanted = [new_name + '.d2s'] + [new_name + os.path.splitext(fn)[1] for fn in mates]
+        if not same_file and any(w.lower() in taken for w in wanted):
+            raise CharError(T('ch.err.exists', '{name} already exists', name=new_name))
+        try:
+            with open(old_path, 'rb') as f:
+                on_disk = f.read()
+        except OSError as e:
+            raise CharError(str(e))
+        if on_disk != self.raw:
+            raise CharError(T('ch.err.changed', 'the character file changed on disk since it was read (game or another '
+                              'window): it has been reloaded, try again'))
+        dst = os.path.join(folder, new_name + '.d2s')
+        self.set_name(new_name)
+        content = self.build()
+
+        def verify(tmp):
+            try:
+                c = Character(tmp, self.data)
+                load_character(tmp, self.data)
+            except Exception as e:
+                raise EditError(T('ch.err.verify', 'check after writing failed: {error}', error=e))
+            if c.name != new_name or c.build() != content:
+                raise EditError(T('ch.err.verify_name', 'check after writing failed: name'))
+        bak = None
+        try:
+            if backup:
+                bak = make_backup(old_path)
+            commit_file(dst, content, verify, False)
+        except (EditError, OSError) as e:
+            self.head[0x14:0x24] = old_name
+            raise CharError(str(e))
+        for fn in mates:
+            os.replace(os.path.join(folder, fn), os.path.join(folder, new_name + os.path.splitext(fn)[1]))
+        if os.path.exists(old_path) and not (os.path.exists(dst) and os.path.samefile(old_path, dst)):
+            os.remove(old_path)
+        self.path = dst
+        self.raw = content
+        self.parse(content)
+        return dst, bak
 
     # ------------------------------------------------------------------ class / skills
     def skill_levels(self):
@@ -715,7 +1035,6 @@ def copy_character(path, new_name, data):
     if not (2 <= len(new_name) <= 15) or not all(c.isalpha() or c in '-_' for c in new_name):
         raise CharError(T('ch.err.name', 'name: 2 to 15 letters (- and _ allowed)'))
     folder = os.path.dirname(path)
-    old = os.path.splitext(os.path.basename(path))[0]
     dst = os.path.join(folder, new_name + '.d2s')
     if os.path.exists(dst):
         raise CharError(T('ch.err.exists', '{name} already exists', name=new_name))
@@ -724,8 +1043,6 @@ def copy_character(path, new_name, data):
     content = c.build()
     with open(dst, 'wb') as f:
         f.write(content)
-    for fn in os.listdir(folder):
-        stem, ext = os.path.splitext(fn)
-        if stem == old and ext.lower() in ('.key', '.map', '.stash') or (stem == old and ext.lower().startswith('.ma')):
-            shutil.copy2(os.path.join(folder, fn), os.path.join(folder, new_name + ext))
+    for fn in companion_files(path):
+        shutil.copy2(os.path.join(folder, fn), os.path.join(folder, new_name + os.path.splitext(fn)[1]))
     return dst
