@@ -2013,7 +2013,7 @@ class CreatorWindow:
         if self.spec is None:
             return
         self.spec['extra'] = []
-        for k in ('extra_rw', '_from_item', '_keep_zero', '_keep_zero_rw', '_defense_raw', '_warning'):
+        for k in ('extra_rw', '_from_item', '_keep_zero', '_keep_zero_rw', '_drop', '_defense_raw', '_warning'):
             self.spec.pop(k, None)               # a new roll: a normal, legit item
         self.cr.reroll_crafted(self.spec)
         self.render_options()

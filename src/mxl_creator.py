@@ -1847,7 +1847,13 @@ class Creator:
             k = (x['id'], x.get('param'))
             have[k] = have.get(k, 0) + x['value']
         extra = []
-        for k in list(have) + [k for k in made if k not in have]:
+        # a stat the mods give but the item does not hold at all (the user deleted that attribute in an earlier
+        # edit - e.g. the skill of an Essence of Time): marked like the editor's own delete, so it stays off the
+        # stat list. As a cancelling delta row it came back in the list as a 0 on every re-edit.
+        gone = {k for k in made if k not in have}
+        if gone:
+            spec['_drop'] = gone
+        for k in list(have):
             dv = have.get(k, 0) - made.get(k, 0)
             if dv or (k not in made and have.get(k) == 0):
                 extra.append(dict(id=k[0], param=k[1], value=dv))
