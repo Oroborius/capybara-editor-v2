@@ -299,8 +299,7 @@ def add_then_delete_restores_the_item():
 # BUG (known, WORKLOG W15): "add-then-delete in the Item stats tab leaves the stash 336 bytes different though
 # parsing equal". Every item is byte-identical afterwards (test above); the file as a whole is not.
 # A character file does come back byte for byte (variants 'panel' and 'tab'): there the test must pass.
-@T.test(xfail='Item stats add + delete on a stash item: every item is byte-identical afterwards but the stash file as '
-              'a whole is not (the rewritten item moves to the end of its page)' if TARGET == 'stash' else None)
+@T.test
 def add_then_delete_restores_the_file():
     it = Item()
     sid = new_plain_stat(it)

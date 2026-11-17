@@ -290,8 +290,7 @@ def edit_mode_replace_with_changed_roll():
 
 # BUG (known, WORKLOG W14): the Item Editor rebuilds the item from a spec. Replace without touching anything
 # gives a new item id, and on some sample items other stats (the engine test noop_edit_of_sample_items counts them).
-@T.test(xfail='Item Editor: "Replace" without any change does not keep the item byte-identical (new item id; '
-              'stats change on some items)')
+@T.test
 def edit_mode_noop_replace_is_byte_identical():
     import mxl_creator as C
     import mxl_creator_gui as CG

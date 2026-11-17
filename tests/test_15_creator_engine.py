@@ -123,9 +123,9 @@ def honorific_item_created_into_stash():
     T.check(E.rules.rare_name(it, E.data), 'the created honorific item has no name')
     lines = [''.join(t for _c, t in ln) for ln in E.tip.item_tooltip(it, E.data)]
     T.check(len(lines) >= 3, f'tooltip of the created item has {len(lines)} lines')
-    sp2 = cr.spec_from_item(it)
+    sp2 = cr.spec_from_item(it)        # the edit path keeps the item's own bytes: its place in the stash differs
     r1, r2 = C.decode_item(bytes(blob), E.data)[0], C.decode_item(bytes(cr.build(sp2)[0]), E.data)[0]
-    T.eq(sorted(k for k in set(r1) | set(r2) if k != 'id' and r1.get(k) != r2.get(k)), [], 'fields changed by the edit path')
+    T.eq(sorted(k for k in set(r1) | set(r2) if k not in ('id', 'x', 'y') and r1.get(k) != r2.get(k)), [], 'fields changed by the edit path')
 
 
 @T.test
@@ -196,7 +196,7 @@ def bonus_text_search_finds_arrogance():
 
 # BUG (known, WORKLOG W14): "a no-op Replace through the creator's edit mode assigns a new item id and changes the
 # parsed stats of 18 of 80 test items". The creator rebuilds from a spec; the Item stats tab is the lossless path.
-@T.test(xfail='creator edit mode: spec_from_item -> build of an untouched stash item does not give its bytes back')
+@T.test
 def noop_edit_of_sample_items_is_byte_identical():
     E = T.engine()
     cr = E.cr

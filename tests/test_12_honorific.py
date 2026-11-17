@@ -82,7 +82,7 @@ def honorific_item_reencodes_identically():
 # BUG (known, WORKLOG W14 "no-op Replace through the creator's edit mode"): the creator rebuilds an edited item
 # from a spec, and the spec does not carry everything. On the game's own honorific sample the no-op edit path
 # repairs the item (durability 166 -> 183) and drops header flag 0x2000 (FLAG_NEW).
-@T.test(xfail='creator edit path is lossy on a game-made item: durability and header flag 0x2000 change in a no-op edit')
+@T.test
 def honorific_noop_edit_keeps_every_field():
     E = T.engine()
     ch = E.MC.Character(sample(), E.data)

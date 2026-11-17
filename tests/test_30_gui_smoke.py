@@ -99,8 +99,9 @@ def character_tab_every_page():
     T.check(cw is not None, 'no Character tab')
     T.select_tab('Character')
     T.settle(0.3)
-    T.eq(sorted(cw.pages), sorted(['stats', 'inventory', 'skills', 'waypoints', 'quests']), 'pages of the Character tab')
-    for key in ('stats', 'inventory', 'skills', 'waypoints', 'quests'):
+    builtin = ['stats', 'inventory', 'skills', 'waypoints', 'quests']
+    T.eq(sorted(k for k in builtin if k not in cw.pages), [], 'built-in pages missing from the Character tab')
+    for key in builtin + sorted(k for k in cw.pages if k not in builtin):     # plug-in pages (register_page) too
         cw.tab.set(key)
         cw.show_tab()
         T.settle(0.25)

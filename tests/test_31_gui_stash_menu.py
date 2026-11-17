@@ -94,8 +94,7 @@ def duplicate():
 # BUG: mxl_rc_menu._duplicate builds its status text with app.bak_name(bak), a method that does not exist. It is
 # only evaluated when the write made a backup, i.e. when Duplicate is the first stash write of the session: the
 # copy is written, then AttributeError ('App' object has no attribute 'bak_name') - no status, no selection.
-@T.test(xfail="Duplicate as the first stash write of a session raises AttributeError: 'App' object has no attribute "
-              "'bak_name' (mxl_rc_menu._duplicate) after the copy is written")
+@T.test
 def duplicate_as_first_write_of_the_session():
     key = first(lambda it, rec, b: it['page'] == 1 and any_item(it, rec, b), 'item on page 2')
     c = Ctx()
