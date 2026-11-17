@@ -244,6 +244,7 @@ class CharacterWindow(StatEditMixin):
             else:
                 page.pack_forget()
         self._fit_stats()
+        self._fit_skills()
         self.scroll.refresh()
         self._scroll_later()
 
@@ -718,10 +719,10 @@ class CharacterWindow(StatEditMixin):
 
     # ================================================================== Skills tab
     def _build_skills(self):
+        """The Skills page: a slim bar (find, all levels 0) over the game's skill-tree panel (mxl_skilltree)."""
+        import mxl_skilltree
         f = self.sk_tab
         self.sk_vars = {}
-        self.sk_rows = []
-        self.sk_page_of = {}
         self._skills_cls = None
         top = tk.Frame(f, bg=HE_BG)
         top.pack(fill='x', padx=4, pady=(2, 1))
@@ -729,31 +730,47 @@ class CharacterWindow(StatEditMixin):
         self.sk_title.pack(side='left')
         tk.Label(top, text='   ' + T('he.skills_find', 'Find:'), font=HE_FONT, bg=HE_BG).pack(side='left')
         self.sk_search = tk.StringVar()
-        se = tk.Entry(top, textvariable=self.sk_search, width=22, font=HE_FONT, relief='sunken', bd=2)
-        se.pack(side='left', padx=6)
+        se = tk.Entry(top, textvariable=self.sk_search, width=16, font=HE_FONT, relief='sunken', bd=2)
+        se.pack(side='left', padx=4)
         se.bind('<KeyRelease>', lambda _e: self._filter_skills())
-        tk.Button(top, text=T('he.skills_zero', 'All levels 0'), font=HE_FONT, bg=HE_BTN,
-                  command=self._zero_skills).pack(side='left', padx=6)
-        self.sk_pts = tk.Label(top, text='', font=HE_FONT_I, bg=HE_BG, fg=HE_GOLD)
-        self.sk_pts.pack(side='right')
-        self.sk_hover = tk.Label(top, text='', font=HE_FONT, bg=HE_BG, fg='#7a6a35')
-        self.sk_hover.pack(side='right', padx=(0, 14))
-        # the game's skill screen: stone tree area, the trees in a vertical tab bar on its right,
-        # the tab's long note as the caption under the tree
-        self.sk_body = tk.Frame(f, bg=HE_BG)
-        self.sk_body.pack(fill='both', expand=True, padx=4, pady=(2, 0))
-        self.sk_holder = tk.Frame(self.sk_body, bg=SK_BG)
-        self.sk_holder.pack(fill='both', expand=True, side='left')
-        self.sk_bar = tk.Frame(self.sk_body, bg=HE_BG)
-        self.sk_bar.pack(side='right', fill='y', padx=(6, 0))
-        self.sk_plates = {}
-        self.sk_pages = {}
-        self.sk_show = tk.StringVar(value='')
-        self.sk_caption = tk.Label(f, text='', font=HE_FONT, bg=HE_BG, fg=HE_GOLD, anchor='w')
-        self.sk_caption.pack(fill='x', padx=4, pady=(1, 1))
-        tk.Label(f, text=T('he.skills_note', 'Each box is the skill\'s own hard-point level (0 to 255). '
-                                             'Changes are written on SAVE.'), font=HE_FONT_S,
-                 bg=HE_BG, fg='#8a7a4a').pack(anchor='w', padx=4, pady=(0, 2))
+        tk.Button(top, text=T('he.skills_zero', 'All levels 0'), font=HE_FONT, bg=HE_BTN, pady=0,
+                  command=self._zero_skills).pack(side='left', padx=4)
+        self.sk_other = tk.Button(top, text=T('sk.other', 'Other skills'), font=HE_FONT, bg=HE_BTN, pady=0,
+                                  command=lambda: self.sktree.toggle_other())
+        self.sk_other.pack(side='left', padx=4)
+        tk.Label(top, text=T('sk.hint', 'Click a skill: +1, right-click: -1 (Shift: 5); click the number to type. '
+                                        'Hover for the tooltip.'), font=HE_FONT_S, bg=HE_BG, fg='#8a7a4a').pack(side='left', padx=8)
+        self.sk_top = top
+        self.sktree = mxl_skilltree.SkillTree(f, self)
+        self.sktree.frame.pack(fill='both', expand=True)
+        self.scroll.bind('<Configure>', self._fit_skills, add='+')
+
+    def _fit_skills(self, _e=None):
+        tree = getattr(self, 'sktree', None)
+        if tree is None or self.tab.get() != 'skills':
+            return
+        try:
+            W, H = self.scroll.winfo_width(), self.scroll.winfo_height()
+            if W > 40 and H > 40:
+                k = tree.k
+                tree.fit(W - 2, H - self.sk_top.winfo_reqheight() - 6)
+                if tree.k != k:
+                    self._scroll_later()
+        except tk.TclError:
+            pass
+
+    def _rebuild_skills(self):
+        """The class's trees again (another character or class): see mxl_skilltree.SkillTree."""
+        ch, d = self.ch, self.data
+        self._skills_cls = ch.cls
+        names = MC.class_names(d)
+        cname = names[ch.cls] if ch.cls < len(names) else str(ch.cls)
+        self.sk_title.configure(text=T('he.skills_of2', '{cls} skills', cls=cname))
+        self.sktree.rebuild()
+        self._fit_skills()
+
+    def _filter_skills(self):
+        self.sktree.set_filter(self.sk_search.get())
 
     def _theme_art(self):
         """The game's Sigma theme artwork (None without the game folder): stone panels and fonts.
@@ -784,87 +801,6 @@ class CharacterWindow(StatEditMixin):
             nm = T('skill.unknown', 'skill #{id}', id=sid)
         return nm
 
-    def _skill_icons(self, cls):
-        """{sid: PhotoImage} of the class's skill icons, read from the player's game files
-        (icons-<class>.dc6, 48x48 cels shown 1.5x). {} when the game files are unavailable."""
-        key = (self.data.folder, cls)
-        if key in _SKILL_ICON_CACHE:
-            return _SKILL_ICON_CACHE[key]
-        out = {}
-        try:
-            import settings
-            import paths
-            import mxl_d2look_art
-            import mxl_d2ui_dc6 as DC6
-            gd = settings.get('game_dir')
-            if not gd or not os.path.isdir(gd):
-                raise mxl_d2look_art.ArtError('game folder not set')
-            art = mxl_d2look_art.get_art(gd, 'classic_sigma', os.path.join(paths.USER_DIR, 'ui_art'))
-            code = self.data._rows('playerclass')[cls][:4].decode('latin1').strip()
-            cels = DC6.dc6_frames(art.read(f'data\\global\\themes\\classic_sigma\\game\\skills\\icons-{code}.dc6'))
-            shared = DC6.dc6_frames(art.read('data\\global\\themes\\classic_sigma\\game\\skills\\icons-shared.dc6'))
-            pal = art.pal()
-            for tab, _name, cells in (MC.skill_trees(self.data).get(cls) or []):
-                for _row, _col, sid, cel in cells:
-                    fr = cels[cel] if cel < len(cels) else (shared[cel] if cel < len(shared) else None)
-                    if fr is None:
-                        continue
-                    w, h, rgba = DC6.to_rgba(fr, pal)
-                    img = tk.PhotoImage(data=DC6.png(w, h, rgba), master=self.top)
-                    out[sid] = img.zoom(3, 3).subsample(2, 2)   # 48px cel shown at 72px
-        except Exception as e:
-            print('skill icons disabled:', e)
-        _SKILL_ICON_CACHE[key] = out
-        return out
-
-    def _rebuild_skills(self):
-        """The class's skills laid out like the game's skill screen: one page per tree, each tree a
-        grid of (row, column) cells from the extracted skilldesc.bin (tab names as the game's tab
-        bar shows them), every skill with its own icon ripped from the game's icons-<class>.dc6,
-        drawn over the game's own skill-tree stone panel; the trees are plates in a vertical tab bar
-        on the right and the tab's note is the caption under the tree. The level of every skill of
-        the class stays editable (tab 0 = skills the game shows in no tree: oSkills, procs and
-        hidden skills)."""
-        ch, d = self.ch, self.data
-        cls = ch.cls
-        self._skills_cls = cls
-        names = MC.class_names(d)
-        cname = names[cls] if cls < len(names) else str(cls)
-        self.sk_title.configure(text=T('he.skills_of', '{cls}: skill level per skill', cls=cname))
-        for w in self.sk_bar.winfo_children():
-            w.destroy()
-        for w in self.sk_holder.winfo_children():
-            w.destroy()
-        self.sk_pages = {}
-        self.sk_vars = {}
-        self.sk_rows = []
-        self.sk_plates = {}
-        self.sk_page_of = {}
-        levels = ch.skill_levels()
-        icons = self._skill_icons(cls)
-        trees = MC.skill_trees(d).get(cls) or []
-        art = self._theme_art()
-        stone_path = None
-        if art is not None:
-            try:
-                stone_path = art.panel('skill-tree')       # the PNG cache path; sized per tree below
-            except Exception as e:
-                print('skill tree stone panel disabled:', e)
-        code = (d._rows('playerclass')[cls][:4].decode('latin1').strip().lower()
-                if cls < len(d._rows('playerclass')) else '')
-        for tab, name, cells in trees:
-            if tab == 0:
-                name = T('he.skills_other', 'Other (not in a class tree)')
-            self._sk_add_page(tab, cells, levels, icons, stone_path, code)
-            plate = self._sk_plate(tab, name)
-            self.sk_plates[str(tab)] = plate
-        if self.sk_pages:
-            first = next(iter(self.sk_pages))
-            self.sk_show.set(first)
-            self.sk_pages[first].grid(row=0, column=0, sticky='nsew')
-            self._sk_caption_of(first)
-        self._filter_skills()
-
     def _art_photo(self, path, size=None):
         """The game font/panel PNG as a tk image (None without the game folder)."""
         try:
@@ -872,109 +808,6 @@ class CharacterWindow(StatEditMixin):
             return mxl_d2look.photo(path, size=size)
         except Exception:
             return None
-
-    def _sk_plate(self, tab, name):
-        """One tree as a plate of the game's vertical tab bar: gold game-font label on dark stone."""
-        plate = tk.Frame(self.sk_bar, bg=SK_PLATE, bd=2, relief='raised',
-                         highlightbackground=SK_OFF, highlightcolor=SK_EDGE, highlightthickness=1)
-        img = None
-        art = self._theme_art()
-        if art is not None:
-            try:
-                img = self._art_photo(art.text(name.upper(), font='font16', color=HE_GOLD_RGB, solid=True))
-            except Exception:
-                img = None
-        if img is not None:
-            lab = tk.Label(plate, image=img, bg=SK_PLATE)
-            lab.image = img
-        else:
-            lab = tk.Label(plate, text=name, font=HE_FONT, bg=SK_PLATE, fg=HE_GOLD)
-        lab.pack(fill='x', padx=8, pady=4)
-        for w in (plate, lab):
-            w.bind('<Button-1>', lambda _e, t=str(tab): self._sk_pick(t))
-            w.bind('<Enter>', lambda _e, t=str(tab), n=name: (
-                self.sk_hover.configure(text=T('he.skills_tree_of', '{n} tree', n=n))))
-            w.bind('<Leave>', lambda _e: self.sk_hover.configure(text=''))
-        plate.pack(side='top', fill='x', pady=2)
-        return plate
-
-    def _sk_tree_size(self):
-        """Every tree page gets the same canvas: the class's largest grid, so no page is taller
-        than another (the game draws each tree in the same web area)."""
-        trees = MC.skill_trees(self.data).get(self._skills_cls) or []
-        cols = max((max((c for _r, c, _s, _i in cells), default=1) for _t, _n, cells in trees),
-                   default=1)
-        rows = max((max((r for r, _c, _s, _i in cells), default=1) for _t, _n, cells in trees),
-                   default=1)
-        return PAD * 2 + cols * SK_CELL_W, PAD * 2 + rows * SK_CELL_H
-
-    def _sk_add_page(self, tab, cells, levels, icons, stone_path, code):
-        """One tree as a canvas: the stone panel and the tree's connector web behind, each skill a
-        node (icon + level entry) on the grid its extracted skilldesc row says."""
-        taken = set()
-        placed = []
-        for row, col, sid, cel in cells:
-            cell = (max(1, row), max(1, col))         # the data is 1-based; a stray 0 stays on top
-            while cell in taken:                      # never stack two skills in one cell
-                cell = (cell[0], cell[1] + 1)
-            taken.add(cell)
-            placed.append((sid, cell[0], cell[1]))
-        W, H = self._sk_tree_size()
-        page = tk.Canvas(self.sk_holder, bg=SK_BG, highlightthickness=0, bd=0)
-        page.configure(width=W, height=H)
-        stone = self._art_photo(stone_path, size=(W, H)) if stone_path else None
-        page._capy_stone = stone
-        if stone is not None:
-            page.create_image(0, 0, anchor='nw', image=stone)
-        art = self._theme_art()
-        if art is not None and tab > 0:               # the game's own web: the arrows between nodes
-            try:
-                web = self._art_photo(art.skill_web(code, tab, (W, H)))
-                if web is not None:
-                    page._capy_web = web
-                    page.create_image(0, 0, anchor='nw', image=web)
-            except Exception as e:
-                print('skill tree web disabled:', e)
-        for sid, row, col in placed:
-            x = PAD + (col - 1) * SK_CELL_W
-            y = PAD + (row - 1) * SK_CELL_H
-            box = page.create_rectangle(x + 6, y + 6, x + SK_CELL_W - 6, y + SK_CELL_H - 6,
-                                        outline=SK_NODE, width=1)
-            img = icons.get(sid)
-            if img is not None:
-                node = page.create_image(x + SK_CELL_W // 2, y + 44, anchor='center', image=img)
-            else:                                      # no game files: the name stands in for the icon
-                node = page.create_text(x + SK_CELL_W // 2, y + 40, width=SK_CELL_W - 16, font=HE_FONT_S,
-                                        fill=HE_GOLD, text=self._sk_name(sid))
-            var = tk.StringVar(value=str(levels.get(sid, 0)))
-            e = tk.Entry(page, textvariable=var, width=4, font=HE_FONT, relief='sunken', bd=2,
-                         justify='center', bg='#000000', fg=HE_GOLD, insertbackground=HE_GOLD)
-            e.bind('<KeyRelease>', lambda _e: self.update_dirty())
-            win = page.create_window(x + SK_CELL_W // 2, y + SK_CELL_H - 18, window=e)
-            nm = self._sk_name(sid)
-            extra = T('he.skills_oskill', '  - not in any class tree (oSkill, proc or hidden skill)') \
-                if tab == 0 else ''
-            tip = nm + extra
-            def _enter(_e, s=tip):
-                self.sk_hover.configure(text=s)
-                self._sk_tip(s)
-            def _leave(_e):
-                self.sk_hover.configure(text='')
-                self._sk_tip('')
-            for item in (box, node):
-                page.tag_bind(item, '<Enter>', _enter)
-                page.tag_bind(item, '<Leave>', _leave)
-            e.bind('<Enter>', _enter)
-            e.bind('<Leave>', _leave)
-            self.sk_vars[sid] = var
-            self.sk_rows.append((sid, page, (box, node, win), nm))
-            self.sk_page_of[sid] = str(tab)
-        self.sk_pages[str(tab)] = page
-        return page
-
-    def _sk_pick(self, tab):
-        self.sk_show.set(tab)
-        self._sk_show_tab()
 
     def _sk_tip(self, text):
         """The game's floating tooltip: gold text on dark stone with a gold frame, at the pointer."""
@@ -997,45 +830,6 @@ class CharacterWindow(StatEditMixin):
         self._sk_tip_win.geometry(f'+{x + 18}+{y + 14}')
         for c in self._sk_tip_win.winfo_children():
             c.configure(text=text)
-
-    def _sk_caption_of(self, tab):
-        note = MC.skill_tab_note(self.data, self._skills_cls or 0, int(tab))
-        self.sk_caption.configure(text=note or '')
-
-    def _sk_show_tab(self):
-        show = self.sk_pages.get(self.sk_show.get())
-        for key, page in self.sk_pages.items():     # remove first: a grid followed by a
-            if key != self.sk_show.get():           # grid_remove in the same batch gets lost
-                page.grid_remove()
-        if show is not None:
-            show.grid(row=0, column=0, sticky='nsew')
-        for key, plate in self.sk_plates.items():
-            plate.configure(relief='sunken' if key == self.sk_show.get() else 'raised',
-                            highlightbackground=SK_EDGE if key == self.sk_show.get() else SK_OFF)
-        self._sk_caption_of(self.sk_show.get())
-        try:
-            self.sk_holder.update_idletasks()
-            self.scroll.refresh()
-        except (tk.TclError, AttributeError):
-            pass
-
-    def _filter_skills(self):
-        text = self.sk_search.get().lower().strip()
-        first_page = None
-        for sid, page, items, nm in self.sk_rows:
-            state = 'normal' if not text or text in nm.lower() else 'hidden'
-            for item in items:
-                page.itemconfigure(item, state=state)
-            if state == 'normal' and first_page is None:
-                first_page = self.sk_page_of.get(sid)
-        if text and first_page is not None and self.sk_show.get() != first_page:
-            self.sk_show.set(first_page)
-            self._sk_show_tab()
-        try:
-            self.sk_holder.update_idletasks()
-            self.scroll.refresh()
-        except (tk.TclError, AttributeError):
-            pass
 
     def _zero_skills(self):
         for var in self.sk_vars.values():
@@ -1451,9 +1245,8 @@ class CharacterWindow(StatEditMixin):
             self.statscreen.redraw()
         else:
             self._refresh_stats_grey()
-        if getattr(self, 'sk_pts', None) is not None:       # the game's skill-screen header
-            self.sk_pts.configure(text=T('he.skills_points', 'Remaining skill points: {n}',
-                                         n=ch.stat(5)))
+        if getattr(self, 'sktree', None) is not None:       # levels and the remaining points
+            self.sktree.redraw()
         for k in range(3):
             self.wp_trees[k].set_values({('wp', k, n): n in self.wstate[k] for n in MC.waypoint_ids(k)})
             self.q_trees[k].set_values({('q', k, w): w in self.qstate[k] for _, _, qs, _ in ACTS for w, _ in qs})
