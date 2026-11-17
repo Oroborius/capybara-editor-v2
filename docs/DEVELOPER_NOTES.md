@@ -1,3 +1,20 @@
+## "Make perfect" replaces the value sliders (`mxl_perfect.py`)
+- The "Value editing" switch and the collector's in-place sliders are gone from the main window
+  (`app.editing` is forced to False in `mxl_creator_gui.install`). The Item Creator keeps its own sliders
+  and Min / Random / Max buttons for an item being created or edited.
+- Right-click an item -> Specific editing functions -> **Make perfect (n of m rolls below the maximum)**,
+  in the stash and in the character window. Only shown for an item with rolls; greyed out when every roll
+  is already at its maximum. One write raises every roll to the top of its range: affix / unique / set
+  rolls, Superior bonus, base defense, runeword rolls and the rolls of socketed jewels (the ranges are the
+  collector's own, `mxl_edit.edit_groups`; linked stats follow through `mxl_save.set_stat`).
+- Mystic orbs are not recorded on an item, so they are told from the value: a stat above its range is
+  split into roll + orb part with the orb amounts of the `mysticorbs` table (fixed-amount orbs, at most the
+  allowed count of each). The roll goes to its maximum, the orb part stays on top. When several orb totals
+  fit, the smallest is taken, so the result never lowers the stat and never invents orb value. A value no
+  orb combination explains (hand-edited) or below its range is left untouched and counted in the status line.
+- A character item is rewritten in place (same size, same slot): the entry's bytes are swapped and the
+  character saved, without the remove -> place step whose slot rules refuse some worn mercenary items.
+
 # Median XL Capybara Editor (personal unrestricted build)
 
 ## Hero-Editor item menu on every right click (`mxl_rc_menu.py`, round 5): quality, specific editing, export

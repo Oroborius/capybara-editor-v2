@@ -5,7 +5,7 @@
   write it into the stash shown in the main window (first free place of the chosen page).
 - Edit: the selected stash item is loaded into the same window; "Replace item" writes the new version in its place.
 - Delete: removes the selected stash item (and its socketed items).
-- "Value editing" toggles the collector's built-in in-place sliders (setting editing_enabled).
+- The collector's in-place value sliders are switched off (app.editing = False): see mxl_perfect ("Make perfect").
 Every write goes through mxl_save.edit_stash (verification after writing, .bak backup; the game-closed check is removed by mxl_free - see DEVELOPER_NOTES).
 """
 import os
@@ -2326,14 +2326,8 @@ def edit_selected(app):
     CreatorWindow(app, edit_item=it)
 
 
-def toggle_editing(app, var):
-    app.editing = bool(var.get())
-    settings.put('editing_enabled', app.editing)
-    app.set_detail(app.selected)
-
-
 def install(App):
-    """Adds the Creator / Edit / Delete buttons and the value-editing switch to the collector's main window."""
+    """Adds the Creator / Edit / Delete buttons to the collector's main window."""
     original = App._build
 
     def _build(self):
@@ -2349,9 +2343,9 @@ def install(App):
         except Exception:          # mxl_he_stats without its dependencies: stay silent
             pass
         ttk.Button(bar, text=T('cr.delete', 'Delete item'), command=lambda: delete_selected(self)).pack(side='left', padx=2)
-        var = tk.BooleanVar(value=bool(self.editing))
-        ttk.Checkbutton(bar, text=T('cr.value_editing', 'Value editing'), variable=var,
-                        command=lambda: toggle_editing(self, var)).pack(side='left', padx=(8, 2))
+        # no value sliders in the detail panel any more: the right-click menu's 'Make perfect' (mxl_perfect)
+        # raises every roll at once, 'Item stats' edits single values
+        self.editing = False
         self._creator = None
 
     App._build = _build
