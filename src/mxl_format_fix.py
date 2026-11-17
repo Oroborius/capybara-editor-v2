@@ -142,4 +142,9 @@ def install():
             nc.setdefault(TEMPERED, nc['crafted'])
     except Exception:
         pass
+    try:
+        import mxl_statnames              # names for the skills without a skilldesc string ("skill #2064")
+        mxl_statnames.install()
+    except Exception:
+        pass
     mxl_format._sigma_fix = True

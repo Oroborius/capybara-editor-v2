@@ -10,6 +10,9 @@ editors can show the skill's name in a dropdown and type the chance separately:
 - the SINGLE_SKILL stats (97, 107), e.g. 'to %s': param = skill id;
 - the class skill stat (83), e.g. 'to %s Skill Levels': param = class index.
 """
+import re
+import struct
+
 CHANCE_TO_CAST = list(range(195, 204))
 SINGLE_SKILLS = (97, 107)
 CLASS_SKILLS = 83
@@ -54,9 +57,9 @@ def decode_param(data, sid, param):
     try:
         if kind == 'skill':
             sk, lv = param >> 6, param & 63
-            return (data.skill_names.get(sk, f'skill #{sk}'), lv)
+            return (skill_label(data, sk) or f'skill #{sk}', lv)
         if kind == 'skill_only':
-            return (data.skill_names.get(param, f'skill #{param}'), None)
+            return (skill_label(data, param) or f'skill #{param}', None)
         cl = _classes()
         if kind == 'class':
             return (cl[param] if isinstance(param, int) and 0 <= param < len(cl) else f'class #{param}', None)
@@ -73,12 +76,12 @@ def encode_param(data, sid, name, level=None):
         return None
     try:
         if kind == 'skill':
-            sk = next((k for k, n in data.skill_names.items() if n == name), None)
+            sk = skill_id(data, name)
             if sk is None:
                 return None
             return (sk << 6) | (int(level or 0) & 63) if level is not None else sk << 6
         if kind == 'skill_only':
-            return next((k for k, n in data.skill_names.items() if n == name), None)
+            return skill_id(data, name)
         if kind == 'class':
             cl = _classes()
             return cl.index(name) if name in cl else None
@@ -114,9 +117,183 @@ def skill_fits(data, sid, skill_id):
     return isinstance(skill_id, int) and 0 <= skill_id < (1 << bits)
 
 
+BUFFALO = 'POLAR BUFFALO'
+_ID_SUFFIX = re.compile(r'#(\d+)\)$')
+
+
+def _own_name(data, sk):
+    """The skill's own display name (its skilldesc string), or None: no skilldesc (1952 of Median XL Sigma's
+    3018 skills: hidden passives, monster skills, proc helpers) or only the buffalo placeholder."""
+    n = data.skill_names.get(sk)
+    if not n or BUFFALO in n.upper():
+        return None
+    return n
+
+
+def _skill_rows(data):
+    rows = getattr(data, '_sn_skill_rows', None)
+    if rows is None:
+        try:
+            rows = data._rows('skills')
+        except Exception:
+            rows = []
+        data._sn_skill_rows = rows
+    return rows
+
+
+def _state_icon_names(data):
+    """{state id: name} from stateicons.bin (8-byte rows: u16 state, u16 -, u16 icon, u16 string): the name the
+    game writes under the buff icon of the state."""
+    m = getattr(data, '_sn_state_icons', None)
+    if m is None:
+        m = {}
+        try:
+            for r in data._rows('stateicons'):
+                st, _a, _icon, si = struct.unpack_from('<4H', r, 0)
+                n = (data.s(si) or '').replace('\n', ' ').strip()
+                if n and BUFFALO not in n.upper():
+                    m.setdefault(st, n)
+        except Exception:
+            m = {}
+        data._sn_state_icons = m
+    return m
+
+
+def _short_stat(data, sid):
+    """A stat's label without the value placeholders: 'Maximum Stamina'."""
+    try:
+        txt = stat_text(data, sid, None, 1, data.isc[sid].get('desc'))
+    except Exception:
+        txt = ''
+    if not txt:
+        try:
+            import mxl_statnames_ext
+            txt = mxl_statnames_ext.fallback_label(sid) or ''
+        except Exception:
+            txt = ''
+    txt = re.sub(r'%\+?d|%s|#', '', txt).replace('%%', '%')
+    txt = re.sub(r'^[\s+%:-]+|[\s+:-]+$', '', re.sub(r'\s+', ' ', txt))
+    return re.sub(r'^to ', '', txt)
+
+
+def hidden_skill_name(data, sk):
+    """Name for a skill of skills.bin that has no display name of its own, from what the row does: the buff
+    icon text of its state, the stats its passive / aura gives, the monster it summons; always marked
+    '(hidden #id)', which also keeps every name unique. None when sk is not a row of the skills table.
+    (The table's internal 'skill' column - 'Dream Aura' - exists only in the mod's .txt sources: the compiled
+    skills.bin the game ships holds no name, so it cannot be shown.)"""
+    cache = data.__dict__.setdefault('_sn_hidden_names', {})
+    if sk in cache:
+        return cache[sk]
+    rows = _skill_rows(data)
+    name = None
+    if isinstance(sk, int) and 0 <= sk < len(rows):
+        r = rows[sk]
+        what = ''
+        try:
+            states = [v for v in (struct.unpack_from('<H', r, off)[0] for off in STATE_COLS) if 0 < v < 0xFFFF]
+            icons = _state_icon_names(data)
+            what = next((icons[v] for v in states if v in icons), '')
+            if not what:
+                passive = [v for v in struct.unpack_from('<5h', r, 0x98) if v >= 0]
+                aura = [v for v in struct.unpack_from('<6h', r, 0x54) if v >= 0]
+                for kind, sids in (('Passive', passive), ('Aura', aura)):
+                    labels = []
+                    for v in sids:
+                        t = _short_stat(data, v)
+                        if t and t not in labels:
+                            labels.append(t)
+                    if labels:
+                        what = f"{kind}: {', '.join(labels[:3])}" + (', ...' if len(labels) > 3 else '')
+                        break
+            if not what:
+                mon = struct.unpack_from('<H', r, 0xBC)[0]
+                names = getattr(data, 'monster_names', None) or []
+                if mon < len(names) and names[mon] and BUFFALO not in str(names[mon]).upper():
+                    what = 'Summon: ' + str(names[mon]).replace('\n', ' ').strip()
+            if not what:                     # nothing nameable: at least what kind of row it is
+                missiles = [v for v in struct.unpack_from('<4H', r, 0x46) + struct.unpack_from('<4H', r, 0xE8)
+                            if 0 < v < 0xFFFF]
+                if states:
+                    what = 'Unnamed effect'
+                elif missiles:
+                    what = 'Unnamed missile skill'
+        except Exception:
+            what = ''
+        name = f"{what or 'Unnamed skill'} (hidden #{sk})"
+    cache[sk] = name
+    return name
+
+
+def _first_ids(data):
+    """{name: lowest skill id with this display name}: Median XL has 171 names shared by several skills
+    (Flamefront x22, Thunderstone x12...)."""
+    m = getattr(data, '_sn_first_ids', None)
+    if m is None:
+        m = {}
+        for k in sorted(data.skill_names):
+            n = _own_name(data, k)
+            if n:
+                m.setdefault(n, k)
+        data._sn_first_ids = m
+    return m
+
+
+def skill_label(data, sk):
+    """The one name the editors show for a skill id, and skill_id() turns back into exactly this id:
+    its own name ('Tantrum'); 'Flamefront (#1650)' for a later skill of an already used name (picking it by
+    the bare name would silently store the first one); a derived '... (hidden #2064)' name for a skill without
+    a name of its own. None only when the id is not in the skills table."""
+    n = _own_name(data, sk)
+    if n is None:
+        return hidden_skill_name(data, sk)
+    return n if _first_ids(data).get(n) == sk else f'{n} (#{sk})'
+
+
+def skill_name(data, sk):
+    """Display name of a skill id for texts (tooltips, labels): its own name, else the hidden-skill name."""
+    return _own_name(data, sk) or hidden_skill_name(data, sk)
+
+
 def skill_id(data, name):
-    """The skill's id, or None when no skill has this exact name."""
+    """The skill id of a name given by skill_label (or a plain skill name: its first id); None if unknown."""
+    if not name:
+        return None
+    m = _ID_SUFFIX.search(name)
+    if m:
+        sk = int(m.group(1))
+        if skill_label(data, sk) == name:
+            return sk
+    sk = _first_ids(data).get(name)
+    if sk is not None:
+        return sk
     return next((k for k, n in data.skill_names.items() if n == name), None)
+
+
+def install():
+    """The host's Data.skill() (what its stat texts call for '+1 to <skill>') knows only the skills with a
+    skilldesc string and says 'skill #2064' for the rest: it now falls back to hidden_skill_name."""
+    import mxl_data
+    cls = mxl_data.Data
+    if getattr(cls, '_sn_skill_patch', False):
+        return
+    orig = cls.skill
+
+    def skill(self, sid):
+        try:
+            own = _own_name(self, sid)
+            if own:
+                return own
+            if self.strings and self.key(f'skillname{sid}') != f'skillname{sid}':
+                return orig(self, sid)
+            n = hidden_skill_name(self, sid)
+            if n:
+                return n
+        except Exception:
+            pass
+        return orig(self, sid)
+    cls.skill = skill
+    cls._sn_skill_patch = True
 
 
 def encode_skill_param(data, sid, name, level=None):
@@ -153,7 +330,7 @@ def encode_skill_param(data, sid, name, level=None):
 def skill_names_sorted(data, sid=None):
     """[(skill name, skill id)] sorted by name for the dropdowns. With sid: only the skills that fit
     into the stat's param field (see skill_fits) - the others would roll in the game."""
-    out = [(n, k) for k, n in data.skill_names.items() if n]
+    out = [(skill_label(data, k), k) for k in data.skill_names if _own_name(data, k)]
     if sid is not None:
         out = [(n, k) for n, k in out if skill_fits(data, sid, k)]
     return sorted(out, key=lambda x: x[0].lower())
@@ -206,6 +383,9 @@ def state_name(data, sid):
     name strings, the skills that set the state do). None when no skill sets it."""
     if sid is None:
         return None
+    icon = _state_icon_names(data).get(sid)          # the text under the state's buff icon, when it has one
+    if icon:
+        return icon
     names = []
     for i in _state_skills(data).get(sid) or []:
         try:
@@ -220,7 +400,7 @@ def state_name(data, sid):
 def state_names_sorted(data):
     """[(state name, state id)] sorted by name, for the state stat's (98) param dropdown."""
     out = []
-    for sid in sorted(_state_skills(data)):
+    for sid in sorted(set(_state_skills(data)) | set(_state_icon_names(data))):
         n = state_name(data, sid)
         if n:
             out.append((n, sid))
