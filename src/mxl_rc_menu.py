@@ -137,11 +137,10 @@ def _stash_menu(app, ev):
 
 
 def _selected(app, page, x, y):
-    app.load(app.path, keep_selection=False)
-    app.selected = next((i for i in app.items if (i.get('page'), i.get('x'), i.get('y')) == (page, x, y)),
-                        app.selected)
-    app.draw_grid()
-    app.set_detail(app.selected)
+    """Refresh after a stash write, the item at (page, x, y) selected. The stash-only reload keeps the page being
+    shown: the full app.load() went back to page 1 after every copy / paste / duplicate."""
+    from mxl_creator_gui import _reload_main
+    _reload_main(app, (page, x, y))
 
 
 def _copy(app, it):
@@ -200,7 +199,7 @@ def _paste_empty(app, ev, clip):
     app._capy_clip = None
     app.backup_made(app.path, bak)
     _selected(app, page, cx, cy)
-    _status(app, rc('pasted', '{name} pasted (the previous item is replaced)', name=clip[1]))
+    _status(app, rc('pasted_here', '{name} pasted', name=clip[1]))
 
 
 def _move_page(app, it, page):

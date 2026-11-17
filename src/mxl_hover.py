@@ -21,8 +21,31 @@ def install(App):
             _install_stash_hover(self)
         except Exception as e:
             print('item hover (stash) disabled:', e)
+        try:
+            _one_line_status(self)
+        except Exception as e:
+            print('one-line status bar disabled:', e)
 
     App._build = _build
+
+
+def _one_line_status(app):
+    """The status bar stays one line high. Hovering an item whose name has several lines (mystic orbs,
+    caches, relics...) put those lines into the bar: it grew upwards, the tab above lost height and the
+    grids were re-fitted (mxl_fit) at every such hover. Line breaks become ' / ' before the text is set."""
+    st = app.status
+    o_configure = st.configure
+
+    def flat(v):
+        return ' / '.join(part.strip() for part in v.splitlines() if part.strip()) if isinstance(v, str) and '\n' in v else v
+
+    def configure(cnf=None, **kw):
+        if isinstance(cnf, dict) and 'text' in cnf:
+            cnf = dict(cnf, text=flat(cnf['text']))
+        if 'text' in kw:
+            kw['text'] = flat(kw['text'])
+        return o_configure(cnf, **kw)
+    st.configure = st.config = configure
 
 
 def install_char():
