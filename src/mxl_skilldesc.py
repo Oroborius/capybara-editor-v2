@@ -14,6 +14,11 @@ the rows). This module holds
 Whatever is not understood (a print function or a formula code the editor does not know) is never
 guessed: that line comes out as its raw definition, marked 'raw', and is counted.
 
+The numbers are those of the character's own skill levels and saved stats, at rest in town: what
+items give (stats, + to skills, the hidden per-skill modifiers 'syn1-6'), masteries and running
+buffs are left out (Tip.assumed / Tip.used_stats say what a tooltip depends on). The rules were
+checked against 470 in-game tooltips of level 1 characters (tests/test_16_skilldesc.py).
+
 No Tk in here; mxl_skilltree draws the result."""
 import os
 import struct
@@ -23,7 +28,9 @@ OPS = {0x0a: '<', 0x0b: '>', 0x0c: '<=', 0x0d: '>=', 0x0e: '==', 0x0f: '!=',
        0x10: '+', 0x11: '-', 0x12: '*', 0x13: '/', 0x14: '^'}
 FUNCS = {0: ('min', 2), 1: ('max', 2), 2: ('rand', 2), 3: ('skill', 2), 4: ('miss', 2), 5: ('stat', 2),
          7: ('f7', 1), 10: ('f10', 1), 11: ('f11', 3), 13: ('f13', 2)}      # 7+ : the mod's own, unknown
+MISS_FIELD = {'dpa1': 0x78, 'dpa2': 0x7c}             # missiles.bin: the damage parameters (as in the base game)
 ARG = {1: 1, 4: 1, 5: 2, 6: 4, 7: 1, 8: 2, 9: 4}
+SIGNED = (7, 8, 9)                                   # the number ops (a byte holds -128..127)
 PREC = {'?': 1, '<': 2, '>': 2, '<=': 2, '>=': 2, '==': 2, '!=': 2, '+': 3, '-': 3, '*': 4, '/': 4, '^': 5}
 
 
@@ -46,7 +53,7 @@ def tokens(code, off):
             out.append((op, None))
             p += 1
         else:
-            out.append((op, int.from_bytes(code[p + 1:p + 1 + n], 'little', signed=op in (8, 9))))
+            out.append((op, int.from_bytes(code[p + 1:p + 1 + n], 'little', signed=op in SIGNED)))
             p += 1 + n
     raise Unsupported('formula runs past the table')
 
@@ -82,6 +89,8 @@ class Tables:
         self.s2 = self._rows('skills2')
         self.s2code = self._blob('skills2code.bin')
         self.elem = self._elem_names()
+        self.miss = self._rows('missiles')
+        self.miss_calc = [r[:4].decode('latin1').strip('\0 ') for r in self._rows('misscalc')]
         self._stat_names = None
 
     def _blob(self, name):
@@ -103,6 +112,10 @@ class Tables:
 
     def _elem_names(self):
         return [r[:4].decode('latin1').strip('\0 ') for r in self._rows('elemtypes')]
+
+    def spell_scaled(self, sid):
+        """skills2.bin byte 45: the skill's elemental damage gets the standard spell scaling."""
+        return sid < len(self.s2) and len(self.s2[sid]) > 45 and self.s2[sid][45] == 1
 
     def text(self, idx):
         e = self.strings.get(idx)
@@ -167,7 +180,8 @@ class Tables:
                             st.append((f"stat('{what}'.{acc})", 9))
                         else:
                             c = int(b[0]) if b[0].isdigit() else -1
-                            cn = self.calc_names[c] if 0 <= c < len(self.calc_names) else b[0]
+                            names = self.miss_calc if nm == 'miss' else self.calc_names
+                            cn = names[c] if 0 <= c < len(names) else b[0]
                             st.append((f"{nm}('{what}'.{cn})", 9))
                     else:
                         st.append((f'{nm}({",".join(a[0] for a in args)})', 9))
@@ -200,7 +214,8 @@ class Calc:
         self.stats = stats or {}
         self.bonus = bonus
         self.used_stats = set()
-        self.assumed = set()       # what was taken as "none": 'synergy', 'mastery', 'aura'
+        self.assumed = set()       # what was taken as "none": 'synergy' (item modifiers of the skill),
+        #                            'mastery', 'aura' / 'state' (buffs, charges), 'place' (in town, standing)
         self._depth = 0
 
     def blvl(self, sid):
@@ -256,8 +271,28 @@ class Calc:
         base = t.field(sid, 0x1e4 if hi else 0x1e0)
         steps = struct.unpack_from('<5i', t.sk[sid], 0x1fc if hi else 0x1e8)
         v = self._per_level(base, steps, lvl, (8, 16, 22, 28, None)) << t.sk[sid][0x1a4]
-        v += _c_div(v * self._sym(sid, lvl, 'edmgsym'), 100)
+        sym = self._sym(sid, lvl, 'edmgsym')
+        if t.spell_scaled(sid):
+            # the mod's standard spell scaling (skills2.bin flag): the skills that carry it have no
+            # formula of their own; how the two would combine is not known
+            if sym:
+                raise Unsupported('spell scaling together with a damage formula')
+            sym = self.spell_scale()
+        v += _c_div(v * sym, 100)
         return v >> 8 if shift else v
+
+    def energy_factor(self):
+        """The "Energy: +N% Increased Damage" number (energy, plus Spell Focus / 10 up to 100)."""
+        e = int(self.stats.get(1, 0))
+        self.used_stats.update((1, 485))
+        return _c_div(130 * (e + 20), 500 + e) + min(_c_div(int(self.stats.get(485, 0)), 10), 100)
+
+    def spell_scale(self):
+        """% the damage of a spell changes by character level and energy. The formula is the one
+        the tables spell out in 'edmgsym' for most spells; the skills flagged in skills2.bin get it
+        from the game itself (Devouring Cloud 14-21, Angel of Death 4-6, Rain of Fire 3-5 ... on
+        level 1 characters)."""
+        return _c_div((50 + 10 * min(self.ulvl, 120)) * (50 + self.energy_factor()), 100) - 75
 
     def elen(self, sid, lvl):
         t = self.t
@@ -272,8 +307,13 @@ class Calc:
         return v >> 8 if shift else v
 
     # ---- skillcalc codes
+    TABLE_CODES = ('edmn', 'edmx', 'edns', 'edxs', 'edln', 'toht', 'mana', 'usmc', 'enma', 'exma', 'enms', 'exms',
+                   'edma')
+
     def code(self, name, sid, lvl):
         t = self.t
+        if lvl <= 0 and (name in self.TABLE_CODES or (name[:2] in ('ln', 'dm') and name[2:].isdigit())):
+            return 0                                       # a skill without a level has no table values
         if name[:2] in ('ln', 'dm') and name[2:].isdigit() and len(name) == 4:
             a = int(name[2])
             return self._ln(sid, lvl, a) if name[0] == 'l' else self._dm(sid, lvl, a)
@@ -327,12 +367,29 @@ class Calc:
         if name == 'edma':
             self.assumed.add('mastery')
             return self.elen(sid, lvl)
-        if name[:3] == 'syn' and name[3:].isdigit():       # bonuses other skills / items feed in
+        if name[:3] == 'syn' and name[3:].isdigit():       # the hidden per-skill modifier stats (382,
+            # 383, 393 ...: "[SKILL] +#") that items carry; no class skill hands them out
             self.assumed.add('synergy')
             return 0
         if name == 'aura':                                 # "the buff is switched on"
             self.assumed.add('aura')
             return 0
+        if name == 'area':                                 # where the character stands: a town (the
+            self.assumed.add('place')                      # reference tooltips were read in town)
+            return 1
+        if name == 'mode':                                 # what the character does: standing
+            self.assumed.add('place')
+            return 1
+        if name == 'maxe':                                 # "the skill is at its maximum level"
+            if self.code('blvl', sid, lvl) <= 0:
+                return 0
+            raise Unsupported('formula code maxe (the maximum level of a skill is not known)')
+        if name[:3] == 'blz' and name[3:].isdigit():       # linear over the base level, from 0: seen
+            if self.code('blvl', sid, lvl) <= 0:           # only at base level 0 (Mind Spark)
+                return self._par(sid, int(name[3:]))
+            raise Unsupported(f'formula code {name} above base level 0')
+        if name == 'mlvl':                                 # a skill's maximum level: not in the tables
+            return None                                    # (unknown; harmless where it divides 0)
         raise Unsupported(f'formula code {name}')
 
     _self = None
@@ -360,8 +417,14 @@ class Calc:
                         raise Unsupported(f'formula function {arg}')
                     args = st[len(st) - n:]
                     del st[len(st) - n:]
-                    if nm[0] == 'f' and nm[1:].isdigit() or None in args:
-                        st.append(None)                    # the mod's own function: value unknown
+                    if None in args:
+                        st.append(None)
+                    elif nm[0] == 'f' and nm[1:].isdigit():
+                        # the mod's own functions (7, 10, 11, 13) ask about the character's
+                        # momentary condition (buffs, charges): 0 for a character at rest. With 0
+                        # every such line of the reference tooltips comes out as in game.
+                        self.assumed.add('state')
+                        st.append(0)
                     else:
                         st.append(self.func(nm, args, sid, lvl))
                 elif op == 0x15:
@@ -373,8 +436,8 @@ class Calc:
                 else:
                     b, a = st.pop(), st.pop()
                     sym = OPS[op]
-                    if a is None or b is None:             # unknown, unless multiplied by 0
-                        st.append(0 if sym == '*' and (a == 0 or b == 0) else None)
+                    if a is None or b is None:             # unknown, unless multiplied by 0 (or 0 / it)
+                        st.append(0 if (sym == '*' and (a == 0 or b == 0)) or (sym == '/' and a == 0) else None)
                         continue
                     if sym == '+':
                         v = a + b
@@ -416,14 +479,24 @@ class Calc:
                 return self.blvl(other)
             lv = self.lvl(other)
             if self.t.field(other, 0xc, '<I') < 7:
-                # a skill of a class the character has no point in gives 0, whatever is asked of it
-                # (in game: Pneumatic Burst's targets, Snake Stance's poison length at level 0)
-                return self.code(cn, other, lv) if lv > 0 else 0
+                # a class skill the character has no point in: its table values (damage, length,
+                # ln12 ...) are 0, its formulas are still worked out, at level 0 (in game: Snake
+                # Stance's poison length 0; Witch Blood's spell factor in Glacial Torrent's damage,
+                # Mind Spark's "+1 bolt" in Tempest's maximum)
+                return self.code(cn, other, max(lv, 0))
             return self.code(cn, other, max(lv, 1))      # the mod's helper skills (no class) always exist
         if nm == 'stat':
             sid_, acc = args
             self.used_stats.add(sid_)
             return int(self.stats.get(sid_, 0))
+        if nm == 'miss':
+            # a number of a missile: the code is one of misscalc.bin; the damage parameters are
+            # read (in game: "Converts 70% / 100% Physical Damage" of the Necromancer's bolts)
+            mid, c = args
+            cn = self.t.miss_calc[c] if 0 <= c < len(self.t.miss_calc) else ''
+            if cn in MISS_FIELD and 0 <= mid < len(self.t.miss) and len(self.t.miss[mid]) >= 128:
+                return struct.unpack_from('<i', self.t.miss[mid], MISS_FIELD[cn])[0]
+            raise Unsupported(f'formula function miss() with code {cn or c}')
         raise Unsupported(f'formula function {nm}()')
 
 
@@ -464,6 +537,11 @@ def _num(v):
     return str(int(v))
 
 
+def _range(lo, hi):
+    """'3-5'; one number when both ends are the same (as the game prints it)."""
+    return str(int(lo)) if lo == hi else f'{int(lo)}-{int(hi)}'
+
+
 def _plus(v):
     return f'+{int(v)}' if v >= 0 else str(int(v))
 
@@ -484,7 +562,7 @@ class Tip:
         self.raw = 0               # lines shown as their raw definition
         self.reasons = []          # why (one text per raw line)
         self.used_stats = set()    # character stats the formulas read
-        self.assumed = set()       # what the numbers leave out: 'synergy', 'mastery', 'aura'
+        self.assumed = set()       # what the numbers leave out (see Calc.assumed)
         self.name = ''
 
     def add(self, segs, kind='line'):
@@ -524,9 +602,19 @@ class Composer:
             # one number: weapon skills (srcdam) show one point more than the table value in
             # game (seen on Impale and Eviscerate), spells the value itself (Dream Eater)
             return one(f'{t.text(ELEM_TEXT[0])}+{lo + (1 if t.sk[sid][0x1a5] else 0)}')
+        if fn in (24, 26, 27):            # elemental damage with a caption / as fire per second
+            lo, hi = c.elem(sid, lvl, shift=False), c.elem(sid, lvl, True, shift=False)
+            if not lo and not hi:
+                return []
+            if fn == 24:
+                return one(f'{A}{_range(lo >> 8, hi >> 8)}')
+            k = 25 if fn == 26 else 75    # 27: three flames at a time (Wildfire 28-35 in game)
+            if t.sk[sid][0x1dc] != 1:
+                raise Unsupported(f'line function {fn} for damage type {t.sk[sid][0x1dc]}')
+            return one(f'{t.text(4322)}{t.text(ELEM_TEXT[1])}{_range((lo * k) >> 8, (hi * k) >> 8)}{t.text(4286)}')
         if fn in (10, 14):                # elemental / poison damage of the skill
             et = t.sk[sid][0x1dc]
-            if et not in ELEM_TEXT or (fn == 14) != (et == 5):
+            if et not in ELEM_TEXT or (fn == 14 and et != 5):
                 raise Unsupported(f'line function {fn} for damage type {et}')
             if fn == 14:
                 n = c.elen(sid, lvl)
@@ -534,28 +622,40 @@ class Composer:
                 hi = (c.elem(sid, lvl, True, shift=False) * n) >> 8
                 if not lo and not hi:
                     return []
-                return [[(f'{t.text(ELEM_TEXT[5])}{lo}-{hi}', None)],
+                return [[(f'{t.text(ELEM_TEXT[5])}{_range(lo, hi)}', None)],
                         [(f'over {_frac(n, 25)} second{"" if n == 25 else "s"}', None)]]
-            lo, hi = c.elem(sid, lvl), c.elem(sid, lvl, True)
+            lo, hi = c.elem(sid, lvl, shift=False), c.elem(sid, lvl, True, shift=False)
             if not lo and not hi:
-                return []
-            return one(f'{t.text(ELEM_TEXT[et])}{lo}-{hi}')
+                return []                 # no damage at all; a fraction of a point shows as 0 (Earthquake)
+            return one(f'{t.text(ELEM_TEXT[et])}{_range(lo >> 8, hi >> 8)}')
         need = {2: 'a', 3: 'a', 4: 'a', 5: 'a', 6: 'a', 7: 'a', 12: 'a', 19: 'a', 63: 'a', 66: 'a', 67: 'a',
-                16: 'ab', 35: 'ab', 38: 'ab', 52: 'ab', 73: 'ab', 40: '', 76: 'ab'}.get(fn)
+                16: 'ab', 35: 'ab', 38: 'ab', 52: 'ab', 73: 'ab', 40: '', 76: 'a',
+                17: 'ab', 20: 'a', 21: 'a', 42: 'ab'}.get(fn)
         if need is None:
             raise Unsupported(f'line function {fn}')
         if (ca < 0 and 'a' in need) or (cb < 0 and 'b' in need):
-            if fn == 2:
-                return []                 # the game prints nothing for it (Hyena Strike)
-            raise Unsupported(f'line function {fn} without its formula')
+            return []                     # the game prints nothing for it (Hyena Strike, Lion Stance, Divine Judgement)
         a = c.eval(t.dcode, ca, sid, lvl) if ca >= 0 else 0
         b = c.eval(t.dcode, cb, sid, lvl) if cb >= 0 else 0
-        if fn == 76:                      # one of two texts; only the plain "locked" form is sure
-            if tuple(tokens(t.dcode, ca)) != ((7, 1),):
-                raise Unsupported('line function 76')
-            return one(A if b < 1 else B) if (A if b < 1 else B) else []
-        if a == 0 and fn not in (40, 66) and (fn not in (16, 35, 38, 52) or b == 0):
-            return []                     # the game leaves out a line whose number is 0
+        if fn == 76:
+            # a text chosen by two conditions: nothing when the second is met, else the first text
+            # when the first is met, else the second text ("Unlockable Skill" until unlocked,
+            # "Disables X" / "Disabled by X", the Cognition steps, "Max this Skill" red / green)
+            text = '' if b >= 1 else (A if a > 0 else B)
+            return one(text) if text.strip(' ') else []
+        if fn == 20:
+            return one(f'{A}{_plus(a)}%{B}')
+        if a == 0 and fn not in (35, 40, 66) and (fn not in (16, 17, 38, 52) or b == 0):
+            return []                     # the game leaves out a line whose number is 0 (but shows
+                                          # a range, 35, even as 0-0: Charged Talons, Blight Descent)
+        if fn == 17:
+            return one(f'{A}{_range(a, b)}{t.text(4286)}')
+        if fn == 21:
+            return one(f'{A}{_num(a)}%{B}')
+        if fn == 42:
+            if not 10 <= b <= 99:
+                raise Unsupported('line function 42 with a one-digit fraction')
+            return one(f'{A}: {_plus(a)}.{_num(b)} {B}')
         if fn == 35:
             return one(f'{A}: {_num(a)}-{_num(b)}')
         if fn == 2:
@@ -579,14 +679,14 @@ class Composer:
         if fn == 19:
             return one(f'{A}{_frac(a * 2, 3)} yard{"" if a * 2 == 3 else "s"}')
         if fn == 38:
-            return one(f'{A}{_num(a)}-{_num(b)}{B}')
+            return one(f'{A}{_range(a, b)}{B}')
         if fn == 40:
             col = str(a) if str(a) in COLOURS else None
-            return [[(s, c or col) for s, c in ln] for ln in text_lines(A + B)]
+            return [[(s, c or col) for s, c in ln] for ln in text_lines(A)]     # the second text is not drawn
         if fn == 52:
             return one(f'{A}{_plus(a)}-{_num(b)}{B}')
         if fn == 63:
-            return one(f'{A}: {_plus(a)}% {B}')
+            return one(f'{A}: {_plus(a)}% {B}' if A else f'{_plus(a)}% {B}')
         if fn == 66:
             return one(A.replace('%%', '\0').replace('%d', _num(a)).replace('\0', '%'))
         if fn == 67:

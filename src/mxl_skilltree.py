@@ -696,8 +696,13 @@ class SkillTree:
             notes.append(T('sk.tip_unmet', 'In game this needs: {what}', what=', '.join(unmet)))
         if tip.raw:
             notes.append(T('sk.tip_raw', 'Grey lines: the raw table entry (not understood by the editor).'))
-        if tip.used_stats or tip.assumed:
-            notes.append(T('sk.tip_bare', 'Numbers for the bare character: items and bonuses from other skills are not counted.'))
+        # what the numbers leave out, said exactly (the levels of the character's other skills ARE counted)
+        if tip.used_stats:
+            notes.append(T('sk.tip_stats', 'Uses the saved character stats: bonuses from items and charms are not included.'))
+        if 'synergy' in tip.assumed or 'mastery' in tip.assumed:
+            notes.append(T('sk.tip_items', 'Not included: bonuses that items give to this skill.'))
+        if tip.assumed & {'aura', 'state', 'place'}:
+            notes.append(T('sk.tip_rest', 'For a character at rest in town: no buff, aura or charge active.'))
         if notes:
             rows.append([])
             rows += [[(n, '#7a7a7a')] for n in notes]
