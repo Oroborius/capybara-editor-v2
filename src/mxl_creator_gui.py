@@ -520,8 +520,9 @@ class CreatorWindow:
         bar = ttk.Frame(body)
         bar.grid(row=1, column=0, sticky='we', pady=(2, 0))
         ttk.Label(bar, text=T('cr.variable_values', 'Variable values'), font=('Segoe UI', 10, 'bold')).pack(side='left')
-        for t, how in ((T('cr.btn.max', 'Max'), 'max'), (T('cr.btn.random', 'Random'), 'random'), (T('cr.btn.min', 'Min'), 'min')):
-            D2.button(bar, t, lambda h=how: self.reroll(h), 8).pack(side='right', padx=2)
+        # at the left, right after the heading: in sight when the column is narrower than its widest row
+        for t, how in ((T('cr.btn.min', 'Min'), 'min'), (T('cr.btn.random', 'Random'), 'random'), (T('cr.btn.max', 'Max'), 'max')):
+            D2.button(bar, t, lambda h=how: self.reroll(h), 6).pack(side='left', padx=(4, 0))
 
         class _Mods:
             pass
@@ -579,6 +580,9 @@ class CreatorWindow:
         def walk(x):
             for c in x.winfo_children():
                 try:
+                    if getattr(c, '_wrap_less', False):
+                        getattr(c, '_fit', lambda: None)()
+                        continue                         # a value row's text: fitted by its own row
                     if c.winfo_class() == 'TLabel' and int(str(c.cget('wraplength')) or 0) not in (0, w):
                         c.configure(wraplength=w)
                 except (tk.TclError, ValueError):
@@ -893,6 +897,8 @@ class CreatorWindow:
         for w in self.mods_frame.inner.winfo_children():
             w.destroy()
         self.mod_vars = {}
+        self.number_rows = {}                # roll source (or 'defense') -> its number field
+        self._spins = {w: rec for w, rec in self._spins.items() if w.winfo_exists()}
         spec = self.spec
         if spec is None:
             self.title.configure(text=T('cr.choose', 'Choose an item in the list'))
@@ -1060,8 +1066,9 @@ class CreatorWindow:
                 if spec.get('defense') is None or not lo <= spec['defense'] <= hi and not spec.get('_defense_raw'):
                     spec['defense'] = hi
                 cur = spec['defense']
-                self.slider(self.opts, r, T('cr.base_defense', 'Base defense'), min(lo, cur), max(hi, cur), cur,
-                            lambda v: self.set_field('defense', v, False))
+                self.number_rows['defense'] = self.number_row(
+                    self.opts, r, T('cr.base_defense', 'Base defense'), min(lo, cur), max(hi, cur), cur,
+                    lambda v: self.set_field('defense', v, False), option=True)
                 r += 1
             else:
                 rr = row(T('cr.base_defense', 'Base defense'))
@@ -1080,33 +1087,146 @@ class CreatorWindow:
             txt.append(f"{desc.replace('%d%%', '').replace('%d', '').strip()} {lo}-{hi}")
         return f"[{i}] " + '; '.join(txt)
 
-    def slider(self, parent, r, label, lo, hi, cur, on_release, fmt=str):
-        """Label on its own line, then the slider, its value and its range; saving on release."""
+    def number_row(self, parent, r, label, lo, hi, cur, on_change, fmt=str, range_w=0, field_w=0, option=False):
+        """One compact row per rollable value: a typed number field, the range as [min-max] and the value's text
+        (field first: it stays in sight however narrow the column is).
+        Digits only; a number inside the range is applied (and previewed) while typing, Return / leaving the
+        field / pressing any button clamps what is typed to the range. Up / Down step by 1, Page Up / Down by
+        10; the mouse wheel steps the field that has the keyboard focus (over any other field it scrolls the
+        page, so scrolling never changes a value by accident). on_change(value) is what the slider's release
+        called. fmt: the name of a value that stands for a skill / monster, shown under the text.
+        range_w / field_w: common widths (characters) of a block of rows, so their fields line up.
+        option: a row of the options grid above (label column | field and range).
+        Returns the entry (.set_value(v) / .step(d) for tests)."""
         box = ttk.Frame(parent)
-        box.grid(row=r, column=0, columnspan=2, sticky='we', pady=(4, 0))
-        ttk.Label(box, text=label).pack(anchor='w')
-        fr = ttk.Frame(box)
-        fr.pack(fill='x')
-        var = tk.IntVar(value=cur)
-        val = ttk.Label(fr, text=fmt(cur), width=8 if fmt is str else 22)   # names need room, numbers do not
+        if option:
+            ttk.Label(parent, text=label).grid(row=r, column=0, sticky='nw', padx=(0, 8), pady=2)
+            box.grid(row=r, column=1, sticky='w', pady=1)
+            label = ''
+        else:
+            box.grid(row=r, column=0, columnspan=2, sticky='we', pady=1)
+        box.columnconfigure(2, weight=1)
+        rng = T('cr.range_box', '[{lo}-{hi}]', lo=lo, hi=hi) if lo >= 0 else \
+            T('cr.range_box_neg', '[{lo} to {hi}]', lo=lo, hi=hi)
+        digits = max(len(str(lo)), len(str(hi)), 4, field_w - 1) + 1
+        lab = ttk.Label(box, text=label, justify='left')
+        lab._wrap_less = True                    # _rewrap: this label shares its line with the field and the range
+        lab.grid(row=0, column=2, sticky='w', padx=(4, 0))
+        var = tk.StringVar(value=str(cur))
+        ent = ttk.Entry(box, textvariable=var, width=digits, justify='right')
+        ent.grid(row=0, column=0, sticky='w', padx=(0, 2))
+        rl = ttk.Label(box, text=rng, width=max(range_w, len(rng)), anchor='w')
+        rl.grid(row=0, column=1, sticky='w')
+        name = None
+        if fmt is not str:
+            name = ttk.Label(box, text=fmt(cur), justify='left')
+            name.grid(row=1, column=0, columnspan=3, sticky='w', padx=(12, 0))
+            name._wrap_less = True
+        st = {'v': cur, 'job': None}
+        try:
+            normal_fg = str(ent.cget('foreground')) or ''
+        except tk.TclError:
+            normal_fg = ''
 
-        def moved(x):
-            v = int(round(float(x)))
-            if v != var.get():
-                var.set(v)
-            val.configure(text=fmt(var.get()))
+        def fit(_e=None):
+            try:
+                w = self._wrap_w() - ent.winfo_reqwidth() - rl.winfo_reqwidth() - 12
+                if w > 60 and int(str(lab.cget('wraplength')) or 0) != w:
+                    lab.configure(wraplength=w)
+            except (tk.TclError, ValueError):
+                pass
+        box.bind('<Configure>', fit)
+        lab._fit = fit
 
-        sc = ttk.Scale(fr, from_=lo, to=hi, orient='horizontal', length=120, command=moved)
-        sc.set(cur)
-        # range and value keep their place at the right; the slider takes the width the column has
-        ttk.Label(fr, text=T('cr.range_fmt', '{lo} to {hi}', lo=fmt(lo), hi=fmt(hi)) if fmt is not str else
-                  T('cr.range', '({lo} to {hi})', lo=lo, hi=hi)).pack(side='right', padx=(0, 4))
-        val.pack(side='right', padx=6)
-        sc.pack(side='left', fill='x', expand=True, padx=(10, 0))
-        sc.bind('<ButtonRelease-1>', lambda e: on_release(var.get()))
-        for key, dv in (('<Left>', -1), ('<Right>', 1)):
-            sc.bind(key, lambda e, dv=dv: (sc.set(max(lo, min(hi, var.get() + dv))), on_release(var.get()), 'break')[-1])
-        return var
+        def parsed():
+            try:
+                return int(var.get().strip())
+            except (ValueError, tk.TclError):
+                return None
+
+        def apply(v):
+            st['job'] = None
+            if v == st['v']:
+                return
+            st['v'] = v
+            if name is not None:
+                try:
+                    name.configure(text=fmt(v))
+                except tk.TclError:
+                    pass
+            on_change(v)
+
+        def typed(*_a):
+            """While typing: a number inside the range is previewed shortly after the last key."""
+            v = parsed()
+            ok = v is not None and lo <= v <= hi
+            try:
+                ent.configure(foreground=normal_fg if ok else '#e05a4a')
+                if st['job'] is not None:
+                    ent.after_cancel(st['job'])
+                    st['job'] = None
+                if ok and v != st['v']:
+                    st['job'] = ent.after(250, lambda: apply(v))
+            except tk.TclError:
+                pass
+
+        def commit(_e=None):
+            """Return / focus out / a button press: what is typed, clamped to the range (nothing typed: as it was)."""
+            v = parsed()
+            v = st['v'] if v is None else max(lo, min(hi, v))
+            try:
+                if st['job'] is not None:
+                    ent.after_cancel(st['job'])
+                    st['job'] = None
+                if var.get() != str(v):
+                    var.set(str(v))
+                ent.configure(foreground=normal_fg)
+            except tk.TclError:
+                pass
+            apply(v)
+
+        def step(d):
+            v = parsed()
+            v = st['v'] if v is None else v
+            var.set(str(max(lo, min(hi, v + d))))
+            commit()
+            try:
+                ent.icursor('end')
+            except tk.TclError:
+                pass
+            return 'break'
+
+        def wheel(e):
+            try:
+                focused = ent.focus_get() is ent
+            except (KeyError, tk.TclError):
+                focused = False
+            if not focused:
+                return self.scroll._wheel(e)
+            if getattr(e, 'num', None) in (4, 5):
+                up = e.num == 4
+            else:
+                up = e.delta > 0
+            return step(1 if up else -1)
+
+        def key_ok(text):
+            return text in ('', '-') or bool(re.fullmatch(r'-?\d{1,11}', text)) and (lo < 0 or text[0] != '-')
+        ent.configure(validate='key', validatecommand=(ent.register(key_ok), '%P'))
+        var.trace_add('write', typed)
+        ent.bind('<Return>', commit)
+        ent.bind('<KP_Enter>', commit)
+        ent.bind('<FocusOut>', commit)
+        ent.bind('<Up>', lambda e: step(1))
+        ent.bind('<Down>', lambda e: step(-1))
+        ent.bind('<Prior>', lambda e: step(10))
+        ent.bind('<Next>', lambda e: step(-10))
+        for ev in ('<MouseWheel>', '<Button-4>', '<Button-5>'):
+            ent.bind(ev, wheel)
+        self._spins[ent] = [commit, None]        # a number still being typed is committed before any button runs
+        ent.set_value = lambda v: (var.set(str(v)), commit())[-1]
+        ent.step = step
+        ent.value_range = (lo, hi)
+        return ent
 
     def value_format(self, m):
         """Display of a rolled value: monster or skill name for the 'random skill / monster' properties."""
@@ -1164,15 +1284,22 @@ class CreatorWindow:
             ttk.Label(inner, text=note, wraplength=self._wrap_w(), justify='left').grid(
                 row=r, column=0, columnspan=2, sticky='w')
             r += 1
+        rows = []
         for m in mods:
             lo, hi = m.min, m.max
-            if unr and m.variable:                       # free slider: the whole storable range of its stat
+            if unr and m.variable:                       # free value: the whole storable range of its stat
                 rng = self.cr.storage_range(m)
                 if rng:
                     lo, hi = min(m.min, rng[0]), max(m.max, rng[1])
+            rows.append((m, lo, hi))
+        range_w = max([len(f'[{lo}-{hi}]') if lo >= 0 else len(f'[{lo} to {hi}]') for _m, lo, hi in rows] or [0])
+        range_w = min(range_w, 14)                       # one column of fields; a huge free range may stick out
+        field_w = min(max([len(str(v)) for _m, lo, hi in rows for v in (lo, hi)] or [0]) + 1, 8)
+        for m, lo, hi in rows:
             label = f"{T('cr.mod.' + m.label.lower(), m.label) + ': ' if m.label else ''}{self.mod_label(m)}"
-            self.slider(inner, r, label, lo, hi, m.value, lambda v, src=m.source: self.set_roll(src, v),
-                        self.value_format(m))
+            self.number_rows[m.source] = self.number_row(
+                inner, r, label, lo, hi, m.value, lambda v, src=m.source: self.set_roll(src, v),
+                self.value_format(m), range_w, field_w)
             r += 1
         if unr or table:
             if table:
