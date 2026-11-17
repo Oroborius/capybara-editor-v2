@@ -43,6 +43,26 @@ SET2 = {4: 11, 5: 12}
 DOLL_W, DOLL_H = 11, 7.5
 
 
+# ---- extra pages (plug-ins) -------------------------------------------------------------------------------
+# Other modules add a page to the Character window without editing this file:
+#     import mxl_char_gui; mxl_char_gui.register_page('merc', 'Mercenary', factory)
+# factory(win, frame) builds its widgets into frame (a tk.Frame of the window's body) and returns an object
+# that may have any of these methods (all optional):
+#     refresh()      the character was loaded / reloaded / saved: show win.ch again, forget pending edits
+#     dirty()        True while the page holds edits not yet written to win.ch
+#     apply()        write the pending edits into win.ch (called by SAVE just before the file is written;
+#                    raise mxl_char.CharError to refuse: nothing is saved then)
+#     set_theme(dark)
+# A page asks for the unsaved-changes line with win.update_dirty(). win.ch is the Character, win.data the game
+# data, win.app the main window, win.set_status(text, error=False) the status line.
+EXTRA_PAGES = []
+
+
+def register_page(key, title, factory):
+    """Adds (or replaces) an extra page; call it before the Character window is built (at install time)."""
+    EXTRA_PAGES[:] = [p for p in EXTRA_PAGES if p[0] != key] + [(key, title, factory)]
+
+
 class CharacterWindow(StatEditMixin):
     def __init__(self, app, tab='stats'):
         self.app = app
@@ -126,9 +146,14 @@ class CharacterWindow(StatEditMixin):
                       'waypoints': self.wp_tab, 'quests': self.q_tab}
         self.tab = tk.StringVar(value='stats')
         self.tab_buttons = []
+        self.extra = {}                              # key -> the object a registered page's factory returned
+        self._extra_frames = {}
+        for key, _title, _factory in EXTRA_PAGES:
+            self._extra_frames[key] = self.pages[key] = tk.Frame(body, bg=HE_BG)
         for key, text in (('stats', T('ch.tab.stats', 'Stats')), ('inventory', T('ch.tab.inventory', 'Inventory')),
                           ('skills', T('ch.tab.skills', 'Skills')),
-                          ('waypoints', T('ch.tab.waypoints', 'Waypoints')), ('quests', T('ch.tab.quests', 'Quests'))):
+                          ('waypoints', T('ch.tab.waypoints', 'Waypoints')), ('quests', T('ch.tab.quests', 'Quests')),
+                          *((k, t) for k, t, _f in EXTRA_PAGES)):
             rb = tk.Radiobutton(tabbar, text=text, value=key, variable=self.tab, indicatoron=0, font=('Times New Roman', 12),
                                 underline=0, bd=1, relief='raised', padx=6, pady=0, bg='#e8e8e8', selectcolor='#ffffff',
                                 activebackground='#ffffff', command=self.show_tab)
@@ -150,6 +175,12 @@ class CharacterWindow(StatEditMixin):
         self._build_skills()
         self._build_equipment()
         self._build_progress()
+        for key, _title, factory in EXTRA_PAGES:     # after the built-in pages: win.ch and the state exist
+            try:
+                self.extra[key] = factory(self, self._extra_frames[key])
+            except Exception as e:                   # a broken plug-in page never keeps the window from opening
+                print(f'character page {key!r} disabled:', e)
+                tk.Label(self._extra_frames[key], text=str(e), bg=HE_BG).pack(padx=8, pady=8)
         self.apply_theme(save=False)
         self.tab.set({'equipment': 'inventory', 'progress': 'stats'}.get(tab, tab))
         self.show_tab()
@@ -200,6 +231,7 @@ class CharacterWindow(StatEditMixin):
             walk(page)
         for tree in self.wp_trees + self.q_trees:
             tree.set_theme(dark)
+        self._extra_call('set_theme', dark)
         for rb in self.tab_buttons:
             rb.configure(bg=t['tab'], fg=t['tab_fg'], selectcolor=t['tab_sel'], activebackground=t['tab_sel'],
                          activeforeground=t['tab_fg'])
@@ -1366,7 +1398,24 @@ class CharacterWindow(StatEditMixin):
         (st.add if value else st.discard)(n)
         self.update_dirty()
 
+    def _extra_call(self, name, *args, default=None, collect=False):
+        """Calls an optional method on every plug-in page; collect: list of the results."""
+        out = []
+        for key, obj in getattr(self, 'extra', {}).items():
+            fn = getattr(obj, name, None)
+            if fn is None:
+                continue
+            try:
+                out.append(fn(*args))
+            except CharError:
+                raise
+            except Exception as e:
+                print(f'character page {key!r}: {name} failed:', e)
+        return out if collect else default
+
     def dirty(self):
+        if any(self._extra_call('dirty', collect=True)):
+            return True
         sk0 = getattr(self, 'sk0', {})
         sk_typed = any(sk0.get(sid, 0) != self._level_of(v) for sid, v in self.sk_vars.items())
         typed = any(e.get() != str(self.st_value(k)) for k, e in getattr(self, 'sv', {}).items() if k in self.GREY_KEYS)
@@ -1388,6 +1437,7 @@ class CharacterWindow(StatEditMixin):
 
     def refresh_progress(self):
         ch, d = self.ch, self.data
+        self._extra_call('refresh')
         self.st_rebuild()                 # the character may have been written (items) or read again
         self.new_class.set(self.class_names[ch.cls] if ch.cls < len(self.class_names) else str(ch.cls))
         self.pending_cls = None
@@ -1424,6 +1474,7 @@ class CharacterWindow(StatEditMixin):
         new_name = self.st_name if self.st_name and self.st_name != ch.name else None
         before = ch.level
         try:
+            self._extra_call('apply')         # plug-in pages write their pending edits (CharError refuses)
             self.st_commit(ch)                # the stat-screen edits, in the order they were made
             cls_changed = self.pending_cls is not None and self.pending_cls != ch.cls
             if cls_changed:
