@@ -16,6 +16,8 @@ The engine is the one of the former flat table:
 - "Save changes" (or Enter in a value box) writes changed values of a stash item in place through
   mxl_save.apply_edits - one file write, verification, .bak backup; linked stats (the groups the game keeps
   together, like enhanced damage base + average) are written with the collector's own set_stat logic;
+  the value of a stat with a parameter (and of the innate-damage stats that logic refuses, e.g. 415) is
+  written like a changed parameter instead: see needs_reencode;
 - an added, replaced or cleared slot (and a changed skill / level / param) rewrites the item's bytes through
   a lossless decode -> encode round trip via mxl_save.edit_stash, at the item's own place - its socketed
   items follow; the main window is reloaded then, as offsets shift;
@@ -35,7 +37,7 @@ import tkinter.ttk as ttk
 import mxl_save
 from mxl_save import edit_stash, apply_edits, EditError
 from mxl_format import FormatError
-from mxl_rules import stat_hidden
+from mxl_rules import stat_hidden, is_innate_damage
 from mxl_lang import T
 from mxl_creator import decode_blob, build_blob
 from mxl_statnames import (stat_text, param_kind, decode_param, encode_skill_param, skill_names_sorted,
@@ -47,6 +49,19 @@ from mxl_attr_slots import (AttrSlots, SLOTS_MIN, SLOTS_SPARE, he, value_range, 
                             row_info_text as _row_info_text)
 
 TAB_KEY = 'Item stats'
+
+
+def needs_reencode(data, sid):
+    """True for a stat whose VALUE the collector's in-place editor (mxl_save.set_stat) must not be asked to
+    write on a stash item: a stat with parameter bits (that editor finds a stat's linked partners by id alone and
+    knows no param layouts) and the innate-damage stats it refuses outright (description function 35, e.g. 415
+    whose param packs element | attribute << 8). Their value goes through the lossless decode -> encode path."""
+    try:
+        if param_bits(data, sid):
+            return True
+        return bool(is_innate_damage(sid, data))
+    except Exception:
+        return True
 
 
 class ItemStatsWindow:
@@ -513,16 +528,35 @@ class ItemStatsWindow:
             self.draw()
             self._say(cap_note or he('nothing', 'nothing to write'))
             return None
-        if self.entry is None:                # stash item: apply the value edits in place
+        if self.entry is None:
+            # stash item: plain values in place (the collector's set_stat keeps linked stats together); a stat
+            # with a parameter, or one that in-place editor refuses, through the lossless re-encode of the item
+            data = self.app.data
+            lossless = [t for t in typed if needs_reencode(data, t[2]['id'])]
             edits = [dict(offset=self.it['_offset'], code=self.it['code'], kind='stat', stat_list=stat_list,
                           stat=row['id'], param=row.get('param'), value=row['value'])
-                     for stat_list, _i, row in typed]
-            try:
-                bak = apply_edits(self.app.path, edits, self.app.data,
-                                  backup=self.app.needs_backup(self.app.path), force=True)
-            except Exception as e:            # EditError / FormatError / StoreError / OSError
-                self._say(he('err.save', 'not written: {err}', err=str(e)), error=True)
-                return False
+                     for stat_list, _i, row in typed if not needs_reencode(data, row['id'])]
+            bak = None
+            if edits:
+                try:
+                    bak = apply_edits(self.app.path, edits, data,
+                                      backup=self.app.needs_backup(self.app.path), force=True)
+                except Exception as e:        # EditError / FormatError / StoreError / OSError
+                    self._say(he('err.save', 'not written: {err}', err=str(e)), error=True)
+                    return False
+            if lossless:
+                if edits:                     # the record as it stands on disk now (linked stats moved along)
+                    self.refresh_after_write()
+                    self.load_rows()
+                for stat_list, i, row in lossless:
+                    entries = list(self.rec.get(stat_list) or [])
+                    entries[i] = dict(entries[i], value=row['value'])
+                    self.rec[stat_list] = entries
+                self._bak = None
+                if not self._write():
+                    self.load_rows()
+                    return False
+                bak = bak or self._bak
             self.refresh_after_write()
             self.load_rows()
             self.select(keep)

@@ -598,15 +598,12 @@ class CreatorWindow:
         cr, d = self.cr, self.data
         rows = []
         if q in ('unique', 'set'):
+            labels = cr.catalog_labels(q)
             for i, name, u in (cr.uniques() if q == 'unique' else cr.set_items()):
                 b = d.base(u['code'])
                 if kind and b.kind != kind or orbs_only and cr.orb_effects(u['code']) is None or dyes_only:
                     continue
-                label = f"{clean(name)} - {clean(b.name)}"
-                if clean(name) == clean(b.name):                 # "Relic - Relic" x200: the granted skill instead
-                    skills = cr.granted_skills(u)
-                    if skills:
-                        label = f"{clean(name)} - {' / '.join(skills)}"
+                label = labels[i]                               # told apart where rows share a name
                 rows.append((label, i))
             if q == 'unique':                                    # the relics by skill (their table order is none)
                 rows.sort(key=lambda r: r[0].lower())
@@ -622,6 +619,7 @@ class CreatorWindow:
                 label = f"{clean(name)} - {' '.join(clean(d.base(r).name).replace(' Rune', '') for r in runes)}"
                 rows.append((label, i))
         else:
+            picked = []
             for b in (self._craft_bases() if q == 'crafted' else self._honorific_bases() if q == 'tempered'
                       else self._bases()):
                 if kind and b.kind != kind:
@@ -636,38 +634,10 @@ class CreatorWindow:
                     continue                                 # no affix can spawn on it (quest items, relics...)
                 if b.code == 'gld ':
                     continue                                 # gold is not an item (character / stash gold)
-                orb = cr.orb_effects(b.code)
-                if orbs_only and orb is None or dyes_only and cr.display_name(b.code) != 'Mystic Dye':
+                if orbs_only and cr.orb_effects(b.code) is None or dyes_only and cr.display_name(b.code) != 'Mystic Dye':
                     continue
-                label = cr.display_name(b.code)
-                if ' / ' in label:                                # long multi-line names: the top line only
-                    label = label.split(' - ')[0]
-                if orb and orb[0]:                                  # mystic orbs: their effect tells them apart
-                    label += ': ' + '; '.join(orb[0])
-                rows.append((f"{label} [{kind_label(b.kind)}]", b.code))
-            seen = {}
-            for label, _ in rows:
-                seen[label] = seen.get(label, 0) + 1
-            named = []
-            for label, code in rows:                          # same name: the description tells them apart
-                if seen[label] > 1 and label.endswith(']'):
-                    summary = cr.desc_summary(code)
-                    if not summary:                           # no description: the picture's name (e.g. dye-rainbow)
-                        inv = (d.base(code).inv_file or '').lower()
-                        if 'dye' in inv and 'rainbow' in inv:
-                            summary = 'Color: Rainbow'
-                        else:
-                            inv = inv.replace('_', ' ').replace('-', ' ').strip()
-                            summary = f'({inv})' if inv else ''
-                    if summary:
-                        head, tail = label.rsplit(' [', 1)
-                        label = f"{head}: {summary} [{tail}"
-                named.append((label, code))
-            seen = {}
-            for label, _ in named:
-                seen[label] = seen.get(label, 0) + 1
-            rows = [(f"{label[:-1]}, {code.strip()}]" if seen[label] > 1 and label.endswith(']') else label, code)
-                    for label, code in named]
+                picked.append(b)
+            rows = cr.base_list_rows(picked, kind_label)     # same names told apart: description, picture, code
             rows.sort(key=lambda r: r[0].lower())
         if s and q in ('unique', 'set', 'runeword'):
             # also by the bonuses the item comes with ("stormlord" -> Arrogance): name matches first, then the

@@ -1,6 +1,7 @@
 """Item creator, data layer (mxl_creator.Creator) written to a stash copy with the application's writer: unique at
 minimum and maximum rolls, edit path with a changed roll, honorific creation, relic labels, bonus-text search.
 The same flows through the Creator tab are in test_32_gui_creator.py."""
+import collections
 import glob
 import os
 
@@ -149,14 +150,22 @@ def honorific_stats_min_below_max():
 
 
 def relic_labels(E):
-    """The Creator list's labels of the relics: 'Relic - <granted skill>' (mxl_creator_gui.fill_list's rule)."""
+    """The Creator list's labels of the relics: 'Relic - <granted skill>' (Creator.catalog_labels, what
+    mxl_creator_gui.fill_list shows)."""
     cr = E.cr
-    out = []
-    for i, name, u in cr.uniques():
-        if u['code'] != 'cotw':
-            continue
-        skills = cr.granted_skills(u)
-        out.append((i, f"{name} - {' / '.join(skills)}" if skills else f'{name} - {E.data.base(u["code"]).name}'))
+    labels = cr.catalog_labels('unique')
+    return [(i, labels[i]) for i, _name, u in cr.uniques() if u['code'] == 'cotw']
+
+
+def plain_labels(E, q):
+    """{row: '<name> - <base>'} (relics: the granted skill): the labels before same-named rows are told apart."""
+    import mxl_creator as C
+    cr = E.cr
+    out = {}
+    for i, name, u in (cr.uniques() if q == 'unique' else cr.set_items()):
+        nm, bn = C.one_line(name), C.one_line(E.data.base(u['code']).name)
+        skills = cr.granted_skills(u) if nm == bn else []
+        out[i] = f"{nm} - {' / '.join(skills)}" if skills else f'{nm} - {bn}'
     return out
 
 
@@ -169,14 +178,97 @@ def relic_labels_name_the_skill():
     T.eq([lab for _i, lab in labels if lab == 'Relic - Relic'], [], 'relics still labelled "Relic - Relic"')
 
 
-# BUG (open data item of WORKLOG W12): two relic rows grant the same skill, so two list entries read the same.
-@T.test(xfail='relic rows 1191 and 1290 both read "Relic - Trinity Beam" in the creator list')
+# Was an open data item (WORKLOG W12): two relic rows grant the same skill (Trinity Beam, at +(1 to 4) with enemy
+# resistances and at +(8 to 16)), so two list entries read the same. Each now carries the line that differs.
+@T.test
 def relic_labels_are_unique():
     E = T.engine()
     seen = {}
     for i, lab in relic_labels(E):
         seen.setdefault(lab, []).append(i)
     T.eq({k: v for k, v in seen.items() if len(v) > 1}, {}, 'relic labels shared by several rows')
+    plain = plain_labels(E, 'unique')
+    for skill, rows in collections.Counter(plain[i] for i, _l in relic_labels(E)).items():
+        if rows == 1:
+            continue
+        twins = [(i, lab) for i, lab in relic_labels(E) if plain[i] == skill]
+        for i, lab in twins:
+            T.check(lab.startswith(skill + ': ') and len(lab) > len(skill) + 4, f'relic row {i}: {lab!r} does not say what differs')
+            tag = lab[len(skill) + 2:]
+            u = E.data.uniques[i]
+            text = E.cr.mods_text([(m['prop'], m['param'], m['min'], m['max']) for m in u['mods']], u['code'])
+            T.check(any(tag.rstrip('.') in ln or ln.startswith(tag[:40]) for ln in text), f'relic row {i}: {tag!r} is not one of its bonus lines {text}')
+
+
+@T.test
+def catalogue_labels_are_unique_and_keep_unique_names():
+    """Unique and set lists: no two rows read the same; a row whose '<name> - <base>' was already alone keeps
+    exactly that label; a row told apart starts with it."""
+    E = T.engine()
+    for q in ('unique', 'set'):
+        labels = E.cr.catalog_labels(q)
+        rows = E.cr.uniques() if q == 'unique' else E.cr.set_items()
+        T.eq(sorted(labels), sorted(i for i, _n, _u in rows), f'{q}: rows with a label')
+        seen = {}
+        for i, lab in labels.items():
+            seen.setdefault(lab.casefold(), []).append(i)
+        T.eq({k: v for k, v in seen.items() if len(v) > 1}, {}, f'{q} labels shared by several rows')
+        plain = plain_labels(E, q)
+        count = collections.Counter(v.casefold() for v in plain.values())
+        told = 0
+        for i, lab in labels.items():
+            if count[plain[i].casefold()] == 1:
+                T.eq(lab, plain[i], f'{q} row {i}: a label that was already unique')
+            else:
+                told += 1
+                T.check(lab.startswith(plain[i]), f'{q} row {i}: {lab!r} does not start with {plain[i]!r}')
+                T.check(len(lab) <= len(plain[i]) + 80, f'{q} row {i}: label of {len(lab)} characters')
+        T.check(told > 0, f'{q}: the sample tables have no same-named rows (nothing was checked)')
+        for lab in labels.values():
+            T.check('\n' not in lab and lab == lab.strip(), f'{q}: label {lab!r}')
+
+
+@T.test
+def empty_rows_that_are_not_enabled_are_not_listed():
+    """A unique row without any mod is listed only when the game's table enables it (its own quest / reagent
+    items); the leftover rows - 90 empty relics and the second "Windforce" in 2.14.6 - are not."""
+    E = T.engine()
+    cr = E.cr
+    listed = {i for i, _n, _u in cr.uniques()}
+    flags = [cr.unique_enabled(i) for i in range(len(E.data.uniques))]
+    T.check(sum(flags) > 1000 and not all(flags), f'enabled flag: {sum(flags)} of {len(flags)} rows enabled')
+    for i, u in enumerate(E.data.uniques):
+        if not u['mods'] and not flags[i]:
+            T.check(i not in listed, f'unique row {i} ({u["name"]}): empty and not enabled, but listed')
+    empty = [i for i in listed if not E.data.uniques[i]['mods']]
+    for i in empty:
+        T.check(flags[i], f'unique row {i}: listed without mods and not enabled')
+        spec = cr.new_spec('unique', None, i)
+        cr.roll(spec, 'max')
+        blob, _rec = cr.build(spec)
+        T.check(blob[:2] == b'JM', f'unique row {i}: does not build')
+
+
+@T.test
+def base_labels_are_unique_and_without_placeholders():
+    """Base items of the same name are told apart (description, picture, at last the item code) and no label
+    shows a format placeholder ("Free Attribute Points: %d": the game fills that in when it draws the item)."""
+    E = T.engine()
+    cr = E.cr
+    bases = [b for b in cr.bases() if b.code != 'gld ']
+    rows = cr.base_list_rows(bases)
+    T.eq([c for _l, c in rows], [b.code for b in bases], 'one row per base, in order')
+    seen = {}
+    for lab, code in rows:
+        seen.setdefault(lab.casefold(), []).append(code)
+        T.check('%d' not in lab and '%s' not in lab, f'{code!r}: placeholder in {lab!r}')
+        T.check(lab.endswith(']'), f'{code!r}: {lab!r}')
+    T.eq({k: v for k, v in seen.items() if len(v) > 1}, {}, 'base labels shared by several items')
+    names = collections.Counter(cr.display_name(b.code) for b in bases)
+    alone = next(b for b in bases if names[cr.display_name(b.code)] == 1 and b.kind == 'weapons' and ' / ' not in cr.display_name(b.code))
+    T.eq(dict((c, l) for l, c in rows)[alone.code], f'{cr.display_name(alone.code)} [Weapon]', 'label of a base whose name is alone')
+    T.eq(cr.desc_summary('02^ ') if '02^ ' in E.data.bases else 'Right-click: Free Attribute Points',
+         'Right-click: Free Attribute Points', 'description summary of a Custom Signet of Learning')
 
 
 @T.test

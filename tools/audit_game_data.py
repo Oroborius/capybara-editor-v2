@@ -21,6 +21,8 @@ What is checked, per category (uniques, relics, set items, runewords, mystic orb
   gives the same record again;
 - the rendered tooltip has no placeholder left ('skill #', 'stat #', '%d', '%s', 'None', buffalo text, empty line);
 - names: empty names, labels the creator list cannot tell apart, placeholder rows.
+Lines starting with '!' are problems (something the editor gets wrong or cannot handle); lines starting with 'i'
+are properties of the game's own tables that the editor shows as they are (each with the reason in its text).
 Extra sections: honorific (quality 9) items built from the cube recipe's output; the extracted tables against the
 game's own MPQ (--game-dir); every item of the save files of --save-dir (re-encode byte-identical, no-op character
 rebuild byte-identical, tooltip, edit path; with --noop-edit also: an unchanged edit gives the item's own bytes);
@@ -35,6 +37,7 @@ import struct
 import sys
 import traceback
 
+PLACEHOLDER_LABEL = re.compile(r'%\+?[ds]|POLAR BUFFALO')
 PLACEHOLDER = re.compile(r'skill #|stat #|class #|%\+?[ds]|\bNone\b|POLAR BUFFALO|#\d')
 SKILL_FUNCS = {15: 'cast', 16: 'aura', 24: 'charges', 27: 'skill', 28: 'skill'}
 CLASS_FUNCS = {13}
@@ -50,7 +53,8 @@ class Report:
         self.cur = None
 
     def section(self, title):
-        self.cur = dict(title=title, totals=collections.OrderedDict(), problems=collections.OrderedDict())
+        self.cur = dict(title=title, totals=collections.OrderedDict(), problems=collections.OrderedDict(),
+                        infos=collections.OrderedDict())
         self.sections.append(self.cur)
 
     def total(self, key, n=1):
@@ -59,10 +63,14 @@ class Report:
     def note(self, key, text):
         self.cur['totals'][key] = text
 
-    def problem(self, cls, example):
+    def info(self, cls, example):
+        """A property of the game's own data the editor shows as it is: listed ('   i ...'), not a problem."""
+        self.problem(cls, example, 'infos')
+
+    def problem(self, cls, example, kind='problems'):
         """Counted once per distinct example (the ' (min)' / ' (max)' build of one item is one example)."""
         example = HOW.sub('', str(example))
-        p = self.cur['problems'].setdefault(cls, [0, [], set()])
+        p = self.cur[kind].setdefault(cls, [0, [], set()])
         if example in p[2]:
             return
         p[2].add(example)
@@ -80,6 +88,10 @@ class Report:
                 out.append('   no problems')
             for cls, (n, ex, _seen) in sorted(s['problems'].items(), key=lambda kv: -kv[1][0]):
                 out.append(f'   ! {cls}: {n}')
+                for e in ex:
+                    out.append(f'       {e}')
+            for cls, (n, ex, _seen) in sorted(s['infos'].items(), key=lambda kv: -kv[1][0]):
+                out.append(f'   i {cls}: {n}')
                 for e in ex:
                     out.append(f'       {e}')
             out.append('')
@@ -142,7 +154,13 @@ class Audit:
             rep.problem('param does not fit the stat\'s param bits', f'{where}: stat {sid} param {param} ({pb} bits)')
         raw = s['value'] + (ic.get('add') or 0)
         if not 0 <= raw < (1 << ic['bits']):
-            rep.problem('value outside the stat\'s save range', f'{where}: stat {sid} value {s["value"]}')
+            # the table asks for more than the stat's save bits hold. Not an editor defect: Creator.roll narrows
+            # the mod's range to what can be stored (the item is built with the nearest storable value; the
+            # encoder itself refuses an unstorable value with StoreError). Whether the game keeps the table's
+            # value in memory until the item is saved can only be seen in the game.
+            lo, hi = -(ic.get('add') or 0), (1 << ic['bits']) - 1 - (ic.get('add') or 0)
+            rep.info('game data: mod value outside the stat\'s save range (the creator stores the nearest value)',
+                     f'{where}: stat {sid} value {s["value"]} (storable {lo}..{hi})')
         func = ic.get('func')
         if func in SKILL_FUNCS and param is not None:
             sk = param >> 6 if SKILL_FUNCS[func] in ('cast', 'charges') else param
@@ -157,8 +175,25 @@ class Audit:
             if not (0 <= param < len(d.monster_names) and d.monster_names[param]):
                 rep.problem('monster param without a name', f'{where}: stat {sid} -> monster {param}')
         if sid == STATE_STAT and param is not None:
-            if not self.sn.state_name(d, param):
-                rep.problem('state param without a name', f'{where}: state {param}')
+            if not 0 <= param < self.n_states:
+                rep.problem('state param is not a row of the states table', f'{where}: state {param}')
+            elif not self.sn.state_name(d, param):
+                # states.bin holds no name strings; a state gets its name from the skills that set it or from
+                # its buff icon (stateicons). These states have neither (no table of the game names them:
+                # visual / marker states of event awards and a few uniques): the editor shows '#N'.
+                rep.info('game data: state without a name in any table (no skill sets it, no buff icon)',
+                         f'{where}: state {param}')
+
+    @property
+    def n_states(self):
+        n = getattr(self, '_n_states', None)
+        if n is None:
+            try:
+                n = len(self.d._rows('states'))
+            except Exception:
+                n = 1 << 16
+            self._n_states = n
+        return n
 
     def check_mods(self, where, mods):
         d, rep = self.d, self.rep
@@ -193,7 +228,20 @@ class Audit:
             return
         blank = [not ln.strip() for ln in lines]
         if lines and (blank[0] or blank[-1] or any(a and b for a, b in zip(blank, blank[1:]))):
-            self.rep.problem('tooltip: empty line (first, last or doubled; single ones separate sections)', where)
+            raw = ''
+            try:
+                raw = str(self.d.base(it['code']).name_raw or '').replace('\\n', '\n')
+            except Exception:
+                pass
+            if raw.startswith('\n') and blank[-1] and not blank[0] and len(lines) > 1 and not blank[-2] \
+                    and not any(a and b for a, b in zip(blank, blank[1:])):
+                # the item's name string itself begins with a line break (the game draws a name's lines bottom
+                # up, so that empty line closes the name block): shown as the game's string has it
+                self.rep.info('game data: name string starts with a line break (one empty line ends the tooltip)',
+                              where)
+            else:
+                self.rep.problem('tooltip: empty line (first, last or doubled; single ones separate sections)',
+                                 where)
         for ln in lines:
             m = PLACEHOLDER.search(ln)
             if m:
@@ -273,6 +321,7 @@ class Audit:
         cr, d, rep = self.cr, self.d, self.rep
         rows = cr.uniques()
         listed = {i for i, _n, _u in rows}
+        shown = cr.catalog_labels('unique')              # the labels of the creator list (mxl_creator_gui.fill_list)
         for relic in (False, True):
             rep.section('Relics (uniques on base cotw)' if relic else 'Unique items')
             labels = []
@@ -281,15 +330,14 @@ class Audit:
                     continue
                 rep.total('listed by the creator')
                 where = f'unique {i} {name!r}'
-                base = d.base(u['code'])
-                label = f'{name} - {base.name}'
-                if name.strip() == (base.name or '').strip():
-                    sk = cr.granted_skills(u)
-                    if sk:
-                        label = f"{name} - {' / '.join(sk)}"
+                label = shown[i]
                 labels.append((label, i))
                 if not u['mods']:
-                    rep.problem('row without any mod', where)
+                    if cr.unique_enabled(i):
+                        # an enabled row: the game's own item, its text is the base item's description
+                        rep.info('game data: enabled row without any mod (quest / reagent items)', where)
+                    else:
+                        rep.problem('listed row without any mod that is not enabled (leftover row)', where)
                 self.check_mods(where, u['mods'])
                 self.roundtrip(where, cr.new_spec('unique', None, i))
             self.dupes(labels, 'creator list')
@@ -298,16 +346,17 @@ class Audit:
                 rep.total('placeholder rows hidden from the creator (no mods)', len(hidden))
             else:
                 hidden = [i for i, u in enumerate(d.uniques) if u['code'] != 'cotw' and i not in listed]
-                rep.total('table rows not listed (no base / no name string)', len(hidden))
+                rep.total('table rows not listed (no base / no name string / empty and not enabled)', len(hidden))
 
     def sets(self):
         cr, d, rep = self.cr, self.d, self.rep
         rep.section('Set items')
         labels = []
+        shown = cr.catalog_labels('set')
         for i, name, u in cr.set_items():
             rep.total('listed by the creator')
             where = f'set item {i} {name!r}'
-            labels.append((f'{name} - {d.base(u["code"]).name}', i))
+            labels.append((shown[i], i))
             self.check_mods(where, u['mods'])
             self.roundtrip(where, cr.new_spec('set', None, i))
         self.dupes(labels, 'creator list')
@@ -367,16 +416,15 @@ class Audit:
                         self.check_mods(f'{where} (socketed in {("weapon", "armor", "shield")[k]})', mods)
                 labels.append((label, b.code))
                 self.roundtrip(where, cr.new_spec('normal', b.code))
-            # the creator list adds the description / picture name to equal labels: what is still equal after that
-            seen = collections.Counter(l for l, _c in labels)
-            final = []
-            for l, c in labels:
-                if seen[l] > 1:
-                    try:
-                        l = f'{l} | {cr.desc_summary(c) or (d.base(c).inv_file or "").lower()}'
-                    except Exception:
-                        pass
-                final.append((l, c))
+            # the labels of the creator list itself (same names told apart by description / picture / item code)
+            try:
+                final = cr.base_list_rows([d.base(c) for _l, c in labels])
+            except Exception as e:
+                rep.problem('creator list labels raised', repr(e))
+                final = labels
+            for l, c in final:
+                if PLACEHOLDER_LABEL.search(l):
+                    rep.problem('creator list: label with a placeholder', f'{c!r}: {l[:90]}')
             self.dupes(final, 'creator list')
         for c in sorted(set(orbs) - {b.code for b in allb}):
             rep.problem('mysticorbs row whose item the creator does not list', repr(c))

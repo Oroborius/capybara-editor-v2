@@ -31,6 +31,16 @@ from mxl_statnames import stat_text, param_kind, skilldesc_name, generic_label
 
 HONORIFIC_STAT = 289                            # 'Orb Effects Applied to this Item are Doubled' (honorific items)
 RELIC_CODE = 'cotw'                             # the base of every relic (327 unique rows, 90 of them empty)
+
+
+def one_line(name):
+    """One-line display name (multi-line game strings joined, colour codes removed)."""
+    txt = str(name).replace('\\n', '\n')
+    while 'ÿc' in txt:
+        k = txt.index('ÿc')
+        txt = txt[:k] + txt[k + 3:]
+    return ' '.join(part.strip() for part in txt.split('\n') if part.strip())
+
 QUALITY_ID = {'low': 1, 'normal': 2, 'superior': 3, 'magic': 4, 'set': 5, 'rare': 6, 'unique': 7, 'crafted': 8, 'tempered': 9}
 QUALITY_NAME = {v: k for k, v in QUALITY_ID.items()}
 ITEM_VERSION = 101
@@ -529,13 +539,18 @@ class Creator:
 
     def uniques(self):
         """[(row, name, row dict)] of the uniques the creator lists. Left out: rows without a base or a name string,
-        and the 90 empty relic rows ('RelicX' on base cotw with no mod at all: table padding between the real
-        relics - built, they are a relic that grants nothing and all read "Relic - Relic")."""
+        the 90 empty relic rows ('RelicX' on base cotw with no mod at all: table padding between the real
+        relics - built, they are a relic that grants nothing and all read "Relic - Relic") and any other row that
+        has no mod and is not enabled (the same kind of leftover; all 90 relic rows are not enabled either). A row
+        without mods that IS enabled stays: those are the game's own items whose text is the base's description
+        (Golden Cycle, Ring of Pride, Book of Cain reagent, Dulra Aegis, Corrupted Wormhole)."""
         out = []
         for i, u in enumerate(self.data.uniques):
             if u['code'].strip() and u['code'] in self.data.bases and u['name'] in self.data._bykey:
                 if u['code'] == RELIC_CODE and not u['mods']:
                     continue
+                if not u['mods'] and not self.unique_enabled(i):
+                    continue                # an empty row the game never makes (2.14.6: the second "Windforce")
                 out.append((i, self.data.key(u['name']).replace('\n', ' '), u))
         return sorted(out, key=lambda x: x[1].lower())
 
@@ -2230,6 +2245,121 @@ class Creator:
                 return out
         return []
 
+    def unique_enabled(self, row):
+        """The 'enabled' bit of a uniqueitems row (u32 flags at 0x2C of the record, bit 0, as in the vanilla
+        table): 0 = the game does not drop the row (cube / quest results, and leftover rows). True when the
+        table cannot be read."""
+        flags = self.__dict__.get('_uniq_flags')
+        if flags is None:
+            try:
+                flags = [struct.unpack_from('<I', r, 0x2C)[0] for r in _rows(self.data, 'uniqueitems')]
+            except Exception:
+                flags = []
+            self._uniq_flags = flags
+        return bool(flags[row] & 1) if 0 <= row < len(flags) else True
+
+    def catalog_labels(self, q):
+        """{row: label} of the creator list of the 'unique' or 'set' quality: "<name> - <base>"; a relic (name =
+        base name, 200+ rows) reads "Relic - <granted skill>". Rows that would read the same are told apart by
+        what differs between them, the others keep their label:
+        - the bonus line the other rows of the group do not have (the one naming the granted skill first):
+          "Relic - Trinity Beam: +(8 to 16) to Trinity Beam", "Zann Esu's Stone - Jewel: Maximum Cold Resist +1%";
+        - rows with the same bonuses: "[not dropped]" on the row that is not enabled (Hratli's Craft), and the
+          table row "[#1535]" when nothing but the rarity differs (Darkfeast)."""
+        cache = self.__dict__.setdefault('_catalog_labels', {})
+        if q in cache:
+            return cache[q]
+        d = self.data
+        rows = self.uniques() if q == 'unique' else self.set_items()
+        labels, us = {}, {}
+        for i, name, u in rows:
+            nm, bn = one_line(name), one_line(d.base(u['code']).name)
+            label = f'{nm} - {bn}'
+            if nm == bn:                                         # "Relic - Relic" x200: the granted skill instead
+                skills = self.granted_skills(u)
+                if skills:
+                    label = f"{nm} - {' / '.join(skills)}"
+            labels[i], us[i] = label, u
+
+        def groups():
+            g = {}
+            for i in labels:
+                g.setdefault(labels[i].casefold(), []).append(i)
+            return [v for v in g.values() if len(v) > 1]
+
+        for grp in groups():                                     # 1: the bonus line the others do not have
+            lines = {}
+            for i in grp:
+                try:
+                    lines[i] = self.mods_text([(m['prop'], m['param'], m['min'], m['max']) for m in us[i]['mods']],
+                                              us[i]['code'])
+                except Exception:
+                    lines[i] = []
+            count = {}
+            for i in grp:
+                for ln in set(lines[i]):
+                    count[ln] = count.get(ln, 0) + 1
+            for i in grp:
+                skills = [x.lower() for x in self.granted_skills(us[i])]
+                own = [(count[ln], 0 if any(x in ln.lower() for x in skills) else 1, k, ln)
+                       for k, ln in enumerate(lines[i]) if count[ln] < len(grp)]
+                if own:
+                    tag = min(own)[3]
+                    labels[i] += ': ' + (tag if len(tag) <= 64 else tag[:61] + '...')
+        if q == 'unique':
+            for grp in groups():                                 # 2: same bonuses, one row not enabled
+                en = [self.unique_enabled(i) for i in grp]
+                if any(en) and not all(en):
+                    for i, e in zip(grp, en):
+                        if not e:
+                            labels[i] += ' ' + T('cr.list.not_dropped', '[not dropped]')
+        for grp in groups():                                     # 3: nothing a player sees differs: the table row
+            for i in grp:
+                labels[i] += f' [#{i}]'
+        cache[q] = labels
+        return labels
+
+    def base_list_rows(self, bases, kind_label=None):
+        """[(label, code)] of base items for the creator list: the name as the game shows it, a mystic orb with
+        its effect, "[Weapon]" / "[Armor]" / "[Misc]" behind it. Items of the same name are told apart by their
+        description (desc_summary) or, without one, by the picture's name; what still reads the same gets its
+        item code ("Custom Signet of Learning: Right-click: Free Attribute Points [Misc, 07^]" - the 22 signets
+        differ in nothing but the code)."""
+        d = self.data
+        kl = kind_label or (lambda k: {'weapons': 'Weapon', 'armor': 'Armor', 'misc': 'Misc'}.get(k, ''))
+        rows = []
+        for b in bases:
+            label = self.display_name(b.code)
+            if ' / ' in label:                                    # long multi-line names: the top line only
+                label = label.split(' - ')[0]
+            orb = self.orb_effects(b.code)
+            if orb and orb[0]:                                    # mystic orbs: their effect tells them apart
+                label += ': ' + '; '.join(orb[0])
+            rows.append((f'{label} [{kl(b.kind)}]', b.code))
+        seen = {}
+        for label, _ in rows:
+            seen[label.casefold()] = seen.get(label.casefold(), 0) + 1
+        named = []
+        for label, code in rows:                                  # same name: the description tells them apart
+            if seen[label.casefold()] > 1:
+                summary = self.desc_summary(code)
+                if not summary:                                   # no description: the picture's name (dye-rainbow)
+                    inv = (d.base(code).inv_file or '').lower()
+                    if 'dye' in inv and 'rainbow' in inv:
+                        summary = 'Color: Rainbow'
+                    else:
+                        inv = inv.replace('_', ' ').replace('-', ' ').strip()
+                        summary = f'({inv})' if inv else ''
+                if summary:
+                    head, tail = label.rsplit(' [', 1)
+                    label = f'{head}: {summary} [{tail}'
+            named.append((label, code))
+        seen = {}
+        for label, _ in named:
+            seen[label.casefold()] = seen.get(label.casefold(), 0) + 1
+        return [(f'{label[:-1]}, {code.strip()}]' if seen[label.casefold()] > 1 else label, code)
+                for label, code in named]
+
     def bonus_text(self, q, row):
         """Lower-case tooltip lines of the bonuses a unique / set item / runeword comes with ("+(18 to 32) to
         stormlord"): what the creator's search matches besides the names. One row costs about a millisecond
@@ -2316,6 +2446,8 @@ class Creator:
                 break
             keep.append(line)
         text = '; '.join(keep or self.item_desc(code)[:1])
+        # "Free Attribute Points: %d": the game fills the number in from the character when it draws the item
+        text = re.sub(r'\s*:?\s*%[+]?[ds]', '', text).strip()
         return text if len(text) <= limit else text[:limit - 3] + '...'
 
     def orb_effects(self, code):
