@@ -194,7 +194,19 @@ class ScrollFrame(ttk.Frame):
         a horizontal scrollbar appears, so nothing at the right end is out of reach."""
         try:
             cw, need = self.canvas.winfo_width(), self.inner.winfo_reqwidth()
-            over = need > cw + 2 and cw > 20
+            # hysteresis: the content's own width depends on this decision (labels are re-wrapped to the column),
+            # so near the limit the bar switched on and off for ever (100 % CPU at 1280x720). Once on, it stays
+            # until the content clearly fits; and after a few switches in a row the state is kept as it is.
+            over = (need > cw - 16) if self._hsb_on else (need > cw + 2)
+            over = over and cw > 20
+            if over != self._hsb_on:
+                import time
+                now = time.monotonic()
+                flips = [t for t in getattr(self, '_hsb_flips', []) if now - t < 1.0]
+                if len(flips) >= 4:
+                    over = self._hsb_on
+                else:
+                    self._hsb_flips = flips + [now]
             self.canvas.itemconfigure(self.win, width=max(cw, need) if over else cw)
             if over != self._hsb_on:
                 self._hsb_on = over
@@ -355,13 +367,28 @@ class CreatorWindow:
         rowr = ttk.Frame(outer)                          # Close, Create
         # one line when the column is wide enough, else the buttons go under, else every group on its own line
 
-        def fold(_e=None, st=[None]):
+        def fold(_e=None, st=[None], flips=[]):
             try:
                 W = outer.winfo_width()
                 a, b, c = row.winfo_reqwidth(), rowb.winfo_reqwidth(), rowr.winfo_reqwidth()
             except tk.TclError:
                 return
             lines = 1 if (W <= 1 or a + b + c + 8 <= W) else (2 if a + b <= W else 3)
+            # Folding changes the width this column asks for, and the paned window answers by moving its
+            # separators - which can unfold the row again: at 1280x720 the two layouts alternated for ever
+            # (100 % CPU). So unfolding needs clearly more room than folding, and after a few switches within
+            # a second the row stays as it is.
+            if st[0] is not None and lines < st[0] and W > 1:
+                slack = 48
+                lines = 1 if a + b + c + 8 + slack <= W else (min(st[0], 2) if a + b + slack <= W else st[0])
+            if lines != st[0] and st[0] is not None:
+                import time
+                now = time.monotonic()
+                flips[:] = [t for t in flips if now - t < 1.0]
+                if len(flips) >= 3:
+                    lines = st[0]
+                else:
+                    flips.append(now)
             if lines != st[0]:
                 st[0] = lines
                 for i in range(3):
@@ -445,6 +472,9 @@ class CreatorWindow:
 
     def _place_sashes(self):
         """Columns: list ~22 %, options ~50 %, preview ~28 % of the window (at least what the preview needs)."""
+        if getattr(self, '_sash_busy', False):       # update_idletasks below runs other idle callbacks, this one
+            return                                   # included: never nested (it spun at 100 % CPU at 1280x720)
+        self._sash_busy = True
         try:
             self.top.update_idletasks()
             w = self.paned.winfo_width()
@@ -462,6 +492,8 @@ class CreatorWindow:
             self.paned.sashpos(1, max(lw + 30 * ch, w - pw))
         except tk.TclError:
             pass
+        finally:
+            self._sash_busy = False
 
     def _wrap_w(self):
         """Wrap width of the notes in the options column: the column's own width (520 before it is on screen)."""
@@ -496,7 +528,13 @@ class CreatorWindow:
         """The window changed width: the columns keep their shares (until a separator is dragged by hand)."""
         if e.widget is self.paned and not self._sash_user and abs(e.width - getattr(self, '_sash_w', 0)) > 8:
             self._sash_w = e.width
-            self.top.after_idle(self._place_sashes)
+            if getattr(self, '_sash_job', None) is None:     # one pending placement, however many events arrive
+                def run():
+                    self._sash_job = None
+                    self._place_sashes()
+                self._sash_job = self.top.after(60, run)
+            if os.environ.get('MXL_DEBUG_LAYOUT'):
+                print('creator paned width', e.width, flush=True)
 
     def update_dest(self):
         if self.target is not None:
