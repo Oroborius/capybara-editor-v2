@@ -6,6 +6,8 @@
   Export item...; an empty cell gives Paste here / Import item... / the Item Creator.
 - Character window (equipment slots, mercenary and the inventory): the same set (written through the character
   editor's own remove -> place -> save flow); an empty inventory cell: Create here... / Paste here / Import item...
+- Main window's equipment / inventory panel (mxl_inv_gui, next to the stash): that same character menu and the
+  same shortcuts, through mxl_inv_gui.PanelWin (the panel behind the CharacterWindow members used here).
 - Keyboard shortcuts (acting on the item under the mouse cursor): Ctrl+C / Ctrl+V copy / paste the item itself
   (an empty cell pastes there, an occupied one is replaced); Ctrl+Shift+C / Ctrl+Shift+V copy the item's magic
   attributes to the shared buffer / paste the buffer's attributes onto it.
@@ -339,14 +341,49 @@ def _set_cluster_quantity(app, it, newq):
 
 # ------------------------------------------------------------------ character window
 def inventory_menu(inv, ev):
-    """Right-click on an item of the main window's equipment / inventory panel (mxl_inv_gui, next to the stash):
-    the item is edited where it is, no trip through the stash."""
-    menu = tk.Menu(ev.widget, tearoff=0)
-    menu.add_command(label=rc('edit', 'Edit item...'), command=inv.edit)
-    try:
-        menu.tk_popup(ev.x_root, ev.y_root)
-    finally:
-        menu.grab_release()
+    """Right-click on the main window's equipment / inventory panel (mxl_inv_gui, next to the stash): the
+    Character tab's menu, acting on the character file where the item is (no trip through the stash). Opens
+    on an item, an empty inventory cell or an empty equipment slot."""
+    app = inv.app
+    if app.selected is not None:          # before the adapter is made: this redraw may read the character again
+        app.selected = None
+        app.draw_grid()
+    win = inv.as_win()
+    e, slot = win.entry_at(ev.widget, ev)
+    if e is None and slot is None:
+        if ev.widget is not win.inv or win._cell is None:
+            return
+        inv.deselect()
+        inv.show_detail()
+    _char_menu(win, ev.widget, ev)
+
+
+def install_panel(inv):
+    """The Character tab's shortcuts on the main window's panel: Ctrl+C / Ctrl+V (item), Ctrl+Shift+C / V
+    (magic attributes) and Delete, each on the item under the mouse pointer. The inventory canvas comes first:
+    on the game-art panels it lies on top of the paperdoll canvas."""
+    root = inv.app.root
+    canvases = [inv.canvas, inv.doll]
+    _bind_hotkeys(root, canvases, lambda what: _char_hot(inv.as_win(), what))
+
+    def on_delete(_e=None):
+        try:
+            w = root.focus_get()
+            if w is not None and w.winfo_class() in ('Entry', 'Text', 'Spinbox', 'Combobox', 'TEntry', 'TCombobox',
+                                                     'TSpinbox'):
+                return
+        except Exception:
+            pass
+        ev = _canvas_at_pointer([cv for cv in canvases if cv.winfo_ismapped()])
+        if ev is None or inv.ch is None or inv.drag is not None:
+            return
+        win = inv.as_win()
+        e, _slot = win.entry_at(ev.widget, ev)
+        if e is not None:
+            win.selected = e
+            win.delete_instant(e)
+
+    root.bind('<Delete>', on_delete, add='+')
 
 
 def _char_menu(win, cv, ev):
@@ -366,6 +403,9 @@ def _char_menu(win, cv, ev):
         menu.add_command(label=rc('duplicate', 'Duplicate'), command=lambda: _char_duplicate(win, e))
         menu.add_command(label=rc('copy', 'Copy'), command=lambda: _char_copy(win, e))
         menu.add_command(label=rc('cut', 'Cut'), command=lambda: (_char_copy(win, e), win.delete()))
+        if clip is not None:
+            menu.add_command(label=rc('paste', 'Paste (replaces it; copy: {name})', name=clip[1]),
+                             command=lambda: _char_paste_over(win, e, clip))
         _char_quantity_cascade(win, menu, e)
         _fill_sockets_entry(win, menu, None, win=win, e=e)
         _add_hero_editor_menu(win, menu, win=win, e=e)
@@ -427,6 +467,28 @@ def _char_quantity_cascade(win, menu, e):
                    lambda newq: _char_set_quantity(win, e, newq))
 
 
+def _char_replace(win, e, new, where, merc):
+    """remove -> place: the item's new bytes at the spot it stood on. Character.place's slot rules refuse some
+    items the game itself put there (a Sigma mercenary's gloves / belt / boots / amulet): the same base then
+    goes back into the slot it was worn in, as it was (what MainInventory.edit and mxl_perfect do)."""
+    import mxl_char as MC
+    ch = win.ch
+    if not any(x is e for x in ch.entries(merc)):
+        raise MC.CharError(T('inv.err.item_gone', 'the item is no longer where it was: select it again'))
+    ch.remove(e, merc)
+    try:
+        return ch.place(new, where, merc)
+    except MC.CharError:
+        it = blob_item(new, win.data)
+        if where[0] != 'slot' or it['code'] != e.it['code']:
+            raise
+        ent = MC.Entry(it, new)
+        ent.blob = ent.moved(win.data, location=MC.LOC_EQUIPPED, equipped=where[1], x=where[1], y=0, panel=0)
+        ent.it = blob_item(ent.blob, win.data)
+        ch.entries(merc).append(ent)
+        return ent
+
+
 def _char_set_cluster_quantity(win, e, newq):
     """Writes a character item's cluster / container quantity (the "Quantity:" magic attribute)
     through the character editor's own remove -> place -> save flow."""
@@ -450,11 +512,10 @@ def _char_set_quantity(win, e, newq):
         rec, size = decode_item(blob, win.data)
         rec['quantity'] = int(newq)
         new = encode_item(rec, win.data) + bytes(blob[size:])
-        win.ch.remove(e, merc)
-        win.ch.place(new, where, merc)
+        _char_replace(win, e, new, where, merc)
     except (CharError, FormatError, OSError, CreateError, ValueError) as err:
-        win.set_status(str(err), True)
         win.reload()
+        win.set_status(str(err), True)
         return
     if not win.save(rc('q.set', '{name}: quantity is now {n}', name=clean_name(win, e), n=int(newq))):
         win.set_status(T('ch.err.not_saved', 'character not saved'), True)
@@ -463,8 +524,7 @@ def _char_set_quantity(win, e, newq):
 def _char_duplicate(win, e):
     import mxl_char as MC
     from mxl_char import CharError
-    merc = win.is_merc()
-    if merc:
+    if win.is_merc() and not getattr(win, 'merc_inventory', False):
         win.set_status(rc('err.merc', 'the mercenary has no inventory to duplicate into'), True)
         return
     try:
@@ -473,7 +533,7 @@ def _char_duplicate(win, e):
         if spot is None:
             win.set_status(rc('err.nofree', 'no free place in the inventory'), True)
             return
-        win.ch.place(blob, ('inv',) + spot, merc)
+        win.ch.place(blob, ('inv',) + spot, False)        # the copy goes to the character's inventory
     except (CharError, FormatError, OSError) as err:
         win.set_status(str(err), True)
         return
@@ -561,11 +621,10 @@ def _mutate_char(win, e, fn, msg):
         if fn(rec, _creator(win.app), win.data) is False:
             return
         new = encode_item(rec, win.data) + bytes(blob[size:])
-        win.ch.remove(e, merc)
-        win.ch.place(new, where, merc)
+        _char_replace(win, e, new, where, merc)
     except (CharError, FormatError, OSError, CreateError, ValueError) as err:
-        win.set_status(str(err), True)
         win.reload()
+        win.set_status(str(err), True)
         return
     if not win.save(msg):
         win.set_status(T('ch.err.not_saved', 'character not saved'), True)
@@ -803,7 +862,7 @@ def _specific_cascade(holder, menu, code, rec, win=None, it=None, e=None):
                                                       lambda v: write(lambda r, cr2, d: (
                                                           r.__setitem__('flags', r['flags'] | FLAG_SOCKETED),
                                                           r.__setitem__('sockets', v),
-                                                          r.__setitem__('socketed_count', v), True)[3],
+                                                          r.__setitem__('socketed_count', 0), True)[3],
                                                           rc('sp.sockets_set', '{name}: {n} sockets', name=_item_name(holder, it, e), n=v))))
     elif rec['flags'] & FLAG_SOCKETED:
         # Hero Editor's mnuRemoveSocketed: delete the socketed children and clear the socket fields
@@ -1078,11 +1137,10 @@ def _fill_sockets(holder, it, win=None, e=None):
         where = ('slot', e.it['equipped']) if e.it['location'] == MC.LOC_EQUIPPED \
             else ('inv', e.it['x'], e.it['y'])
         try:
-            win.ch.remove(e, merc)
-            win.ch.place(new, where, merc)
+            _char_replace(win, e, new, where, merc)
         except Exception as err:
-            win.set_status(str(err), True)
             win.reload()
+            win.set_status(str(err), True)
             return
         if not win.save(msg):
             win.set_status(T('ch.err.not_saved', 'character not saved'), True)
@@ -1137,11 +1195,10 @@ def _remove_socketed(holder, it, win=None, e=None):
         where = ('slot', e.it['equipped']) if e.it['location'] == MC.LOC_EQUIPPED \
             else ('inv', e.it['x'], e.it['y'])
         try:
-            win.ch.remove(e, merc)
-            win.ch.place(new, where, merc)
+            _char_replace(win, e, new, where, merc)
         except Exception as err:
-            win.set_status(str(err), True)
             win.reload()
+            win.set_status(str(err), True)
             return
         if not win.save(msg):
             win.set_status(T('ch.err.not_saved', 'character not saved'), True)
@@ -1165,7 +1222,7 @@ def _fill_sockets_entry(holder, menu, it, win=None, e=None):
         chrec, _n = decode_item(clip[0], data)
         if not any(c == chrec['code'] for c, _n2 in cr.sockets_fillers()):
             return
-    except (EditError, FormatError, OSError, CreateError, AttributeError, ValueError):
+    except (EditError, FormatError, OSError, CreateError, AttributeError, ValueError, KeyError):
         return
     menu.add_command(label=rc('fill.menu', 'Fill sockets with {name} (now {k} of {m})',
                               name=clip[1], k=len(kids), m=cap),
@@ -1336,7 +1393,7 @@ def _stash_hot(app, what):
 
 def _char_hot(win, what):
     """The same four shortcuts over the character window's doll / inventory canvases."""
-    ev = _canvas_at_pointer([win.doll, win.inv])
+    ev = _canvas_at_pointer([win.inv, win.doll])
     if ev is None:
         _dbg('char hot', what, '- pointer not over a character canvas, ignored')
         return
@@ -1344,6 +1401,8 @@ def _char_hot(win, what):
         e, slot = win.entry_at(ev.widget, ev)
     except Exception:
         e, slot = None, None
+    if e is not None:
+        win.selected = e                  # the entry the writers below work on (and what stays selected)
     _dbg('char hot', what, '- item:', e.it['code'] if e is not None else None)
     clip = getattr(win.app, '_capy_clip', None)
     if what == 'copy':
@@ -1383,11 +1442,10 @@ def _char_paste_over(win, e, clip):
     where = ('slot', e.it['equipped']) if e.it['location'] == MC.LOC_EQUIPPED \
         else ('inv', e.it['x'], e.it['y'])
     try:
-        win.ch.remove(e, merc)
-        win.ch.place(clip[0], where, merc)
+        _char_replace(win, e, clip[0], where, merc)
     except (CharError, FormatError, OSError) as err:
-        win.set_status(str(err), True)
         win.reload()
+        win.set_status(str(err), True)
         return
-    win.app._capy_clip = None
-    win.save(rc('pasted', '{name} pasted (the previous item is replaced)', name=clip[1]))
+    if win.save(rc('pasted', '{name} pasted (the previous item is replaced)', name=clip[1])):
+        win.app._capy_clip = None

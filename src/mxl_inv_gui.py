@@ -117,6 +117,11 @@ class MainInventory:
         self.panel = PreviewPanel(app.detail, PreviewHost(app))
         self.layout(app.cell, redraw=False)
         self.refresh(force=True)
+        try:                                          # Ctrl+C / Ctrl+V / Ctrl+Shift+C / V / Del at the pointer
+            import mxl_rc_menu
+            mxl_rc_menu.install_panel(self)
+        except Exception as e:
+            print('item hotkeys (inventory panel) not installed:', e)
 
     def _wset_buttons(self):
         if self._wset_made:
@@ -201,7 +206,16 @@ class MainInventory:
         return SET2.get(box, box) if self.wset.get() == 2 else box
 
     def visible_boxes(self):
-        return [b for b in self.boxes if not self.is_merc() or b in MERC_SLOTS]
+        if not self.is_merc():
+            return list(self.boxes)
+        # the mercenary: his own slots, plus any other slot he really wears something in (Sigma mercenaries
+        # have gloves, belts, boots, amulets...) - shown so the item can be reached, edited or taken off
+        worn = self.ch.equipped(True)
+        return [b for b in self.boxes if b in MERC_SLOTS or self.slot_of(b) in worn]
+
+    def as_win(self):
+        """This panel behind the interface mxl_rc_menu's character-item functions expect (see PanelWin)."""
+        return PanelWin(self)
 
     def on_view(self):
         self.selected = None
@@ -654,17 +668,10 @@ class MainInventory:
 
     def on_menu(self, ev):
         """Right-click: selects the item under the pointer (as a left click does, without a drag) and opens its
-        menu."""
-        e, merc = self.entry_at(ev.widget, ev.x, ev.y)
-        if e is None:
+        menu - the Character tab's own menu (mxl_rc_menu._char_menu), on an item, an empty inventory cell or
+        an empty slot."""
+        if self.ch is None or self.drag is not None:
             return
-        app = self.app
-        if app.selected is not None:
-            app.selected = None
-            app.draw_grid()
-        self.selected, self.sel_merc, self.drag = e, merc, None
-        self.redraw()
-        self.show_detail()
         import mxl_rc_menu
         mxl_rc_menu.inventory_menu(self, ev)
 
@@ -771,8 +778,26 @@ class MainInventory:
             self.redraw()
             if select_stash is None:
                 self.show_detail()
+        self._sync_char_tab()
         baks = [os.path.basename(b) for b in baks if b]
         app.status.configure(text=msg + (T('cr.backup', ' - backup: {file}', file=', '.join(baks)) if baks else ''))
+
+    def _sync_char_tab(self):
+        """After a write from this panel: a Character tab open on the same character reads the file again, so it
+        shows the new items and its next save starts from them. (The other way round its save reloads the stash,
+        whose redraw calls refresh() here.) A tab with unsaved edits is left alone: Character.save refuses its
+        stale copy and reloads it, nothing is overwritten."""
+        try:
+            import mxl_tabs
+            w = mxl_tabs.built_owner('Character')
+            wch = getattr(w, 'ch', None)
+            if wch is None or self.ch is None or os.path.abspath(wch.path) != os.path.abspath(self.ch.path):
+                return
+            if wch.raw == self.ch.raw or w.dirty():
+                return
+            w.reload()
+        except Exception as e:
+            print('character tab not refreshed:', e)
 
     def _error(self, title, err):
         messagebox.showerror(title, str(err), parent=self.app.root)
@@ -935,6 +960,203 @@ class MainInventory:
         self._done(T('inv.moved_char', '{item} moved to the {dest} of {name}', item=name, dest=self._dest(where, merc),
                      name=self.ch.name), [bak_c, bak_s],
                    select_char=(where, merc))
+
+
+# ---------------------------------------------------------------------------------------- right-click adapter
+
+class PanelWin:
+    """The main window's panel seen as the 'win' that mxl_rc_menu's character functions (_char_menu, _char_hot,
+    _mutate_char, mxl_perfect, mxl_he_stats...) were written for, i.e. the Character tab's CharacterWindow.
+
+    One is made per right-click / shortcut (and kept by an Item stats tab). It is tied to the Character object
+    the panel showed at that moment: the panel reads the file again whenever it changes, and an entry of an older
+    read must never be written - save() then refuses instead. Whether the item is the mercenary's is decided by
+    where the pointer was (entry_at), not by the Character / Mercenary buttons later on."""
+    merc_inventory = True                 # the inventory stays reachable while the mercenary's gear is shown
+
+    def __init__(self, panel):
+        self.panel = panel
+        self.app, self.data = panel.app, panel.data
+        self.doll, self.inv = panel.doll, panel.canvas
+        self.top = panel.app.root
+        self.sel_slot = None
+        self._ch = panel.ch
+        self._merc = bool(panel.sel_merc) if panel.selected is not None else False
+        self._sel = None
+        self._where = None
+        self._cell = None
+
+    # ---- what the panel shows
+    ch = property(lambda self: self._ch)
+    cell = property(lambda self: self.panel.cell)
+
+    def current(self):
+        return self._ch is not None and self.panel.ch is self._ch
+
+    def is_merc(self):
+        return self._merc
+
+    def entry_at(self, cv, ev):
+        """(entry, slot) like CharacterWindow.entry_at: slot is set for an equipment box, even an empty one."""
+        p = self.panel
+        self._cell = None
+        if self._ch is None:
+            return None, None
+        if cv is p.doll:
+            slot = p.doll_slot(ev.x, ev.y)
+            if slot is None:
+                return None, None
+            self._merc = p.is_merc()
+            return self._ch.equipped(self._merc).get(slot), slot
+        self._merc = False
+        cx, cy = ev.x // p.cell, ev.y // p.cell
+        if 0 <= cx < INV_W and 0 <= cy < INV_H:
+            self._cell = (cx, cy)
+        return p.entry_at(cv, ev.x, ev.y)[0], None
+
+    @property
+    def selected(self):
+        return self._sel
+
+    @selected.setter
+    def selected(self, e):
+        self._sel = e
+        if e is not None:
+            self._where = (('slot', e.it['equipped']) if e.it['location'] == MC.LOC_EQUIPPED
+                           else ('inv', e.it['x'], e.it['y']))
+        if self.current():
+            p = self.panel
+            p.selected, p.sel_merc, p.drag = e, self._merc, None
+
+    def redraw(self):
+        if self.current():
+            self.panel.redraw()
+            self.panel.show_detail()
+
+    def set_status(self, text, error=False):
+        try:
+            self.app.status.configure(text=text)
+        except Exception:
+            pass
+
+    def _stale(self):
+        if self.current():
+            return False
+        self.set_status(T('inv.err.reloaded', 'the character was read again since this item was picked: '
+                          'nothing written, pick the item again'), True)
+        return True
+
+    # ---- reading / writing
+    def reload(self):
+        self.panel.reload()
+        self._ch, self._sel = self.panel.ch, None
+
+    def save(self, msg):
+        """Writes the character (changed in memory by the caller) through the panel's writer; False when nothing
+        was written. The item standing where the picked one stood is selected again."""
+        p = self.panel
+        if self._stale():
+            return False
+        try:
+            bak = p._save_char()
+        except ERRORS as err:
+            p._error(T('ch.title', 'Character'), err)
+            self._ch, self._sel = p.ch, None
+            return False
+        p.selected = None
+        p._done(msg, [bak], select_char=(self._where, self._merc) if self._where is not None else None)
+        self._ch, self._sel = p.ch, p.selected
+        return True
+
+    # ---- the menu's own actions
+    def edit(self):
+        self.panel.edit()
+
+    def delete(self):
+        e = self._sel
+        if e is None:
+            self.set_status(T('ch.select_first', 'Select an item of the character first.'), True)
+            return
+        if not messagebox.askyesno(T('ch.btn.delete', 'Delete'), T('ch.delete_ask', 'Delete {item} (and its socketed '
+                                   'items) from {name}?\nA backup of the character is made first.',
+                                   item=clean(e.it['name']), name=self._ch.name), parent=self.top):
+            return
+        self.delete_instant(e)
+
+    def delete_instant(self, e):
+        """No prompt (the Delete key at the pointer), like CharacterWindow.delete_instant."""
+        if self._stale():
+            return
+        name = clean(e.it['name'])
+        try:
+            self._ch.remove(e, self._merc)
+        except ValueError:
+            self.reload()
+            self.set_status(T('inv.err.item_gone', 'the item is no longer where it was: select it again'), True)
+            return
+        self._where = None
+        self.save(T('cr.deleted', '{name} deleted', name=name))
+
+    def to_stash(self):
+        """First free place of the stash, the shown page first (as the Character tab's To stash)."""
+        app, e, p = self.app, self._sel, self.panel
+        if e is None:
+            self.set_status(T('ch.select_first', 'Select an item of the character first.'), True)
+            return
+        if not app.path:
+            self.set_status(T('cr.open_stash', 'Open a stash in the main window first.'), True)
+            return
+        if self._stale():
+            return
+        try:
+            new = mxl_save.blob_item(self._ch.stash_blob(e), self.data)
+            pages = [app.page()] + [i for i in range(mxl_save.STASH_PAGES) if i != app.page()]
+            spot = mxl_save.free_spot(parse_stash(app.path, self.data), new, self.data, pages)
+        except ERRORS as err:
+            self.set_status(str(err), True)
+            return
+        if spot is None:
+            self.set_status(T('ch.err.stash_full', 'no free place in the stash'), True)
+            return
+        p.to_stash(e, self._merc, spot[0], spot[1], spot[2])
+        self._ch, self._sel = p.ch, None
+
+    def create_here(self):
+        """Item Creator writing into the empty slot / inventory cell that was clicked (the first free place of
+        the inventory when the new item does not fit there)."""
+        from mxl_creator_gui import CreatorWindow
+        p, slot, cell, merc = self.panel, self.sel_slot, self._cell, self._merc
+
+        def write(blob):
+            p._check_char()
+            ch = p.ch                                     # the creator stays open: the character as it is now
+            m = bool(merc and ch.merc_hired)
+            new = mxl_save.blob_item(blob, self.data)
+            if slot is not None and ch.equipped(m).get(slot) is None:
+                where = ('slot', slot)
+            else:
+                m = False
+                if cell is not None and not ch.inventory_error(new, cell[0], cell[1]):
+                    where = ('inv',) + cell
+                else:
+                    spot = ch.free_inventory_spot(new)
+                    if spot is None:
+                        raise CharError(T('ch.err.inv_full', 'no free place in the inventory'))
+                    where = ('inv',) + spot
+            try:
+                ch.place(blob, where, m)
+                bak = p._save_char()
+            except Exception:
+                p.reload()                                # nothing written: the character as it is on disk
+                raise
+            msg = T('ch.created_in', '{name}: item created in {where}', name=ch.name,
+                    where=slot_name(where[1]) if where[0] == 'slot' else T('ch.the_inventory', 'the inventory'))
+            p.selected = None
+            p._done(msg, [bak], select_char=(where, m))
+            return msg
+        label = (f"{self._ch.name}{T('ch.merc_suffix', ' (mercenary)') if merc and slot is not None else ''} - "
+                 + (slot_name(slot, T('ch.inventory_l', 'inventory')) if slot else T('ch.inventory_l', 'inventory')))
+        CreatorWindow(self.app, target=write, target_label=label)
 
 
 # ---------------------------------------------------------------------------------------- main window hooks
