@@ -31,7 +31,7 @@ import mxl_d2look as D2
 import mxl_attr_picker as AP
 
 QUALITY_KEYS = [('Unique', 'unique'), ('Set item', 'set'), ('Runeword', 'runeword'), ('Angelic', 'angelic'), ('Rare', 'rare'),
-                ('Crafted', 'crafted'), ('Magic', 'magic'), ('Superior', 'superior'), ('Normal', 'normal')]
+                ('Crafted', 'crafted'), ('Honorific', 'tempered'), ('Magic', 'magic'), ('Superior', 'superior'), ('Normal', 'normal')]
 LONG_LIST = 25                 # option lists longer than this get the searchable picker instead of a dropdown
 FILTER_KEYS = [('All', None), ('Weapon', 'weapons'), ('Armor', 'armor'), ('Misc', 'misc'), ('Mystic Orb', 'orb'),
                ('Mystic Dye', 'dye')]
@@ -581,7 +581,8 @@ class CreatorWindow:
                 label = f"{clean(name)} - {' '.join(clean(d.base(r).name).replace(' Rune', '') for r in runes)}"
                 rows.append((label, i))
         else:
-            for b in (self._craft_bases() if q == 'crafted' else self._bases()):
+            for b in (self._craft_bases() if q == 'crafted' else self._honorific_bases() if q == 'tempered'
+                      else self._bases()):
                 if kind and b.kind != kind:
                     continue
                 if q != 'normal' and b.kind == 'misc' and not cr.can_have_quality(b.code, q):
@@ -656,6 +657,37 @@ class CreatorWindow:
             self.cr._good_bases = out
         return self.cr._good_bases
 
+    def _honorific_bases(self):
+        """Bases the honorific recipe takes (cube: magic / rare weapon or armor + Mark of Infusion): weapons and
+        armor its input item type covers, which can carry a rare-style name."""
+        if not hasattr(self.cr, '_honorific_bases'):
+            out = []
+            for b in self._bases():
+                if b.kind not in ('weapons', 'armor') or not self.cr.honorific_stats(b.code):
+                    continue
+                names = self.cr.rare_name_choices(b.code)
+                if names['rareprefix'] and names['raresuffix']:
+                    out.append(b)
+            self.cr._honorific_bases = out
+        return self.cr._honorific_bases
+
+    def _honorific_roll(self, how='max'):
+        """A created honorific item's recipe stats (stat 289 = 2 'Orb Effects ... Doubled', Physical Resist 0-1%
+        on armor, the weapon bonus) at their min / max / a random value, in the item's own stat list; stats
+        added by hand stay as they are."""
+        spec = self.spec
+        lo = {(x['id'], x.get('param')): x['value'] for x in self.cr.honorific_stats(spec['code'], 'min')}
+        hi = {(x['id'], x.get('param')): x['value'] for x in self.cr.honorific_stats(spec['code'], 'max')}
+        extra = spec.setdefault('extra', [])
+        for k, top in hi.items():
+            a, b = sorted((lo.get(k, top), top))
+            v = b if how == 'max' else a if how == 'min' else random.randint(a, b)
+            e = next((e for e in extra if (e['id'], e.get('param')) == k), None)
+            if e is None:
+                extra.append(dict(id=k[0], param=k[1], value=v))
+            else:
+                e['value'] = v
+
     def _craft_bases(self):
         """Bases a crafting recipe takes (Angelic bases included, they are not in the drop pool)."""
         if not hasattr(self.cr, '_craft_bases'):
@@ -690,7 +722,15 @@ class CreatorWindow:
         else:
             spec = cr.new_spec(q, key)
         spec['ilvl'] = max(spec['ilvl'], min(99, MAX_ILVL))
-        spec['max_sockets'] = q in ('unique', 'set', 'crafted')     # as the game gives them (Sacred gear)
+        spec['max_sockets'] = q in ('unique', 'set', 'crafted', 'tempered')   # as the game gives them (Sacred gear)
+        if q == 'tempered':                    # the cube recipe's output: a blank item, a rare-style name, the
+            spec['extra'] = []                 # maximum sockets and the recipe's own stats (in its stat list)
+            spec['_new_flag'] = True           # header flag 0x2000, as on the real sample (XBone's Eagle Pelt)
+            self.spec, old = spec, self.spec
+            try:
+                self._honorific_roll('max')
+            finally:
+                self.spec = old
         self.prepare_defaults(spec)
         if q == 'crafted':                     # one roll, as the cube gives it: name, affixes, values
             cr.reroll_crafted(spec)
@@ -740,12 +780,13 @@ class CreatorWindow:
             for kind, key in (('magicprefix', 'rare_prefixes'), ('magicsuffix', 'rare_suffixes')):
                 ok = {i for i, _, _ in cr.affix_choices(kind, code, ilvl, rare=True)}
                 spec[key] = [x for x in (spec.get(key) or []) if x in ok]
-        if q == 'rare':
+        if q in ('rare', 'tempered'):
             names = cr.rare_name_choices(code)
             rn = spec.get('rare_names')
             if not rn or rn[0] not in [i for i, _ in names['rareprefix']] or rn[1] not in [i for i, _ in names['raresuffix']]:
                 spec['rare_names'] = (names['rareprefix'][0][0] if names['rareprefix'] else 0,
                                       names['raresuffix'][0][0] if names['raresuffix'] else 0)
+        if q == 'rare':
             for kind, key in (('magicprefix', 'rare_prefixes'), ('magicsuffix', 'rare_suffixes')):
                 ok = {i for i, _, _ in cr.affix_choices(kind, code, ilvl, rare=True)}
                 spec[key] = [x for x in (spec.get(key) or []) if x in ok]
@@ -1173,8 +1214,11 @@ class CreatorWindow:
                 lines = [str(x[1]).strip() for x in stat_lines(raw_extra, self.data, None) if str(x[1]).strip()]
             except Exception:
                 lines = [f"stat {x['id']}: {x['value']}" for x in raw_extra]
-            ttk.Label(inner, text=T('cr.kept_list', 'Kept as they are on the item (not from its affixes or its recipe): {lines}',
-                                    lines='; '.join(lines)), wraplength=self._wrap_w(), justify='left').grid(row=r, column=0, columnspan=2, sticky='w')
+            made = self.spec.get('quality') == 'tempered' and not self.spec.get('_from_item')
+            ttk.Label(inner, text=(T('cr.honorific_list', 'Honorific recipe (Min / Random / Max roll it): {lines}',
+                                     lines='; '.join(lines)) if made else
+                                   T('cr.kept_list', 'Kept as they are on the item (not from its affixes or its recipe): {lines}',
+                                     lines='; '.join(lines))), wraplength=self._wrap_w(), justify='left').grid(row=r, column=0, columnspan=2, sticky='w')
             r += 1
         elif unr:
             note = (T('cr.edit_note', 'Unrestricted: the item\'s own stat list is below - click a stat to select '
@@ -2287,6 +2331,8 @@ class CreatorWindow:
         if self.spec is None:
             return
         self.cr.roll(self.spec, how)
+        if self.spec['quality'] == 'tempered' and not self.spec.get('_from_item'):
+            self._honorific_roll(how)
         if how == 'max' and self.spec['code'] and self.data.base(self.spec['code']).kind == 'armor':
             self.spec['defense'] = self.cr.defense_range(self.spec)[1]
         self.render_options()
