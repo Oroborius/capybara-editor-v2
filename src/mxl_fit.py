@@ -15,6 +15,7 @@ for the character side.
 The window itself gets an explicit start size (most of the screen, at most DEFAULT_SIZE at the UI scale): with a
 size of its own the content follows the window, never the other way round."""
 import math
+import sys
 import tkinter as tk
 from tkinter import font as tkfont
 
@@ -209,14 +210,35 @@ class Fit:
             print('mxl_fit:', type(e).__name__, e)
 
 
+def work_area(root):
+    """(x, y, width, height, frame height) of the room a window has: the screen, and on Windows the screen without
+    the taskbar, with the height of the title bar and borders Tk's geometry does not count."""
+    x = y = frame = 0
+    w, h = root.winfo_screenwidth(), root.winfo_screenheight()
+    if sys.platform == 'win32':
+        try:
+            import ctypes
+            from ctypes import wintypes
+            u = ctypes.windll.user32
+            r = wintypes.RECT()
+            if u.SystemParametersInfoW(0x0030, 0, ctypes.byref(r), 0) and r.right > r.left and r.bottom > r.top:
+                x, y, w, h = r.left, r.top, r.right - r.left, r.bottom - r.top          # SPI_GETWORKAREA
+            # SM_CYCAPTION + 2 * (SM_CYSIZEFRAME + SM_CXPADDEDBORDER)
+            frame = u.GetSystemMetrics(4) + 2 * (u.GetSystemMetrics(33) + u.GetSystemMetrics(92))
+            frame = min(max(frame, 0), h // 4)
+        except Exception:
+            pass
+    return x, y, w, h, frame
+
+
 def start_size(root):
     """Explicit size for the main window: most of the screen, but not a wall-to-wall window on a large one."""
     try:
         scale = max(0.5, root.winfo_fpixels('1i') / 96.0)
-        sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
+        ax, ay, sw, sh, frame = work_area(root)
         w = min(int(sw * 0.86), round(DEFAULT_SIZE[0] * scale))
-        h = min(int(sh * 0.86), round(DEFAULT_SIZE[1] * scale))
-        geo = f'{w}x{h}+{(sw - w) // 2}+{max(0, (sh - h) // 3)}'
+        h = min(int(sh * 0.86), round(DEFAULT_SIZE[1] * scale), sh - frame)
+        geo = f'{w}x{h}+{ax + (sw - w) // 2}+{ay + max(0, (sh - h - frame) // 3)}'
         root.geometry(geo)
         root.minsize(min(w, 640), min(h, 400))
         _pending['geo'] = (root, geo)                # applied once more when the event loop starts (_mainloop)
