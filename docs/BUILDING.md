@@ -20,6 +20,13 @@ downloads and outputs stay in `.cache/` and `dist/` inside the repository.
 **Python 3.10** (the exe's own version: the modules are stored as 3.10 bytecode), but it is pure standard library,
 so the Windows exe can be built on Linux as well. No Wine or Windows SDK is needed to build.
 
+Besides every `src/mxl_*.py`, `repack.py` packs the package `mxlsave` from `tools/mxlsave/` (the independent
+save-format library `mxl_savecheck` reads every file with before it is written): `repack.PACKAGES` lists such
+folders; a package is stored in the PYZ table as `mxlsave` with type 1 (package) and `mxlsave.<module>` with type 0.
+There is one copy of that source: `tools/mxlsave` stays the command-line tool (`python3 -m mxlsave verify|dump|diff`),
+the Linux build copies the same files to `opt/capybara/mxlsave/`. To check a built exe:
+`python3.10 src/carch.py "<exe>"` lists the archive; the PYZ table is read as in `packaging/extract_host.py`.
+
 On Windows (PowerShell, Python 3.10 from python.org so that `py -3.10` works):
 
 ```powershell

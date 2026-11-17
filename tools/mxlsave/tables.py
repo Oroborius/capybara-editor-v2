@@ -117,6 +117,7 @@ class Tables:
             self._type_index.setdefault(code, i)
         self._ancestors = {}
         self._skills = _rows(folder, 'skills')
+        self._stat_rows = None
         self._strings = None
         self._monstats = None
         self._skilldesc = None
@@ -186,6 +187,16 @@ class Tables:
                 except (OSError, struct.error):
                     pass
         return _strip_colors(self._strings.get(index, '')).strip()
+
+    def stat_name(self, sid):
+        """The game's own text of an item stat ('to Strength', 'Fire Resist'), '' when it has none."""
+        if self._stat_rows is None:
+            self._stat_rows = {struct.unpack_from('<H', r, 0)[0]: r for r in _rows(self.folder, 'itemstatcost')}
+        r = self._stat_rows.get(sid)
+        if r is None or len(r) < 0x3A:
+            return ''
+        s = self.string(struct.unpack_from('<H', r, 0x38)[0]).split('\n')[0]       # descstrpos
+        return '' if 'BUFFALO' in s or len(s) > 60 else s
 
     def base_name(self, code):
         b = self.bases.get(code)

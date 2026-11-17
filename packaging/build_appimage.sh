@@ -3,7 +3,8 @@
 #
 # The AppImage holds a standalone CPython 3.10 (python-build-standalone: static Tcl/Tk and X11, glibc >= 2.17),
 # a Tk rebuilt with Xft for antialiased text (build_tk_xft.sh), Pillow + ttkbootstrap, the collector's modules
-# taken from the base exe as 3.10 bytecode (extract_host.py), the editor's modules from src/, the language files
+# taken from the base exe as 3.10 bytecode (extract_host.py), the editor's modules from src/, the mxlsave package
+# from tools/, the language files
 # and the Linux launcher. No Wine is involved, and nothing is installed on the system: everything stays in dist/
 # and .cache/ of this repository.
 #
@@ -55,6 +56,10 @@ fi
 # 2. the application: host modules (bytecode), editor modules (source), languages, launcher
 "$PY" -I "$ROOT/packaging/extract_host.py" "$BASE_EXE" "$APPDIR/opt/capybara" >>"$LOG"
 cp "$ROOT"/src/mxl_*.py "$ROOT"/src/*.json "$ROOT/packaging/linux/capybara_editor.py" "$APPDIR/opt/capybara/"
+# the independent save-format library (tools/mxlsave, the one copy of its source) as the package `mxlsave`:
+# mxl_savecheck reads every file with it before it is written
+mkdir -p "$APPDIR/opt/capybara/mxlsave"
+cp "$ROOT"/tools/mxlsave/*.py "$APPDIR/opt/capybara/mxlsave/"
 cp "$BASE_DIR"/_internal/lang/*.json "$APPDIR/opt/capybara/lang/" 2>/dev/null || true
 cp "$ROOT"/lang/*.json "$APPDIR/opt/capybara/lang/"              # superset of the collector's files
 "$PY" -I -m compileall -q "$APPDIR/opt/capybara" >>"$LOG"

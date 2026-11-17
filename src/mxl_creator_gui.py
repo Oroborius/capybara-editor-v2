@@ -2692,6 +2692,8 @@ def run():
     mxl_app_icon.install(mxl_gui.App)
     mxl_splash.install(mxl_gui.App)       # last: outermost, closes the splash once everything is built
     mxl_log.wrap_saves()                  # writers bound by name in the modules imported since install()
+    import mxl_savecheck                  # every file is read by the independent mxlsave before it is written
+    mxl_savecheck.install()               # (after every module that wraps or binds the writers)
     try:
         mxl_gui.main()
     finally:
