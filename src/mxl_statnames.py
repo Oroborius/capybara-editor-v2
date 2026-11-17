@@ -375,21 +375,27 @@ def param_bits(data, sid):
 
 
 def skill_fits(data, sid, skill_id):
-    """False when the game would roll this skill id out of the stat's param field: the game's own
-    param arithmetic works on 16 bits (the editor's own saves never hold a bigger param), so a skill
-    id that needs a 17th bit - like Median XL's late skills (OHMAN is #1697) - comes out rolled to
-    another skill. Storing it would corrupt the attribute instead of setting it."""
+    """Whether the stat's param field can store this skill id. The width is the stat's own Save Param Bits
+    (ItemStatCost): Sigma gives the chance-to-cast stats and the hidden procs 17 bits (vanilla: 16), so
+    skill << 6 | level holds skill ids 0-2047; the charges stat (204) has 16 bits: ids 0-1023. An id above
+    that cannot be written at all (the encoder refuses a param wider than the field).
+
+    Until 2026-11 this function capped every field at 16 bits and refused the ids 1024-2047 for the 17-bit
+    stats. What the tables show: the game's own rows hold such params (magic suffix rows 943-945, 948, 1013:
+    skills 1319, 1563, 1642, 1700, 1746 on stats 197 / 199), but none of those rows is spawnable - on every
+    obtainable row (uniques, sets, runewords, spawnable affixes) the proc skills stay at or below id 853.
+    So the save format takes them; how the game treats a proc skill id of 1024 or more is not confirmed."""
     kind = param_kind(sid)
     if kind == 'class':
         cl = _classes()
         return isinstance(skill_id, int) and 0 <= skill_id < len(cl)
     if kind is None:
         return False
-    bits = min(param_bits(data, sid), 16)
+    bits = min(param_bits(data, sid), 32)
     if bits <= 0:
         return False
     if kind == 'skill':
-        return isinstance(skill_id, int) and 0 <= skill_id < (1 << (bits - 6))
+        return isinstance(skill_id, int) and bits > 6 and 0 <= skill_id < (1 << (bits - 6))
     return isinstance(skill_id, int) and 0 <= skill_id < (1 << bits)
 
 
