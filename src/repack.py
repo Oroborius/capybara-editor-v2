@@ -59,7 +59,8 @@ if __name__ == '__main__':
         sys.exit(f'run repack.py with Python 3.10 (this is {sys.version.split()[0]}): the exe cannot load other bytecode')
     plugin = HERE
     extra = {}
-    for mod in ('mxl_creator', 'mxl_creator_gui', 'mxl_char', 'mxl_char_gui', 'mxl_inv_gui', 'mxl_he_art', 'mxl_app_icon', 'mxl_statparse', 'mxl_import', 'mxl_format_fix', 'mxl_lang', 'mxl_d2ui_dc6', 'mxl_d2look_art', 'mxl_d2look', 'mxl_splash', 'mxl_log', 'mxl_userdir'):
+    # every editor module of src/ (mxl_*.py); a new module needs no entry here
+    for mod in sorted(f[:-3] for f in os.listdir(plugin) if f.startswith('mxl_') and f.endswith('.py')):
         extra[mod] = compile(open(f'{plugin}/{mod}.py', encoding='utf-8').read(), f'{mod}.py', 'exec')
     script = [e for e in ents if e['typ'] == 's' and e['name'] == 'mxl_gui'][0]
     z = [e for e in ents if e['typ'] == 'z'][0]

@@ -1,5 +1,5 @@
 """Game artwork for the "D2 look" (Median XL Sigma's own panels, buttons and fonts), read from the player's
-installed game files (MPQ archives) — nothing of the game is shipped in the editor.
+installed game files (MPQ archives) - nothing of the game is shipped in the editor.
 
 - Panels / gear frames / buttons: data\\global\\themes\\<theme>\\game\\... (Median XL Sigma themes: tartarus, classic_sigma)
 - Fonts: data\\local\\font\\latin\\<font>.dc6 + .tbl (fontexocet10, font16, font30...)
@@ -26,6 +26,63 @@ def get_art(game_dir, theme, cache_root):
     return _ART[key]
 
 
+def skill_web(self, code, tab, size):
+        """The tree's connector web (the arrows between the skill nodes): the class's
+        layout-<code>.dc6 holds 4 art frames per tree tab, in tab order; they tile into the
+        tree-sized web, which the editor stretches over the stone panel under the nodes."""
+        from PIL import Image
+
+        def build():
+            fr = DC6.dc6_frames(self._theme_file(f'skills\\layout-{code}.dc6'))
+            base = max(0, tab) * 4
+            im = Image.new('RGBA', (512, 704))
+            for ty in range(0, 704, 256):
+                for tx in range(0, 512, 256):
+                    for i in (base, base + 1, base + 2, base + 3):
+                        if i >= len(fr):
+                            continue
+                        w, h, _ox, _oy, px, mask = fr[i]
+                        if not any(mask[:w * h]):
+                            continue
+                        rw, rh, rgba = DC6.to_rgba(fr[i], self.pal())
+                        t = Image.frombytes('RGBA', (rw, rh), bytes(rgba))
+                        im.paste(t, (tx, ty), t)
+            return im.width, im.height, im.tobytes()
+
+        w, h = size
+        return self._cached(f'web-{code}-{tab}-{w}x{h}', build)
+
+
+def warm(game_dir, cache_root):
+    """Pre-read the art the editor shows, in the background: opening every MPQ costs ~0.8s and
+    some strips are stored implode-compressed, which the pure-python decompressor needs ~0.6s
+    per file - the first picture would otherwise freeze the UI for that. Everything lands in the
+    ui_art cache, so the main thread only reads small files afterwards."""
+    try:
+        art = get_art(game_dir, THEMES[0], cache_root)
+        art.pal()
+        for rel in ('skills\\icons-ama', 'skills\\icons-sor', 'skills\\icons-nec',
+                    'skills\\icons-pal', 'skills\\icons-bar', 'skills\\icons-dru',
+                    'skills\\icons-ass', 'skills\\icons-shared'):
+            try:
+                art._theme_file(rel + '.dc6')
+            except Exception:
+                pass
+        art.char_panel_d2()                          # the character screen's paperdoll panel
+        for p in ('stash', 'character-inventory'):
+            try:
+                art.panel(p)
+            except Exception:
+                pass
+        for f in ('font16', 'font30'):
+            try:
+                art.font(f)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
 class ArtError(Exception):
     pass
 
@@ -36,6 +93,7 @@ class Art:
         self.theme = theme if theme in THEMES else THEMES[0]
         self.cache = os.path.join(cache_root, self.theme)
         self._mpqs = None
+        self._base_mpqs = None
         self._pal = None
         self._lut = [min(255, round(255 * (v / 255) ** GAMMA)) for v in range(256)]
         self._fonts = {}
@@ -61,6 +119,8 @@ class Art:
                     os.remove(f)
                 except OSError:
                     pass
+            import shutil
+            shutil.rmtree(os.path.join(self.cache, 'raw'), ignore_errors=True)
             with open(p, 'w') as fh:
                 fh.write(stamp)
 
@@ -78,8 +138,21 @@ class Art:
                         pass
         return self._mpqs
 
-    def read(self, name):
-        for m in self.mpqs():
+    def _raw_path(self, name):
+        """Cache file for one archive member: the implode strips need ~0.6s each with the
+        pure-python decompressor, so they are kept as plain bytes after the first read."""
+        import hashlib
+        d = os.path.join(self.cache, 'raw')
+        os.makedirs(d, exist_ok=True)
+        return os.path.join(d, hashlib.sha1(name.lower().encode('utf-8', 'replace')).hexdigest() + '.bin')
+
+    def _read_raw(self, name, archives):
+        p = self._raw_path(name)
+        try:
+            return open(p, 'rb').read()
+        except OSError:
+            pass
+        for m in archives():
             try:
                 if m.find(name) is None:
                     continue
@@ -87,8 +160,36 @@ class Art:
             except Exception:
                 continue
             if data:
+                tmp = f'{p}.{os.getpid()}.tmp'
+                try:
+                    with open(tmp, 'wb') as fh:
+                        fh.write(data)
+                    os.replace(tmp, p)
+                except OSError:
+                    pass
                 return data
         raise ArtError(f'{name} not found in the game files ({self.game_dir})')
+
+    def read(self, name):
+        return self._read_raw(name, self.mpqs)
+
+    def base_mpqs(self):
+        """The base game's own archives only (never the Sigma mod's): patch_d2, d2exp, d2data."""
+        if self._base_mpqs is None:
+            from mpq import MPQ
+            self._base_mpqs = []
+            for n in ('patch_d2.mpq', 'd2exp.mpq', 'd2data.mpq'):
+                p = os.path.join(self.game_dir, n)
+                if os.path.exists(p):
+                    try:
+                        self._base_mpqs.append(MPQ(p))
+                    except Exception:
+                        pass
+        return self._base_mpqs
+
+    def read_base(self, name):
+        """A base-game file, so the standard Diablo II graphics win over anything a theme ships."""
+        return self._read_raw(name, self.base_mpqs)
 
     def pal(self):
         if self._pal is None:
@@ -127,11 +228,46 @@ class Art:
         return out
 
     def panel(self, name, variant=0):
-        """A 512×704 game panel (stash, character-inventory, stat-screen...): 6 tiles of 256 px, 2 per row."""
+        """A 512x704 game panel (stash, character-inventory, stat-screen...): 6 tiles of 256 px, 2 per row."""
         def build():
             fr = DC6.dc6_frames(self._theme_file(f'panels\\{name}.dc6'))
             return DC6.compose(fr[variant * 6:variant * 6 + 6], self.pal(), 2)
         return self._cached(f'panel-{name}-{variant}', build)
+
+    def base_frame(self, name, index):
+        """One frame of a base-game panel DC6 (data\\global\\ui\\PANEL\\...), e.g. the gold button."""
+        def build():
+            fr = DC6.dc6_frames(self.read_base(f'data\\global\\ui\\PANEL\\{name}'))
+            return DC6.to_rgba(fr[index], self.pal())
+        return self._cached(f'base-{name}-{index}', build)
+
+    def char_panel_d2(self):
+        """The standard Diablo II character screen (base-game art, not the mod's themes): the paperdoll with
+        every equipment box and the I / II weapon-set tabs over stone, scaled x1.6 to the editor's 512 x 704
+        panel size and extended with plain stone below (the 15 x 10 inventory grid is drawn over that)."""
+        def build():
+            from PIL import Image
+            fr = DC6.dc6_frames(self.read_base('data\\global\\ui\\PANEL\\invchar6.dc6'))
+            w, h, rgba = DC6.compose(fr[4:8], self.pal(), 2)      # 320 x 432: the inventory / paperdoll screen
+            im = Image.frombytes('RGBA', (w, h), bytes(rgba))
+            out = Image.new('RGBA', (512, 704))
+            out.paste(im.crop((0, 0, 320, 250)).resize((512, 400), Image.LANCZOS), (0, 0))
+            patch = im.crop((200, 374, 314, 428)).resize((182, 86), Image.LANCZOS)   # clean stone (right of
+            y = 400                                    # the game's own gold row), mirror-tiled: no seams
+            while y < 704:
+                h = min(86, 704 - y)
+                x = 0
+                while x < 512:
+                    t = patch
+                    if (y - 400) // 86 % 2:
+                        t = t.transpose(Image.FLIP_TOP_BOTTOM)
+                    if x // 182 % 2:
+                        t = t.transpose(Image.FLIP_LEFT_RIGHT)
+                    out.paste(t.crop((0, 0, min(182, 512 - x), h)), (x, y))
+                    x += 182
+                y += 86
+            return out.width, out.height, out.tobytes()
+        return self._cached('panel-d2-character', build)
 
     def frame(self, rel, index):
         """One frame of a theme DC6 (rel: e.g. 'panel-elements\\inventory-gear')."""

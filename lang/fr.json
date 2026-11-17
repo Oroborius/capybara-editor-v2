@@ -487,7 +487,7 @@
   "inv.moved_stash": "{item} déplacé vers {file}, page {page} ({x}, {y})",
   "inv.moved_char": "{item} déplacé vers {dest} de {name}",
   "inv.equipment": "Équipement",
-  "inv.hint": "Glissez les objets entre le coffre, l'inventaire et l'équipement. Le jeu doit être fermé ; une sauvegarde est faite avant la première modification.",
+  "inv.hint": "Glissez les objets entre le coffre, l'inventaire et l'équipement. Le jeu peut rester ouvert ; une sauvegarde est faite avant le premier changement.",
   "inv.err.no_char": "choisissez d'abord un personnage",
   "inv.err.no_stash": "ouvrez d'abord un coffre",
   "inv.err.changed": "le fichier du personnage a changé sur le disque : il a été rechargé, réessayez",
@@ -577,5 +577,12 @@
   "d2.title": "Style D2",
   "d2.restart": "Le nouveau style s'appliquera au prochain démarrage de l'éditeur.",
   "d2.toggle": "Style D2",
-  "d2.unavailable": "Style D2 indisponible (images du jeu introuvables : {error})"
+  "d2.unavailable": "Style D2 indisponible (images du jeu introuvables : {error})",
+  "cr.unrestricted": "Sans limites",
+  "cr.unrestricted_note": "Sans limites : les valeurs ci-dessous peuvent aller partout où le format de sauvegarde le permet (une valeur que le format ne peut pas stocker est signalée, jamais écrite). Les stats brutes à ajouter, modifier ou supprimer par id sont en bas.",
+  "cr.raw.stats": "Stats brutes (liste propre de l'objet)",
+  "cr.raw.rw": "Stats brutes (liste du runeword)",
+  "cr.raw.add": "+ Ajouter une stat",
+  "cr.raw.clamped": "stat brute #{sid} : {v} impossible à stocker, {lo} à {hi}",
+  "cr.warn.unrestricted": "sans limites : une valeur est en dehors des plages du jeu, gardée telle quelle"
 }

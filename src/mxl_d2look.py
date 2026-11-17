@@ -4,7 +4,7 @@ gear frames, weapon-set tabs and fonts, at the same cell size as each other, lik
 
 The artwork is read from the player's game files (mxl_d2look_art), never shipped. Without the game files (or with
 the "D2 look" box unticked) the editor keeps its plain layout. Layout values below are in the panels' own pixels
-(512 × 704, cells of 29 px), measured on the game's art and checked against an in-game screenshot."""
+(512 x 704, cells of 29 px), measured on the game's art and checked against an in-game screenshot."""
 import os
 import tkinter as tk
 
@@ -16,12 +16,12 @@ SETTING = 'd2_look'
 THEME_SETTING = 'd2_theme'
 ART_CELL = 29
 PANEL_W, PANEL_H = 512, 704
-STASH_GRID = (53, 150)            # top-left of the 14 × 14 stash grid in stash.dc6
-INV_GRID = (37, 329)              # top-left of the 15 × 10 inventory grid in character-inventory.dc6
+STASH_GRID = (53, 150)            # top-left of the 14 x 14 stash grid in stash.dc6
+INV_GRID = (37, 329)              # top-left of the 15 x 10 inventory grid in character-inventory.dc6
 STASH_GOLD = (256, 102)           # centre of the gold line / storage page line of the stash header
 STASH_PAGE = (256, 124)
 INV_GOLD = (78, 651)              # gold of the character (inventory panel, bottom left box), left end
-CLOSE_STASH = (477, 8)            # the panels' close button (buttons\\close.dc6, 23 × 23) fills their top corner hole
+CLOSE_STASH = (477, 8)            # the panels' close button (buttons\\close.dc6, 23 x 23) fills their top corner hole
 CLOSE_INV = (6, 8)
 GEAR_FILE = 'panel-elements\\inventory-gear'
 # slot -> (frame with the slot's silhouette (empty), plain frame (holding an item), x, y) in panel pixels
@@ -30,24 +30,76 @@ GEAR = {1: (5, 17, 218, 90), 2: (6, 18, 296, 153), 3: (3, 15, 218, 168), 4: (2, 
 GEAR_SIZE = {2: (76, 134), 3: (76, 105), 4: (76, 134), 5: (76, 76), 6: (47, 47), 7: (47, 47), 8: (47, 47), 9: (75, 46),
              10: (76, 76), 11: (76, 76)}
 GEAR_INSET = 4                    # frame border: items are drawn inside it
-WSET_TABS = ((100, 91), (351, 91))  # "I II" weapon-set tabs above both weapon slots (63 × 25, frames 24 / 25)
+WSET_TABS = ((100, 91), (351, 91))  # "I II" weapon-set tabs above both weapon slots (63 x 25, frames 24 / 25)
 WSET_TAB = (24, 25, 63, 25)
 CELL_BG = '#0d0c0b'               # colour under the icons (the grid's own dark)
 UNMET_BG = '#5b1d12'              # red background of an item whose requirements are not met (as in game)
 GOLD_TXT = (199, 179, 119)
 
-_state = {'checked': False, 'art': None, 'error': None}
+# ---- the standard Diablo II character screen (base-game art: invchar6.dc6, not the Sigma themes)
+# slot -> (x, y, w, h) of the equipment box in panel pixels (native positions x 1.6, border included)
+GEAR_D2 = {1: (210, 2, 99, 99), 2: (326, 46, 51, 53), 3: (210, 115, 99, 146), 4: (26, 70, 99, 189),
+           5: (395, 70, 99, 190), 6: (144, 278, 51, 53), 7: (326, 278, 51, 53), 8: (211, 278, 99, 53),
+           9: (395, 278, 99, 101), 10: (26, 278, 99, 101)}
+GEAR_D2_INSET = 3                 # the boxes' gold border: items are drawn inside it
+CHAR_GRID = (37, 400)             # top-left of the 15 x 10 inventory grid (cells of 29 px) on the panel
+CHAR_GOLD_BTN = (40, 380)         # the gold button (base goldbtn.dc6) above the grid
+CHAR_GOLD = (66, 390)             # left end of the gold amount
+WSET_TABS_D2 = {1: ((38, 38), (408, 38)), 2: ((85, 38), (454, 38))}   # the I / II tabs in the art
+WSET_TAB_D2 = (45, 29)
+CHAR_CELL_BG = '#141414'          # the game's own inventory grid: dark cells, grey borders
+CHAR_GRID_LINE = '#646464'
+
+_state = {'checked': False, 'art': None, 'error': None, 'off': False,
+          'char_checked': False, 'char_art': None, 'char_error': None, 'char_off': False}
 _photos = {}
 
 
 # ---------------------------------------------------------------------------------------------- availability
+def disable():
+    """No game-art panels: the Hero-Editor light grids (mxl_he_grid) replace them."""
+    _state['off'] = True
+
+
+def char_disable():
+    """No standard D2 character screen either (the plain doll layout is used)."""
+    _state['char_off'] = True
+
+
+def char_art():
+    """The artwork for the standard Diablo II character screen (base-game files only, independent of the
+    Sigma theme panels the main window uses), or None (game folder unknown, files missing, switched off)."""
+    if _state.get('char_off'):
+        return None
+    if _state.get('char_art') is None and not _state['char_checked']:
+        _state['char_checked'] = True
+        try:
+            import mxl_d2look_art as A
+            gd = settings.get('game_dir')
+            if not gd or not os.path.isdir(gd):
+                raise A.ArtError('game folder not set')
+            a = A.get_art(gd, A.THEMES[0], os.path.join(paths.USER_DIR, 'ui_art'))
+            a.char_panel_d2()                     # builds (and caches) it: fails without the game files
+            _state['char_art'] = a
+        except Exception as e:                    # plain look, never a crash
+            _state['char_error'] = e
+            print('D2 look (character screen) disabled:', e)
+    return _state.get('char_art')
+
+
+def char_active():
+    return char_art() is not None
+
+
 def wanted():
     v = settings.get(SETTING)
     return True if v is None else bool(v)
 
 
 def art():
-    """The game's artwork, or None (D2 look off, game folder unknown, files missing)."""
+    """The game's artwork, or None (D2 look switched off, game folder unknown, files missing)."""
+    if _state.get('off'):
+        return None
     if not _state['checked']:
         _state['checked'] = True
         if wanted():
@@ -93,7 +145,7 @@ def gear_photo(index, k):
 
 def draw_text(cv, x, y, text, k=1.0, font='font16', color=GOLD_TXT, anchor='center', tags=()):
     """Text in the game's font (an image) when every character exists in it, else a tk text in the same colour."""
-    a = art()
+    a = art() or char_art()
     text = str(text)
     try:
         glyphs, _lh = a.font(font)
@@ -118,7 +170,7 @@ def fmt_gold(v):
 
 # ---------------------------------------------------------------------------------------------- sizes
 def panel_cell(root, cell):
-    """Cell size for the D2 look: the two 512 × 704 panels side by side and the detail panel fit the screen."""
+    """Cell size for the D2 look: the two 512 x 704 panels side by side and the detail panel fit the screen."""
     try:
         sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
     except tk.TclError:

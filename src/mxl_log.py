@@ -174,7 +174,7 @@ def _wrap(name, func):
             bak = func(*args, **kwargs)
         except Exception as err:
             if outer:
-                log.error('save FAILED: %s: %s — %s: %s', _describe(name, args, kwargs), target, type(err).__name__, err)
+                log.error('save FAILED: %s: %s - %s: %s', _describe(name, args, kwargs), target, type(err).__name__, err)
             raise
         finally:
             if outer:

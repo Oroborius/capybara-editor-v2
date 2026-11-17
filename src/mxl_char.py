@@ -6,6 +6,7 @@ stats ('gf', 9-bit ids, CSvParam/CSvBits widths of itemstatcost; Median adds sta
 skills ('if', kept as is), the character's items ('JM' + count), the corpse ('JM' + count), the mercenary ('jf' +
 items when hired) and the golem ('kf'). File size @0x08 and checksum @0x0C are recomputed on writing.
 """
+import json
 import os
 import random
 import shutil
@@ -160,6 +161,124 @@ def _charstats(data):
             rows.append(dict(life=r[0x43], stamina=r[0x44], mana=r[0x45], stats=r[0x50] or 5))
         data._charstats = rows
     return data._charstats
+
+
+def class_names(data):
+    """The seven class display names, from the extracted charstats.bin (rows 0..6, name at 0x20)."""
+    try:
+        names = [r[0x20:0x30].split(b'\0')[0].decode('latin1') for r in data._rows('charstats')[:7]]
+        if len(names) == 7 and all(names):
+            return names
+    except Exception:
+        pass
+    from mxl_rules import CLASSES
+    return list(CLASSES)
+
+
+def class_skills(data, cls):
+    """The class's skill ids in the save-file order: skills.bin row order (u32 at 12 is the class).
+    The skills section of the .d2s ('if') holds one byte per one of these skills, in this order."""
+    return [i for i, r in enumerate(data._rows('skills'))
+            if struct.unpack_from('<I', r, 12)[0] == cls]
+
+
+def class_skill_count(data, cls):
+    return len(class_skills(data, cls))
+
+
+def _skill_tab_names():
+    """{class: {local tab: short name}} - the in-game tree tab bar labels, mined from the game
+    (MedianDB 2.14's tabName per tab). Loaded once, empty only when the file is gone."""
+    if not hasattr(_skill_tab_names, '_cache'):
+        try:
+            with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   'skilltabnames.json'), encoding='utf-8') as f:
+                _skill_tab_names._cache = json.load(f)
+        except Exception:
+            _skill_tab_names._cache = {}
+    return _skill_tab_names._cache
+
+
+def _skill_tab_name(note):
+    """A short tab title from a skilltabs.bin note, or None when the note is no name."""
+    if not note:
+        return None
+    low = note.lower()
+    if 'masteries' in low:
+        return 'Masteries'
+    if 'paragon' in low or 'ultimate' in low:
+        return 'Paragon & Ultimate'
+    if 'passives' in low:
+        return 'Passives'
+    lines = [x.strip() for x in note.split('\n') if x.strip()]
+    if not lines:
+        return None
+    last = lines[-1]
+    if last.startswith('All Skills require ') and last.endswith(' Form'):
+        return last[len('All Skills require '):-len(' Form')]
+    for suffix in ('Devotion', 'Form', 'Tree'):
+        if last.endswith(suffix):
+            return last
+    return None
+
+
+def skill_trees(data):
+    """{class: [(tab, name, [(row, col, sid, icon_cel)])]} - the in-game skill tree layout, from
+    the extracted game tables: skilldesc.bin holds the position (byte 2 = tree tab, 3 = row,
+    4 = column; tab 0 = the skill is not in any tree - an oSkill) and the icon cel (u16 at 22,
+    a frame of the class's icons-<code>.dc6 sheet), and skilltabs.bin the tab notes
+    (byte 0 = class, byte 1 = tab - 1, u16 at 2 = its string). Tabs are in game order."""
+    if hasattr(data, '_skill_trees'):
+        return data._skill_trees
+    srows = data._rows('skills')
+    sd_rows = data._rows('skilldesc')
+    trees = {c: {} for c in range(7)}
+    for sid, cls in data.skill_class.items():
+        if cls == 255 or cls not in trees:
+            continue
+        sd = struct.unpack_from('<H', srows[sid], 404)[0]
+        if not 0 < sd < len(sd_rows):
+            continue
+        r = sd_rows[sd]
+        trees[cls].setdefault(r[2], []).append((r[3], r[4], sid, struct.unpack_from('<H', r, 22)[0]))
+    notes = {}
+    try:
+        with open(os.path.join(data.folder, 'skilltabs.bin'), 'rb') as f:
+            b = f.read()
+        for i in range(struct.unpack_from('<I', b)[0]):
+            r = b[4 + 8 * i:12 + 8 * i]
+            try:
+                notes[(r[0], r[1])] = data.s(struct.unpack_from('<H', r, 2)[0])
+            except Exception:
+                pass
+    except Exception:
+        pass
+    out = {}
+    cnames = class_names(data)
+    short_names = _skill_tab_names()
+    for cls in range(7):
+        tabs = []
+        for tab in sorted(trees[cls]):
+            cells = sorted(trees[cls][tab])
+            short = short_names.get(cnames[cls]) if cls < len(cnames) else None
+            name = short.get(str(tab)) if isinstance(short, dict) else None
+            if name is None:
+                name = _skill_tab_name(notes.get((cls, tab - 1)))
+            if name is None:
+                name = T('he.skills_tree', 'Tree {n}', n=tab)
+            tabs.append((tab, name, cells))
+        out[cls] = tabs
+    data._skill_trees = out
+    data._skill_tab_notes = notes
+    return out
+
+
+def skill_tab_note(data, cls, tab):
+    """The raw skilltabs.bin note of a tree tab: the long caption the game shows under the tree
+    ("BOW DEVOTION (LOCKS OTHER DEVOTIONS)"). None when the game has no note for the tab."""
+    if getattr(data, '_skill_tab_notes', None) is None:
+        skill_trees(data)
+    return (data._skill_tab_notes or {}).get((cls, tab - 1))
 
 
 def max_level(data, cls):
@@ -338,6 +457,26 @@ class Character:
         if value == 0 and sid not in (12,):
             self.stats = [st for st in self.stats if not (st[0] == sid and st[2] == 0)]
         self.stats.sort(key=lambda st: st[0])
+
+    # ------------------------------------------------------------------ class / skills
+    def skill_levels(self):
+        """{skill id: hard-point level} of the character's own skills, from the 'if' section:
+        one byte per skill of the class, in skills.bin row order (the save's own order)."""
+        ids = class_skills(self.data, self.cls)
+        body = self.skills[2:]
+        return {sid: (body[i] if i < len(body) else 0) for i, sid in enumerate(ids)}
+
+    def set_skill_levels(self, levels):
+        """Rewrites the 'if' section: one byte per class skill (save order); ids missing from
+        `levels` become 0. Values are clamped to 0..255 (the save's own width)."""
+        body = bytes(max(0, min(255, int(levels.get(sid, 0)))) for sid in class_skills(self.data, self.cls))
+        self.skills = b'if' + body
+
+    def set_class(self, cls):
+        """Changes the class: the class byte in the header plus a fresh (all-zero) skills section of
+        the new class - the old levels belong to the previous class's skills and cannot be kept."""
+        self.head[0x28] = cls
+        self.set_skill_levels({})
 
     # ------------------------------------------------------------------ level
     def set_level(self, level):

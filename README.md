@@ -9,13 +9,15 @@ An offline item creator and character editor for **Median XL**, built on top of 
 - **Edit / Delete item**: edit any stash item in the creator and write it back in place. A backup is made before every change.
 - **Equipment and inventory next to the stash**: drag items between the stash, the inventory, the equipment slots and the mercenary.
 - **Character window** (in the style of the old Hero Editor): stats and level-up, inventory, waypoints and quests for Normal, Nightmare and Hell.
-- Safe writes: the game must be closed, every file is verified, and backups are kept.
+- Safe writes: the game may stay open — this build removes the editor's game-closed checks, every file is verified, and backups are kept.
 - Languages: English, French, Vietnamese (`lang/`).
 
 ## Install
 1. Download the latest `MXL-Capybara-Editor-v*.zip` from the [Releases](../../releases) page.
 2. Unzip it anywhere and run `MXL Capybara Editor.exe`.
-3. Close the game before you save any changes.
+3. Edit freely: the **Unrestricted** switch frees the values (the save format is the only limit) and adds a
+   raw stats list where any stat (id, param, value) can be added, edited or deleted on any item. You do not
+   need to close the game; changes show after its next save & exit / restart.
 
 ## Reporting a problem
 The editor keeps a log at `%LOCALAPPDATA%\MXL Capybara Editor\capybara.log`, which records saves, backups, imports and errors.

@@ -39,7 +39,7 @@ def dc6_frames(data):
 
 
 def palette(pal_dat):
-    """pal.dat: 256 × (B, G, R)."""
+    """pal.dat: 256 x (B, G, R)."""
     return [(pal_dat[i * 3 + 2], pal_dat[i * 3 + 1], pal_dat[i * 3]) for i in range(256)]
 
 

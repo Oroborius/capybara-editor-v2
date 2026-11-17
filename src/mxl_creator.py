@@ -14,6 +14,7 @@ Rules used (from the game's code and tables):
 - armor with Enhanced Defense: base defense = max + 1;
 - stats are saved sorted by (stat, param), same stat+param from several mods are added together.
 """
+import collections
 import os
 import random
 import re
@@ -25,6 +26,7 @@ from mxl_format_fix import body_kind
 from mxl_lang import T
 from mxl_rules import (mod_ranges, mods_stats, item_type_codes, is_innate_damage, runeword_row,
                        stat_range, unique_name, rare_name)
+from mxl_statnames import stat_text, param_kind, skilldesc_name
 
 QUALITY_ID = {'low': 1, 'normal': 2, 'superior': 3, 'magic': 4, 'set': 5, 'rare': 6, 'unique': 7, 'crafted': 8, 'tempered': 9}
 QUALITY_NAME = {v: k for k, v in QUALITY_ID.items()}
@@ -42,9 +44,61 @@ MAX_ILVL = 127  # 7 bits in the save format
 CRAFTED_AFFIXES = 4  # crafted items: 4 rare affixes (1-3 prefixes, 1-3 suffixes), as the game's crafted items
 FOLLOWERS = {s for lead, grp in STAT_GROUPS.items() for s in grp}
 
+# Median XL's cluster / container / vessel items (gem clusters, rune containers, the Container of
+# Knowledge, the shrine vessels). Their base rows carry no stackable flag, but the game still stores
+# a "Quantity:" magic attribute on them (stat 501, up to 1000) - these codes are the game's own fixed
+# item-code families; the trailing spaces some tables carry must not break the match ('asx ').
+CLUSTER_CONTAINER_RE = re.compile(r'(?:gc\d\d|asx|cosx|rc\d\d|ec\d\d|sic1|[a-r]0\+s)\Z', re.IGNORECASE)
+CLUSTER_QUANTITY_STAT = 501      # "Quantity:" (the Arcane Crystal count stat; the game shows it on clusters)
+CLUSTER_QUANTITY_MAX = 1000      # the attribute's own cap (10 bits stored, add 23)
+
+
+def is_cluster_container(code):
+    """Whether an item code is one of Median XL's gem clusters, rune containers or shrine vessels."""
+    return bool(code) and bool(CLUSTER_CONTAINER_RE.match(code.strip()))
+
+
+# Median XL's throwable barrels and crates ("Barrel of Apples", "Crate O' Souls"...): the game holds
+# them full at 1000, like the shrine vessels. Their codes span several families, so the item's own
+# name decides - data-driven, no code list to maintain.
+VESSEL_NAME_RE = re.compile(r'^(barrel|crate)\b', re.IGNORECASE)
+
+
+def is_vessel(d, code):
+    """A cluster / container / shrine vessel / barrel / crate: the items the game holds at Quantity 1000."""
+    if is_cluster_container(code):
+        return True
+    try:
+        name = (d.base(code).name or '').replace('\\n', '\n')
+        return any(VESSEL_NAME_RE.match(l.strip()) for l in name.split('\n'))
+    except Exception:
+        return False
+
+
+def stats_with_cluster_quantity(stats, value=CLUSTER_QUANTITY_MAX):
+    """The stat list with the "Quantity:" attribute set: the existing attribute is replaced in place,
+    otherwise the attribute is appended to the same list (in-place mutation: the returned list is
+    always the `stats` object itself)."""
+    value = max(0, min(CLUSTER_QUANTITY_MAX, int(value)))
+    for s in stats:
+        if s['id'] == CLUSTER_QUANTITY_STAT and not s.get('param'):
+            s['value'] = value
+            return stats
+    stats.append({'id': CLUSTER_QUANTITY_STAT, 'param': None, 'value': value})
+    return stats
+
 
 class CreateError(Exception):
     """Item that cannot be created with legit values (message for the user)."""
+
+
+def _plain(text):
+    """One-line text without the game's colour codes (for labels)."""
+    txt = str(text).replace('\\n', '\n')
+    while 'ÿc' in txt:
+        i = txt.index('ÿc')
+        txt = txt[:i] + txt[i + 3:]
+    return ' '.join(part.strip() for part in txt.split('\n') if part.strip())
 
 
 class StoreError(CreateError):
@@ -126,6 +180,15 @@ class Tables:
 
 def _write_stats(bw, stats, data):
     """Writes a stat list [{id, param, value}] (already merged and sorted) followed by 0x1FF."""
+    # belt and suspenders: merge same-(stat, param) entries here too (the game sums them; a leftover
+    # duplicate once summed past the save range in-game while each entry looked fine) - param 0 and
+    # no param are the same key
+    acc = {}
+    for s in stats:
+        k = (s['id'], s.get('param') or None)
+        acc[k] = acc.get(k, 0) + (s['value'] or 0)
+    stats = [dict(id=k[0], param=k[1], value=v) for k, v in
+             sorted(acc.items(), key=lambda kv: (kv[0][0], kv[0][1] or 0))]
     by_id = {}
     for s in stats:
         by_id.setdefault(s['id'], s)
@@ -413,7 +476,10 @@ class Mod:
             return [dict(id=sid, param=param if data.isc[sid]['param'] else None, value=v) for sid, v in out.items()]
         if not self.variable:
             return mods_stats([(prop, param, lo, hi)], data, 'min')
-        v = max(self.min, min(self.max, self.value))
+        if getattr(self, 'free', False) and self.value is not None:
+            v = self.value          # unrestricted: the chosen value, even outside the mod's own range
+        else:
+            v = max(self.min, min(self.max, self.value))
         return mods_stats([(prop, param, v, v)], data, 'min')
 
     def stat_ids(self, data):
@@ -421,6 +487,15 @@ class Mod:
 
 
 # --------------------------------------------------------------------------------------------- creator
+
+def _clean_orange(name):
+    """One-line display text (multi-line game strings joined, colour codes removed)."""
+    txt = str(name).replace('\\n', '\n')
+    while 'ÿc' in txt:
+        i = txt.index('ÿc')
+        txt = txt[:i] + txt[i + 3:]
+    return ' '.join(part.strip() for part in txt.split('\n') if part.strip())
+
 
 class Creator:
     """Catalogs and legit generation of items, on top of mxl_data.Data."""
@@ -676,8 +751,8 @@ class Creator:
         for x in rc['inputs']:
             if isinstance(x, tuple):
                 code, qty = x
-                nm = self.display_name(code).split(' — ')[0] if code in d.bases else code
-                names.append(f'{qty} × {nm}' if qty > 1 else nm)
+                nm = self.display_name(code).split(' - ')[0] if code in d.bases else code
+                names.append(f'{qty} x {nm}' if qty > 1 else nm)
             else:
                 t = int(x.split(':')[1])
                 names.append(d.itypes[t][0] if 0 <= t < len(d.itypes) else x)
@@ -1007,6 +1082,230 @@ class Creator:
                 out.append((code, b.name))
         return sorted(out, key=lambda x: x[1].lower())
 
+    # ---- raw (unrestricted) stat editing
+    def stat_bounds(self, sid):
+        """(lo, hi) of what the save format can hold for a stat (ItemStatCost save bits / add), or None when
+        the stat has no storage: the whole range the game's file format gives, not the game's own ranges."""
+        try:
+            ic = self.data.isc[sid]
+            if not ic.get('bits'):
+                return None
+        except (IndexError, KeyError, TypeError):
+            return None
+        add = ic.get('add') or 0
+        return -add, (1 << ic['bits']) - 1 - add
+
+    def storage_range(self, m):
+        """(lo, hi) a value of one variable mod can take and stay storable (its direct stat's ItemStatCost
+        bits / add), or None when the mod's value is not one stat's value (damage pairs, per-level...)."""
+        d = self.data
+        try:
+            a = {(x['id'], x.get('param')): x['value'] for x in mods_stats([(m.prop, m.param, m.min, m.min)], d, 'min')}
+            b = {(x['id'], x.get('param')): x['value'] for x in mods_stats([(m.prop, m.param, m.max, m.max)], d, 'min')}
+            ks = [k for k in a if k in b and a[k] == m.min and b[k] == m.max]
+            if len(ks) != 1:
+                return None
+            return self.stat_bounds(ks[0][0])
+        except Exception:
+            return None
+
+    def stat_choices(self):
+        """[(stat id, label)] of every stat the save format can hold, sorted by name: the list of the editor's
+        raw stat rows (unrestricted mode). Labels use the stat's tooltip text at value 1."""
+        cache = self.__dict__.get('_stat_choices')
+        if cache is None:
+            d = self.data
+            out = []
+            for sid in range(0x1FF):                   # the save stores a 9-bit stat id, 0x1FF is the end mark
+                try:
+                    ic = d.isc[sid]
+                    bits = ic.get('bits')
+                except (IndexError, KeyError, TypeError):
+                    continue
+                if not bits:
+                    continue
+                try:
+                    txt = stat_text(d, sid, None, value=1, desc=ic.get('desc'))
+                except Exception:
+                    txt = ''
+                if not txt:
+                    import mxl_statnames_ext
+                    txt = mxl_statnames_ext.fallback_label(sid)
+                out.append((sid, txt or f'(stat #{sid})'))          # clean labels: no id / bits / param numbers
+                # (the picker's status shows the picked stat's numbers when one is picked)
+            # the game gives several stats the same tooltip text (e.g. the chance-to-cast stats 192 and
+            # 196 both read '%d%% Chance to cast level %d %s on Kill'): picking by text must stay
+            # deliberate, so the later duplicates are marked ' (2)', ' (3)'... and among identical
+            # labels the stats with a skill param (the ones with a skill dropdown) come first
+            groups = {}
+            for sid, lab in out:
+                groups.setdefault(lab.casefold(), []).append(sid)
+            labelled = {}
+            for sids in groups.values():
+                if len(sids) > 1:
+                    order = sorted(sids, key=lambda s: (0 if param_kind(s) else 1, s))
+                    texts = dict(out)
+                    labelled[order[0]] = texts[order[0]]
+                    for n, s in enumerate(order[1:], 2):
+                        labelled[s] = f'{texts[s]} ({n})'
+                else:
+                    labelled[sids[0]] = dict(out)[sids[0]]
+            out = [(sid, labelled[sid]) for sid, _t in out]
+            cache = self._stat_choices = sorted(out, key=lambda x: (x[1].lower(), x[0]))
+        return cache
+
+    def orange_texts(self):
+        """Every orange text the game draws on items, with the hidden markers and the paired effect
+        stats the game's own sources write alongside it: [{'label', 'display', 'hidden', 'effects',
+        'skilldesc'}], sorted by label.
+        'display' goes into the item's own stat list as-is (id / param / value); 'hidden' is the list of
+        hidden-marker options the data co-occurs with this exact display entry (each option
+        {'id', 'param', 'value', 'label'}); 'effects' are the MECHANIC stats of the same source row - the
+        real attributes that make the text true (an oskill grant, a stance counter, the companion text
+        block), each {'id', 'param', 'value', 'label'} with the value the game's own row writes.
+        'skilldesc' True for the proc stats, whose display IS the
+        hidden effect (the param picks which skill proc it names).
+
+        Four string stats carry orange text (param = string-table id, value set by the source row):        - 385 desc_orange: the uniques' orange flavor text (48 via prop 156);
+        - 375 desc_top: the top text block (374 uniques + 2 set items + 50 runewords + 3 magic suffixes
+          + 18 automagic);
+        - 377 desc_bottom: the bottom block (131 uniques + 1 runeword);
+        - 378 desc_less_top: the secondary top block (32 uniques + 1 automagic).
+        The proc stats (200 Mega Impact, 260 Thunderfury, 266/277 Area Effect Attack, 371 Amazing Grace)
+        and the plain orange flags (257 Vessel mod, 288 Blood Hatred, 418 Black Road upgrade) come from
+        the same scan of every source table (uniques, set items, runewords, affixes)."""
+        cache = self.__dict__.get('_orange_texts')
+        if cache is not None:
+            return cache
+        d = self.data
+        DISPLAY = (385, 375, 377, 378, 200, 260, 266, 277, 371, 257, 288, 418)
+        MARKERS = (490, 491, 492, 493, 494, 478, 450, 473)
+        PROC = (200, 260, 266, 277, 371)
+        # the stats the game pairs with an orange text to MAKE IT TRUE (proven from the game's own
+        # rows): 151 is THE hidden-mechanic stat (param = mechanic id, value = level: auras, stances,
+        # morphs - Khazra Plate's Demon Blood aura is 151/1900/1), 97/383/393 grant oskills, 98 sets a
+        # state, 411/450/452-455 are the counters that ride along. Everything else in a carrier row is
+        # that item's own mods, not part of the text's effect.
+        MECH = (97, 98, 151, 383, 393, 411, 450, 452, 453, 454, 455)
+        hidden_names = self._marker_names(MARKERS)
+        choices = dict(self.stat_choices())            # the named stats the save format can hold
+
+        def stat_name(sid):
+            nm = choices.get(sid)
+            if nm:
+                return nm
+            import mxl_statnames_ext
+            return mxl_statnames_ext.fallback_label(sid) or f'stat #{sid}'
+
+        def stats_of(mods):
+            """[(stat, param, value)] of a source row's mods: every stat, display and effect alike."""
+            out = []
+            for m in mods or []:
+                for s, f in zip(d.props[m['prop']], d.prop_funcs[m['prop']]):
+                    if s >= 0:
+                        out.append((s, m['param'], m['min']))
+            return out
+
+        found = {}      # (stat, param, value) -> {'labels': set(), 'markers': set(), 'effects': set()}
+        for rows in (self.uniques_source(), self.set_source(), self.runeword_source(),
+                     self.affix_sources()):
+            for row in rows:
+                sts = stats_of(row)
+                disp = [x for x in sts if x[0] in DISPLAY]
+                if not disp:
+                    continue
+                hid = [x for x in sts if x[0] in MARKERS]
+                for x in disp:
+                    e = found.setdefault(x, {'labels': set(), 'markers': set(), 'effects': set()})
+                    for h in hid:
+                        e['markers'].add(h)
+                    for o in sts:
+                        if (o[0], o[1]) == (x[0], x[1]) or o[0] in MARKERS:
+                            continue         # the text itself, and the hidden dropdown's markers
+                        if o[0] in MECH or o[0] in DISPLAY:   # the mechanic + companion text blocks
+                            e['effects'].add(o)
+
+        out = []
+        for (sid, param, val), e in sorted(found.items()):
+            if sid in PROC:
+                try:
+                    ic = d.isc[sid]
+                except (IndexError, KeyError, TypeError):
+                    continue
+                desc = _clean_orange(ic.get('desc') or f'(stat #{sid})')
+                sk = skilldesc_name(d, param) or f'skilldesc #{param}'
+                label = f'{desc} (skill: {sk})'
+                out.append(dict(label=label, display=dict(id=sid, param=param, value=val),
+                                hidden=[], effects=[], skilldesc=True))
+                continue
+            if sid in (257, 288, 418):
+                try:
+                    ic = d.isc[sid]
+                except (IndexError, KeyError, TypeError):
+                    continue
+                desc = _clean_orange((ic.get('desc') or f'(stat #{sid})').splitlines()[0])
+                out.append(dict(label=f'{desc} (flag)', display=dict(id=sid, param=None, value=val),
+                                hidden=[], effects=[], skilldesc=False))
+                continue
+            try:
+                txt = d.s(param)
+            except Exception:
+                txt = None
+            if not txt:
+                continue
+            label = _clean_orange(' / '.join(part.strip() for part in txt.splitlines()
+                                             if part.strip()))[:200]
+            hidden = []
+            for (hs, hp, hv) in sorted(e['markers']):
+                name = hidden_names.get(hs) or f'stat #{hs}'
+                hidden.append(dict(id=hs, param=hp if hp else None, value=hv,
+                                   label=f'{name} (param {hp}, value {hv})'))
+            effects = []
+            for (es, ep, ev) in sorted(e['effects']):
+                nm = stat_name(es)
+                effects.append(dict(id=es, param=ep if ep else None, value=ev,
+                                    label=f'{nm} (param {ep}, value {ev})' if ep else f'{nm} = {ev}'))
+            out.append(dict(label=label, display=dict(id=sid, param=param, value=val),
+                            hidden=hidden, effects=effects, skilldesc=False))
+        cache = self._orange_texts = sorted(out, key=lambda t: t['label'].lower())
+        return cache
+
+    def uniques_source(self):
+        """[mods] of every unique row."""
+        return [u['mods'] for _i, _n, u in self.uniques()]
+
+    def set_source(self):
+        """[mods] of every set-item row."""
+        return [r['mods'] for r in self.data.set_items]
+
+    def runeword_source(self):
+        """[mods] of every runeword row."""
+        return list(self.data.runeword_mods)
+
+    def affix_sources(self):
+        """[mods] of every affix row (magic prefix / suffix / automagic)."""
+        out = []
+        for v in self.data.affixes.values():
+            out.extend(r['mods'] for r in v)
+        return out
+
+    def _marker_names(self, sids):
+        """{stat id: label} of the hidden-marker stats (from the editor's own fallback names)."""
+        import mxl_statnames_ext
+        out = {}
+        for sid in sids:
+            try:
+                ic = self.data.isc[sid]
+            except (IndexError, KeyError, TypeError):
+                continue
+            txt = None
+            try:
+                txt = stat_text(self.data, sid, None, value=1, desc=ic.get('desc'))
+            except Exception:
+                pass
+            out[sid] = txt or mxl_statnames_ext.fallback_label(sid) or f'hidden stat #{sid}'
+        return out
+
     # ---- building
     def new_spec(self, quality, code=None, row=None):
         """Default spec. quality: normal, superior, magic, rare, set, unique, runeword."""
@@ -1072,6 +1371,9 @@ class Creator:
         for m in out:
             if m.variable and m.source in spec['rolls']:
                 m.value = spec['rolls'][m.source]
+        if spec.get('unrestricted'):                          # free mode: every mod's value is taken as set
+            for m in out:
+                m.free = True
         return out
 
     def _fit_storage(self, mods):
@@ -1261,15 +1563,33 @@ class Creator:
             raise CreateError(T('cr.err.corrupt', 'this item cannot be corrupted that way'))
         for m in self.mods(spec):
             if m.variable and not m.min <= m.value <= m.max:
+                if spec.get('unrestricted'):
+                    spec.setdefault('_warning', T('cr.warn.unrestricted', 'unrestricted: a value is outside the '
+                                                  "game's own ranges, kept as it is"))
+                    continue
                 raise CreateError(T('cr.err.range', 'value {v} out of range {lo}-{hi}', v=m.value, lo=m.min, hi=m.max))
 
     def build(self, spec):
         """(blob, record) of a validated spec: bytes of the item and its socketed items."""
         self.validate(spec)
+        blob, rec = self._build(spec)
+        try:
+            from mxl_format_fix import parse_item
+            parse_item(blob, self.data)      # the written item must read back exactly (a bad write once
+        except Exception as e:               # corrupted a stash: never let an unreadable blob reach a file)
+            raise CreateError(T('cr.err.verify', 'the encoded item failed verification ({error}); '
+                                                  'nothing was written', error=e))
+        return blob, rec
+
+    def _build(self, spec):
         d, q, code = self.data, spec['quality'], spec['code']
         b = d.base(code)
         t = self.t.item.get(code, {})
-        simple = bool(t.get('compact')) and q == 'normal' and b.kind == 'misc'
+        # simple (compact) misc items are saved without a stat list; one is chosen only when its own stat
+        # list is empty (unrestricted editing adds stats through a full record instead)
+        simple = bool(t.get('compact')) and q == 'normal' and b.kind == 'misc' and not spec.get('extra')
+        if is_cluster_container(code):
+            simple = False       # the game stores clusters / containers / vessels with their stat list (Quantity:)
         flags = FLAG_IDENTIFIED | FLAG_ALWAYS
         if simple:
             return encode_item(dict(flags=flags | FLAG_SIMPLE, code=code), d), None
@@ -1315,6 +1635,10 @@ class Creator:
         rw = [s for m in mods if m.source.split(':')[0] == 'rw' for s in m.stats(d)]
         own += [dict(x) for x in spec.get('extra') or []]              # kept as they were on an edited item
         own = [s for s in merge_stats(own) if d.isc[s['id']]['bits']]
+        if is_vessel(d, code):              # a fresh vessel / barrel / crate starts full (Quantity: 1000)
+            own = stats_with_cluster_quantity(own)
+        if spec.get('_drop'):                 # edited item: attributes the user deleted (see the editor)
+            own = [s for s in own if (s['id'], s.get('param')) not in spec['_drop']]
         if '_keep_zero' in spec:              # edited item: a stat its mods give but the item had not cancels out
             own = [s for s in own if s['value'] or (s['id'], s.get('param')) in spec['_keep_zero']]
         rec['stats'] = own
@@ -1460,7 +1784,11 @@ class Creator:
                     left = [x for x in left if (x['id'], x.get('param')) not in rc_ids]
                 spec['rare_prefixes'], spec['rare_suffixes'] = self._infer_affixes(it, it['code'], spec['ilvl'], left)
         elif q is None:
-            raise CreateError(T('cr.err.simple', 'simple items (runes, gems, keys...) have nothing to edit'))
+            # simple item (rune, gem, key, rechargeable...): readable/kept as a normal item, with no stat list
+            # of its own - the raw stat rows of unrestricted editing add stats to it like to any other item
+            if not it.get('code') or it.get('code') not in d.bases:
+                raise CreateError(T('cr.err.simple', 'simple items (runes, gems, keys...) have nothing to edit'))
+            spec = self.new_spec('normal', it['code'])
         else:
             raise CreateError(T('cr.err.not_editable_q', '{quality} items cannot be edited here', quality=T(f'cr.quality.{q}', str(q))))
         spec['ilvl'] = it.get('ilvl') or spec['ilvl']
@@ -1523,7 +1851,10 @@ class Creator:
             dv = have.get(k, 0) - made.get(k, 0)
             if dv or (k not in made and have.get(k) == 0):
                 extra.append(dict(id=k[0], param=k[1], value=dv))
-        # runeword list: same rule
+        # the stats the item holds beyond what its own mods produce (upgrades, corruption, an imported
+        # copy...): the ones the status line reports as kept while they are still on the item and the
+        # user has not taken the value over
+        spec['_extra_kept'] = {k for k in have if have[k] != made.get(k, 0)}
         made_rw = {}
         for m in self.mods(spec):
             if m.source.startswith('rw:'):
@@ -1668,7 +1999,7 @@ class Creator:
     # ---- display names and mystic orbs
     def display_name(self, code):
         """Name as the game shows it: multi-line names are drawn bottom line on top, so "Mystic Orb\nKara's Trinket"
-        reads "Kara's Trinket — Mystic Orb"."""
+        reads "Kara's Trinket - Mystic Orb"."""
         b = self.data.base(code)
         raw = (b.name_raw or b.name or '').replace('\\n', '\n')
         lines = []
@@ -1683,7 +2014,7 @@ class Creator:
             return b.name or code
         if len(lines) == 1:
             return lines[0]
-        return lines[-1] + ' — ' + ' / '.join(reversed(lines[:-1]))
+        return lines[-1] + ' - ' + ' / '.join(reversed(lines[:-1]))
 
     def _orb_table(self):
         """Median XL Sigma mysticorbs.bin: one 143-byte row per mystic orb, in the order of the 'myst' items of
@@ -1752,7 +2083,7 @@ class Creator:
                 break
             keep.append(line)
         text = '; '.join(keep or self.item_desc(code)[:1])
-        return text if len(text) <= limit else text[:limit - 1] + '…'
+        return text if len(text) <= limit else text[:limit - 3] + '...'
 
     def orb_effects(self, code):
         """(lines of text, max per item) of a mystic orb, or None for other items."""

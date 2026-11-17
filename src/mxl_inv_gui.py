@@ -1,6 +1,6 @@
 """Equipment and inventory of the selected character shown in the main window, next to the stash.
 
-- Equipment (paperdoll, character or mercenary, weapon set I / II) above the 15×10 inventory.
+- Equipment (paperdoll, character or mercenary, weapon set I / II) above the 15x10 inventory.
 - Drag items between the stash grid, the inventory and the equipment slots, in any direction; drag inside the
   inventory or between slots to move them there. While dragging from the character, hovering a stash page tab or
   the Shared / Character button switches to it, as in the stash.
@@ -80,14 +80,13 @@ class MainInventory:
             c = max(22, min(c, room_w // INV_W, int(room_h / (INV_H + DOLL_H))))
         except tk.TclError:
             pass
-        self.d2 = bool(getattr(app, 'd2', False))
-        if self.d2:                                   # D2 look: same scale as the stash panel, like in game
-            c = app.cell
+        self.d2 = D2.char_active()          # the standard Diablo II character screen (base-game art)
+        if self.d2 and getattr(app, 'd2', False):
+            c = app.cell                    # same scale as the stash panels, like in game
         self.cell = c
         self.k = c / D2.ART_CELL
-        self.boxes = ({slot: (x / D2.ART_CELL, y / D2.ART_CELL, D2.GEAR_SIZE[f][0] / D2.ART_CELL,
-                              D2.GEAR_SIZE[f][1] / D2.ART_CELL) for slot, (f, _p, x, y) in D2.GEAR.items()}
-                      if self.d2 else DOLL)
+        self.boxes = ({slot: (x / D2.ART_CELL, y / D2.ART_CELL, w / D2.ART_CELL, h / D2.ART_CELL)
+                       for slot, (x, y, w, h) in D2.GEAR_D2.items()} if self.d2 else DOLL)
         fr = ttk.Frame(body, padding=(10, 0, 0, 0))
         fr.pack(side='left', fill='y', before=right)
         self.frame = fr
@@ -104,14 +103,14 @@ class MainInventory:
         for n in (1, 2):
             ttk.Radiobutton(row, text='I' if n == 1 else 'II', value=n, variable=self.wset,
                             command=self.redraw).pack(side='left', padx=2)
-        if self.d2:                                   # the game's inventory panel; the grid sits on its own grid
+        if self.d2:                                   # the game's character screen; the grid sits on its own grid
             k = self.k
             self.doll = tk.Canvas(fr, width=round(D2.PANEL_W * k), height=round(D2.PANEL_H * k), bg='#000000',
                                   highlightthickness=0)
             self.doll.pack(anchor='nw', pady=(4, 0))
             self.inv_label = ttk.Label(fr, text='')
-            self.canvas = tk.Canvas(fr, width=INV_W * c, height=INV_H * c, bg=D2.CELL_BG, highlightthickness=0)
-            self.canvas.place(in_=self.doll, x=round(D2.INV_GRID[0] * k), y=round(D2.INV_GRID[1] * k))
+            self.canvas = tk.Canvas(fr, width=INV_W * c, height=INV_H * c, bg=D2.CHAR_CELL_BG, highlightthickness=0)
+            self.canvas.place(in_=self.doll, x=round(D2.CHAR_GRID[0] * k), y=round(D2.CHAR_GRID[1] * k))
             self.canvas.tk.call('raise', self.canvas._w)
         else:
             self.doll = tk.Canvas(fr, width=int(DOLL_W * c) + 1, height=int(DOLL_H * c) + 1, bg=BG, highlightthickness=0)
@@ -127,7 +126,7 @@ class MainInventory:
             cv.bind('<Motion>', self.on_motion)
             cv.bind('<Leave>', lambda e: self.drag is None and self.app.show_status())
         self.hint = ttk.Label(fr, text=T('inv.hint', 'Drag items between the stash, the inventory and the equipment. '
-                                         'The game must be closed; a backup is made before the first change.'),
+                                         'It can stay open while the game runs; a backup is made before the first change.'),
                               justify='left', wraplength=INV_W * c)
         if not self.d2:
             self.hint.pack(anchor='w', pady=(6, 0))
@@ -225,17 +224,19 @@ class MainInventory:
         merc = self.is_merc()
         if ch is None:
             name = self.app.char_combo.get() if hasattr(self.app, 'char_combo') else ''
-            self.title.configure(text=T('inv.title_error', 'Equipment — {name}: {error}', name=name, error=self.error)
-                                 if self.error else T('inv.title_none', 'Equipment — choose a character'))
+            self.title.configure(text=T('inv.title_error', 'Equipment - {name}: {error}', name=name, error=self.error)
+                                 if self.error else T('inv.title_none', 'Equipment - choose a character'))
             self.inv_label.configure(text=T('ch.tab.inventory', 'Inventory'))
         else:
-            self.title.configure(text=T('inv.title', 'Equipment — {name}, level {level}', name=ch.name, level=ch.level))
-            self.inv_label.configure(text=T('inv.inv_title', 'Inventory — {name}', name=ch.name))
+            self.title.configure(text=T('inv.title', 'Equipment - {name}, level {level}', name=ch.name, level=ch.level))
+            self.inv_label.configure(text=T('inv.inv_title', 'Inventory - {name}', name=ch.name))
         if self.d2:
             try:
                 return self.redraw_d2()
             except Exception as e:
                 print('D2 look (inventory) drawing failed:', e)
+                self.d2 = False                    # plain layout from now on (also for the hit tests)
+                self.boxes = DOLL
         # paperdoll
         dv = self.doll
         dv.delete('all')
@@ -269,48 +270,49 @@ class MainInventory:
             self.draw_item(cv, it, x0, y0, x0 + w * c, y0 + h * c, e is self.selected)
 
     def redraw_d2(self):
-        """D2 look: the game's inventory panel, gear frames (silhouette when empty), weapon-set tabs, gold."""
+        """The standard Diablo II character screen (the game's own base art): the paperdoll with every
+        equipment box and the I / II weapon-set tabs, the character's gold, and the 15 x 10 inventory drawn
+        in the game's own grid style (dark cells, grey borders) over the stone below the paperdoll."""
         k, c, ch = self.k, self.cell, self.ch
         merc = self.is_merc()
         if ch is None:
             name = self.app.char_combo.get() if hasattr(self.app, 'char_combo') else ''
-            self.title.configure(text=T('inv.title_error', 'Equipment — {name}: {error}', name=name, error=self.error)
-                                 if self.error else T('inv.title_none', 'Equipment — choose a character'))
+            self.title.configure(text=T('inv.title_error', 'Equipment - {name}: {error}', name=name, error=self.error)
+                                 if self.error else T('inv.title_none', 'Equipment - choose a character'))
         else:
-            self.title.configure(text=T('inv.title', 'Equipment — {name}, level {level}', name=ch.name, level=ch.level))
-        a = D2.art()
+            self.title.configure(text=T('inv.title', 'Equipment - {name}, level {level}', name=ch.name, level=ch.level))
+        a = D2.char_art()
         dv = self.doll
         dv.delete('all')
-        dv.create_image(0, 0, anchor='nw', image=D2.photo(a.panel('character-inventory'),
-                                                           (round(D2.PANEL_W * k), round(D2.PANEL_H * k))))
-        try:
-            dv.create_image(round(D2.CLOSE_INV[0] * k), round(D2.CLOSE_INV[1] * k), anchor='nw',
-                            image=D2.photo(a.frame('buttons\\close', 0), (round(23 * k), round(23 * k))))
-        except Exception:
-            pass
+        dv.create_image(0, 0, anchor='nw', image=D2.photo(a.char_panel_d2(),
+                                                          (round(D2.PANEL_W * k), round(D2.PANEL_H * k))))
         eq = ch.equipped(merc) if ch is not None else {}
-        boxes = self.visible_boxes()
-        for box in boxes:
-            sil, plain, x, y = D2.GEAR[box]
+        for box in self.visible_boxes():
+            x, y, w, h = D2.GEAR_D2[box]
             e = eq.get(self.slot_of(box))
-            dv.create_image(round(x * k), round(y * k), anchor='nw', image=D2.gear_photo(plain if e is not None else sil, k))
             if e is not None:
-                w, h = D2.GEAR_SIZE[sil]
-                i = D2.GEAR_INSET
+                i = D2.GEAR_D2_INSET
                 self.draw_item_d2(dv, e.it, (x + i) * k, (y + i) * k, (x + w - i) * k, (y + h - i) * k,
                                   e is self.selected, check_req=not merc)
-        if 4 in boxes or 5 in boxes:
-            f = D2.WSET_TAB[0] if self.wset.get() == 1 else D2.WSET_TAB[1]
-            for tx, ty in D2.WSET_TABS:
-                dv.create_image(round(tx * k), round(ty * k), anchor='nw', image=D2.gear_photo(f, k))
+        if 4 in self.visible_boxes() or 5 in self.visible_boxes():
+            tw, th = D2.WSET_TAB_D2
+            for tx, ty in D2.WSET_TABS_D2.get(self.wset.get(), ()):     # the game's own tabs, active set marked
+                dv.create_rectangle(round(tx * k) + 1, round(ty * k) + 1,
+                                    round((tx + tw) * k) - 1, round((ty + th) * k) - 1,
+                                    outline='#%02x%02x%02x' % D2.GOLD_TXT, width=2)
         if ch is not None and not merc:
-            D2.draw_text(dv, D2.INV_GOLD[0] * k, D2.INV_GOLD[1] * k, D2.fmt_gold(ch.stat(14)), k, anchor='w')
+            try:
+                dv.create_image(round(D2.CHAR_GOLD_BTN[0] * k), round(D2.CHAR_GOLD_BTN[1] * k), anchor='nw',
+                                image=D2.photo(a.base_frame('goldbtn.DC6', 0), (round(19 * k), round(19 * k))))
+            except Exception:
+                pass
+            D2.draw_text(dv, D2.CHAR_GOLD[0] * k, D2.CHAR_GOLD[1] * k, D2.fmt_gold(ch.stat(14)), k, anchor='w')
         cv = self.canvas
         cv.delete('all')
-        gx, gy = D2.INV_GRID
-        cv.create_image(0, 0, anchor='nw', image=D2.photo(
-            a.panel('character-inventory'), (INV_W * c, INV_H * c),
-            (gx, gy, gx + INV_W * D2.ART_CELL, gy + INV_H * D2.ART_CELL)))
+        for yy in range(INV_H):                     # the game's grid style instead of a panel crop
+            for xx in range(INV_W):
+                cv.create_rectangle(xx * c, yy * c, (xx + 1) * c, (yy + 1) * c,
+                                    fill=D2.CHAR_CELL_BG, outline=D2.CHAR_GRID_LINE)
         if ch is None:
             return
         for e in ch.inventory():
@@ -325,7 +327,7 @@ class MainInventory:
             unmet = check_req and char is not None and requirements_unmet(it, d, char)
         except Exception:
             unmet = False
-        bg = D2.UNMET_BG if unmet else D2.CELL_BG
+        bg = D2.UNMET_BG if unmet else D2.CHAR_CELL_BG
         fill = blend(SELECTION, bg, 0.14) if sel else bg
         col = item_color(it, d)
         if unmet or sel:
@@ -341,14 +343,15 @@ class MainInventory:
                            width=max(20, x1 - x0 - 6), font=('Segoe UI', 8), justify='center')
 
     def wset_tab_at(self, x, y):
-        """Weapon set (1 / 2) of the "I II" tab under (x, y) of the D2 panel, or None."""
+        """Weapon set (1 / 2) of the "I" / "II" tab under (x, y) of the D2 panel, or None."""
         if not self.d2 or not any(b in self.visible_boxes() for b in (4, 5)):
             return None
         k = self.k
-        _a, _b, tw, th = D2.WSET_TAB
-        for tx, ty in D2.WSET_TABS:
-            if tx * k <= x < (tx + tw) * k and ty * k <= y < (ty + th) * k:
-                return 1 if x < (tx + tw / 2) * k else 2
+        tw, th = D2.WSET_TAB_D2
+        for n, tabs in D2.WSET_TABS_D2.items():
+            for tx, ty in tabs:
+                if tx * k <= x < (tx + tw) * k and ty * k <= y < (ty + th) * k:
+                    return n
         return None
 
     # ------------------------------------------------------------------ hit tests
@@ -451,7 +454,7 @@ class MainInventory:
             w, h = self.size(it)
             self._grid_box(self.canvas, c, INV_W, INV_H, where[1], where[2], w, h, err is None)
             dest = T('inv.inv_at', 'inventory ({x}, {y})', x=where[1], y=where[2])
-        self.app.status.configure(text=f'{clean(it["name"])} → {dest}' if err is None else
+        self.app.status.configure(text=f'{clean(it["name"])} -> {dest}' if err is None else
                                   T('inv.cannot_drop', 'Cannot drop here: {error}', error=err))
 
     def _cancel_tab_hover(self):
@@ -495,7 +498,7 @@ class MainInventory:
                 where = slot_name(e.it['equipped'], T('inv.equipped', 'equipped')) + (T('ch.merc_suffix', ' (mercenary)') if merc else '')
             else:
                 where = T('inv.inv_at', 'inventory ({x}, {y})', x=e.it['x'], y=e.it['y'])
-            self.app.status.configure(text=f'{clean(e.it["name"])} — {where}')
+            self.app.status.configure(text=f'{clean(e.it["name"])} - {where}')
         else:
             self.app.show_status()
 
@@ -545,7 +548,7 @@ class MainInventory:
             w, h = self.size(it)
             x, y, err = t
             self._grid_box(app.canvas, app.cell, STASH_COLS, STASH_ROWS, x, y, w, h, err is None)
-            app.status.configure(text=T('inv.to_stash_at', '{item} → stash page {page} ({x}, {y})', item=clean(it['name']),
+            app.status.configure(text=T('inv.to_stash_at', '{item} -> stash page {page} ({x}, {y})', item=clean(it['name']),
                                         page=app.page() + 1, x=x, y=y) if err is None
                                  else T('inv.cannot_drop', 'Cannot drop here: {error}', error=err))
         else:
@@ -627,7 +630,7 @@ class MainInventory:
             if select_stash is None:
                 self.show_detail()
         baks = [os.path.basename(b) for b in baks if b]
-        app.status.configure(text=msg + (T('cr.backup', ' — backup: {file}', file=', '.join(baks)) if baks else ''))
+        app.status.configure(text=msg + (T('cr.backup', ' - backup: {file}', file=', '.join(baks)) if baks else ''))
 
     def _error(self, title, err):
         messagebox.showerror(title, str(err), parent=self.app.root)

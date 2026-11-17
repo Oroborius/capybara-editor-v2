@@ -11,6 +11,7 @@ rm -rf "$OUT"
 mkdir -p "$OUT/lang"
 cp -r "$BASE_DIR/_internal" "$OUT/_internal"
 cp "$ROOT"/lang/*.json "$OUT/lang/"
+cp "$ROOT"/src/*.json "$OUT/_internal/"          # data files read next to the modules (dirname(__file__))
 "$PY310" "$ROOT/src/repack.py" "$BASE_EXE" "$OUT/$APP_TITLE.exe" --icon="$ROOT/src/capybara.ico"
 if command -v zip >/dev/null 2>&1; then
     ZIP="$ROOT/dist/windows/MXL-Capybara-Editor-V2-windows.zip"

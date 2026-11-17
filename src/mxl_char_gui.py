@@ -19,7 +19,20 @@ import mxl_char as MC
 from mxl_char import Character, CharError, SLOT_NAMES, MERC_SLOTS, INV_W, INV_H, ACTS, WAYPOINTS, DIFFICULTIES
 from mxl_char import slot_name, difficulty_name
 from mxl_lang import T
-from mxl_creator_gui import CreatorWindow, PreviewPanel, PreviewHost, clean
+from mxl_creator_gui import CreatorWindow, PreviewPanel, PreviewHost, clean, clamp_window
+
+# the Skills tab's game-like look: near-black stone, the icons and colours of the game itself
+SK_BG = '#0b0a08'
+SK_CELL = '#151310'
+SK_PLATE = '#171208'                 # the tree plates of the vertical tab bar
+SK_EDGE = '#4a3f26'                  # gold-ish stone highlight (selected plate / node frames)
+SK_OFF = '#241d10'                   # dim stone (unselected plate)
+SK_NODE = '#3a2c12'                  # the dim frame around a skill node
+SK_STONE = '#141008'                 # the character screen's section boxes
+SK_CELL_W, SK_CELL_H = 118, 116      # the game web's own pitch (its 3 columns span 360px, rows ~117)
+PAD = 22                         # the web's own inset: the art starts inside the panel
+HE_GOLD_RGB = (216, 194, 122)        # HE_GOLD as an RGB triple for the game-font renderer
+_SKILL_ICON_CACHE = {}               # (data folder, class) -> {sid: PhotoImage}
 
 # paperdoll: slot -> (x, y, w, h) in cells; weapon set II uses the same boxes as set I
 DOLL = {1: (4.5, 0, 2, 2), 2: (7, 1, 1, 1), 3: (4.5, 2.5, 2, 3), 8: (4.5, 6, 2, 1),
@@ -48,10 +61,26 @@ class CharacterWindow:
         self.sel_slot = None          # slot number of the selected box (even when empty)
         self.drag = None
         self.icons = {}
-        self.top = tk.Toplevel(app.root)
-        self.top.title(f'Median XL Capybara Editor V2 — {self.ch.name}')
+        import mxl_tabs
+        old = mxl_tabs.built_owner('Character')
+        if old is not None:
+            same = getattr(old, 'ch', None) is not None and \
+                os.path.abspath(old.ch.path) == os.path.abspath(self.ch.path)
+            try:
+                dirty = old.dirty()
+            except Exception:
+                dirty = False
+            if same or dirty:
+                mxl_tabs.focus_existing('Character')
+                return          # this character (or its unsaved edits) is already showing: just focus it
+            # a different character was picked in the dropdown: rebuild the tab with the new data
+            self.top = mxl_tabs.host_window(app, 'Character', owner=self, replace=True)
+        else:
+            self.top = mxl_tabs.host_window(app, 'Character', owner=self)
+        self.top.title(f'Median XL Capybara Editor V2 - {self.ch.name}')
         self.top.geometry('1180x930')
         self.top.configure(bg=HE_BG)
+        self.top.after_idle(lambda: clamp_window(self.top, size=(1180, 930)))
         try:
             import mxl_he_art
             import sys
@@ -83,12 +112,15 @@ class CharacterWindow:
         self.body = body
         self.st_tab = tk.Frame(body, bg=HE_BG)
         self.eq_tab = ttk.Frame(body, padding=6)
+        self.sk_tab = tk.Frame(body, bg=HE_BG)
         self.wp_tab = tk.Frame(body, bg=HE_BG)
         self.q_tab = tk.Frame(body, bg=HE_BG)
-        self.pages = {'stats': self.st_tab, 'inventory': self.eq_tab, 'waypoints': self.wp_tab, 'quests': self.q_tab}
+        self.pages = {'stats': self.st_tab, 'inventory': self.eq_tab, 'skills': self.sk_tab,
+                      'waypoints': self.wp_tab, 'quests': self.q_tab}
         self.tab = tk.StringVar(value='stats')
         self.tab_buttons = []
         for key, text in (('stats', T('ch.tab.stats', 'Stats')), ('inventory', T('ch.tab.inventory', 'Inventory')),
+                          ('skills', T('ch.tab.skills', 'Skills')),
                           ('waypoints', T('ch.tab.waypoints', 'Waypoints')), ('quests', T('ch.tab.quests', 'Quests'))):
             rb = tk.Radiobutton(tabbar, text=text, value=key, variable=self.tab, indicatoron=0, font=('Times New Roman', 12),
                                 underline=0, bd=1, relief='raised', padx=8, pady=2, bg='#e8e8e8', selectcolor='#ffffff',
@@ -110,6 +142,7 @@ class CharacterWindow:
         tk.Checkbutton(tabbar, text=T('ch.dark', 'Dark mode'), variable=self.dark, command=self.apply_theme, font=('Times New Roman', 12),
                        bg='#000000', fg=HE_GOLD, selectcolor='#000000', activebackground='#000000',
                        activeforeground=HE_GOLD, bd=0, highlightthickness=0).pack(side='left', padx=(14, 0), pady=(0, 3))
+        self._build_skills()
         self._build_equipment()
         self._build_progress()
         self.apply_theme(save=False)
@@ -206,10 +239,14 @@ class CharacterWindow:
             cv.bind('<Button-1>', self.on_press)
             cv.bind('<B1-Motion>', self.on_drag)
             cv.bind('<ButtonRelease-1>', self.on_release)
+            cv.bind('<Double-Button-1>', self.on_double)
+        # window-level binding: the tab-hosted page forwards it to the root window, so Del works
+        # wherever the focus is; the handler only acts when the pointer is over these canvases
+        self.top.bind('<Delete>', self.on_delete_key, add='+')
         btns = ttk.Frame(left)
         btns.pack(fill='x', pady=(8, 0))
         for text, cmd in ((T('ch.btn.to_stash', 'To stash'), self.to_stash), (T('ch.btn.from_stash', 'From stash'), self.from_stash),
-                          (T('ch.btn.edit', 'Edit…'), self.edit), (T('ch.btn.create_here', 'Create here…'), self.create_here),
+                          (T('ch.btn.edit', 'Edit...'), self.edit), (T('ch.btn.create_here', 'Create here...'), self.create_here),
                           (T('ch.btn.delete', 'Delete'), self.delete)):
             ttk.Button(btns, text=text, command=cmd).pack(side='left', padx=2)
         self.status = ttk.Label(left, text=T('ch.inv_hint', 'Drag items between the slots and the inventory. '
@@ -291,7 +328,7 @@ class CharacterWindow:
             self.inv_label.configure(text=T('ch.merc_no_inv', '(the mercenary has no inventory)'))
             inv.configure(height=1)
         else:
-            self.inv_label.configure(text=T('ch.inv_label', 'Inventory — {name}, level {level}', name=self.ch.name, level=self.ch.level))
+            self.inv_label.configure(text=T('ch.inv_label', 'Inventory - {name}, level {level}', name=self.ch.name, level=self.ch.level))
             inv.configure(height=INV_H * c + 1)
             for x in range(INV_W):
                 for y in range(INV_H):
@@ -397,7 +434,7 @@ class CharacterWindow:
         self.refresh_progress()
         if app.path:
             app.load(app.path, keep_selection=True)
-        self.set_status(msg + (T('cr.backup', ' — backup: {file}', file=os.path.basename(bak)) if bak else ''))
+        self.set_status(msg + (T('cr.backup', ' - backup: {file}', file=os.path.basename(bak)) if bak else ''))
         return True
 
     def to_stash(self):
@@ -539,13 +576,425 @@ class CharacterWindow:
                 raise CharError(T('ch.err.not_saved', 'character not saved'))
             return T('ch.created_in', '{name}: item created in {where}', name=self.ch.name,
                      where=slot_name(where[1]) if where[0] == 'slot' else T('ch.the_inventory', 'the inventory'))
-        label = (f"{self.ch.name}{T('ch.merc_suffix', ' (mercenary)') if merc else ''} — "
+        label = (f"{self.ch.name}{T('ch.merc_suffix', ' (mercenary)') if merc else ''} - "
                  + (slot_name(slot, T('ch.inventory_l', 'inventory')) if slot else T('ch.inventory_l', 'inventory')))
         CreatorWindow(self.app, target=write, target_label=label)
+
+    # ---- mouse extras: double-click opens the item editor / creates in an empty spot
+    def on_double(self, ev):
+        cv = ev.widget
+        e, slot = self.entry_at(cv, ev)
+        self.selected, self.sel_slot = e, slot
+        self.redraw()
+        if e is not None:
+            self.edit()
+        elif slot is not None or cv is self.inv:
+            self.create_here()
+
+    def on_delete_key(self, _e=None):
+        """Del over the paperdoll / inventory: the item under the mouse pointer is deleted at once
+        (no prompt, like the stash grid). Nothing happens when the pointer is elsewhere or inside
+        a text field."""
+        try:
+            w = self.top.winfo_toplevel().focus_get()
+            if w is not None and w.winfo_class() in ('Entry', 'Text', 'Spinbox', 'Combobox'):
+                return
+        except Exception:
+            pass
+        for cv in (self.doll, self.inv):
+            try:
+                if not cv.winfo_ismapped():
+                    continue
+                x = cv.winfo_pointerx() - cv.winfo_rootx()
+                y = cv.winfo_pointery() - cv.winfo_rooty()
+                if not (0 <= x < cv.winfo_width() and 0 <= y < cv.winfo_height()):
+                    continue
+                e, _slot = self.entry_at(cv, type('E', (), {'widget': cv, 'x': x, 'y': y})())
+            except Exception:
+                continue
+            if e is not None:
+                self.delete_instant(e)
+                return
+
+    def delete_instant(self, e):
+        """Deletes one item of the character at once (no prompt): the same remove -> save flow as
+        the Delete button, which keeps its confirmation dialog."""
+        name = clean(e.it['name'])
+        try:
+            self.ch.remove(e, self.is_merc())
+        except CharError as err:
+            self.set_status(str(err), True)
+            self.reload()
+            return
+        self.save(T('cr.deleted', '{name} deleted', name=name))
+
+    # ================================================================== Skills tab
+    def _build_skills(self):
+        f = self.sk_tab
+        self.sk_vars = {}
+        self.sk_rows = []
+        self.sk_page_of = {}
+        self._skills_cls = None
+        top = tk.Frame(f, bg=HE_BG)
+        top.pack(fill='x', padx=8, pady=(6, 2))
+        self.sk_title = tk.Label(top, text='', font=HE_FONT_I, bg=HE_BG)
+        self.sk_title.pack(side='left')
+        tk.Label(top, text='   ' + T('he.skills_find', 'Find:'), font=HE_FONT, bg=HE_BG).pack(side='left')
+        self.sk_search = tk.StringVar()
+        se = tk.Entry(top, textvariable=self.sk_search, width=22, font=HE_FONT, relief='sunken', bd=2)
+        se.pack(side='left', padx=6)
+        se.bind('<KeyRelease>', lambda _e: self._filter_skills())
+        tk.Button(top, text=T('he.skills_zero', 'All levels 0'), font=HE_FONT, bg=HE_BTN,
+                  command=self._zero_skills).pack(side='left', padx=6)
+        self.sk_pts = tk.Label(top, text='', font=HE_FONT_I, bg=HE_BG, fg=HE_GOLD)
+        self.sk_pts.pack(side='right')
+        self.sk_hover = tk.Label(top, text='', font=HE_FONT, bg=HE_BG, fg='#7a6a35')
+        self.sk_hover.pack(side='right', padx=(0, 14))
+        # the game's skill screen: stone tree area, the trees in a vertical tab bar on its right,
+        # the tab's long note as the caption under the tree
+        self.sk_body = tk.Frame(f, bg=HE_BG)
+        self.sk_body.pack(fill='both', expand=True, padx=8, pady=(4, 0))
+        self.sk_holder = tk.Frame(self.sk_body, bg=SK_BG)
+        self.sk_holder.pack(fill='both', expand=True, side='left')
+        self.sk_bar = tk.Frame(self.sk_body, bg=HE_BG)
+        self.sk_bar.pack(side='right', fill='y', padx=(6, 0))
+        self.sk_plates = {}
+        self.sk_pages = {}
+        self.sk_show = tk.StringVar(value='')
+        self.sk_caption = tk.Label(f, text='', font=HE_FONT, bg=HE_BG, fg=HE_GOLD, anchor='w')
+        self.sk_caption.pack(fill='x', padx=8, pady=(2, 2))
+        tk.Label(f, text=T('he.skills_note', 'Each box is the skill\'s own hard-point level (0 to 255). '
+                                             'Changes are written on SAVE.'), font=HE_FONT_S,
+                 bg=HE_BG, fg='#8a7a4a').pack(anchor='w', padx=8, pady=(0, 6))
+
+    def _theme_art(self):
+        """The game's Sigma theme artwork (None without the game folder): stone panels and fonts.
+        Independent of mxl_d2look's own switch - the main window's plain grids stay untouched."""
+        key = (self.data.folder,)
+        cache = getattr(self, '_art_cache', None)
+        if cache is None:
+            cache = self._art_cache = {}
+        if key in cache:
+            return cache[key]
+        art = None
+        try:
+            import mxl_d2look_art
+            import settings
+            import paths
+            gd = settings.get('game_dir')
+            if gd and os.path.isdir(gd):
+                art = mxl_d2look_art.get_art(gd, 'classic_sigma', os.path.join(paths.USER_DIR, 'ui_art'))
+                art.pal()
+        except Exception as e:
+            print('game art for the skills screen disabled:', e)
+        cache[key] = art
+        return art
+
+    def _sk_name(self, sid):
+        nm = self.data.skill_names.get(sid) or ''
+        if not nm or 'OLAR BUFFALO' in nm.upper():     # the game's placeholder for an unnamed skill
+            nm = T('skill.unknown', 'skill #{id}', id=sid)
+        return nm
+
+    def _skill_icons(self, cls):
+        """{sid: PhotoImage} of the class's skill icons, read from the player's game files
+        (icons-<class>.dc6, 48x48 cels shown 1.5x). {} when the game files are unavailable."""
+        key = (self.data.folder, cls)
+        if key in _SKILL_ICON_CACHE:
+            return _SKILL_ICON_CACHE[key]
+        out = {}
+        try:
+            import settings
+            import paths
+            import mxl_d2look_art
+            import mxl_d2ui_dc6 as DC6
+            gd = settings.get('game_dir')
+            if not gd or not os.path.isdir(gd):
+                raise mxl_d2look_art.ArtError('game folder not set')
+            art = mxl_d2look_art.get_art(gd, 'classic_sigma', os.path.join(paths.USER_DIR, 'ui_art'))
+            code = self.data._rows('playerclass')[cls][:4].decode('latin1').strip()
+            cels = DC6.dc6_frames(art.read(f'data\\global\\themes\\classic_sigma\\game\\skills\\icons-{code}.dc6'))
+            shared = DC6.dc6_frames(art.read('data\\global\\themes\\classic_sigma\\game\\skills\\icons-shared.dc6'))
+            pal = art.pal()
+            for tab, _name, cells in (MC.skill_trees(self.data).get(cls) or []):
+                for _row, _col, sid, cel in cells:
+                    fr = cels[cel] if cel < len(cels) else (shared[cel] if cel < len(shared) else None)
+                    if fr is None:
+                        continue
+                    w, h, rgba = DC6.to_rgba(fr, pal)
+                    img = tk.PhotoImage(data=DC6.png(w, h, rgba), master=self.top)
+                    out[sid] = img.zoom(3, 3).subsample(2, 2)   # 48px cel shown at 72px
+        except Exception as e:
+            print('skill icons disabled:', e)
+        _SKILL_ICON_CACHE[key] = out
+        return out
+
+    def _rebuild_skills(self):
+        """The class's skills laid out like the game's skill screen: one page per tree, each tree a
+        grid of (row, column) cells from the extracted skilldesc.bin (tab names as the game's tab
+        bar shows them), every skill with its own icon ripped from the game's icons-<class>.dc6,
+        drawn over the game's own skill-tree stone panel; the trees are plates in a vertical tab bar
+        on the right and the tab's note is the caption under the tree. The level of every skill of
+        the class stays editable (tab 0 = skills the game shows in no tree: oSkills, procs and
+        hidden skills)."""
+        ch, d = self.ch, self.data
+        cls = ch.cls
+        self._skills_cls = cls
+        names = MC.class_names(d)
+        cname = names[cls] if cls < len(names) else str(cls)
+        self.sk_title.configure(text=T('he.skills_of', '{cls}: skill level per skill', cls=cname))
+        for w in self.sk_bar.winfo_children():
+            w.destroy()
+        for w in self.sk_holder.winfo_children():
+            w.destroy()
+        self.sk_pages = {}
+        self.sk_vars = {}
+        self.sk_rows = []
+        self.sk_plates = {}
+        self.sk_page_of = {}
+        levels = ch.skill_levels()
+        icons = self._skill_icons(cls)
+        trees = MC.skill_trees(d).get(cls) or []
+        art = self._theme_art()
+        stone_path = None
+        if art is not None:
+            try:
+                stone_path = art.panel('skill-tree')       # the PNG cache path; sized per tree below
+            except Exception as e:
+                print('skill tree stone panel disabled:', e)
+        code = (d._rows('playerclass')[cls][:4].decode('latin1').strip().lower()
+                if cls < len(d._rows('playerclass')) else '')
+        for tab, name, cells in trees:
+            if tab == 0:
+                name = T('he.skills_other', 'Other (not in a class tree)')
+            self._sk_add_page(tab, cells, levels, icons, stone_path, code)
+            plate = self._sk_plate(tab, name)
+            self.sk_plates[str(tab)] = plate
+        if self.sk_pages:
+            first = next(iter(self.sk_pages))
+            self.sk_show.set(first)
+            self.sk_pages[first].grid(row=0, column=0, sticky='nsew')
+            self._sk_caption_of(first)
+        self._filter_skills()
+
+    def _art_photo(self, path, size=None):
+        """The game font/panel PNG as a tk image (None without the game folder)."""
+        try:
+            import mxl_d2look
+            return mxl_d2look.photo(path, size=size)
+        except Exception:
+            return None
+
+    def _sk_plate(self, tab, name):
+        """One tree as a plate of the game's vertical tab bar: gold game-font label on dark stone."""
+        plate = tk.Frame(self.sk_bar, bg=SK_PLATE, bd=2, relief='raised',
+                         highlightbackground=SK_OFF, highlightcolor=SK_EDGE, highlightthickness=1)
+        img = None
+        art = self._theme_art()
+        if art is not None:
+            try:
+                img = self._art_photo(art.text(name.upper(), font='font16', color=HE_GOLD_RGB, solid=True))
+            except Exception:
+                img = None
+        if img is not None:
+            lab = tk.Label(plate, image=img, bg=SK_PLATE)
+            lab.image = img
+        else:
+            lab = tk.Label(plate, text=name, font=HE_FONT, bg=SK_PLATE, fg=HE_GOLD)
+        lab.pack(fill='x', padx=8, pady=4)
+        for w in (plate, lab):
+            w.bind('<Button-1>', lambda _e, t=str(tab): self._sk_pick(t))
+            w.bind('<Enter>', lambda _e, t=str(tab), n=name: (
+                self.sk_hover.configure(text=T('he.skills_tree_of', '{n} tree', n=n))))
+            w.bind('<Leave>', lambda _e: self.sk_hover.configure(text=''))
+        plate.pack(side='top', fill='x', pady=2)
+        return plate
+
+    def _sk_tree_size(self):
+        """Every tree page gets the same canvas: the class's largest grid, so no page is taller
+        than another (the game draws each tree in the same web area)."""
+        trees = MC.skill_trees(self.data).get(self._skills_cls) or []
+        cols = max((max((c for _r, c, _s, _i in cells), default=1) for _t, _n, cells in trees),
+                   default=1)
+        rows = max((max((r for r, _c, _s, _i in cells), default=1) for _t, _n, cells in trees),
+                   default=1)
+        return PAD * 2 + cols * SK_CELL_W, PAD * 2 + rows * SK_CELL_H
+
+    def _sk_add_page(self, tab, cells, levels, icons, stone_path, code):
+        """One tree as a canvas: the stone panel and the tree's connector web behind, each skill a
+        node (icon + level entry) on the grid its extracted skilldesc row says."""
+        taken = set()
+        placed = []
+        for row, col, sid, cel in cells:
+            cell = (max(1, row), max(1, col))         # the data is 1-based; a stray 0 stays on top
+            while cell in taken:                      # never stack two skills in one cell
+                cell = (cell[0], cell[1] + 1)
+            taken.add(cell)
+            placed.append((sid, cell[0], cell[1]))
+        W, H = self._sk_tree_size()
+        page = tk.Canvas(self.sk_holder, bg=SK_BG, highlightthickness=0, bd=0)
+        page.configure(width=W, height=H)
+        stone = self._art_photo(stone_path, size=(W, H)) if stone_path else None
+        page._capy_stone = stone
+        if stone is not None:
+            page.create_image(0, 0, anchor='nw', image=stone)
+        art = self._theme_art()
+        if art is not None and tab > 0:               # the game's own web: the arrows between nodes
+            try:
+                web = self._art_photo(art.skill_web(code, tab, (W, H)))
+                if web is not None:
+                    page._capy_web = web
+                    page.create_image(0, 0, anchor='nw', image=web)
+            except Exception as e:
+                print('skill tree web disabled:', e)
+        for sid, row, col in placed:
+            x = PAD + (col - 1) * SK_CELL_W
+            y = PAD + (row - 1) * SK_CELL_H
+            box = page.create_rectangle(x + 6, y + 6, x + SK_CELL_W - 6, y + SK_CELL_H - 6,
+                                        outline=SK_NODE, width=1)
+            img = icons.get(sid)
+            if img is not None:
+                node = page.create_image(x + SK_CELL_W // 2, y + 44, anchor='center', image=img)
+            else:                                      # no game files: the name stands in for the icon
+                node = page.create_text(x + SK_CELL_W // 2, y + 40, width=SK_CELL_W - 16, font=HE_FONT_S,
+                                        fill=HE_GOLD, text=self._sk_name(sid))
+            var = tk.StringVar(value=str(levels.get(sid, 0)))
+            e = tk.Entry(page, textvariable=var, width=4, font=HE_FONT, relief='sunken', bd=2,
+                         justify='center', bg='#000000', fg=HE_GOLD, insertbackground=HE_GOLD)
+            e.bind('<KeyRelease>', lambda _e: self.update_dirty())
+            win = page.create_window(x + SK_CELL_W // 2, y + SK_CELL_H - 18, window=e)
+            nm = self._sk_name(sid)
+            extra = T('he.skills_oskill', '  - not in any class tree (oSkill, proc or hidden skill)') \
+                if tab == 0 else ''
+            tip = nm + extra
+            def _enter(_e, s=tip):
+                self.sk_hover.configure(text=s)
+                self._sk_tip(s)
+            def _leave(_e):
+                self.sk_hover.configure(text='')
+                self._sk_tip('')
+            for item in (box, node):
+                page.tag_bind(item, '<Enter>', _enter)
+                page.tag_bind(item, '<Leave>', _leave)
+            e.bind('<Enter>', _enter)
+            e.bind('<Leave>', _leave)
+            self.sk_vars[sid] = var
+            self.sk_rows.append((sid, page, (box, node, win), nm))
+            self.sk_page_of[sid] = str(tab)
+        self.sk_pages[str(tab)] = page
+        return page
+
+    def _sk_pick(self, tab):
+        self.sk_show.set(tab)
+        self._sk_show_tab()
+
+    def _sk_tip(self, text):
+        """The game's floating tooltip: gold text on dark stone with a gold frame, at the pointer."""
+        if not text:
+            if getattr(self, '_sk_tip_win', None) is not None:
+                try:
+                    self._sk_tip_win.destroy()
+                except tk.TclError:
+                    pass
+                self._sk_tip_win = None
+            return
+        if getattr(self, '_sk_tip_win', None) is None:
+            w = tk.Toplevel(self.top, bg=SK_EDGE, bd=1, relief='solid')
+            w.overrideredirect(True)
+            w.attributes('-topmost', True)
+            tk.Label(w, text=text, font=HE_FONT, bg=SK_BG, fg=HE_GOLD, justify='left',
+                     padx=10, pady=6).pack()
+            self._sk_tip_win = w
+        x, y = self.top.winfo_pointerxy()
+        self._sk_tip_win.geometry(f'+{x + 18}+{y + 14}')
+        for c in self._sk_tip_win.winfo_children():
+            c.configure(text=text)
+
+    def _sk_caption_of(self, tab):
+        note = MC.skill_tab_note(self.data, self._skills_cls or 0, int(tab))
+        self.sk_caption.configure(text=note or '')
+
+    def _sk_show_tab(self):
+        show = self.sk_pages.get(self.sk_show.get())
+        for key, page in self.sk_pages.items():     # remove first: a grid followed by a
+            if key != self.sk_show.get():           # grid_remove in the same batch gets lost
+                page.grid_remove()
+        if show is not None:
+            show.grid(row=0, column=0, sticky='nsew')
+        for key, plate in self.sk_plates.items():
+            plate.configure(relief='sunken' if key == self.sk_show.get() else 'raised',
+                            highlightbackground=SK_EDGE if key == self.sk_show.get() else SK_OFF)
+        self._sk_caption_of(self.sk_show.get())
+        try:
+            self.sk_holder.update_idletasks()
+        except tk.TclError:
+            pass
+
+    def _filter_skills(self):
+        text = self.sk_search.get().lower().strip()
+        first_page = None
+        for sid, page, items, nm in self.sk_rows:
+            state = 'normal' if not text or text in nm.lower() else 'hidden'
+            for item in items:
+                page.itemconfigure(item, state=state)
+            if state == 'normal' and first_page is None:
+                first_page = self.sk_page_of.get(sid)
+        if text and first_page is not None and self.sk_show.get() != first_page:
+            self.sk_show.set(first_page)
+            self._sk_show_tab()
+        try:
+            self.sk_holder.update_idletasks()
+        except tk.TclError:
+            pass
+
+    def _zero_skills(self):
+        for var in self.sk_vars.values():
+            var.set('0')
+        self.update_dirty()
+
+    def _skills_from_vars(self):
+        out = {}
+        for sid, v in self.sk_vars.items():
+            try:
+                out[sid] = max(0, min(255, int(v.get())))
+            except ValueError:
+                pass                      # blank / junk: keep 0
+        return out
+
+    def on_class_change(self):
+        try:
+            cls = self.class_names.index(self.new_class.get())
+        except ValueError:
+            self._reset_class_box()
+            return
+        if cls == self.ch.cls:
+            self.pending_cls = None
+            self.update_dirty()
+            return
+        if cls != self.pending_cls and not messagebox.askyesno(
+                T('he.class', 'Class'),
+                T('he.class_ask', 'Change the class of {name} to {cls}?\nAll skill levels are reset '
+                  '(the save keeps one skill list per class).', name=self.ch.name, cls=self.new_class.get()),
+                parent=self.top):
+            self._reset_class_box()
+            return
+        self.pending_cls = cls
+        self.update_dirty()
+
+    def _reset_class_box(self):
+        self.new_class.set(self.class_names[self.ch.cls] if self.ch.cls < len(self.class_names) else str(self.ch.cls))
+        self.pending_cls = None
+        self.update_dirty()
 
     # ================================================================== Hero Editor style tabs
     # Stats / Waypoints / Quests tabs in the look of the old Hero Editor (Mastadex, ZonFire99): classic grey
     # frames, Times New Roman, white tree panes with check boxes, the tab row at the bottom of the window.
+    # Stat fields the user may edit: key -> (character stat id, right shift). Life / mana / stamina are stored
+    # in the save in 256ths, so their boxes show the game's own numbers (value >> 8) and writes go << 8.
+    STAT_FIELDS = {'exp': (13, 0), 'str': (0, 0), 'ene': (1, 0), 'dex': (2, 0), 'vit': (3, 0),
+                   'statpts': (4, 0), 'skillpts': (5, 0), 'gold': (14, 0), 'goldbank': (15, 0),
+                   'life_cur': (6, 8), 'life_max': (7, 8), 'mana_cur': (8, 8), 'mana_max': (9, 8),
+                   'stamina_cur': (10, 8), 'stamina_max': (11, 8)}
     def _build_progress(self):
         ch, d = self.ch, self.data
         self._init_state()
@@ -554,40 +1003,56 @@ class CharacterWindow:
         self.sv = {}
 
         def frame(parent, text, **grid):
-            fr = tk.LabelFrame(parent, text=text, font=HE_FONT_I, bg=HE_BG, fg='#000000', bd=2, relief='groove',
-                               padx=8, pady=4)
+            """One of the character screen's sections: stone box, gold title, gold game-font text."""
+            fr = tk.LabelFrame(parent, text=' ' + text, font=HE_FONT_I, bg=SK_STONE, fg=HE_GOLD,
+                               bd=2, relief='groove', padx=8, pady=4,
+                               highlightbackground=SK_EDGE, highlightthickness=1)
             fr.grid(sticky='nsew', padx=6, pady=4, **grid)
             return fr
 
         def field(parent, r, label, key, width=12, col=0):
-            tk.Label(parent, text=label, font=HE_FONT, bg=HE_BG).grid(row=r, column=col, sticky='e', padx=(0, 4), pady=1)
-            e = tk.Entry(parent, width=width, font=HE_FONT, relief='sunken', bd=2, readonlybackground='#ffffff',
-                         fg='#000000', justify='right')
+            tk.Label(parent, text=label, font=HE_FONT, bg=SK_STONE).grid(row=r, column=col, sticky='e', padx=(0, 4), pady=1)
+            e = tk.Entry(parent, width=width, font=HE_FONT, relief='sunken', bd=2, bg='#000000',
+                         readonlybackground='#0b0a08', fg=HE_GOLD, insertbackground=HE_GOLD, justify='right')
             e.grid(row=r, column=col + 1, sticky='w', pady=1)
-            e.configure(state='readonly')
+            if key in self.STAT_FIELDS:              # editable: type a value, Save writes it
+                e.configure(state='normal')
+                e.bind('<KeyRelease>', lambda _e: self.update_dirty())
+                e.bind('<Return>', lambda _e: self.save_progress())
+                e.bind('<Escape>', lambda _e: (self.refresh_progress(), self._init_state()))
+            else:
+                e.configure(state='readonly')
             self.sv[key] = e
             return e
 
         for c in range(3):
             f.grid_columnconfigure(c, weight=1, uniform='he')
         fr = frame(f, T('he.name', 'Name'), row=0, column=0)
-        self.sv_name = tk.Label(fr, text='', font=('Times New Roman', 14, 'bold'), bg=HE_BG, anchor='w')
+        self.sv_name = tk.Label(fr, text='', font=('Times New Roman', 14, 'bold'), bg=SK_STONE, anchor='w')
         self.sv_name.grid(row=0, column=0, columnspan=3, sticky='w')
-        tk.Label(fr, text=T('he.copy_as', 'Copy as'), font=HE_FONT, bg=HE_BG).grid(row=1, column=0, sticky='w', pady=(4, 0))
+        tk.Label(fr, text=T('he.copy_as', 'Copy as'), font=HE_FONT, bg=SK_STONE).grid(row=1, column=0, sticky='w', pady=(4, 0))
         self.copy_name = tk.StringVar()
         tk.Entry(fr, textvariable=self.copy_name, width=16, font=HE_FONT, relief='sunken', bd=2).grid(row=1, column=1, pady=(4, 0))
         tk.Button(fr, text=T('he.copy', 'Copy'), font=HE_FONT, command=self.copy_char, bg=HE_BTN).grid(row=1, column=2, padx=4, pady=(4, 0))
 
         fr = frame(f, T('he.class', 'Class'), row=1, column=0)
-        field(fr, 0, T('he.class_c', 'Class:'), 'class', 14)
+        tk.Label(fr, text=T('he.class_c', 'Class:'), font=HE_FONT, bg=SK_STONE).grid(row=0, column=0, sticky='e', padx=(0, 4), pady=1)
+        self.class_names = MC.class_names(d)
+        self.new_class = tk.StringVar(value=self.class_names[ch.cls] if ch.cls < len(self.class_names) else str(ch.cls))
+        self.class_box = ttk.Combobox(fr, state='readonly', width=14, textvariable=self.new_class,
+                                      values=self.class_names)
+        self.class_box.grid(row=0, column=1, sticky='w', pady=1)
+        self.class_box.bind('<<ComboboxSelected>>', lambda _e: self.on_class_change())
+        tk.Label(fr, text=T('he.class_note', 'Changing the class resets the skill levels\n(the save keeps one skill list per class).'),
+                 font=HE_FONT_S, bg=SK_STONE, justify='left').grid(row=1, column=0, columnspan=2, sticky='w', pady=(2, 0))
         fr = frame(f, T('he.level', 'Level'), row=2, column=0)
-        tk.Label(fr, text=T('he.level_c', 'Level:'), font=HE_FONT, bg=HE_BG).grid(row=0, column=0, sticky='e', padx=(0, 4))
+        tk.Label(fr, text=T('he.level_c', 'Level:'), font=HE_FONT, bg=SK_STONE).grid(row=0, column=0, sticky='e', padx=(0, 4))
         self.new_level = tk.StringVar(value=str(ch.level))
         self.level_box = ttk.Combobox(fr, state='readonly', width=6, textvariable=self.new_level)
         self.level_box.grid(row=0, column=1, sticky='w')
         tk.Label(fr, text=T('he.level_note', 'Raising the level works like the game: experience, 5 stat points\n'
                             'and 1 skill point per level, life / mana / stamina per level.'),
-                 font=HE_FONT_S, bg=HE_BG, justify='left').grid(row=1, column=0, columnspan=2, sticky='w', pady=(2, 0))
+                 font=HE_FONT_S, bg=SK_STONE, justify='left').grid(row=1, column=0, columnspan=2, sticky='w', pady=(2, 0))
         fr = frame(f, T('he.experience', 'Experience'), row=3, column=0)
         field(fr, 0, T('he.experience_c', 'Experience:'), 'exp', 14)
 
@@ -598,15 +1063,21 @@ class CharacterWindow:
                                         (T('he.skillpts', 'Skill Points Left:'), 'skillpts'))):
             field(fr, r, lab, key, 8)
         fr = frame(f, T('he.constitution', 'Constitution'), row=2, column=1, rowspan=2)
-        tk.Label(fr, text=T('he.current', 'Current'), font=HE_FONT_S, bg=HE_BG).grid(row=0, column=1)
-        tk.Label(fr, text=T('he.max', 'Max'), font=HE_FONT_S, bg=HE_BG).grid(row=0, column=3)
+        tk.Label(fr, text=T('he.current', 'Current'), font=HE_FONT_S, bg=SK_STONE).grid(row=0, column=1)
+        tk.Label(fr, text=T('he.max', 'Max'), font=HE_FONT_S, bg=SK_STONE).grid(row=0, column=3)
         for r, (lab, key) in enumerate(((T('he.life', 'Life:'), 'life'), (T('he.mana', 'Mana:'), 'mana'),
                                         (T('he.stamina', 'Stamina:'), 'stamina')), start=1):
             field(fr, r, lab, key + '_cur', 8)
-            tk.Label(fr, text='/', font=HE_FONT, bg=HE_BG).grid(row=r, column=2, padx=2)
-            e = tk.Entry(fr, width=8, font=HE_FONT, relief='sunken', bd=2, readonlybackground='#ffffff', justify='right')
+            tk.Label(fr, text='/', font=HE_FONT, bg=SK_STONE).grid(row=r, column=2, padx=2)
+            e = tk.Entry(fr, width=8, font=HE_FONT, relief='sunken', bd=2, bg='#000000',
+                         readonlybackground='#0b0a08', fg=HE_GOLD, insertbackground=HE_GOLD, justify='right')
             e.grid(row=r, column=3, sticky='w')
-            e.configure(state='readonly')
+            if key + '_max' in self.STAT_FIELDS:    # editable like the other stat boxes
+                e.configure(state='normal')
+                e.bind('<KeyRelease>', lambda _e: self.update_dirty())
+                e.bind('<Return>', lambda _e: self.save_progress())
+            else:
+                e.configure(state='readonly')
             self.sv[key + '_max'] = e
 
         fr = frame(f, T('he.gold', 'Gold'), row=0, column=2)
@@ -617,20 +1088,21 @@ class CharacterWindow:
         for r, (text, bit) in enumerate(((T('he.expansion', 'Expansion'), 0x20), (T('he.ladder', 'Ladder'), 0x40),
                                          (T('he.hardcore', 'Hardcore'), 0x04), (T('he.dead', 'You were Dead'), 0x08))):
             v = tk.BooleanVar()
-            tk.Checkbutton(fr, text=text, variable=v, font=HE_FONT, bg=HE_BG, state='disabled',
+            tk.Checkbutton(fr, text=text, variable=v, font=HE_FONT, bg=SK_STONE, state='disabled',
                            disabledforeground='#000000').grid(row=r, column=0, sticky='w')
             self.sv_type[bit] = v
         fr = frame(f, T('he.char_diff', 'Character Difficulty'), row=2, column=2)
         self.sv_diff = tk.IntVar()
         for r, n in enumerate(DIFFICULTIES):
-            tk.Radiobutton(fr, text=difficulty_name(r), value=r, variable=self.sv_diff, font=HE_FONT, bg=HE_BG, state='disabled',
+            tk.Radiobutton(fr, text=difficulty_name(r), value=r, variable=self.sv_diff, font=HE_FONT, bg=SK_STONE, state='disabled',
                            disabledforeground='#000000').grid(row=r, column=0, sticky='w')
-        tk.Label(fr, text=T('he.diff_note', '(highest difficulty unlocked)'), font=HE_FONT_S, bg=HE_BG).grid(row=3, column=0, sticky='w')
+        tk.Label(fr, text=T('he.diff_note', '(highest difficulty unlocked)'), font=HE_FONT_S, bg=SK_STONE).grid(row=3, column=0, sticky='w')
         fr = frame(f, T('he.misc', 'Miscellaneous Info.'), row=3, column=2)
         field(fr, 0, T('he.file_size', 'File Size:'), 'size', 10)
         field(fr, 1, T('he.version', 'Version:'), 'version', 10)
-        tk.Label(f, text=T('he.stats_note', 'Only the level can be raised here: every other value is shown as the game '
-                           'stores it (stat and skill points are spent in game).'), font=HE_FONT_S, bg=HE_BG).grid(
+        tk.Label(f, text=T('he.stats_note', 'Type any value in the number boxes (gold, experience, strength ..., '
+                           'life / mana / stamina) and click SAVE; the level box works like the game: raising it '
+                           'gives experience, stat and skill points.'), font=HE_FONT_S, bg=SK_STONE).grid(
             row=4, column=0, columnspan=3, sticky='w', padx=8, pady=(6, 0))
 
         # ---------------------------------------------------------------- Waypoints / Quests
@@ -640,7 +1112,7 @@ class CharacterWindow:
             dn = difficulty_name(k)
             self.wp_tab.grid_columnconfigure(k, weight=1, uniform='he')
             self.q_tab.grid_columnconfigure(k, weight=1, uniform='he')
-            fr = tk.LabelFrame(self.wp_tab, text=dn, font=HE_FONT_I, bg=HE_BG, bd=2, relief='groove', padx=4, pady=4)
+            fr = tk.LabelFrame(self.wp_tab, text=dn, font=HE_FONT_I, bg=SK_STONE, bd=2, relief='groove', padx=4, pady=4)
             fr.grid(row=0, column=k, sticky='nsew', padx=6, pady=4)
             t = CheckTree(fr, self.on_tree_change)
             root = t.add('', T('he.mode_waypoints', '{mode} Mode Waypoints', mode=dn))
@@ -652,7 +1124,7 @@ class CharacterWindow:
                     t.add(a, name + (T('he.hell_suffix', ' (Hell)') if n in MC.HELL_ONLY_WAYPOINTS else ''), key=('wp', k, n), locked=(n == 0))
             t.open(root)
             self.wp_trees.append(t)
-            fr = tk.LabelFrame(self.q_tab, text=dn, font=HE_FONT_I, bg=HE_BG, bd=2, relief='groove', padx=4, pady=4)
+            fr = tk.LabelFrame(self.q_tab, text=dn, font=HE_FONT_I, bg=SK_STONE, bd=2, relief='groove', padx=4, pady=4)
             fr.grid(row=0, column=k, sticky='nsew', padx=6, pady=4)
             t = CheckTree(fr, self.on_tree_change)
             root = t.add('', T('he.mode_quests', '{mode} Mode Quests', mode=dn))
@@ -673,10 +1145,10 @@ class CharacterWindow:
         self.q_tab.grid_rowconfigure(0, weight=1)
         tk.Label(self.wp_tab, text=T('he.wp_note', 'Waypoints marked (Hell) are Median XL areas that only exist in Hell. '
                                      'Click a box to tick it; a mode or act box ticks everything under it.'),
-                 font=HE_FONT_S, bg=HE_BG).grid(row=1, column=0, columnspan=3, sticky='w', padx=8)
+                 font=HE_FONT_S, bg=SK_STONE).grid(row=1, column=0, columnspan=3, sticky='w', padx=8)
         tk.Label(self.q_tab, text=T('he.q_note', 'Ticking a quest gives its reward in that difficulty (shown in brackets). '
                                     'Quests completed in game stay ticked and cannot be changed here.'),
-                 font=HE_FONT_S, bg=HE_BG).grid(row=1, column=0, columnspan=3, sticky='w', padx=8)
+                 font=HE_FONT_S, bg=SK_STONE).grid(row=1, column=0, columnspan=3, sticky='w', padx=8)
         self.refresh_progress()
 
     def _init_state(self):
@@ -687,6 +1159,8 @@ class CharacterWindow:
         self.wstate = {k: set(v) for k, v in self.w0.items()}
         # quests completed in game (not by this tool): never unticked
         self.qlocked = {k: {w for w in self.q0[k] if ch.quest_word(k, w) != MC.QUEST_DONE} for k in range(3)}
+        self.pending_cls = None
+        self.sk0 = ch.skill_levels()
 
     def on_tree_change(self, key, value):
         kind, k, n = key
@@ -695,8 +1169,20 @@ class CharacterWindow:
         self.update_dirty()
 
     def dirty(self):
+        sv0 = getattr(self, 'sv0', {})
+        typed = any(sv0.get(k) != e.get() for k, e in self.sv.items() if k in self.STAT_FIELDS)
+        sk0 = getattr(self, 'sk0', {})
+        sk_typed = any(sk0.get(sid, 0) != self._level_of(v) for sid, v in self.sk_vars.items())
         return (self.qstate != self.q0 or self.wstate != self.w0
-                or self.new_level.get() != str(self.ch.level))
+                or self.new_level.get() != str(self.ch.level) or typed
+                or getattr(self, 'pending_cls', None) is not None or sk_typed)
+
+    @staticmethod
+    def _level_of(var):
+        try:
+            return max(0, min(255, int(var.get())))
+        except ValueError:
+            return 0
 
     def update_dirty(self):
         if self.dirty():
@@ -709,22 +1195,28 @@ class CharacterWindow:
         self.sv_name.configure(text=ch.name)
         self.level_box.configure(values=[str(v) for v in range(ch.level, MC.max_level(d, ch.cls) + 1)])
         self.new_level.set(str(ch.level))
-        try:
-            from mxl_rules import CLASSES
-            cname = CLASSES[ch.cls]
-        except Exception:
-            cname = str(ch.cls)
-        vals = {'class': cname, 'exp': f'{ch.stat(13):,}', 'str': ch.stat(0), 'ene': ch.stat(1), 'dex': ch.stat(2),
+        self.new_class.set(self.class_names[ch.cls] if ch.cls < len(self.class_names) else str(ch.cls))
+        self.pending_cls = None
+        if getattr(self, '_skills_cls', None) != ch.cls:
+            self._rebuild_skills()
+        else:
+            lv = ch.skill_levels()
+            for sid, var in self.sk_vars.items():
+                var.set(str(lv.get(sid, 0)))
+        vals = {'exp': ch.stat(13), 'str': ch.stat(0), 'ene': ch.stat(1), 'dex': ch.stat(2),
                 'vit': ch.stat(3), 'statpts': ch.stat(4), 'skillpts': ch.stat(5),
                 'life_cur': ch.stat(6) >> 8, 'life_max': ch.stat(7) >> 8, 'mana_cur': ch.stat(8) >> 8,
                 'mana_max': ch.stat(9) >> 8, 'stamina_cur': ch.stat(10) >> 8, 'stamina_max': ch.stat(11) >> 8,
-                'gold': f'{ch.stat(14):,}', 'goldbank': f'{ch.stat(15):,}', 'size': f'{len(ch.raw):,}',
+                'gold': ch.stat(14), 'goldbank': ch.stat(15), 'size': f'{len(ch.raw):,}',
                 'version': str(struct.unpack_from('<I', ch.raw, 4)[0])}
         for key, e in self.sv.items():
             e.configure(state='normal')
             e.delete(0, 'end')
             e.insert(0, str(vals.get(key, '')))
-            e.configure(state='readonly')
+            e.configure(state='normal' if key in self.STAT_FIELDS else 'readonly')
+        if getattr(self, 'sk_pts', None) is not None:       # the game's skill-screen header
+            self.sk_pts.configure(text=T('he.skills_points', 'Remaining skill points: {n}',
+                                         n=ch.stat(5)))
         status = ch.head[0x24]
         for bit, v in self.sv_type.items():
             v.set(bool(status & bit))
@@ -735,6 +1227,7 @@ class CharacterWindow:
             for _, _, qs, _ in ACTS:
                 for w, _ in qs:
                     self.q_trees[k].set_locked(('q', k, w), w in self.qlocked[k])
+        self.sv0 = {k: e.get() for k, e in self.sv.items() if k in self.STAT_FIELDS}   # typed-value baseline
         self.update_dirty()
 
     def all_waypoints(self):
@@ -748,11 +1241,43 @@ class CharacterWindow:
             lvl = int(self.new_level.get())
             before = ch.level
             ch.set_level(lvl)
+            cls_changed = self.pending_cls is not None and self.pending_cls != ch.cls
+            if cls_changed:
+                ch.set_class(self.pending_cls)    # resets the skills: the old levels are the other class's
+                self.pending_cls = None
+            elif self.sk_vars:
+                ch.set_skill_levels(self._skills_from_vars())
+            widths = MC._csv(self.data)
+            widthbad = []
+            cap_note = ''
+            for key, (sid, shift) in self.STAT_FIELDS.items():
+                txt = self.sv[key].get().replace(',', '').strip()
+                try:
+                    v = int(txt)
+                except ValueError:
+                    continue                      # blank / junk: keep what the game stored
+                cur = ch.stat(sid) >> shift if shift else ch.stat(sid)
+                if v == cur:
+                    continue
+                bits = widths.get(sid, (0, 32))[1]
+                top = ((1 << bits) >> shift) - 1
+                if v < 0:
+                    v = 0
+                    self.sv[key].delete(0, 'end'); self.sv[key].insert(0, '0')
+                    widthbad.append((key, 0))
+                elif (v << shift) >= (1 << bits):
+                    v = top
+                    self.sv[key].delete(0, 'end'); self.sv[key].insert(0, str(v))
+                    widthbad.append((key, v))
+                ch.set_stat(sid, (v << shift) if shift else v)
             for k in range(3):
                 if self.qstate[k] != self.q0[k]:
                     ch.set_quests(k, self.qstate[k])
                 if self.wstate[k] != self.w0[k]:
                     ch.set_waypoints(k, self.wstate[k])
+            cap_note = ''
+            if widthbad:
+                capped = ', '.join(f'{k} {T("he.capped_to", "capped to")} {v}' for k, v in widthbad)
         except CharError as e:
             messagebox.showerror(T('ch.title', 'Character'), str(e), parent=self.top)
             self.reload()
@@ -768,8 +1293,9 @@ class CharacterWindow:
             self.set_bar(T('he.saved_level', '{name} saved: level {level}', name=ch.name, level=ch.level)
                          + (T('he.saved_up', ' (+{n}: stat and skill points to spend in game)', n=ch.level - before)
                             if ch.level > before else '')
-                         + (T('he.saved_rewards', ' — quest rewards: {rewards}', rewards=rewards) if rewards else ''))
-            self.top.title(f'Median XL Capybara Editor V2 — {ch.name}')
+                         + (T('he.saved_rewards', ' - quest rewards: {rewards}', rewards=rewards) if rewards else '')
+                         + (' - ' + cap_note if cap_note else ''))
+            self.top.title(f'Median XL Capybara Editor V2 - {ch.name}')
 
     def copy_char(self):
         name = self.copy_name.get().strip()
@@ -824,15 +1350,16 @@ THEMES = {
                 pane='#ffffff', pane_fg='#000000', tab='#e8e8e8', tab_fg='#000000', tab_sel='#ffffff',
                 box_fill='#ffffff', box_mark='#000000', box_dark='#404040', box_mid='#808080', box_light='#d4d0c8',
                 part_fill='#d4d0c8', part_mark='#808080', lock_fill='#b8b8b8', lock_mark='#404040'),
-    True: dict(bg='#1e1e1e', fg='#d6d6d6', entry='#2b2b2b', entry_fg='#ececec', btn='#3a3a3a', frame_fg='#d8c27a',
-               pane='#252526', pane_fg='#e0e0e0', tab='#3a3a3a', tab_fg='#d6d6d6', tab_sel='#5a5a5a',
-               box_fill='#161616', box_mark='#f0f0f0', box_dark='#707070', box_mid='#a0a0a0', box_light='#808080',
-               part_fill='#4a4a4a', part_mark='#a0a0a0', lock_fill='#555555', lock_mark='#c8c8c8'),
+    # the game's own screen: dark stone with gold text
+    True: dict(bg='#141008', fg='#d8c27a', entry='#0b0a08', entry_fg='#e0c880', btn='#2a2008', frame_fg='#d8c27a',
+               pane='#191208', pane_fg='#e0c880', tab='#2a2008', tab_fg='#d8c27a', tab_sel='#4a3a14',
+               box_fill='#0b0a08', box_mark='#d8c27a', box_dark='#5a4a20', box_mid='#8a7a4a', box_light='#c8b478',
+               part_fill='#3a2c12', part_mark='#d8c27a', lock_fill='#241d10', lock_mark='#a8945a'),
 }
 
 
 def _paint_box(im, kind, t):
-    """Draws a 13×13 check box (kind: off / on / part / lock) into the 15×13 image im, in theme t."""
+    """Draws a 13x13 check box (kind: off / on / part / lock) into the 15x13 image im, in theme t."""
     fill, mark = {'off': (t['box_fill'], None), 'on': (t['box_fill'], t['box_mark']),
                   'part': (t['part_fill'], t['part_mark']), 'lock': (t['lock_fill'], t['lock_mark'])}[kind]
     im.put(t['pane'], to=(0, 0, 15, 13))

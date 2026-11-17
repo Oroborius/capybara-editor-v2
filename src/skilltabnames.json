@@ -1,0 +1,67 @@
+{
+ "Amazon": {
+  "1": "Divine",
+  "2": "Bow",
+  "3": "Javelin",
+  "4": "Spear",
+  "5": "Storm",
+  "6": "Blood",
+  "7": "Mastery",
+  "8": "Reward"
+ },
+ "Assassin": {
+  "1": "Ninja",
+  "2": "Throwing",
+  "3": "Claw",
+  "4": "Naginata",
+  "5": "Traps",
+  "6": "Psionic",
+  "8": "Reward"
+ },
+ "Barbarian": {
+  "1": "Nomad",
+  "2": "Earthshaker",
+  "3": "Windcarver",
+  "4": "Elementalist",
+  "5": "Warmonger",
+  "6": "Shaman",
+  "8": "Reward"
+ },
+ "Druid": {
+  "1": "Nature",
+  "2": "Werebear",
+  "3": "Werewolf",
+  "4": "Wereowl",
+  "5": "Hunter",
+  "6": "Seer",
+  "8": "Reward"
+ },
+ "Necromancer": {
+  "1": "Deathspeaker",
+  "2": "Summon",
+  "3": "Melee",
+  "4": "Crossbow",
+  "5": "Malice",
+  "6": "Totem",
+  "8": "Reward"
+ },
+ "Paladin": {
+  "1": "Aspects",
+  "2": "Templar",
+  "3": "Incarnation",
+  "4": "Nephalem",
+  "5": "Ritualist",
+  "6": "Warlock",
+  "8": "Reward"
+ },
+ "Sorceress": {
+  "1": "Arcane",
+  "2": "Fire",
+  "3": "Lightning",
+  "4": "Cold",
+  "5": "Poison",
+  "6": "Melee",
+  "8": "Coven",
+  "9": "Reward"
+ }
+}

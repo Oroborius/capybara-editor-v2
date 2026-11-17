@@ -41,7 +41,7 @@ rm -f "$APPDIR/opt/python/lib/python3.10/EXTERNALLY-MANAGED"
 
 # 2. the application: host modules (bytecode), editor modules (source), languages, launcher
 "$PY" -I "$ROOT/packaging/extract_host.py" "$BASE_EXE" "$APPDIR/opt/capybara" >>"$LOG"
-cp "$ROOT"/src/mxl_*.py "$ROOT/packaging/linux/capybara_editor.py" "$APPDIR/opt/capybara/"
+cp "$ROOT"/src/mxl_*.py "$ROOT"/src/*.json "$ROOT/packaging/linux/capybara_editor.py" "$APPDIR/opt/capybara/"
 cp "$BASE_DIR"/_internal/lang/*.json "$APPDIR/opt/capybara/lang/" 2>/dev/null || true
 cp "$ROOT"/lang/*.json "$APPDIR/opt/capybara/lang/"              # superset of the collector's files
 "$PY" -I -m compileall -q "$APPDIR/opt/capybara" >>"$LOG"

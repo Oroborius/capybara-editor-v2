@@ -1,4 +1,154 @@
-# Median XL Capybara Editor (MXL Capybara Editor.exe)
+# Median XL Capybara Editor (personal unrestricted build)
+
+## Hero-Editor item menu on every right click (`mxl_rc_menu.py`, round 5): quality, specific editing, export
+- Both windows' item menus now carry the original editor's context menu set: **Edit item / Item stats… /
+  Duplicate / Copy / Cut / Paste (replaces it) / Move to page… / Quantity… / Change item quality… /
+  Specific editing functions / Delete / Export item…**; an empty cell additionally offers **Paste here /
+  Import item… / Create here…**. On the character window the same entries appear (writes through the
+  character editor's remove -> place -> save flow), plus To stash; Import on an empty inventory cell.
+- **Change item quality (now X)** — one entry per quality the base can carry (the creator's own rules:
+  `can_have_quality`, superior bonus choices, craft recipes, set/unique rows filtered to the same base
+  code). A switch asks for what the quality needs (which unique row, rare-name first and second part,
+  superior bonus) with a small listbox dialog and then only replaces the quality fields — **the rolled
+  stats stay exactly as they are**, like Hero Editor's menu. Switching to a set item drops the ethereal
+  flag (the game never gives ethereal set items) and mentions it. Runeword items stay runewords.
+- **Specific editing functions** — Hero Editor's submenu, written decode -> adjust -> re-encode in place:
+  Set defense... (armor, clamped to the save format), Set durability..., Make indestructible (max
+  durability = the indestructible encoding, the durability field disappears), Make / Remove ethereal (the
+  game's own consequences: stored defense x3/2 or back, max durability /2 + 1 or back, refused when the
+  result would not fit), Make socketed... (only on items without socketed children, up to the base's real
+  socket cap at the item's level), Personalize... / Remove personalization (2-15 ASCII letters, the
+  7-bit-chars field the game shows as "<name>'s ..."), and Delete all magic attributes (the stat list is
+  emptied; set-item and runeword stat lists are kept).
+- **Export item... / Import item...** — the raw item bytes (item + socketed items, exactly the stash's
+  own entry format) to/from a `.d2i` file; Import validates by decoding before anything is written and
+  places at the right-clicked cell.
+- **Fill sockets** (Hero Editor's Paste Fill): with a gem or rune copied (the creator's own socketable
+  filler list), the item's menu offers *Fill sockets with ... (now k of m)* — it appends copies of the
+  clipboard item up to the base's real socket cap and rewrites every child's location to "socketed, slot
+  i" (lossless re-encode; items with stale child locations get fixed on the way). Refused politely when
+  the item is full or the clipboard holds something that is not a filler.
+- **Magic-attributes buffer** (Hero Editor's mnuAddAllMagicAttributesToBuffer & friends; the original's
+  paste handler is commented out in the VB6 source, here it works): *Add all magic attributes to buffer*
+  copies an item's whole stat list (its runeword list kept apart) into a shared buffer, *Paste magic
+  attributes from buffer* replaces another item's list with the buffered one (the record is re-spliced at
+  its new size through the same safe writers), and *Delete magic attribute buffer* clears it. The menu
+  entries appear only when they can do something.
+- **Remove socketed items (n)** (Hero Editor's mnuRemoveSocketed) in the Specific editing submenu:
+  deletes an item's socketed children (runes, gems, jewels) and clears the socket fields — the children's
+  bytes live behind the record, so the entry shrinks to the bare record through the same splice writers.
+  On a runeword the status note says its stats stay but the runes are gone.
+- Compact-record items (gold, simple stackables) have no quality/stats in the save: the new functions
+  refuse them with a status-line note instead of silently doing nothing.
+- Every write still goes through the safe writers (edit_stash / Character.save) with backups; anything
+  that would not fit its spot or the save format is refused and nothing is written.
+- Verified headlessly (`/tmp` round-5 suite, DISPLAY=:0): decode -> encode byte-identical on all 50 real
+  stash items; quality switches (normal/superior/magic/rare/unique) keep the stats; ethereal round-trip
+  adjusts defense/durability by the game's rules and back; durability, indestructible, personalize,
+  clear-mods and socket fields round-trip; one real edit_stash write re-parsed with the new quality; the
+  character writer path saves and re-loads with the flag; menu wiring built on a hidden Tk root for a
+  gem (quality entries per the base rules) and for a created legit armor (defense / durability /
+  indestructible / ethereal / sockets / personalize / clear attributes all offered); a menu-dispatched
+  quality write landed in the stash through the real writer.
+
+## Right-click menus on items (`mxl_rc_menu.py`): the Hero-Editor way
+- Main window (stash grid): right-click an item for **Edit item / Item stats… / Duplicate / Copy / Cut /
+  Paste (replaces it) / Move to page… / Quantity… / Change item quality… / Specific editing functions /
+  Delete / Export item…**; right-click an empty cell for **Paste here / Import item… / the Item Creator**.
+- Character window (equipment, mercenary, inventory): the same set (written through the character editor's
+  own remove -> place -> save flow) plus **To stash**; an empty inventory cell for **Paste here /
+  Import item… / Create here…**.
+- **Change item quality** replaces only the quality fields (the rolled stats stay); it asks for what the
+  quality needs (unique/set row of the same base, rare-name parts, superior bonus) and never offers a
+  quality the base cannot carry. **Specific editing functions**: defense, durability / indestructible,
+  ethereal (with the game's own defense and durability consequences), sockets (childless items only),
+  personalize, delete-all-magic-attributes. **Export/Import** moves items as raw `.d2i` bytes.
+  **Fill sockets** copies a clipboard gem/rune into the item's free sockets, up to the base's cap.
+- Every write goes through the collector's own safe writers (edit_stash, Character.save / apply_edits; backups).
+
+## Item stats window (`mxl_he_stats.py`): Hero-Editor-style flat stat table
+- "Item stats" button in the main bar (next to "Edit item"): opens a plain Hero-Editor-style table of the
+  selected item (a stash item, or one of the character's equipment / inventory items opened from the
+  character window's right-click menu) — one row per stored stat, the game's own label (plus a `[stat #id, bits]` reference for
+  the internal stats), the value in a number box, a × per row to delete it, and a "Stat to add" picker that
+  acts like Hero Editor's stat list (a filter box + the list of every stat the save format can hold, param
+  box, "Add this stat", "Replace selected row"). Light / dark mode like the character window (`he_stats_dark`).
+- **Attribute list like Hero Editor**: click a row (label or number box) to select it — it is highlighted;
+  the picked stat in the picker then has **Replace selected row** (takes the selected row's place, the value
+  typed in the row's box is kept), next to **Add this stat**; × deletes the selected row's stat.
+- Value edits of kept rows are written in place through `mxl_save.apply_edits(..., force=True)` (one write,
+  verification, `.bak` backup, linked stats kept by the collector's own set_stat logic). Adding or deleting a
+  row re-encodes the item losslessly (`mxl_creator.decode_blob` → `build_blob`, round trip verified
+  byte-identical on all items of a real stash) and replaces it at its own place through `mxl_save.edit_stash`;
+  the main window is reloaded afterwards because offsets shift.
+- Values the save format cannot hold are refused (and shown in the window's status bar) — never written.
+  Stash items only for now (equipment / inventory items go through the character file writer).
+
+## Stat names, skill params and the full stat list of the Edit item window (2026-11-09)
+
+- `mxl_statnames.py` (new, shared): readable labels and skill params for every editor.
+  - `stat_text`: the stat's own game text, plain; `''` for hidden stats and for the 256 stats whose
+    desc / pos / neg / str2 strings are literally 'FLYING POLAR BUFFALO ERROR' in Median XL's own
+    itemstatcost (only #377 ever surfaces on real saves) — the editors show a neutral '(stat #N)' for
+    those instead of the placeholder (`mxl_creator.stat_choices`, `mxl_he_stats._row_label`; the
+    creator's `mod_label` already filtered those strings).
+  - Params that carry a skill are known from the game data: the chance-to-cast stats (sids 195 - 203,
+    param = `(skill << 6) | level` shown), the single-skill stats (97 / 107, param = skill id) and the
+    class skill stat (83, param = class index); `decode_param` / `encode_param` / `skill_names_sorted`
+    build the dropdowns.
+- **Clamping instead of the range error**: every value box now caps a typed value at what the save
+  format holds and reports it, instead of refusing with a "does not fit" dialog or an error:
+  `mxl_he_stats.save()` (stash and character items, notes `stat #N capped to M`), `mxl_creator_gui`
+  `route_target` / `Replace selected` (`_edit_clamp`), and the character window's stats tab
+  (`mxl_char_gui.save_progress`, `he.capped` / `he.capped_to` keys; the box itself shows the capped
+  value). The write itself still refuses what the game's own stat logic will not allow (StoreError).
+- `mxl_he_stats.py`: chance-to-cast / single-skill / class rows get a skill (or class) dropdown beside
+  the value box (chance-to-cast rows get the cast level too); changing it rewrites the item's param at
+  once (`_row_param_commit`). The add / replace picker shows the same dropdowns for the picked stat
+  (`_build_param_zone`), so e.g. a chance-to-cast stat is added as 'Arrow' + level + chance, not as a
+  naked param number.
+- **Edit item window** (`mxl_creator_gui.py`, edit mode only): the raw 'extra' section is replaced by
+  `render_edit_stats` — the item's own stat list as the game shows it, one row per (stat, param) with
+  its final value (the mods' totals plus the hidden delta). Editing routes through the single variable
+  mod that owns the stat alone (`spec['rolls']`) when there is one and no delta row yet, else through
+  the raw delta rows (`spec['extra']`), so edits survive re-opening the window. Each row: click to
+  select (● marker), the value box, the skill dropdown + cast level for skill stats, × to delete (the
+  delta cancels what the mods still produce; a zero row the item itself had is kept like the spec
+  builder keeps originals). The pick row below takes any stat + its skill / param + a value:
+  '+ Add stat' or 'Replace selected' (carries the selected row's value over, capped at the new stat's
+  save bounds, and cancels the old key). Runeword items keep the raw runeword section; the creator
+  (new item) keeps the plain raw stat section, with the param box upgraded to the skill / level or
+  class dropdown.
+- `repack.py`: `mxl_statnames` added to the module list.
+
+## What is changed in this fork
+- **Works while the game is open** (`mxl_free.py`, new module): the collector's "the game must be closed" check
+  (`mxl_save.check_game_closed`, by function identity also everywhere a module bound it by name, and wherever
+  a writer of the collector calls it) is replaced by a no-op at start, and `mxl_char.Character.save` no longer
+  refuses a file that changed on disk since it was read: it is written through anyway, with a warning in
+  capybara.log. Verification after writing and the `.bak` backups stay. The game reads the saves when it
+  starts, so changes show after its next save & exit / restart.
+- **Unrestricted stat editing / raw stats on any item** (`mxl_creator.py`, `mxl_creator_gui.py`): an
+  "Unrestricted" switch in the Item Creator / Editor window (remembered, on by default):
+  - value sliders reach the item's full storable range (ItemStatCost save bits / add) instead of the game's
+    own affix ranges; a value the save format cannot hold is never written — the encoder refuses it and the
+    status line warns, so a broken item cannot corrupt the file;
+  - a **raw stats** list at the bottom of the value sliders: **+ Add stat** puts a row with any stat id the
+    save can hold (the game's 9-bit stat ids, 0-510, exactly what ItemStatCost has storage for), its param
+    (a number; a skill or monster id for the stats that take one) and any value; every row can be edited or
+    deleted ('✕'), also on runeword items (a second list, next to the runeword's own one). Same (stat, param)
+    rows add up when the item is written, like the game's own stat lists;
+  - simple items (runes, gems, keys...) open for editing too: an item without its own stat list carries raw
+    stats as a full item record, and stays byte-identical when no raw stat was added;
+  - out-of-range values of kept stats (hacked / upgraded items) stay as they are upstream, and in this build
+    the free sliders and raw rows can put any storable value on a new item as well.
+- The game tables the editor relies on were cross-checked against the extracted Median XL data
+  (itemstatcost: max storable stat id 510) (9-bit stat
+  id, 5-bit param pieces, 0x200 stride): the editor's item saving is exactly the game's.
+- Language keys of the changed windows: `cr.unrestricted`, `cr.unrestricted_note`, `cr.raw.*` and
+  `cr.warn.unrestricted` (English text is in the code, `lang/*.json` carry the three languages).
+
+## Upstream features (unchanged)
 
 `MXL Capybara Editor.exe` is the MXL Item Collector with an offline item creator/editor and a character editor added,
 named Median XL Capybara Editor (window titles, capybara icon). It sits next to the original `MXL Item Collector.exe`
@@ -35,8 +185,12 @@ tab uses the collector's own dark theme in both modes. SAVE applies the
 changes of every tab at once; CLOSE asks to save unsaved changes.
 - **Stats**: Name (with "Copy as"), Class, Level, Experience, Characteristics (Strength, Dexterity, Vitality, Energy,
   stat and skill points left), Constitution (life, mana, stamina current / max), Gold (person, stash), Character Type,
-  Character Difficulty, file info. Only the level can be changed: raising it works like the game (experience, 5 stat
-  points and 1 skill point per level, life / mana / stamina per level from charstats); lowering it is refused.
+  Character Difficulty, file info. Every stat number box is editable: type a value and SAVE writes it through
+  `set_stat` (gold / person + stash, experience, strength / dexterity / vitality / energy, stat & skill points, and
+  life / mana / stamina current + max — those are stored in 256ths, the boxes show the game's own numbers and
+  `\u2192 << 8` on write). A value that does not fit the save file's width for its stat (checked against
+  itemstatcost CSvBits) is refused with a clear message before anything is written; raising the level still works
+  like the game (experience, 5 stat points and 1 skill point per level); lowering it is refused.
 - **Inventory**: paperdoll of the character or the mercenary (weapon sets I / II) and the 15×10 inventory. Drag items
   between slots and inventory; To stash / From stash, Edit…, Create here…, Delete.
 - **Waypoints**: Normal, Nightmare and Hell side by side, each a tree "<Mode> Mode Waypoints" > Act > waypoint with
@@ -232,6 +386,98 @@ To add a language: copy en.json to lang/<code>.json, set `_language` and transla
 The exe file, the taskbar and every window use the capybara icon (capybara.ico in the exe's resources; mxl_app_icon.py
 for the windows). The Character window keeps the old Hero Editor's own icon.
 
+## The plain Hero-Editor grids, D2 panels off (2026-11-10, third round)
+The game-art panels came out - everywhere plain Hero-Editor grey (the user's verdict: the dark
+collector / D2 mix is not what Hero Editor looked like):
+- `mxl_d2look.disable()` in `run()` keeps the game-art look off for good: no treasure of panels, no
+  resized cell for art, no 'D2 look' checkbox (mxl_d2look still ships: `D2.button` falls back to the
+  plain ttk buttons the theme styles, the creator header falls back to its title label).
+- New `mxl_he_grid.py`: the collector draws its grids with its near-black theme (mxl_theme constants
+  copied by value into each window module at import). `install()` wraps
+  `App.__init__` (the root exists by then, `_build` yet to run) and replaces the colour copies in
+  mxl_theme, mxl_gui, mxl_gui_detail, mxl_char_gui, mxl_inv_gui, mxl_creator_gui, mxl_import (and
+  mxl_tooltip / mxl_library_gui where present): light-grey panel (#f0f0f0), pale cells (#e2dfd3) with
+  grey outlines, gold selection, blue / red drop tints, and the item text panel + tooltips light with
+  black text. The game icon colours (GAME_COLORS) get dark-on-light shades so plain white text stays
+  readable on grey. `FONT` becomes a family the runtime really has and the grid's own app.cell_font is
+  rebuilt from it inside the wrap.
+- The item icons, grid layout, drag & drop and the detail drawing code are untouched - only colours.
+
+## Hero-Editor look everywhere, ASCII-safe fonts and labels (2026-11-09, second round)
+Everything now wears the Hero-Editor look, not only the self-styled windows:
+- `mxl_he_theme.py` is the outermost look wrapper (`run()` installs it after the splash): 'clam' ttk
+  style in the HE palette (grey windows #f0f0f0, white entries, black text, stone-grey buttons #e1e1e1),
+  plus a walker that repaints every plain tk widget in the app when windows open - and re-checks every
+  2.5 s so late-built widgets (the creator rebuilds its lists constantly) are picked up too.
+- It never repaints what is already dark: the black/gold chrome and status bars of the Hero-Editor
+  windows, the stone D2 buttons, the item preview and the dark item lists stay as they are. Canvases
+  never get recoloured - the stash grid and the D2 panels keep their art.
+- Missing font families are repaired (no more glyph boxes on Linux): Palatino Linotype / Times New
+  Roman / Segoe UI fall back to DejaVu / Liberation (see `safe_family` / `safe_font`, also for text
+  items inside drawing canvases). `_parse_font` reads family / size / styles from the raw spec because
+  building a `tkfont.Font` normalizes a missing family away.
+- Clean labels: the stat rows and the creators' pickers no longer show `[42, 7 b]` / 'stat #N' ids,
+  param numbers or bit counts. The technical line (stat id, param, save bits, value, save range) goes
+  to the status bar instead when a row is clicked or a stat is picked (`_row_info_text`,
+  `cr.raw.statinfo`, both in mxl_he_stats and the two creators' pickers).
+- ASCII sweep through every UI string: em dash -> '-', ellipsis -> '...', the ex / cross marks -> 'x',
+  the bullet / arrow / warning glyphs -> '* ' / '->' / '!'. Kept: the Diablo colour-code prefix in
+  game text ('-c-...' is data, not decoration) and the accented names in the data ('Tur Dulra' etc.).
+  The ' - ' name separator changed everywhere, so producers and parsers stay in sync.
+- note for tests: the duplicate game texts (e.g. stat 192 and 196 share '[percent] Chance to cast ... on
+  Kill') collapse into identical labels now; the pickers resolve them by index, so tests must too.
+
+## One editor, fixed deletes, type-ahead, quantities, base-D2 character screen (2026-11-10, fourth round)
+Six user-reported issues, all verified headless (`test_round4.py`, plus the round-3 suites re-run):
+
+1. **The OHMAN skill played another skill.** The game reads a chance-to-cast param as 16 bits
+   effectively, but the isc table gives 17 (skill id 6 bits + level 11). OHMAN (skill id 1697)
+   encoded as `(1697 << 6) | lvl` = over 65535 and rolled in-game. `mxl_statnames` now caps the
+   param at `min(isc bits, 16)`: `skill_fits` refuses skills whose id does not fit,
+   `encode_skill_param` returns `(None, reason)` (reason 'unknown' / 'rolled' / 'level') and the
+   creators show why in the status bar; the skill dropdowns are filtered (`skill_names_sorted(data,
+   sid)`), so a skill that cannot be stored is never offered. The class stat (83) encodes through
+   `mxl_rules.CLASSES` indices, not skill names. Duplicate labels in the stat pickers are suffixed
+   ' (2)' / ' (3)' (the identical-text twins are 192 / 196; 195-203 differ by event text and stay
+   distinct).
+2. **Type-ahead in every dropdown** (`bind_typeahead` in mxl_creator_gui): typing a letter jumps to
+   the first value starting with it, wraps around, and stays put when nothing matches. Wired into
+   the raw rows, the edit-table rows and both skill pickers. The handler is returned for headless
+   tests (synthetic key events do not reach widgets under a withdrawn root).
+3. **Removing an attribute in Edit item mode failed.** The save format writes stat GROUPS with
+   their lead (17+18, 48+49, 50+51, 52+53, 54+55+56, 57+58+59), so deleting one member put it back
+   as a 0; the "left out due to the model" error was the 'kept as they were' warning counting
+   bookkeeping delta rows. Now: `_edit_delete` drops the whole group (lead + followers +
+   co-followers), marks the keys in `spec['_drop']`, `build` filters dropped keys before the
+   keep-zero pass, `render_mods` hides them, re-adding the stat clears the drop (also via
+   `route_target` and the raw commits), and the warning counts the item's own kept stats only
+   (`spec['_extra_kept']`, `_take_over` on user edits, `_kept_count` - one per stat id, visible
+   stats with a non-zero final value).
+4. **One item editor.** "Item stats..." (stash and character menus) now opens the same CreatorWindow
+   edit mode as "Edit item..." (`mxl_he_stats.open_item_stats` -> `edit_selected(app)`,
+   `open_char_item_stats` -> the character window's own `edit()`); the old flat ItemStatsWindow is
+   dead code. `clamp_window` keeps every window fully on screen (creator, character window, stats
+   window, import report): never bigger than the screen, centred when not placed yet, drag bars
+   always reachable.
+5. **Standard Diablo II character screen** (`mxl_d2look_art.char_panel_d2`, independent of the
+   switched-off Sigma panels): built from the base-game MPQs only (patch_d2 / d2exp / d2data -
+   `base_mpqs`, `read_base`, `base_frame`), invchar6 frames 4..7 scaled x1.6 (320x432 -> paperdoll
+   512x400), below it the stone filled with mirror-tiled copies of the clean patch (200,374)-(314,428)
+   so nothing of the game's own grid repeats visibly. The equipment boxes sit at `GEAR_D2`
+   (native game positions x 1.6), the I / II tabs at `WSET_TABS_D2`, the gold button from
+   goldbtn.dc6, and the 15x10 inventory grid is drawn D2-style (dark cells `CHAR_CELL_BG`, grey
+   borders) over the stone at `CHAR_GRID` (37,400). Fallback on any error: the plain doll layout
+   (`self.d2 = False`).
+6. **Quantity submenu** (`mxl_rc_menu._quantity_cascade`): right-click a stackable item (clusters,
+   quivers, throwing weapons - `base.stack_max is not None`, not a compact record) in the stash for
+   Max / Min / Add... / Remove...; Add and Remove ask for a number. `_set_quantity` decodes the
+   item, rewrites `quantity` (9 bits), re-encodes with the socketed children behind it and writes
+   the stash through the collector's safe single-write editor.
+
+Round-4 test suite: `/tmp/opencode/test_round4.py` (43 checks, all pass headless; the fix-3 repro
+item is built in the test itself with the group stats, since the user's Stinger Crossbow is no
+longer in the stash).
+
 ## Files
 - `mxl_creator.py`: bit-level item encoder/decoder (lossless), the legit generators and crafting recipes (cubemain).
 - `mxl_creator_gui.py`: the creator window and the main-window buttons.
@@ -239,12 +485,18 @@ for the windows). The Character window keeps the old Hero Editor's own icon.
 - `mxl_char_gui.py`: the character window.
 - `mxl_app_icon.py`: the capybara window / taskbar icon. `rsrc.py`: puts an .ico into the exe's resources
   (`repack.py ... --icon=capybara.ico`).
+- `mxl_he_stats.py`, `mxl_he_theme.py`: the flat stat table and the look of the Hero-Editor windows
+  (mxl_he_theme is the outermost look wrapper: ttk palette + walker + font repair for every window).
 - `mxl_he_art.py`: button images and window icon from Hero Editor.exe 1.04 (ZonFire99, Mastadex).
+- `mxl_statnames.py`: shared stat labels (the buffalo-safe game text) and skill-param dropdowns for the
+  editors (see 'Stat names, skill params and the full stat list of the Edit item window').
 - `mxl_inv_gui.py`: the equipment and inventory panel of the main window (drag & drop with the stash).
 - `mxl_statparse.py`: reads tooltip lines back into item stats (uses the collector's tooltip text as the reference).
 - `mxl_format_fix.py`: the reader fix above.
 - `mxl_import.py`: the character page import (page reader, item rebuilder, new character, Import button).
-- `mxl_d2look.py`, `mxl_d2look_art.py`, `mxl_d2ui_dc6.py`: D2 look (layout, game art cache, DC6 decoder).
+- `mxl_d2look.py`, `mxl_d2look_art.py`, `mxl_d2ui_dc6.py`: the game-art look (switched off since 2026-11-10,
+  see 'The plain Hero-Editor grids, D2 panels off').
+- `mxl_he_grid.py`: the light grid constants (replaces the collector's dark theme copies everywhere).
 - `mxl_splash.py`: loading screen (door animation with the capybara).
 - `mxl_log.py`: the log file `capybara.log` in the settings folder (saves, backups, imports, errors).
 - `mxl_lang.py`: translation helper of the added windows (see Languages).

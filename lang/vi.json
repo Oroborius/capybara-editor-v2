@@ -488,7 +488,7 @@
   "inv.moved_stash": "Đã chuyển {item} đến {file}, trang {page} ({x}, {y})",
   "inv.moved_char": "Đã chuyển {item} đến {dest} của {name}",
   "inv.equipment": "Trang bị",
-  "inv.hint": "Kéo vật phẩm giữa rương, hành trang và trang bị. Game phải được đóng; một bản sao lưu được tạo trước thay đổi đầu tiên.",
+  "inv.hint": "Kéo vật phẩm giữa rương, hành trang và trang bị. Game có thể mở; một bản sao lưu được tạo trước thay đổi đầu tiên.",
   "inv.err.no_char": "hãy chọn nhân vật trước",
   "inv.err.no_stash": "hãy mở rương trước",
   "inv.err.changed": "tệp nhân vật đã thay đổi trên ổ đĩa: đã tải lại, hãy thử lại",
@@ -578,5 +578,12 @@
   "d2.title": "Giao diện D2",
   "d2.restart": "Giao diện mới sẽ được dùng ở lần mở trình sửa tiếp theo.",
   "d2.toggle": "Giao diện D2",
-  "d2.unavailable": "Không dùng được giao diện D2 (không tìm thấy hình ảnh game: {error})"
+  "d2.unavailable": "Không dùng được giao diện D2 (không tìm thấy hình ảnh game: {error})",
+  "cr.unrestricted": "Không giới hạn",
+  "cr.unrestricted_note": "Không giới hạn: các giá trị dưới đây có thể nằm bất cứ đâu mà định dạng lưu cho phép (giá trị không thể lưu sẽ được cảnh báo, không bao giờ được ghi). Thêm, sửa hoặc xóa stat thô theo id ở dưới.",
+  "cr.raw.stats": "Stat thô (danh sách của món đồ)",
+  "cr.raw.rw": "Stat thô (danh sách runeword)",
+  "cr.raw.add": "+ Thêm stat",
+  "cr.raw.clamped": "stat thô #{sid}: {v} không thể lưu, {lo} đến {hi}",
+  "cr.warn.unrestricted": "không giới hạn: một giá trị nằm ngoài khoảng của trò chơi, giữ nguyên"
 }

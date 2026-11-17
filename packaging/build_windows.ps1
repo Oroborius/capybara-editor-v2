@@ -22,6 +22,7 @@ if (Test-Path $Out) { Remove-Item -Recurse -Force $Out }
 New-Item -ItemType Directory -Force (Join-Path $Out "lang") | Out-Null
 Copy-Item -Recurse (Join-Path $BaseDir "_internal") (Join-Path $Out "_internal")
 Copy-Item (Join-Path $Root "lang\*.json") (Join-Path $Out "lang")
+Copy-Item (Join-Path $Root "src\*.json") (Join-Path $Out "_internal")
 & py -3.10 (Join-Path $Root "src\repack.py") $BaseExe (Join-Path $Out "$Title.exe") "--icon=$(Join-Path $Root 'src\capybara.ico')"
 if ($LASTEXITCODE -ne 0) { throw "repack.py failed" }
 Compress-Archive -Path $Out -DestinationPath (Join-Path $Root "dist\windows\MXL-Capybara-Editor-V2-windows.zip") -Force

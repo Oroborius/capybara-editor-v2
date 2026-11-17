@@ -99,7 +99,7 @@ def load_page(path):
         elif isinstance(val, dict) and (kind == 'export' or 'skillPoints' in val) and (val.get('class') or val.get('level')):
             build = val
     if items is None:
-        raise ImportError_(T('im.err.no_items', 'no item list found in this page (save the character page with "Save as… Web page")'))
+        raise ImportError_(T('im.err.no_items', 'no item list found in this page (save the character page with "Save as... Web page")'))
     if build is None:
         build = _page_build(text)
     return build, items
@@ -242,7 +242,7 @@ class Importer:
 
     def _magic_ids(self, display, code):
         """(prefix id, suffix id) from "Prefix Base of Suffix"."""
-        base = canon(self.cr.display_name(code).split(' — ')[0])
+        base = canon(self.cr.display_name(code).split(' - ')[0])
         name = canon(re.sub(r'\s*\[\d+x\]\s*$', '', display))
         pre_txt, suf_txt = '', ''
         if base and base in name:
@@ -544,7 +544,7 @@ class Importer:
     def _sources(self, e, quality, row):
         """Stat lists the item can have: its unique / set row, and the cube upgrades the page shows. Trophy and
         class upgrades exist once per class with the same lines: only one of them is taken, the page's class
-        ("(Druid Only)") first, then the any-class one — their class restriction (stat 463 = class + 1) is that
+        ("(Druid Only)") first, then the any-class one - their class restriction (stat 463 = class + 1) is that
         version's."""
         sources = [self._row_stats(quality, row)]
         if quality != 'unique':
@@ -1046,7 +1046,7 @@ def import_character(page_path, template_path, save_dir, name, data, cls_name=No
     report.insert(0, T('im.summary', '{name}: {cls} level {level}, {placed} of {total} items imported '
                        '({on_char} on the character, {in_stash} in the stash).', name=name, cls=cls_name, level=ch.level,
                        placed=placed, total=len(items), on_char=n_items, in_stash=len(stash_blobs)))
-    log.info('import done: %s\n%s', report[0], '\n'.join('    • ' + r for r in report[1:]))
+    log.info('import done: %s\n%s', report[0], '\n'.join('    * ' + r for r in report[1:]))
     return dst, report
 
 
@@ -1162,7 +1162,7 @@ def import_dialog(app):
                                'existing save of this game version.'), parent=root)
         return
     path = filedialog.askopenfilename(
-        parent=root, title=T('im.pick_title', 'Character page saved from median-xl.com (Save as… Web page)'),
+        parent=root, title=T('im.pick_title', 'Character page saved from median-xl.com (Save as... Web page)'),
         initialdir=os.path.join(os.path.expanduser('~'), 'Desktop'),
         filetypes=[(T('im.ft.page', 'Saved character page'), '*.html *.htm'), (T('im.ft.json', 'Item list'), '*.json'),
                    (T('im.ft.all', 'All files'), '*.*')])
@@ -1222,8 +1222,13 @@ def import_dialog(app):
     except Exception:
         pass
     win = tk.Toplevel(root)
-    win.title(T('im.report_title', 'Import — {name}', name=name))
+    win.title(T('im.report_title', 'Import - {name}', name=name))
     win.geometry('760x460')
+    try:
+        from mxl_creator_gui import clamp_window
+        win.after_idle(lambda: clamp_window(win, size=(760, 460)))
+    except Exception:
+        pass
     txt = tk.Text(win, wrap='word', bg='#1e1e1e', fg='#e0e0e0', insertbackground='#e0e0e0', bd=0, padx=8, pady=8)
     sb = tk.Scrollbar(win, command=txt.yview)
     txt.configure(yscrollcommand=sb.set)
@@ -1231,7 +1236,7 @@ def import_dialog(app):
     txt.pack(fill='both', expand=True)
     txt.insert('end', report[0] + '\n\n')
     if len(report) > 1:
-        txt.insert('end', T('im.notes', 'Notes:') + '\n' + '\n'.join('• ' + r for r in report[1:]))
+        txt.insert('end', T('im.notes', 'Notes:') + '\n' + '\n'.join('* ' + r for r in report[1:]))
     txt.configure(state='disabled')
     tk.Button(win, text=T('cr.btn.close', 'Close'), command=win.destroy).pack(pady=6)
 
@@ -1243,6 +1248,6 @@ def install(App):
         original(self)
         import ttkbootstrap as ttk
         top = self.btn_library.master
-        ttk.Button(top, text=T('im.btn', 'Import character…'), command=lambda: import_dialog(self)).pack(side='left', padx=(4, 0))
+        ttk.Button(top, text=T('im.btn', 'Import character...'), command=lambda: import_dialog(self)).pack(side='left', padx=(4, 0))
 
     App._build = _build
