@@ -22,21 +22,54 @@ QUEST_DATA = QUEST_OFF + 10           # 'Woo!' + version u32 + size u16
 WP_DATA = WP_OFF + 8                   # 'WS' + 6 bytes
 DIFFICULTIES = ('Normal', 'Nightmare', 'Hell')
 
-# quest words per difficulty (48 words): (act, intro word, [(word, string key)], completed word)
+# Quest words per difficulty (48 u16 words; file offset = QUEST_DATA + 96 * difficulty + 2 * word). Layout = vanilla
+# 1.13, checked against the game's own saves (one character at level 100 = "A" and twice at level 117 = "B", "C";
+# hex values are what the GAME wrote there):
+#    0       act I introduction             1 in every difficulty entered (A/B/C: Normal, Nightmare; B/C: Hell)
+#    1- 6    act I quests                   1001 9001 101D 9011 804A 1019 101D 1015
+#    7       travelled to act II            1 wherever Sisters to the Slaughter (6) is done - also with word 3 at
+#                                           804A (no bit 0): it follows the act's last quest, not "all six"
+#    8       act II introduction            1
+#    9-14    act II quests                  1001 1849 1801 1005 1181 1E65 1A25 1065
+#   15       travelled to act III           1
+#   16       act III introduction           1 in Normal and Hell, 0 in Nightmare although the act was played
+#                                           through: an NPC's speech heard, not a requirement
+#   17-22    act III quests                 1001 105D 100D 1005 13F5 1009 1061 1071
+#   23       travelled to act IV            1
+#   24       act IV introduction            1
+#   25-27    act IV quests                  1001 1301 1001  (26 = Terror's End, the act's last quest)
+#   28       travelled to act V             1
+#   29-31    unused (vanilla: act IV's three empty quest slots)   0
+#   32       act V introduction             1 in every difficulty that reached act V
+#   33, 34   unused                         0 (this editor wrote 1 to word 34 as "act V intro" before: wrong word)
+#   35-40    act V quests                   2002 8002 8022 2032 1001 210A 0709 8709 9709 801E 0009 10C9 000D 040D
+#                                           0405 000C  (in progress / reward pending states are common here)
+#   41       NOT "act V finished": 8002 in every difficulty entered, also in A's Nightmare where act V had only
+#            just been reached; 0 in a difficulty never entered. Vanilla: the stat / skill reset (Akara) state.
+#            When the game writes it (entering the difficulty or Den of Evil) the samples cannot tell: the editor
+#            leaves it alone (it wrote 1 = "completed" there before, a value the game never holds).
+#   42-47    unused                         0
+# A difficulty is finished when Eve of Destruction (40) has bit 0 (A/B/C Normal: 000D / 040D with header
+# progression >= 5); there is no word of its own for it.
+# (act, intro word, [(word, string key)], "travelled to the next act" word or None)
 ACTS = [
     ('Act I', 0, [(1, 'qstsa1q1'), (2, 'qstsa1q2'), (3, 'qstsa1q3'), (4, 'qstsa1q4'), (5, 'qstsa1q5'), (6, 'qstsa1q6')], 7),
     ('Act II', 8, [(9, 'qstsa2q1'), (10, 'qstsa2q2'), (11, 'qstsa2q3'), (12, 'qstsa2q4'), (13, 'qstsa2q5'), (14, 'qstsa2q6')], 15),
     ('Act III', 16, [(17, 'qstsa3q1'), (18, 'qstsa3q2'), (19, 'qstsa3q3'), (20, 'qstsa3q4'), (21, 'qstsa3q5'), (22, 'qstsa3q6')], 23),
     ('Act IV', 24, [(25, 'qstsa4q1'), (26, 'qstsa4q2'), (27, 'qstsa4q3')], 28),
-    ('Act V', 34, [(35, 'qstsa5q1'), (36, 'qstsa5q2'), (37, 'qstsa5q3'), (38, 'qstsa5q4'), (39, 'qstsa5q5'), (40, 'qstsa5q6')], 41),
+    ('Act V', 32, [(35, 'qstsa5q1'), (36, 'qstsa5q2'), (37, 'qstsa5q3'), (38, 'qstsa5q4'), (39, 'qstsa5q5'), (40, 'qstsa5q6')], None),
 ]
+# the quest whose completion opens the way to the next act: travel word -> quest word
+ACT_LAST_QUEST = {7: 6, 15: 14, 23: 22, 28: 26}
+RESPEC_WORD = 41                      # see above: never written by set_quests
 # quest rewards given when a quest is marked done here (per difficulty: 4 skill points, 5 stat points, +20 life)
 QUEST_REWARDS = {1: ('skill', 1),      # Den of Evil
                  9: ('skill', 1),      # Radament's Lair
                  25: ('skill', 2),     # The Fallen Angel (Izual)
                  17: ('stats', 5),     # Lam Esen's Tome
                  20: ('life', 20)}     # The Golden Bird
-QUEST_DONE = 0x1001                   # completed + closed in the quest log
+QUEST_DONE = 0x1001                   # completed (bit 0) + closed in the quest log (bit 12): what the game holds for
+                                      # a plainly finished quest (words 1, 9, 17, 20, 25, 27, 36 of the samples)
 LAST_QUEST_WORD = 40                  # Eve of Destruction: difficulty finished
 
 # (index in the 'WS' bitfield, in-game name), from levels.txt "Waypoint" and the string tables
@@ -839,23 +872,26 @@ class Character:
 
     def set_quests(self, diff, done_words):
         """done_words: set of quest words to mark completed in this difficulty (others are left as they are when
-        already done in game, or cleared when they were only marked). Act introductions / travel words follow."""
-        for act, intro, quests, completed in ACTS:
-            any_done = False
+        already done in game, or cleared when they were only marked). The words the game sets beside a finished
+        quest follow, only for an act in which a quest is marked by this call and only while they are still 0 (a
+        word the game wrote - or left at 0 in an act played in game, like Nightmare's act III introduction of the
+        samples - is never changed): the act's introduction (1), and "travelled to the next act" (1) when the
+        act's last quest is the one marked. Word 41 is not touched (see the table above ACTS)."""
+        for act, intro, quests, travel in ACTS:
+            marked = set()
             for word, _ in quests:
                 if word in done_words:
                     if not self.quest_done(diff, word):
                         self.set_quest_word(diff, word, QUEST_DONE)
                         self.quest_reward(word, +1)
-                    any_done = True
+                        marked.add(word)
                 elif self.quest_word(diff, word) == QUEST_DONE:
                     self.set_quest_word(diff, word, 0)
                     self.quest_reward(word, -1)
-            all_done = all(w in done_words for w, _ in quests)
-            if any_done and not self.quest_word(diff, intro):
+            if marked and not self.quest_word(diff, intro):
                 self.set_quest_word(diff, intro, 1)
-            if all_done and not self.quest_word(diff, completed):
-                self.set_quest_word(diff, completed, 1)
+            if travel is not None and ACT_LAST_QUEST[travel] in marked and not self.quest_word(diff, travel):
+                self.set_quest_word(diff, travel, 1)
         prog = 0
         for k in range(3):
             if self.quest_done(k, LAST_QUEST_WORD):

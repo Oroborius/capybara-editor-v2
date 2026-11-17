@@ -2668,6 +2668,7 @@ def run():
     import mxl_hotkeys                     # Character page "Hotkeys": skill hotkeys and mouse-button skills
     mxl_hotkeys.install(mxl_gui.App)
     import mxl_merc; mxl_merc.install()   # Character window page "Mercenary"
+    import mxl_quests; mxl_quests.install(mxl_gui.App)   # Character window page "Quests+": raw quest words
     import mxl_rc_menu                     # Hero-Editor-style right-click menus on items (stash + character)
     mxl_rc_menu.install(mxl_gui.App)
     mxl_rc_menu.install_char()
