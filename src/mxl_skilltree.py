@@ -302,7 +302,12 @@ class SkillTree:
         return self._icons.get(sid)
 
     def _draw_art(self, art):
-        from PIL import Image, ImageTk, ImageEnhance
+        from PIL import Image, ImageTk               # no ImageEnhance: the Windows exe's Pillow has no such module
+
+        def dim(im, k):                              # brightness k < 1, alpha kept (ImageEnhance.Brightness's result)
+            r, g, b, a = im.convert('RGBA').split()
+            f = lambda v: int(v * k)
+            return Image.merge('RGBA', (r.point(f), g.point(f), b.point(f), a))
         if self._text is None or self._text.art is not art:
             from mxl_statscreen import GameText
             self._text = GameText(art)
@@ -327,13 +332,13 @@ class SkillTree:
             ic = self.icon(art, sid)
             if ic is not None:
                 if unmet and not lv:
-                    ic = ImageEnhance.Brightness(ic).enhance(0.7)
+                    ic = dim(ic, 0.7)
                 node.alpha_composite(ic, (ICON_OFF, ICON_OFF))
             node.alpha_composite(self._open(art.frame('skills\\socket', 3 if rnd else 2)))
             tx.draw(node, f'{lv}/{lv}', NODE_W // 2, LVL_BOX[1] + LVL_BOX[3] // 2, 'font16',
                     WHITE if lv and not unmet else RED)
             if hidden:
-                node = ImageEnhance.Brightness(node).enhance(0.3)
+                node = dim(node, 0.3)
             out.alpha_composite(node, (x, y))
             if ic is None or self.tab == 0:            # no picture (or the page outside the trees): the name
                 nm = self.name(sid)
