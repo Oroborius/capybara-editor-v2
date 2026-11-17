@@ -14,6 +14,11 @@ Small API, meant for the Item stats tab now and the Item Creator later:
     AttrPicker(parent, data, on_pick=f(sid), on_cancel=f(), choices=None)     the embeddable pane (a tk.Frame)
     ChoiceList(parent, on_pick=f(name), on_cancel=f())                        filter + plain name list (skills...)
     popup(parent, data, on_pick, anchor=None, choices=None)                   the pane in a small window
+    popup_choices(parent, names, on_pick, anchor=None, current=None)          the name list in a small window
+    closest(text, labels)             index of the label Enter would pick for a typed text (None: nothing close)
+
+Matching of a typed text (the Find boxes): exact name, prefix, start of a word, substring, every typed word
+somewhere in the name (any order); only when none of these finds anything, the closest spellings (difflib).
 
 The last used category and a short 'Recent' list are kept with the host's settings module
 (keys 'attr_picker_cat', 'attr_picker_recent').
@@ -243,13 +248,60 @@ def _entry(parent, pal, m, var, **kw):
 
 
 def _rank(pat, low):
-    """Sort rank of a label for a filter text: 0 prefix, 1 a word starts with it, 2 substring; None no match."""
+    """Sort rank of a label for a filter text: 0 the name itself, 1 prefix, 2 a word starts with it, 3 substring,
+    4 every typed word is in it (any order: 'move speed' finds 'Movement Speed'); None no match."""
     i = low.find(pat)
     if i < 0:
+        words = pat.split()
+        if len(words) > 1 and all(w in low for w in words):
+            return 4
         return None
     if i == 0:
-        return 0
-    return 1 if not low[i - 1].isalnum() else 2
+        return 0 if len(low) == len(pat) else 1
+    return 2 if not low[i - 1].isalnum() else 3
+
+
+def _fuzzy(pat, lows, n=30):
+    """Indexes of the closest spellings in lows (lower-case labels) for a text nothing matched: a typo, a
+    missing letter. Whole labels first, then labels with a word close to a typed word."""
+    import difflib
+    if len(pat) < 3:
+        return []
+    out = [i for _r, i in sorted(((difflib.SequenceMatcher(None, pat, low).ratio(), i)
+                                  for i, low in enumerate(lows)
+                                  if abs(len(low) - len(pat)) <= max(4, len(pat))), key=lambda x: (-x[0], x[1]))
+           if _r >= 0.72][:n]
+    if len(out) < n:
+        words = [w for w in pat.split() if len(w) >= 3]
+        scored = []
+        for i, low in enumerate(lows):
+            if i in out or not words:
+                continue
+            lw = low.replace('/', ' ').replace('-', ' ').split()
+            sc = [max((difflib.SequenceMatcher(None, w, x[:len(w) + 1]).ratio() for x in lw), default=0)
+                  for w in words]
+            if min(sc) >= 0.74:
+                scored.append((-sum(sc) / len(sc), i))
+        out += [i for _s, i in sorted(scored)][:n - len(out)]
+    return out
+
+
+def search(pat, lows):
+    """Indexes into lows (lower-case labels) for a typed text, best match first (see _rank; the closest
+    spellings when nothing matches). An empty text: everything, in order."""
+    pat = ' '.join(pat.lower().split())
+    if not pat:
+        return list(range(len(lows)))
+    hits = sorted((r, len(low), i) for i, low in enumerate(lows) for r in (_rank(pat, low),) if r is not None)
+    if hits:
+        return [i for _r, _n, i in hits]                 # same rank: the shorter (closer) name first
+    return _fuzzy(pat, lows)
+
+
+def closest(text, labels):
+    """Index of the label a typed text stands for (what Enter picks), or None."""
+    hits = search(text, [str(x).lower() for x in labels]) if str(text).strip() else []
+    return hits[0] if hits else None
 
 
 # ---------------------------------------------------------------------------------------------- plain name list
@@ -298,9 +350,7 @@ class ChoiceList(tk.Frame):
     def fill(self):
         pat = self.var.get().strip().lower()
         if pat:
-            hits = [(r, n) for n, low in self.names for r in (_rank(pat, low),) if r is not None]
-            hits.sort(key=lambda x: x[0])
-            self.shown = [n for _r, n in hits]
+            self.shown = [self.names[i][0] for i in search(pat, [low for _n, low in self.names])]
         else:
             self.shown = [n for n, _l in self.names]
         self.lb.delete(0, 'end')
@@ -470,20 +520,24 @@ class AttrPicker(tk.Frame):
 
     # ---- stats
     def fill(self):
-        """The stats shown: the filter's matches over ALL categories (prefix, word start, substring - in that
-        order; '#93' or '93' also finds the stat id), else the chosen category."""
+        """The stats shown: the filter's matches over ALL categories (the name itself, prefix, word start,
+        substring, all typed words - in that order, else the closest spellings; '#93' or '93' also finds the
+        stat id), else the chosen category."""
         pat = self.var.get().strip().lower()
         if pat:
             hits = []
             num = pat.lstrip('#')
+            pat = ' '.join(pat.split())
             for sid, lab, _cat, low in self._low:
                 r = _rank(pat, low)
                 if num.isdigit() and int(num) == sid:
                     r = -1
                 if r is not None:
-                    hits.append((r, low, sid, lab))
+                    hits.append((r, len(low), low, sid, lab))   # same rank: the shorter (closer) name first
             hits.sort()
-            self.shown = [(sid, lab) for _r, _l, sid, lab in hits]
+            self.shown = [(sid, lab) for _r, _n, _l, sid, lab in hits]
+            if not hits:                           # nothing matches: the closest spellings (a typo)
+                self.shown = [self._low[i][:2] for i in _fuzzy(pat, [x[3] for x in self._low])]
         elif self.cat == 'recent':
             self.shown = [(sid, self._labels[sid]) for sid in self.recent]
         elif self.cat == 'all':
@@ -633,5 +687,47 @@ def popup(parent, data, on_pick, anchor=None, choices=None, title=None):
         x, y = (sw - w) // 2, (sh - h) // 3
     top.geometry(f'{w}x{h}+{max(0, min(x, sw - w))}+{max(0, min(y, sh - h - 32))}')
     top.protocol('WM_DELETE_WINDOW', done)
+    top.picker.entry.bind('<Tab>', top.picker._pick)       # Tab completes like Enter (the caller moves on)
+    top.picker.focus_filter()
+    return top
+
+
+def popup_choices(parent, names, on_pick, anchor=None, current=None, title=None):
+    """A ChoiceList (filter box over a list of names: skills, states, classes...) in a small window under
+    `anchor`; closes on pick (Enter / Tab / double-click) or Escape. Returns the Toplevel (.picker)."""
+    m = metrics(parent)
+    pal = palette()
+    top = tk.Toplevel(parent)
+    exempt(top)
+    top.configure(bg=pal['bg'], padx=3, pady=3)
+    top.title(title or T('ap.choose', 'Choose'))
+    try:
+        top.transient(parent.winfo_toplevel())
+    except tk.TclError:
+        pass
+
+    def done(name=None):
+        try:
+            top.destroy()
+        except tk.TclError:
+            pass
+        if name is not None:
+            on_pick(name)
+
+    top.picker = ChoiceList(top, on_pick=done, on_cancel=done, title=title or '')
+    top.picker.pack(fill='both', expand=True)
+    top.picker.set(names, current)
+    longest = max([len(str(n)) for n in names] or [20])
+    w, h = m['ch'] * max(30, min(longest + 6, 70)), m['row'] * (min(max(len(names), 6), 18) + 3)
+    sw, sh = top.winfo_screenwidth(), top.winfo_screenheight()
+    w, h = min(w, sw - 16), min(h, sh - 48)
+    try:
+        x = anchor.winfo_rootx() if anchor is not None else (sw - w) // 2
+        y = anchor.winfo_rooty() + anchor.winfo_height() if anchor is not None else (sh - h) // 3
+    except tk.TclError:
+        x, y = (sw - w) // 2, (sh - h) // 3
+    top.geometry(f'{w}x{h}+{max(0, min(x, sw - w))}+{max(0, min(y, sh - h - 32))}')
+    top.protocol('WM_DELETE_WINDOW', done)
+    top.picker.entry.bind('<Tab>', top.picker._pick)
     top.picker.focus_filter()
     return top
