@@ -329,8 +329,12 @@ def run_splash(parent_pid):
     except OSError:
         pass
     th.join()                                                # the build finishes hidden; then leave without the
-    sys.stdout.flush()                                       # interpreter's teardown, which would free Tk objects
-    os._exit(0)                                              # from whichever thread happens to collect them
+    for f in (sys.stdout, sys.stderr):                       # interpreter's teardown, which would free Tk objects
+        try:                                                 # from whichever thread happens to collect them
+            f.flush()                                        # (both are None in the windowed Windows exe)
+        except Exception:
+            pass
+    os._exit(0)
 
 
 def main():
@@ -416,3 +420,22 @@ def install(App):
         o_build(self)
         self.root.after(200, close)              # the main window is drawn: the splash fades out
     App._build = _build
+    if sys.platform == 'win32':
+        # Windows maps the root window the moment it is created: a small empty white window sat in the screen's
+        # corner while the data loads. It stays fully transparent until it is built (dialogs opened meanwhile
+        # are windows of their own and show as usual).
+        o_init = App.__init__
+
+        def __init__(self, root, *a, **k):
+            try:
+                root.attributes('-alpha', 0.0)
+            except Exception:
+                pass
+            try:
+                o_init(self, root, *a, **k)
+            finally:
+                try:
+                    root.attributes('-alpha', 1.0)
+                except Exception:
+                    pass
+        App.__init__ = __init__

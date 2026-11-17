@@ -95,6 +95,10 @@ def _autoload(app):
         mxl_creator_gui.CreatorWindow(app)
     except Exception as e:
         print('creator tab autoload failed:', e)
+    try:                                             # each window selected its own tab: the editor starts on Stash
+        _state['nb'].select(_state['pages']['Stash'])
+    except (tk.TclError, KeyError, AttributeError):
+        pass
 
 
 class TabPage(tk.Frame):

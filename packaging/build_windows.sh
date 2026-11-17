@@ -13,6 +13,8 @@ cp -r "$BASE_DIR/_internal" "$OUT/_internal"
 cp "$ROOT"/lang/*.json "$OUT/lang/"
 cp "$ROOT"/src/*.json "$OUT/_internal/"          # data files read next to the modules (dirname(__file__))
 "$PY310" "$ROOT/src/repack.py" "$BASE_EXE" "$OUT/$APP_TITLE.exe" --icon="$ROOT/src/capybara.ico"
+# modules our code imports that the collector's exe does not contain (they would fail on Windows only)
+"$PY310" "$ROOT/tools/check_windows_imports.py" "$OUT" || echo "WARNING: imports missing in the exe (see above)" >&2
 if command -v zip >/dev/null 2>&1; then
     ZIP="$ROOT/dist/windows/MXL-Capybara-Editor-V2-windows.zip"
     rm -f "$ZIP"

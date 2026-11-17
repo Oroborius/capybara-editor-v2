@@ -169,7 +169,7 @@ def _duplicate(app, it):
         _selected(app, spot[0], spot[1], spot[2])
         _status(app, rc('duplicated', '{name} duplicated: page {page} ({x}, {y}){bak}',
                         name=app.full_name(it), page=spot[0] + 1, x=spot[1], y=spot[2],
-                        bak=(' - backup ' + app.bak_name(bak) if bak else '')))
+                        bak=(' - backup ' + os.path.basename(bak) if bak else '')))
     except (EditError, FormatError, OSError) as e:
         _status(app, str(e), True)
 
