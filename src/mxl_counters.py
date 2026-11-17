@@ -369,6 +369,28 @@ class CountersPage:
         self._loading = False
         self._rebuild()
 
+    def rebase(self):
+        """win.ch was written / read again without this page's edits: the values typed here stay, the file's are
+        the new reference (an entry the file gained meanwhile is taken over as it is)."""
+        old_sig, old_cnt = self.sig0, self.cnt0
+        self.sig0, self.cnt0 = read(self.win.ch)
+        added = False
+        for p, v in self.cnt0.items():
+            if p not in self.cnt and p not in old_cnt:
+                self.cnt[p] = v
+                added = True
+            elif p in self.cnt and self.cnt[p] == old_cnt.get(p) and v != self.cnt[p]:
+                self.cnt[p] = v
+                added = True
+        for sid in self.sig:
+            if self.sig[sid] == old_sig[sid] and self.sig0[sid] != self.sig[sid]:
+                self.sig[sid] = self.sig0[sid]
+                self._loading = True
+                self.sig_vars[sid].set(str(self.sig[sid]))
+                self._loading = False
+        if added:
+            self._rebuild()
+
     def dirty(self):
         return self.sig != self.sig0 or {p: v for p, v in self.cnt.items() if v} != self.cnt0
 

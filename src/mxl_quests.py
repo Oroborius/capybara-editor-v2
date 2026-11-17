@@ -293,10 +293,16 @@ class QuestPage:
                 for state in (getattr(win, 'q0', None), getattr(win, 'qstate', None)):
                     if state is not None:
                         (state[k].add if v & 1 else state[k].discard)(w)
-        self.pend.clear()
+        # self.pend is kept: when the save is refused the words stay pending (refresh() after a save drops them)
 
     def refresh(self):
         self.pend.clear()
+        self.show()
+
+    def rebase(self):
+        """win.ch was written / read again without this page's edits: the pending words stay (see
+        mxl_char_gui.EXTRA_PAGES); those the file holds by now are dropped."""
+        self.pend = {(k, w): v for (k, w), v in self.pend.items() if self.file_value(k, w) != v}
         self.show()
 
     # ------------------------------------------------------------------ display

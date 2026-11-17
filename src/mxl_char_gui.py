@@ -48,7 +48,12 @@ DOLL_W, DOLL_H = 11, 7.5
 #     import mxl_char_gui; mxl_char_gui.register_page('merc', 'Mercenary', factory)
 # factory(win, frame) builds its widgets into frame (a tk.Frame of the window's body) and returns an object
 # that may have any of these methods (all optional):
-#     refresh()      the character was loaded / reloaded / saved: show win.ch again, forget pending edits
+#     refresh()      the character was loaded / saved, or RELOAD was pressed: show win.ch again, forget pending edits
+#     rebase()       win.ch was written or read again WITHOUT the page's pending edits (an item was moved / edited
+#                    on the Inventory page or from the Stash tab, an item action failed and the file was read
+#                    again, a save was refused): keep the pending edits, take win.ch as the new "file" state.
+#                    Called only while dirty() is true; a page without rebase() is left untouched then (it must
+#                    read win.ch when it applies, not keep a Character of its own). Not dirty: refresh() is called.
 #     dirty()        True while the page holds edits not yet written to win.ch
 #     apply()        write the pending edits into win.ch (called by SAVE just before the file is written;
 #                    raise mxl_char.CharError to refuse: nothing is saved then)
@@ -123,7 +128,7 @@ class CharacterWindow(StatEditMixin):
         actions = tk.Frame(bottom, bg='#000000')
         actions.pack(side='top', fill='x', padx=4, pady=(1, 2))
         StoneButton(actions, 'SAVE', self.save_progress).pack(side='left', padx=(0, 6))
-        StoneButton(actions, 'RELOAD', self.reload).pack(side='left', padx=(0, 6))
+        StoneButton(actions, 'RELOAD', self.discard).pack(side='left', padx=(0, 6))
         StoneButton(actions, 'CLOSE', self.close).pack(side='right')
         # packed before the credit line: in a narrow window the credit is what gets cut, not the status
         self.bar_status = tk.Label(actions, text='', font=HE_FONT, bg='#000000', fg=HE_GOLD, anchor='w')
@@ -505,25 +510,75 @@ class CharacterWindow(StatEditMixin):
     def set_status(self, text, error=False):
         self.status.configure(text=text, foreground='#e06060' if error else '')
 
-    def reload(self):
+    def reload(self, keep=True):
+        """Reads the character file again. keep (the default: every item action that fails ends here, and a file
+        written from the Stash tab): the edits pending on the pages - stats, skills, waypoints, quests, the
+        plug-in pages - stay pending on top of the file as it is now. keep=False is the RELOAD button: the file
+        as it is, nothing pending."""
         self.ch = Character(self.ch.path, self.data)
         self.selected = None
         self.redraw()
-        self._init_state()
-        self.refresh_progress()
+        self._init_state(keep)
+        self.refresh_progress(keep)
+
+    def discard(self):
+        """The RELOAD button: the file again, every pending edit dropped."""
+        scr = getattr(self, 'statscreen', None)
+        if scr is not None:
+            scr.cancel_edit()
+        tree = getattr(self, 'sktree', None)
+        if tree is not None and hasattr(tree, 'cancel_edit'):
+            tree.cancel_edit()
+        self.reload(keep=False)
+        self._follow_later()
+
+    def sync_file(self):
+        """The character file was written by someone else (an item action of the Stash tab's panel, an undo, the
+        game): when it differs from what this window holds it is read again, pending edits kept (see reload) -
+        so they are neither lost nor saved over the newer file. True when it was read again."""
+        try:
+            with open(self.ch.path, 'rb') as f:
+                same = f.read() == bytes(self.ch.raw)
+        except OSError:
+            return False
+        if same or self.drag is not None:
+            return False
+        self.reload()
+        return True
+
+    def _follow_later(self):
+        """Nothing pending any more: when another character was picked in the main window meanwhile (the tab
+        stayed on this one because of its unsaved edits), the tab moves to that character now."""
+        def go():
+            try:
+                import mxl_follow
+                if not self.dirty():
+                    mxl_follow._follow(self.app)
+            except Exception as e:
+                print('character tab did not follow the dropdown:', e)
+        try:
+            self.top.after_idle(go)
+        except tk.TclError:
+            pass
 
     def save(self, msg):
+        """Writes the character as it is in memory (an item action: the pages' pending edits are not part of
+        it and stay pending; save_progress applies them first)."""
         app = self.app
         try:
             bak = self.ch.save(backup=app.needs_backup(self.ch.path))
-        except CharError as e:
-            messagebox.showerror(T('ch.title', 'Character'), str(e), parent=self.top)
+        except (CharError, EditError) as e:      # EditError: the safe writer or the save check refused
+            messagebox.showerror(T('ch.title', 'Character'), str(e) + (
+                '\n\n' + T('ch.kept_pending', 'The file has been read again. The changes not yet saved are still '
+                           'shown: check them and click SAVE again (RELOAD drops them).') if self.dirty() else ''),
+                parent=self.top)
             self.reload()
             return False
         app.backup_made(self.ch.path, bak)
         self.selected = None
         self.redraw()
-        self.refresh_progress()
+        self._init_state(keep=True)
+        self.refresh_progress(keep=True)
         if app.path:
             app.load(app.path, keep_selection=True)
         self.set_status(msg + (T('cr.backup', ' - backup: {file}', file=os.path.basename(bak)) if bak else ''))
@@ -1175,17 +1230,38 @@ class CharacterWindow(StatEditMixin):
             return scr.commit_edit()
         return self._grey_flush()
 
-    def _init_state(self):
+    def _init_state(self, keep=False):
+        """The window's picture of the file (self.ch). keep: what is pending on the built-in pages (ticks of
+        quests / waypoints, typed skill levels, the class, the stat-screen operations) stays pending against the
+        new file state; otherwise nothing is pending."""
         ch = self.ch
+        old = (self.q0, self.qstate, self.w0, self.wstate) if keep and hasattr(self, 'wstate') else None
         self.q0 = {k: {w for _, _, quests, _ in ACTS for w, _ in quests if ch.quest_done(k, w)} for k in range(3)}
         self.w0 = {k: {n for n in MC.waypoint_ids(k) if ch.waypoint(k, n)} | {0} for k in range(3)}
         self.qstate = {k: set(v) for k, v in self.q0.items()}
         self.wstate = {k: set(v) for k, v in self.w0.items()}
+        if old is not None:                           # the ticks set / taken away since the old file state
+            for new, (base, cur) in ((self.qstate, old[:2]), (self.wstate, old[2:])):
+                for k in range(3):
+                    new[k] |= cur[k] - base[k]
+                    new[k] -= base[k] - cur[k]
         # quests completed in game (not by this tool): never unticked
         self.qlocked = {k: {w for w in self.q0[k] if ch.quest_word(k, w) != MC.QUEST_DONE} for k in range(3)}
-        self.pending_cls = None
+        for k in range(3):
+            self.qstate[k] |= self.qlocked[k]
+        sk_old = getattr(self, 'sk0', {})
+        self._sk_keep = {}
+        if keep and getattr(self, '_skills_cls', None) == ch.cls:      # levels typed and not saved yet
+            self._sk_keep = {sid: self._level_of(v) for sid, v in getattr(self, 'sk_vars', {}).items()
+                             if self._level_of(v) != sk_old.get(sid, 0)}
         self.sk0 = ch.skill_levels()
-        self.st_reset()
+        if keep and hasattr(self, 'st_ops'):
+            if getattr(self, 'pending_cls', None) == ch.cls:
+                self.pending_cls = None
+            self.st_rebuild()
+        else:
+            self.pending_cls = None
+            self.st_reset()
 
     def on_tree_change(self, key, value):
         kind, k, n = key
@@ -1230,18 +1306,38 @@ class CharacterWindow(StatEditMixin):
         else:
             self.set_bar('')
 
-    def refresh_progress(self):
+    def _extra_refresh(self, keep=False):
+        """refresh() of every plug-in page; keep: a page with pending edits gets rebase() instead (see the
+        comment above EXTRA_PAGES)."""
+        for key, obj in getattr(self, 'extra', {}).items():
+            try:
+                if keep and getattr(obj, 'dirty', None) is not None and obj.dirty():
+                    fn = getattr(obj, 'rebase', None)
+                else:
+                    fn = getattr(obj, 'refresh', None)
+                if fn is not None:
+                    fn()
+            except Exception as e:
+                print(f'character page {key!r}: refresh failed:', e)
+
+    def refresh_progress(self, keep=False):
+        """Shows self.ch on every page. keep: after an item action / a re-read that leaves pending edits alone
+        (the state itself is carried over by _init_state(keep=True))."""
         ch, d = self.ch, self.data
-        self._extra_call('refresh')
+        self._extra_refresh(keep)
         self.st_rebuild()                 # the character may have been written (items) or read again
-        self.new_class.set(self.class_names[ch.cls] if ch.cls < len(self.class_names) else str(ch.cls))
-        self.pending_cls = None
+        cls = ch.cls if not keep or self.pending_cls is None else self.pending_cls
+        self.new_class.set(self.class_names[cls] if cls < len(self.class_names) else str(cls))
+        if not keep:
+            self.pending_cls = None
+        typed = getattr(self, '_sk_keep', {}) if keep else {}
+        self._sk_keep = {}
         if getattr(self, '_skills_cls', None) != ch.cls:
             self._rebuild_skills()
         else:
             lv = ch.skill_levels()
             for sid, var in self.sk_vars.items():
-                var.set(str(lv.get(sid, 0)))
+                var.set(str(typed.get(sid, lv.get(sid, 0))))
         if self.statscreen is not None:
             self.statscreen.redraw()
         else:
@@ -1265,6 +1361,12 @@ class CharacterWindow(StatEditMixin):
         ch = self.ch
         if not self.st_flush():               # a value still being typed is refused: nothing is written
             return
+        # the file may have been written behind this window (the game on save & exit, another program): this
+        # build's Character.save would write the copy read earlier over it. Read it again first; the pending
+        # edits are kept and go on top of what is in the file now.
+        if self.sync_file():
+            print('character file changed on disk: read again before SAVE, pending edits applied on top')
+            ch = self.ch
         new_name = self.st_name if self.st_name and self.st_name != ch.name else None
         before = ch.level
         try:
@@ -1276,11 +1378,15 @@ class CharacterWindow(StatEditMixin):
                 self.pending_cls = None
             elif any(self.sk0.get(sid, 0) != self._level_of(v) for sid, v in self.sk_vars.items()):
                 ch.set_skill_levels(self._skills_from_vars())     # only when edited: the section is kept as it is
+            prog = ch.progression             # as typed / picked on the stat screen (or untouched)
+            typed = any(op[0] in ('prog', 'done') for op in self.st_ops)
             for k in range(3):
                 if self.qstate[k] != self.q0[k]:
-                    ch.set_quests(k, self.qstate[k])
+                    ch.set_quests(k, self.qstate[k])      # follows the act bosses / the last quest (game's rule)
                 if self.wstate[k] != self.w0[k]:
                     ch.set_waypoints(k, self.wstate[k])
+            if typed and ch.progression != prog:      # a value set by hand in the same save wins over the rule
+                ch.set_progression(prog)
         except CharError as e:
             messagebox.showerror(T('ch.title', 'Character'), str(e), parent=self.top)
             self.reload()
@@ -1298,6 +1404,7 @@ class CharacterWindow(StatEditMixin):
                             if ch.level > before else '')
                          + (T('he.saved_rewards', ' - quest rewards: {rewards}', rewards=rewards) if rewards else ''))
             self.top.title(f'Median XL Capybara Editor V2 - {ch.name}')
+            self._follow_later()
 
     def _save_renamed(self, new_name):
         """SAVE with a new name: the character (with every pending change) is written as <new name>.d2s through
@@ -1346,9 +1453,46 @@ HE_GOLD = '#d8c27a'
 class StoneButton(tk.Label):
     """The Hero Editor's own stone button images (normal / hover / pressed)."""
 
-    def __init__(self, parent, text, command):
+    @staticmethod
+    def scale_of(widget):
+        """How much larger than its 94x32 pixels a button is drawn: the height of the status text beside it
+        (Times New Roman 11 = 17 px at 100 %; it grows with the UI scale / the DPI), in quarter steps; never
+        smaller than the original. MXL_BUTTON_SCALE overrides it."""
+        try:
+            return max(1.0, min(4.0, float(os.environ['MXL_BUTTON_SCALE'])))
+        except (KeyError, ValueError):
+            pass
+        try:
+            from tkinter import font as tkfont
+            by_font = tkfont.Font(root=widget, font=HE_FONT).metrics('linespace') / 17.0
+            by_dpi = widget.winfo_fpixels('1i') / 96.0
+            k = by_font if abs(by_font - by_dpi) < 0.4 else by_dpi    # another font family was substituted
+        except tk.TclError:
+            return 1.0
+        return max(1.0, min(4.0, round(k * 4) / 4))
+
+    @staticmethod
+    def images(parent, text, k):
+        """[normal, hover, pressed] at scale k (1 = the original pixels; otherwise resampled with Lanczos)."""
         import mxl_he_art as A
-        self.imgs = [tk.PhotoImage(master=parent, data=d) for d in A.BUTTONS[text]]
+        if k > 1.01:
+            try:
+                import base64
+                import io
+                from PIL import Image, ImageTk
+                out = []
+                for d in A.BUTTONS[text]:
+                    im = Image.open(io.BytesIO(base64.b64decode(d))).convert('RGB')
+                    im = im.resize((round(im.width * k), round(im.height * k)), Image.LANCZOS)
+                    out.append(ImageTk.PhotoImage(im, master=parent))
+                return out
+            except Exception as e:
+                print('stone buttons not scaled:', e)
+        return [tk.PhotoImage(master=parent, data=d) for d in A.BUTTONS[text]]
+
+    def __init__(self, parent, text, command):
+        self.scale = self.scale_of(parent)
+        self.imgs = self.images(parent, text, self.scale)
         super().__init__(parent, image=self.imgs[0], bd=0, bg='#000000', cursor='hand2', padx=0, pady=0)
         self.command = command
         self.inside = False

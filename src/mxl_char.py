@@ -734,8 +734,8 @@ class Character:
             self.set_flag(k, on)
 
     def set_progression(self, value):
-        """Progression / title byte (header 0x25), 0..255: 5 per finished difficulty plus the acts finished in the
-        current one (an expansion character: 5 = Normal done, 10 = Nightmare done, 15 = Hell done)."""
+        """Progression / title byte (header 0x25), 0..255: 5 per finished difficulty plus the act bosses killed in
+        the current one (5 = Normal done, 10 = Nightmare done, 15 = Hell done; see game_progression)."""
         if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 255:
             raise CharError(T('ch.err.progression', 'progression: 0 to 255'))
         self.head[0x25] = value
@@ -751,7 +751,32 @@ class Character:
         if isinstance(n, bool) or not isinstance(n, int) or not 0 <= n <= 3:
             raise CharError(T('ch.err.difficulties', 'finished difficulties: 0 to 3'))
         if self.difficulties_done != n:
-            self.head[0x25] = 5 * n
+            self.head[0x25] = self.game_progression(n)
+
+    _PROG_WORDS = (6, 14, 22)             # Sisters to the Slaughter, Seven Tombs, The Guardian: +1 each
+
+    def _prog_state(self):
+        """The quest bits the progression byte follows (see game_progression)."""
+        return tuple(self.quest_done(k, w) for k in range(3) for w in self._PROG_WORDS + (LAST_QUEST_WORD,))
+
+    def game_progression(self, done=None):
+        """The progression byte the game holds for this quest state. The three game-written samples: Nightmare
+        with Andariel, Duriel, Mephisto and Diablo dead, act V entered = 8; Hell in the same state = 13 (twice).
+        So: 5 per finished difficulty (Eve of Destruction completed; `done` overrides the count), +1 for each of
+        Andariel / Duriel / Mephisto dead in the difficulty being played (in the game's order), nothing for
+        Diablo; 15 = Hell finished."""
+        if done is None:
+            done = 0
+            while done < 3 and self.quest_done(done, LAST_QUEST_WORD):
+                done += 1
+        if done >= 3:
+            return 15
+        acts = 0
+        for w in self._PROG_WORDS:
+            if not self.quest_done(done, w):
+                break
+            acts += 1
+        return 5 * done + acts
 
     def set_name(self, name):
         """Writes the name in the header only (game rule checked). The game needs the file to carry the same name:
@@ -882,6 +907,7 @@ class Character:
         word the game wrote - or left at 0 in an act played in game, like Nightmare's act III introduction of the
         samples - is never changed): the act's introduction (1), and "travelled to the next act" (1) when the
         act's last quest is the one marked. Word 41 is not touched (see the table above ACTS)."""
+        before = self._prog_state()
         for act, intro, quests, travel in ACTS:
             marked = set()
             for word, _ in quests:
@@ -897,12 +923,9 @@ class Character:
                 self.set_quest_word(diff, intro, 1)
             if travel is not None and ACT_LAST_QUEST[travel] in marked and not self.quest_word(diff, travel):
                 self.set_quest_word(diff, travel, 1)
-        prog = 0
-        for k in range(3):
-            if self.quest_done(k, LAST_QUEST_WORD):
-                prog = 5 * (k + 1)
-        if prog > self.head[0x25]:
-            self.head[0x25] = prog
+        if self._prog_state() != before:          # an act boss / a difficulty's last quest was (un)marked: the
+            self.head[0x25] = self.game_progression()     # header byte as the game writes it for these quests;
+                                                          # any other quest edit leaves the byte alone
 
     def quest_reward(self, word, sign):
         """Gives (sign +1) or takes back (sign -1, when a quest marked here is unmarked) the quest's reward."""

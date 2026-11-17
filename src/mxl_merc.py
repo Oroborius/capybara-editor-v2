@@ -325,6 +325,13 @@ class MercPage:
         self.busy = False
         self._state()
 
+    def rebase(self):
+        """win.ch was written / read again without this page's edits (see mxl_char_gui.EXTRA_PAGES): the boxes
+        keep what was typed, the record of the file is the new reference."""
+        self.rec = record(self.win.ch)
+        self.was_hired = self.rec['id'] != 0
+        self._state()
+
     def _show(self, rec):
         h = self.types.get(rec['type'])
         self.v_type.set(self.labels[rec['type']] if h is not None else T('merc.type_unknown', 'unknown type {n}', n=rec['type']))
