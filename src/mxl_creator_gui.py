@@ -1529,6 +1529,11 @@ class CreatorWindow:
             row=r, column=0, columnspan=2, sticky='w', pady=(8, 0))
         r += 1
         labels = self._stat_labels()
+        try:                                 # a narrow pane (800x600): shorter fields, the row stays inside it
+            narrow = 50 < self.scroll.canvas.winfo_width() < 480
+        except (AttributeError, tk.TclError):
+            narrow = False
+        w_stat, w_name, w_num = (13, 11, 5) if narrow else (24, 20, 8)
         for e in entries:
             e_local = e
             sid = e_local['id']
@@ -1551,9 +1556,9 @@ class CreatorWindow:
                 p0 = e_local.get('param')
                 line = rendered_line(d, sid, p0 if p0 is not None else 0, e_local.get('value') or 0)
                 shown = line or shown
-            c = self._pick_field(box, shown, None, 26)
+            c = self._pick_field(box, shown, None, w_stat)
             c.open = lambda typed=None, c=c, fn=id_picked, sid=sid: self._stat_popup(c, fn, typed, sid)
-            c.grid(row=0, column=0, sticky='w')
+            c.grid(row=0, column=1, sticky='w')
             try:
                 pbits = d.isc[sid]['param'] or 0
             except (IndexError, KeyError, TypeError):
@@ -1583,17 +1588,17 @@ class CreatorWindow:
                     self.refresh()
                 if short:                               # a handful of names: a plain dropdown
                     cb = ttk.Combobox(box, values=names, textvariable=nm,
-                                      width=max(14, min(34, max(len(n) for n in names) + 1)))
+                                      width=w_name if narrow else max(14, min(34, max(len(n) for n in names) + 1)))
                     self.scroll.no_wheel(cb)
                     bind_typeahead(cb, names)
                     cb.bind('<<ComboboxSelected>>', commit_param)
                     cb.bind('<Return>', commit_param)   # a typed '#N' (raw value) is taken too
                 else:                                   # thousands of skills: the searchable list
-                    cb = self._name_field(box, names, nm, commit_param, 20, param_title(sid), numbers=True)
-                cb.grid(row=0, column=1, sticky='w', padx=(4, 2))
+                    cb = self._name_field(box, names, nm, commit_param, w_name, param_title(sid), numbers=True)
+                cb.grid(row=0, column=2, sticky='w', padx=(4, 2))
                 if lv is not None:
                     sl = ttk.Spinbox(box, from_=1, to=63, textvariable=lv, width=4)
-                    sl.grid(row=0, column=2, sticky='w', padx=(2, 2))
+                    sl.grid(row=0, column=3, sticky='w', padx=(2, 2))
                     self.scroll.no_wheel(sl)
                     self._spin_commit(sl, commit_param)
             elif sid == STATE_STAT and pbits:
@@ -1611,17 +1616,17 @@ class CreatorWindow:
                     self._take_over((e['id'], v))
                     self.refresh()
                 cb = self._name_field(box, [n for n, _v in snames], nm, commit_state, 20, T('cr.pick.state', 'State'))
-                cb.grid(row=0, column=1, sticky='w', padx=(4, 2))
+                cb.grid(row=0, column=2, sticky='w', padx=(4, 2))
             elif pbits:
                 pv = tk.IntVar(value=max(0, e.get('param') or 0))
-                sp = ttk.Spinbox(box, from_=0, to=(1 << pbits) - 1, textvariable=pv, width=8)
-                sp.grid(row=0, column=1, sticky='w', padx=(4, 2))
+                sp = ttk.Spinbox(box, from_=0, to=(1 << pbits) - 1, textvariable=pv, width=w_num)
+                sp.grid(row=0, column=2, sticky='w', padx=(4, 2))
                 self.scroll.no_wheel(sp)
                 self._spin_commit(sp, lambda pv=pv, e=e_local, sid=sid: self._raw_stat_commit(e, pv, sid, value=False))
             rng = cr.stat_bounds(sid) or (0, 0)
-            vc = 3 if kind == 'skill' else 2          # skill rows keep a slot for the cast level at col 2
+            vc = 4 if kind == 'skill' else 3          # (col 0: the row's delete button) skill rows keep a slot for the cast level
             vv = tk.IntVar(value=max(rng[0], min(rng[1], e.get('value') or 0)))
-            sv = ttk.Spinbox(box, from_=rng[0], to=rng[1], textvariable=vv, width=8)
+            sv = ttk.Spinbox(box, from_=rng[0], to=rng[1], textvariable=vv, width=w_num)
             sv.grid(row=0, column=vc, sticky='w', padx=(4, 2))
             self.scroll.no_wheel(sv)
             self._spin_commit(sv, lambda vv=vv, e=e_local, sid=sid: self._raw_stat_commit(e, vv, sid))
@@ -1632,7 +1637,7 @@ class CreatorWindow:
                 except ValueError:
                     pass
                 self.render_options()
-            D2.button(box, 'x', remove, 2).grid(row=0, column=vc + 1, padx=(4, 0))
+            D2.button(box, 'x', remove, 2).grid(row=0, column=0, padx=(0, 4))
             r += 1
 
         def add(sid, param, v, entries=entries):
@@ -1955,6 +1960,12 @@ class CreatorWindow:
             ttk.Label(parent, text=T('cr.item_stats.none', '(no stat stored)')).grid(
                 row=r, column=0, sticky='w')
             r += 1
+        # one table for the rows: [x] | attribute | value | skill / param | level. The delete button is the
+        # FIRST, fixed-width column, so all of them line up and none depends on the row's width; a long
+        # attribute text is cut with '..' to what the pane has left
+        tbl = ttk.Frame(parent)
+        tbl.grid(row=r, column=0, columnspan=2, sticky='w')
+        fit = self._row_text_fitter(tbl)
         for k in keys:
             sid, param = k
             e = self._edit_extra(k)
@@ -1962,7 +1973,7 @@ class CreatorWindow:
             rng = cr.stat_bounds(sid)
             cur = max(rng[0], min(rng[1], val)) if rng else val
             kind = param_kind(sid)
-            lab = ttk.Label(parent, text='', cursor='hand2')
+            lab = ttk.Label(tbl, text='', cursor='hand2')
             parts = decode_param(d, sid, param) if kind else None
 
             def mark_key(k=k):
@@ -1971,12 +1982,12 @@ class CreatorWindow:
                 lbl = ('* ' if True else '') + self._edit_row_label(k, made.get(k, 0) + (e2['value'] if e2 else 0))
                 for kk, lb in self._edit_rows.items():
                     if self._edit_rows[kk] is lab:
-                        lb.configure(text=lbl)
+                        lb.configure(text=fit(lbl))
                     else:
                         e3 = self._edit_extra(kk)
                         t3 = self._edit_row_label(kk, made.get(kk, 0) + (e3['value'] if e3 else 0))
                         if lb.cget('text').startswith('* '):
-                            lb.configure(text=t3)
+                            lb.configure(text=fit(t3))
                 self.set_status(T('cr.edit.selected', 'Selected: {label}',
                                   label=self._edit_row_label(k, made.get(k, 0) + (e2['value'] if e2 else 0))))
 
@@ -1984,8 +1995,8 @@ class CreatorWindow:
                 e2 = self._edit_extra(kk)
                 return self._edit_row_label(kk, made.get(kk, 0) + (e2['value'] if e2 else 0))
 
-            lab.configure(text=('* ' if self._edit_sel == k else '') + lab0(k))
-            lab.grid(row=r, column=0, sticky='we', pady=1)
+            lab.configure(text=fit(('* ' if self._edit_sel == k else '') + lab0(k)))
+            lab.grid(row=r, column=1, sticky='we', pady=1)
             lab.bind('<Button-1>', lambda _e, fn=mark_key: fn())
             self._edit_rows[k] = lab
             vvar = tk.IntVar(value=cur)
@@ -1996,27 +2007,27 @@ class CreatorWindow:
                     self.route_target(k, var.get())
                 self.refresh()
 
-            sv = ttk.Spinbox(parent, from_=rng[0], to=rng[1], textvariable=vvar, width=10)
+            sv = ttk.Spinbox(tbl, from_=rng[0], to=rng[1], textvariable=vvar, width=10)
             self.scroll.no_wheel(sv)
-            sv.grid(row=r, column=1, sticky='w', pady=1)
+            sv.grid(row=r, column=2, sticky='w', pady=1)
             self._spin_commit(sv, commit_value)
             if kind:
                 names = [n for n, _v in param_choices(d, sid)]
                 nm = tk.StringVar(value=(parts or ('',))[0] or (names[0] if names else ''))
                 cb = None
                 if param_short(d, sid):                 # a handful of names: a plain dropdown
-                    cb = ttk.Combobox(parent, values=names, textvariable=nm,
+                    cb = ttk.Combobox(tbl, values=names, textvariable=nm,
                                       width=max(14, min(34, max(len(n) for n in names) + 1)))
-                    cb.grid(row=r, column=2, sticky='w', padx=(4, 2), pady=1)
+                    cb.grid(row=r, column=3, sticky='w', padx=(4, 2), pady=1)
                     self.scroll.no_wheel(cb)
                     bind_typeahead(cb, names)
                 lv = None
                 lc = 3
                 if kind == 'skill':
-                    ttk.Label(parent, text=T('cr.edit.level', 'lvl'), width=4).grid(row=r, column=3, sticky='e')
+                    ttk.Label(tbl, text=T('cr.edit.level', 'lvl'), width=4).grid(row=r, column=4, sticky='e')
                     lv = tk.IntVar(value=(parts or ('', 1))[1] if parts and parts[1] is not None else 1)
-                    sl = ttk.Spinbox(parent, from_=1, to=63, textvariable=lv, width=4)
-                    sl.grid(row=r, column=3, sticky='w', padx=(2, 0))
+                    sl = ttk.Spinbox(tbl, from_=1, to=63, textvariable=lv, width=4)
+                    sl.grid(row=r, column=4, sticky='w', padx=(2, 0))
                     lc = 4
 
                     def commit_param(_e=None, nm=nm, lv=lv, k=k):
@@ -2040,18 +2051,47 @@ class CreatorWindow:
                     cb.bind('<<ComboboxSelected>>', commit_param)
                     cb.bind('<Return>', commit_param)
                 else:                                   # thousands of skills: the searchable list
-                    self._name_field(parent, names, nm, commit_param, 20, param_title(sid), numbers=True).grid(
-                        row=r, column=2, sticky='w', padx=(4, 2), pady=1)
+                    self._name_field(tbl, names, nm, commit_param, 20, param_title(sid), numbers=True).grid(
+                        row=r, column=3, sticky='w', padx=(4, 2), pady=1)
                 if lv is not None:
                     self._spin_commit(sl, commit_param)
                 bcol = lc + 1
             else:
                 bcol = 2
-            b = D2.button(parent, 'x', (lambda k=k: self._edit_delete(k)), 2)
-            b.grid(row=r, column=bcol, padx=(4, 0), pady=1)
+            b = D2.button(tbl, 'x', (lambda k=k: self._edit_delete(k)), 2)
+            b.grid(row=r, column=0, padx=(0, 4), pady=1)
             r += 1
         r = self._edit_build_pick(parent, r)
         return r
+
+    def _row_text_fitter(self, widget):
+        """fit(text): the text cut with '..' to the width a stat row's label has in the options pane (the pane's
+        width minus the row's delete button, value box and param fields), so a row never grows past the pane."""
+        import tkinter.font as tkfont
+        try:
+            font = tkfont.nametofont(str(ttk.Style().lookup('TLabel', 'font') or 'TkDefaultFont'))
+        except tk.TclError:
+            font = tkfont.nametofont('TkDefaultFont')
+        try:
+            pane = self.scroll.canvas.winfo_width()
+        except (AttributeError, tk.TclError):
+            pane = 0
+        ch = max(6, font.measure('0'))
+        room = max(ch * 22, (pane if pane > 50 else ch * 90) - ch * 52)
+
+        def fit(text):
+            text = str(text)
+            if font.measure(text) <= room:
+                return text
+            lo, hi = 0, len(text)
+            while lo < hi:
+                mid = (lo + hi + 1) // 2
+                if font.measure(text[:mid] + '..') <= room:
+                    lo = mid
+                else:
+                    hi = mid - 1
+            return text[:lo].rstrip() + '..'
+        return fit
 
     def _edit_delete(self, key):
         """The attribute leaves the item. The save format writes a stat group's members with their lead

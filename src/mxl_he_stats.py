@@ -346,16 +346,18 @@ class ItemStatsWindow:
 
     # ------------------------------------------------------------ drawing
     def _cols(self):
-        """Column edges in pixels, from the list's width and the font: number | text | value | level | name."""
+        """Column edges in pixels, from the list's width and the font: x (clear the slot) | number | text |
+        value | level | name. The x column is the first one and has a fixed width: every x lines up."""
         ch = self.m['ch']
         w = max(self.cv.winfo_width(), ch * 30)
-        x_num = int(ch * 3.2)
+        x_del = int(ch * 2.2)
+        x_num = x_del + int(ch * 3.2)
         w_val, w_lvl = ch * 7, int(ch * 4.5)
         w_name = int(max(ch * 11, min(ch * 24, w * 0.24)))
         x_name = w - w_name
         x_lvl = x_name - w_lvl
         x_val = x_lvl - w_val
-        return dict(w=w, num=x_num, text=x_num + ch, val=x_val, lvl=x_lvl, name=x_name)
+        return dict(w=w, dele=x_del, num=x_num, text=x_num + ch, val=x_val, lvl=x_lvl, name=x_name)
 
     def _elide(self, text, width, font=None):
         font = font or self.m['font']
@@ -420,6 +422,8 @@ class ItemStatsWindow:
                 cv.create_text(c['text'], ym, text=he('empty', '(empty)'), anchor='w', font=f, fill=dim,
                                tags='row')
                 continue
+            cv.create_text(c['dele'] // 2 + 1, ym - 1, text='x', anchor='center', font=fb,
+                           fill=fg if sel else pal['changed'], tags='row')
             cv.create_text(c['text'], ym, text=self._elide(r['label'], text_w), anchor='w', font=f, fill=fg,
                            tags='row')
             key = (r['list'], r['i'])
@@ -434,7 +438,7 @@ class ItemStatsWindow:
             if r['name'] != '':
                 cv.create_text(c['name'] + 3, ym, text=self._elide(r['name'], c['w'] - c['name'] - 6),
                                anchor='w', font=f, fill=fg, tags='row')
-        for x in (c['val'], c['lvl'], c['name']):
+        for x in (c['dele'], c['val'], c['lvl'], c['name']):
             cv.create_line(x, 0, x, len(self.rows) * rh, fill=pal['alt'] if pal['dark'] else '#dcdcdc',
                            tags='row')
         cv.tag_lower('row')
@@ -528,7 +532,10 @@ class ItemStatsWindow:
         c = self._cols()
         x = ev.x
         fields = self._fields(r)
-        if x >= c['name']:
+        if x < c['dele']:                      # the row's x: clear the slot (same as Delete)
+            if r['s'] is not None:
+                self.delete_row(r['list'], r['i'])
+        elif x >= c['name']:
             if 'name' in fields:
                 self.open_names()
             elif 'param' in fields:
@@ -544,7 +551,8 @@ class ItemStatsWindow:
         n = self._row_at(ev)
         if n is None or self.rows[n]['kind'] != 'slot':
             return 'break'
-        if ev.x < self._cols()['val'] or self.rows[n]['s'] is None:
+        c = self._cols()
+        if c['dele'] <= ev.x < c['val'] or (self.rows[n]['s'] is None and ev.x >= c['dele']):
             self.open_picker()
         return 'break'
 
