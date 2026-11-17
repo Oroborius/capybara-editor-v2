@@ -738,8 +738,6 @@ class CharacterWindow(StatEditMixin):
         self.sk_other = tk.Button(top, text=T('sk.other', 'Other skills'), font=HE_FONT, bg=HE_BTN, pady=0,
                                   command=lambda: self.sktree.toggle_other())
         self.sk_other.pack(side='left', padx=4)
-        tk.Label(top, text=T('sk.hint', 'Click a skill: +1, right-click: -1 (Shift: 5); click the number to type. '
-                                        'Hover for the tooltip.'), font=HE_FONT_S, bg=HE_BG, fg='#8a7a4a').pack(side='left', padx=8)
         self.sk_top = top
         self.sktree = mxl_skilltree.SkillTree(f, self)
         self.sktree.frame.pack(fill='both', expand=True)

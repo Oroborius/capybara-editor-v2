@@ -295,8 +295,8 @@ class Calc:
             v = t.field(sid, 0x198) + (lvl - 1) * t.field(sid, 0x19c)
             off = t.field(sid, Tables.SK_CALC['tohitcalc'])
             return v + (self.eval(t.code, off, sid, lvl) if off >= 0 else 0)
-        if name == 'mana':
-            return self.mana(sid, lvl)
+        if name == 'mana':                                 # the table's own cost, without the minimum
+            return ((t.field(sid, 0x18a, '<h') + t.field(sid, 0x18c, '<h') * (lvl - 1)) << t.field(sid, 0x188, '<H')) >> 8
         if name == 'usmc':
             return self.mana(sid, lvl, shift=False)
         if name in Tables.SK_CALC and name not in ('tohitcalc', 'dmgsym', 'edmgsym', 'elensym'):
@@ -414,7 +414,12 @@ class Calc:
             cn = self.t.calc_names[c]
             if cn == 'blvl':
                 return self.blvl(other)
-            return self.code(cn, other, self.lvl(other))
+            lv = self.lvl(other)
+            if self.t.field(other, 0xc, '<I') < 7:
+                # a skill of a class the character has no point in gives 0, whatever is asked of it
+                # (in game: Pneumatic Burst's targets, Snake Stance's poison length at level 0)
+                return self.code(cn, other, lv) if lv > 0 else 0
+            return self.code(cn, other, max(lv, 1))      # the mod's helper skills (no class) always exist
         if nm == 'stat':
             sid_, acc = args
             self.used_stats.add(sid_)
@@ -477,6 +482,7 @@ class Tip:
     def __init__(self):
         self.lines = []            # (segments [(text, colour code or None)], kind)
         self.raw = 0               # lines shown as their raw definition
+        self.reasons = []          # why (one text per raw line)
         self.used_stats = set()    # character stats the formulas read
         self.assumed = set()       # what the numbers leave out: 'synergy', 'mastery', 'aura'
         self.name = ''
@@ -529,7 +535,7 @@ class Composer:
                 if not lo and not hi:
                     return []
                 return [[(f'{t.text(ELEM_TEXT[5])}{lo}-{hi}', None)],
-                        [(f'over {_frac(n, 25, 2)} second{"" if n == 25 else "s"}', None)]]
+                        [(f'over {_frac(n, 25)} second{"" if n == 25 else "s"}', None)]]
             lo, hi = c.elem(sid, lvl), c.elem(sid, lvl, True)
             if not lo and not hi:
                 return []
@@ -565,9 +571,9 @@ class Composer:
         if fn == 7:
             return one(f'{_num(a)}{A}')
         if fn == 12:
-            return one(f'{A}{_frac(a, 25, 2)} second{"" if a == 25 else "s"}')
+            return one(f'{A}{_frac(a, 25)} second{"" if a == 25 else "s"}')
         if fn == 16:
-            return one(f'{A}{_frac(a, 25, 2)}-{_frac(b, 25, 2)} seconds')
+            return one(f'{A}{_frac(a, 25)}-{_frac(b, 25)} seconds')
         if fn == 18:
             return one(A)
         if fn == 19:
@@ -637,8 +643,9 @@ class Composer:
                     continue
                 for segs in self.line(fn, sid, lvl, ta, tb, ca, cb):
                     out.append((segs, 'head' if fn == 40 else 'line'))
-            except Unsupported:
+            except Unsupported as e:
                 tip.raw += 1
+                tip.reasons.append(str(e))
                 out.append(([(self.raw_line(fn, ta, tb, ca, cb), None)], 'raw'))
         return out
 

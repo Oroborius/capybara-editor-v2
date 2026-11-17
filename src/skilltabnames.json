@@ -16,7 +16,8 @@
   "4": "Naginata",
   "5": "Traps",
   "6": "Psionic",
-  "8": "Reward"
+  "8": "Reward",
+  "7": "Mastery"
  },
  "Barbarian": {
   "1": "Nomad",
@@ -25,7 +26,8 @@
   "4": "Elementalist",
   "5": "Warmonger",
   "6": "Shaman",
-  "8": "Reward"
+  "8": "Reward",
+  "7": "Mastery"
  },
  "Druid": {
   "1": "Nature",
@@ -34,7 +36,8 @@
   "4": "Wereowl",
   "5": "Hunter",
   "6": "Seer",
-  "8": "Reward"
+  "8": "Reward",
+  "7": "Mastery"
  },
  "Necromancer": {
   "1": "Deathspeaker",
@@ -43,7 +46,8 @@
   "4": "Crossbow",
   "5": "Malice",
   "6": "Totem",
-  "8": "Reward"
+  "8": "Reward",
+  "7": "Mastery"
  },
  "Paladin": {
   "1": "Aspects",
@@ -52,7 +56,8 @@
   "4": "Nephalem",
   "5": "Ritualist",
   "6": "Warlock",
-  "8": "Reward"
+  "8": "Reward",
+  "7": "Mastery"
  },
  "Sorceress": {
   "1": "Arcane",
@@ -62,6 +67,7 @@
   "5": "Poison",
   "6": "Melee",
   "8": "Coven",
-  "9": "Reward"
+  "9": "Reward",
+  "7": "Mastery"
  }
 }

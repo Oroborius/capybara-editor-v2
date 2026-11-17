@@ -786,17 +786,22 @@ class Character:
         body = self.skills[2:]
         return {sid: (body[i] if i < len(body) else 0) for i, sid in enumerate(ids)}
 
-    def set_skill_levels(self, levels):
-        """Rewrites the 'if' section: one byte per class skill (save order); ids missing from
-        `levels` become 0. Values are clamped to 0..255 (the save's own width)."""
-        body = bytes(max(0, min(255, int(levels.get(sid, 0)))) for sid in class_skills(self.data, self.cls))
+    def set_skill_levels(self, levels, keep=True):
+        """Rewrites the 'if' section: one byte per class skill (save order). A skill missing from
+        `levels` keeps the level it has (keep=True: the Skills page only knows the skills with a
+        tooltip row - 74 of a class's 95 - and the save may hold levels in the others, e.g. the
+        hidden skill 1456 at level 1 in the samples; they used to be zeroed by any skill edit);
+        keep=False: missing = 0. Values are clamped to 0..255 (the save's own width)."""
+        old = self.skill_levels() if keep else {}
+        body = bytes(max(0, min(255, int(levels.get(sid, old.get(sid, 0)))))
+                     for sid in class_skills(self.data, self.cls))
         self.skills = b'if' + body
 
     def set_class(self, cls):
         """Changes the class: the class byte in the header plus a fresh (all-zero) skills section of
         the new class - the old levels belong to the previous class's skills and cannot be kept."""
         self.head[0x28] = cls
-        self.set_skill_levels({})
+        self.set_skill_levels({}, keep=False)
 
     # ------------------------------------------------------------------ level
     def set_level(self, level):

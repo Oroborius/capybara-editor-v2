@@ -86,6 +86,10 @@ class SkillTree:
         cv.bind('<Motion>', self.on_motion)
         cv.bind('<Leave>', lambda e: self.hide_tip())
         cv.bind('<Destroy>', lambda e: self.hide_tip(), add='+')
+        try:                               # the look is switched: the page is drawn the other way
+            win.dark.trace_add('write', lambda *_a: self.redraw_later())
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------ data
     def art(self):
@@ -331,9 +335,11 @@ class SkillTree:
             if hidden:
                 node = ImageEnhance.Brightness(node).enhance(0.3)
             out.alpha_composite(node, (x, y))
-            if ic is None:
-                nm = self.name(sid)[:9]
-                tx.draw(out, nm if tx.has(nm, 'font6') else '?', x + NODE_W // 2, y + 30, 'font6', GOLD)
+            if ic is None or self.tab == 0:            # no picture (or the page outside the trees): the name
+                nm = self.name(sid)
+                nm = nm if len(nm) <= 15 else nm[:14] + '.'
+                nm = nm if tx.has(nm, 'font6') else '?'
+                tx.draw(out, nm, x + NODE_W // 2, y + (NODE_H + 8 if ic is not None else 30), 'font6', GOLD)
         tabs = [(t, n) for t, n, _c in self.trees if t > 0]
         fr = TAB_FRAMES.get(len(tabs))
         for kind, t, (x, y, w, h) in self._regions:
@@ -372,11 +378,15 @@ class SkillTree:
         cv.itemconfigure('art', image=self._photo)
         cv.tag_lower('art')
         cv.configure(bg='#000000')
+        self.frame.configure(bg='#000000')
 
     # ------------------------------------------------------------------ the plain look
     def name(self, sid):
         segs = SD.split_colours(self.tables().name(sid))[0]
-        return ''.join(s for s, _c in segs) or f'#{sid}'
+        nm = ''.join(s for s, _c in segs)
+        if not nm or 'POLAR BUFFALO' in nm.upper():    # the game's placeholder for an unnamed skill
+            nm = T('skill.unknown', 'skill #{id}', id=sid)
+        return nm
 
     def _draw_plain(self):
         from PIL import ImageTk
@@ -389,6 +399,7 @@ class SkillTree:
         cv.delete('art')
         cv.delete('plain')
         cv.configure(bg=bg)
+        self.frame.configure(bg=bg)
         self._photo_plain = []
         font = ('Times New Roman', -max(9, round(12 * k)))
         small = ('Times New Roman', -max(8, round(10 * k)))
@@ -682,8 +693,6 @@ class SkillTree:
             notes.append(T('sk.tip_raw', 'Grey lines: the raw table entry (not understood by the editor).'))
         if tip.used_stats or tip.assumed:
             notes.append(T('sk.tip_bare', 'Numbers for the bare character: items and bonuses from other skills are not counted.'))
-        if kind == 'icon':
-            notes.append(T('sk.tip_keys', 'Click +1, right-click -1 (Shift: 5); click the number to type.'))
         if notes:
             rows.append([])
             rows += [[(n, '#7a7a7a')] for n in notes]
