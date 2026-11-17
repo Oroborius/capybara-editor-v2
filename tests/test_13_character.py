@@ -236,8 +236,19 @@ def progression_roundtrip():
         T.eq(snapshot(E, c2), dict(before, prog=new), f'{tag}: fields after set_progression({new})')
         T.eq(c2.difficulties_done, new // 5, f'{tag}: difficulties_done')
         check_file(E, p, raw, f'{tag} progression', (0x25,))
+        # Normal finished + the act bosses dead in Nightmare (+1 each for Andariel, Duriel, Mephisto: both samples
+        # have all three), as the game counts it: its own files hold 8 / 13 in that state, never a bare 5 / 10
+        bosses = sum(1 for w in (6, 14, 22) if c2.quest_done(1, w))
         c2.set_difficulties_done(1)
-        T.eq(c2.progression, 5, 'set_difficulties_done(1)')
+        T.eq(c2.progression, 5 + bosses, 'set_difficulties_done(1)')
+        T.eq(bosses, 3, f'{tag}: Nightmare act bosses dead in the sample')
+        c2.set_difficulties_done(3)
+        T.eq(c2.progression, 15, 'set_difficulties_done(3)')
+        c2.set_difficulties_done(0)
+        T.eq(c2.progression, 3, 'set_difficulties_done(0): Normal with its three bosses dead')
+    for tag, src in samples():                    # the game's own byte is what the rule gives for its quest words
+        c = MC.Character(sorted(glob.glob(os.path.join(src, '*.d2s')))[0], E.data)
+        T.eq(c.game_progression(), c.progression, f'{tag}: game_progression() against the game-written byte')
 
 
 @T.test

@@ -2557,6 +2557,13 @@ def _reload_main(app, sel_key=None):
         app.set_detail(app.selected)
     except Exception:
         app.load(app.path, keep_selection=False)
+        return
+    try:                                   # the item counters of the status bar ("Stash: n items", "Page p: n") are
+        text = app.status.cget('text')     # written by show_status() only, which the full load() calls: without it
+        app.show_status()                  # they showed the numbers of before this write until the next reload
+        app.status.configure(text=text)    # (show_status also puts its hint into the status line: kept as it was)
+    except Exception as e:
+        print('status bar counters not refreshed:', e)
 
 
 def delete_selected(app):

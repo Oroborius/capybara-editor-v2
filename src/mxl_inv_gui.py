@@ -242,6 +242,7 @@ class MainInventory:
         if not hired:
             self.merc.set(False)
         self.redraw()
+        self._sync_char_tab()                             # whoever wrote the file (this panel, an undo, the game)
         cb = getattr(self, 'on_loaded', None)   # mxl_fit: the title changed, the row may need another layout
         if cb is not None:
             cb()
@@ -785,17 +786,15 @@ class MainInventory:
     def _sync_char_tab(self):
         """After a write from this panel: a Character tab open on the same character reads the file again, so it
         shows the new items and its next save starts from them. (The other way round its save reloads the stash,
-        whose redraw calls refresh() here.) A tab with unsaved edits is left alone: Character.save refuses its
-        stale copy and reloads it, nothing is overwritten."""
+        whose redraw calls refresh() here.) Edits pending on the tab's pages stay pending on top of the new file
+        (CharacterWindow.sync_file): they are neither dropped nor saved over the items written here."""
         try:
             import mxl_tabs
             w = mxl_tabs.built_owner('Character')
             wch = getattr(w, 'ch', None)
             if wch is None or self.ch is None or os.path.abspath(wch.path) != os.path.abspath(self.ch.path):
                 return
-            if wch.raw == self.ch.raw or w.dirty():
-                return
-            w.reload()
+            w.sync_file()
         except Exception as e:
             print('character tab not refreshed:', e)
 

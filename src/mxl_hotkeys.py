@@ -229,8 +229,15 @@ class HotkeysPage:
                 set_hotkey(ch, (off - HOTKEY_OFF) // 4, sid, left)
 
     def refresh(self):
-        """The character was read again or saved: edits already in the file are forgotten, the others stay
-        pending (like the stat screen's)."""
+        """The character was loaded, saved or RELOAD was pressed: nothing is pending."""
+        self.pending = {}
+        self._usable = None
+        self._redraw()
+        self.warn.configure(text='')
+
+    def rebase(self):
+        """win.ch was written / read again without this page's edits (an item action, see
+        mxl_char_gui.EXTRA_PAGES): edits already in the file are forgotten, the others stay pending."""
         ch = self.win.ch
         self.pending = {off: raw for off, raw in self.pending.items() if ch.header_u32(off) != raw}
         self._usable = None
@@ -391,10 +398,12 @@ class HotkeysPage:
             img = None
             try:
                 cls = self.win.data.skill_class.get(sid, 255)
-                if cls < 7:
-                    big = self.win._skill_icons(cls).get(sid)
+                if cls < 7:                         # the Skills page's own icons (PIL, 48 px) of the class shown
+                    tree = getattr(self.win, 'sktree', None)
+                    big = tree.icon(self.win._theme_art(), sid) if tree is not None and tree.cls == cls else None
                     if big is not None:
-                        img = big.subsample(2, 2)
+                        from PIL import Image, ImageTk
+                        img = ImageTk.PhotoImage(big.resize((ICON, ICON), Image.LANCZOS), master=self.frame)
                 elif sid < len(self.win.data._rows('skills')):
                     img = self._shared_icon(sid)
             except Exception as e:
