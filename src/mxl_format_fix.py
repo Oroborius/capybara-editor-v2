@@ -169,4 +169,9 @@ def install():
         mxl_statnames.install()
     except Exception:
         pass
+    try:
+        import mxl_stash_order            # a replaced stash item keeps its place in the file (no-op edit = same file)
+        mxl_stash_order.install()
+    except Exception:
+        pass
     mxl_format._sigma_fix = True
