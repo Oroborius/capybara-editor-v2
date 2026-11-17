@@ -4,8 +4,11 @@ Same start sequence as the launcher repack.py puts in the Windows exe, after map
 - settings / data folder: $XDG_DATA_HOME/MXL Capybara Editor (LOCALAPPDATA is what the collector and the editor read);
 - save folder: MXL_SAVE_DIR, else the first <Wine prefix>/drive_c/users/*/AppData/Roaming/MedianXL/save found
   ($WINEPREFIX, ~/.wine, Lutris / Bottles / Steam prefixes);
-- "is the game open?": the collector only reads the Windows process list; here /proc is read for a Wine Game.exe."""
-import glob, os, sys
+- "is the game open?": the collector only reads the Windows process list; here /proc is read for a Wine Game.exe;
+- UI scale: MXL_UI_SCALE=<factor> (1 = 100 %), or "auto" for Tk's own detection. Default under Wayland: 1, because
+  the compositor already scales XWayland windows and Tk 9 would scale a second time from Xft.dpi;
+- first window size: never larger than the screen (a floating window on a tiling WM takes the requested size)."""
+import atexit, glob, os, shutil, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -81,8 +84,52 @@ def setup_env():
             os.environ['MXL_SAVE_DIR'] = save
 
 
+def setup_scaling():
+    """Tk 9 sizes fonts and widgets from `xrdb -query | grep Xft.dpi` when it starts (tk9.0/scaling.tcl). The only
+    way to choose another scale before any widget exists is to answer that query: a one-line xrdb in front of PATH."""
+    want = os.environ.get('MXL_UI_SCALE', '').strip().lower()
+    if want == 'auto' or (not want and not os.environ.get('WAYLAND_DISPLAY')):
+        return
+    try:
+        scale = min(4.0, max(0.5, float(want))) if want else 1.0
+    except ValueError:
+        scale = 1.0
+    shim = tempfile.mkdtemp(prefix='capybara-scale-')
+    atexit.register(shutil.rmtree, shim, True)
+    with open(os.path.join(shim, 'xrdb'), 'w') as f:
+        f.write('#!/bin/sh\nprintf \'Xft.dpi:\\t%s\\n\' {}\n'.format(round(96 * scale)))
+    os.chmod(os.path.join(shim, 'xrdb'), 0o755)
+    os.environ['PATH'] = shim + os.pathsep + os.environ.get('PATH', '')
+
+
+def fit_to_screen():
+    """The main window asks for the size of its content, which can exceed the screen. Just before the event loop
+    starts, a window larger than the screen is cut down to it and centred (once: later resizes are the user's)."""
+    import tkinter
+    loop = tkinter.Misc.mainloop
+    done = []
+
+    def mainloop(self, n=0):
+        if not done:
+            done.append(1)
+            try:
+                root = self.winfo_toplevel()
+                root.update_idletasks()
+                sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
+                w, h = root.winfo_reqwidth(), root.winfo_reqheight()
+                mw, mh = int(sw * 0.86), int(sh * 0.86)
+                if w > mw or h > mh:
+                    w, h = min(w, mw), min(h, mh)
+                    root.geometry(f'{w}x{h}+{(sw - w) // 2}+{max(0, (sh - h) // 3)}')
+            except Exception as e:                      # never keeps the editor from starting
+                print('fit_to_screen:', e)
+        return loop(self, n)
+    tkinter.Misc.mainloop = mainloop
+
+
 def main():
     setup_env()
+    setup_scaling()
     import mxl_userdir
     mxl_userdir.setup()
     import mxl_splash
@@ -91,6 +138,7 @@ def main():
         return
     mxl_splash.start()
     patch_game_check()
+    fit_to_screen()
     import mxl_creator_gui
     mxl_creator_gui.run()
 

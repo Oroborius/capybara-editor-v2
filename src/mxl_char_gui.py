@@ -135,7 +135,11 @@ class CharacterWindow:
                     pass
         try:
             import settings
-            dark = bool(settings.get('hero_dark_mode'))
+            dark = settings.get('hero_dark_mode')
+            if dark is None:                      # never chosen: follow the editor's look (dark D2 by default)
+                import mxl_d2_theme
+                dark = mxl_d2_theme.dark()
+            dark = bool(dark)
         except Exception:
             dark = False
         self.dark = tk.BooleanVar(value=dark)

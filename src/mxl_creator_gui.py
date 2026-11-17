@@ -2431,14 +2431,19 @@ def run():
     mxl_format_fix.install()
     import mxl_gui
     rename_app(mxl_gui)
-    import mxl_d2look                     # no game-art panels: the plain Hero-Editor grids replace them
+    import mxl_d2_theme                   # which look: dark Diablo ('d2', default) or Hero-Editor light ('he')
+    dark = mxl_d2_theme.dark()
+    import mxl_d2look                     # no game-art panels: plain grids (dark, or the Hero-Editor light ones)
     mxl_d2look.disable()
     import mxl_tabs                       # every editor window becomes a tab of the main window (tiling WM)
     mxl_tabs.install(mxl_gui.App)
     import mxl_hover                      # item stats follow the mouse hover (no click needed)
     mxl_hover.install(mxl_gui.App)
-    import mxl_he_grid                    # the collector's dark constants -> Hero-Editor light palette
-    mxl_he_grid.install(mxl_gui.App)      # (innermost: before any window is built)
+    if dark:
+        mxl_d2_theme.install(mxl_gui.App)  # stone / bronze / gold: the collector's dark grids stay
+    else:
+        import mxl_he_grid                # the collector's dark constants -> Hero-Editor light palette
+        mxl_he_grid.install(mxl_gui.App)  # (innermost: before any window is built)
     import mxl_char_gui
     remove_library(mxl_gui)
     install(mxl_gui.App)
@@ -2455,7 +2460,8 @@ def run():
     import mxl_inv_gui
     mxl_inv_gui.install(mxl_gui.App)
     import mxl_he_theme                    # the Hero-Editor look for every window - outermost (walks what others build)
-    mxl_he_theme.install(mxl_gui.App)
+    mxl_he_theme.install(mxl_gui.App)      # (in the dark look it repaints with mxl_d2_theme's palette)
+    mxl_d2_theme.install_toggle(mxl_gui.App)
     import mxl_app_icon
     mxl_app_icon.install(mxl_gui.App)
     mxl_splash.install(mxl_gui.App)       # last: outermost, closes the splash once everything is built
