@@ -213,6 +213,7 @@ class CharacterWindow(StatEditMixin):
                 page.pack_forget()
         self._fit_stats()
         self.scroll.refresh()
+        self._scroll_later()
 
     # ================================================================== equipment tab
     def _build_equipment(self):
@@ -1068,6 +1069,20 @@ class CharacterWindow(StatEditMixin):
             print('in-game stat screen disabled:', e)
             return None
 
+    def _scroll_later(self):
+        """Asks the scroll area to measure the page again once Tk has laid it out: a page that changed its size
+        while it is held at the size of the tab sends no event of its own."""
+        def again():
+            try:
+                self.scroll.update_idletasks()
+                self.scroll.refresh()
+            except tk.TclError:
+                pass
+        try:
+            self.scroll.after(40, again)
+        except tk.TclError:
+            pass
+
     def _fit_stats(self, _e=None):
         scr = getattr(self, 'statscreen', None)
         if scr is None or self.tab.get() != 'stats':
@@ -1075,7 +1090,10 @@ class CharacterWindow(StatEditMixin):
         try:
             W, H = self.scroll.winfo_width(), self.scroll.winfo_height()
             if W > 40 and H > 40:
+                k = scr.k
                 scr.fit(W - 2, H - 2)
+                if scr.k != k:                # another panel size: the page may now need (or drop) its scrollbar
+                    self._scroll_later()
         except tk.TclError:
             pass
 
