@@ -366,3 +366,6 @@ class Art:
                 H = y1 - y0
             return W, H, img
         return self._cached(key, build)
+
+
+Art.skill_web = skill_web        # written above the class (module level) and meant as its method

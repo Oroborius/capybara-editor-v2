@@ -36,7 +36,7 @@ FALLBACKS = {              # families that may not exist (esp. on Linux) -> what
 _SERIF = ('Palatino Linotype', 'Book Antiqua', 'Times New Roman', 'DejaVu Serif', 'Liberation Serif')
 _SANS = ('Segoe UI', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans')
 
-_state = {'families': None, 'hooked': False, 'tick': 2500}
+_state = {'families': None, 'hooked': False, 'tick': 2500, 'menu_open': 0}
 
 
 # ---------------------------------------------------------------------------------------------- fonts
@@ -190,13 +190,55 @@ def _walk(w):
             if not _dark_bg(w):
                 w.configure(bg=HE_ENTRY, fg=HE_FG, selectbackground=SELECT_BG, selectforeground='#ffffff')
         elif cls == 'Menu':
-            w.configure(bg=HE_BG, fg=HE_FG, activebackground='#000000',
-                        activeforeground=HE_GOLD, disabledforeground='#999999')
+            _menu_colours(w)
     except (tk.TclError, AttributeError):
         pass
     if cls != 'Menu':
         for c in w.winfo_children():
             _walk(c)
+
+
+def _menu_colours(m):
+    """A menu is only configured when a colour differs, and never while a menu is open: on Windows any
+    configure rebuilds the native menu, and one rebuilt while it is shown no longer answers the mouse."""
+    if _state['menu_open']:
+        return
+    want = dict(bg=HE_BG, fg=HE_FG, activebackground='#000000', activeforeground=HE_GOLD,
+                disabledforeground='#999999')
+    new = {k: v for k, v in want.items() if str(m.cget(k)).lower() != v.lower()}
+    if new:
+        m.configure(**new)
+
+
+def _theme_menu(m):
+    """A menu about to be shown, with its sub-menus (the walk stops at menus)."""
+    try:
+        _menu_colours(m)
+        for c in m.winfo_children():
+            if c.winfo_class() == 'Menu':
+                _theme_menu(c)
+    except (tk.TclError, AttributeError):
+        pass
+
+
+def _hook_menus():
+    """Menus get their colours just before they open, and the periodic walk leaves menus alone while one is
+    open (tk_popup / post only return once the menu is closed on Windows; at once on X11)."""
+    for name in ('tk_popup', 'post'):
+        o = getattr(tk.Menu, name)
+        if getattr(o, '_he', False):
+            continue
+
+        def show(self, *a, _o=o, **k):
+            if _state['hooked']:
+                _theme_menu(self)
+            _state['menu_open'] += 1
+            try:
+                return _o(self, *a, **k)
+            finally:
+                _state['menu_open'] -= 1
+        show._he = True
+        setattr(tk.Menu, name, show)
 
 
 def _theme_top(top):
@@ -300,6 +342,7 @@ def install(App):
 
     if not _state['hooked']:
         _state['hooked'] = True
+        _hook_menus()
         o_init = tk.Toplevel.__init__
 
         def top_init(self, *a, **k):

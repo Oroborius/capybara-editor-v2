@@ -329,8 +329,12 @@ def run_splash(parent_pid):
     except OSError:
         pass
     th.join()                                                # the build finishes hidden; then leave without the
-    sys.stdout.flush()                                       # interpreter's teardown, which would free Tk objects
-    os._exit(0)                                              # from whichever thread happens to collect them
+    for f in (sys.stdout, sys.stderr):                       # interpreter's teardown, which would free Tk objects
+        try:                                                 # from whichever thread happens to collect them
+            f.flush()                                        # (both are None in the windowed Windows exe)
+        except Exception:
+            pass
+    os._exit(0)
 
 
 def main():

@@ -76,12 +76,19 @@ def _button_images(root):
     if a is None:
         return None
     try:
-        from PIL import Image, ImageEnhance, ImageTk
+        from PIL import Image, ImageTk               # no ImageEnhance: the Windows exe's Pillow has no such module
         normal = Image.open(a.menu_frame('buttons\\short-btn', 0)).convert('RGBA')
         pressed = Image.open(a.menu_frame('buttons\\short-btn', 1)).convert('RGBA')
-        hover = ImageEnhance.Brightness(normal).enhance(1.35)
-        grey = ImageEnhance.Color(normal).enhance(0.15)
-        disabled = ImageEnhance.Brightness(grey).enhance(0.6)
+        alpha = normal.getchannel('A')
+
+        def toward(flat, im, k):                     # ImageEnhance's own formula: flat + (im - flat) * k, clipped
+            flat = flat.convert('RGBA')
+            flat.putalpha(alpha)
+            return Image.blend(flat, im, k)
+        black = Image.new('RGBA', normal.size, (0, 0, 0, 255))
+        hover = toward(black, normal, 1.35)          # brighter
+        grey = toward(normal.convert('L'), normal, 0.15)     # nearly colourless
+        disabled = toward(black, grey, 0.6)          # and darker
         out = tuple(ImageTk.PhotoImage(im, master=root) for im in (normal, hover, pressed, disabled))
         _state['images'].extend(out)                 # Tk only keeps a name: the objects must stay alive
         return out
