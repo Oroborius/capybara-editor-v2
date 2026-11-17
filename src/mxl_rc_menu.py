@@ -1081,10 +1081,63 @@ def _relocate_child(blob, data, index):
     return encode_item(rec, data) + bytes(blob[size:])
 
 
+MAX_SOCKETED = 6        # what the game shows on an item; the count field of the record is 3 bits
+
+
+def _unrestricted():
+    """The creator's 'Unrestricted' switch (remembered setting)."""
+    try:
+        import settings
+        return bool(settings.get('capy_unrestricted'))
+    except Exception:
+        return False
+
+
+def _socket_limit(holder, code, rec):
+    """How many sockets this item may have: the base's cap from the game tables at the item's level;
+    with Unrestricted on, weapons and armor may have the game's 6 whatever their base says."""
+    data = holder.data
+    try:
+        ms = _creator_for(holder).max_sockets(code, rec['ilvl'])
+    except (KeyError, IndexError, AttributeError):
+        ms = 0
+    if _unrestricted() and body_kind(data, code) in ('armor', 'weapons'):
+        ms = MAX_SOCKETED
+    return min(ms, MAX_SOCKETED)
+
+
+def _fill_plan(holder, blob, code):
+    """What 'Fill sockets' would do on this entry: (record, [child blobs], sockets now, copies to add,
+    sockets after).  Free sockets are filled first; an item without a free socket (not socketed at all, or
+    full) gets new sockets up to its limit - a runeword does not, its socket count is its rune list.
+    Raises CreateError when nothing can be done."""
+    from mxl_creator import CreateError
+    data = holder.data
+    rec, kids = _children_blobs(blob, data)
+    if rec['flags'] & FLAG_SIMPLE:
+        raise CreateError(rc('fill.compact', 'this item cannot have sockets'))
+    have = max(rec.get('sockets', 0), len(kids)) if rec['flags'] & FLAG_SOCKETED else 0
+    total = min(have, 7)                                     # 7: what the 3-bit count field holds
+    if total <= len(kids) and not rec['flags'] & FLAG_RUNEWORD:
+        total = max(total, _socket_limit(holder, code, rec))
+    free = total - len(kids)
+    if free <= 0:
+        raise CreateError(rc('fill.none', 'no sockets available on this item'))
+    return rec, kids, have, free, total
+
+
+def _filler_ok(holder, clip):
+    chrec, _n = decode_item(clip[0], holder.data)
+    return any(c == chrec['code'] for c, _n2 in _creator_for(holder).sockets_fillers())
+
+
 def _fill_sockets(holder, it, win=None, e=None):
     """Appends copies of the clipboard item (a gem / rune, the creator's own filler list) into the item's
-    free sockets, up to the base's socket cap.  Stash items go through edit_stash, character items through
-    remove -> place -> save (the grown item is refused when it no longer fits its spot)."""
+    free sockets; an item without a free socket gets sockets first, up to the base's cap (_fill_plan).
+    Stash items go through edit_stash, character items through remove -> place -> save.
+    The parent record always carries what its children need: the socketed flag, a socket count that
+    covers them, and their number (children behind a record without the flag are not read as its
+    children by any reader: the page's structure breaks)."""
     app = getattr(holder, 'app', holder)
     clip = getattr(app, '_capy_clip', None)
     if not clip:
@@ -1098,21 +1151,24 @@ def _fill_sockets(holder, it, win=None, e=None):
         getter = lambda: win.ch.stash_blob(e)
     try:
         blob = getter()
-        rec, kids = _children_blobs(blob, data)
-        cr = _creator_for(holder)
         code = it['code'] if win is None else e.it['code']
-        cap = min(cr.max_sockets(code, rec['ilvl']), 7)      # the count field is 3 bits
-        free = cap - len(kids)
-        if free <= 0:
-            raise CreateError(rc('fill.none', 'no sockets available on this item'))
-        chrec, _n = decode_item(clip[0], data)
-        if not any(c == chrec['code'] for c, _n2 in cr.sockets_fillers()):
+        rec, kids, have, free, total = _fill_plan(holder, blob, code)
+        if not _filler_ok(holder, clip):
             raise CreateError(rc('fill.filler', 'the copied item is not a socketable gem or rune'))
-        new = encode_item(dict(rec, socketed_count=len(kids) + free), data) + b''.join(
+        parent = dict(rec, flags=rec['flags'] | FLAG_SOCKETED, sockets=max(have, total),
+                      socketed_count=len(kids) + free)
+        new = encode_item(parent, data) + b''.join(
             [_relocate_child(k, data, i) for i, k in enumerate(kids)]
             + [_relocate_child(clip[0], data, i) for i in range(len(kids), len(kids) + free)])
-        blob_item(new, data)            # validates the grown entry before anything is written
-    except (EditError, FormatError, OSError, CreateError, AttributeError, ValueError) as err:
+        # validates the grown entry before anything is written: it must read back as ONE item with all
+        # its children, nothing left over
+        back, used = decode_item(new, data)
+        seen = blob_item(new, data)
+        if not back['flags'] & FLAG_SOCKETED or back.get('socketed_count') != len(kids) + free \
+                or len(_children_blobs(new, data)[1]) != len(kids) + free \
+                or len(seen.get('socketed') or ()) != len(kids) + free:
+            raise CreateError(rc('fill.invalid', 'the filled item would not be readable: nothing written'))
+    except (EditError, FormatError, OSError, CreateError, AttributeError, ValueError, KeyError) as err:
         if win is None:
             _status(holder, str(err), True)
         else:
@@ -1121,6 +1177,8 @@ def _fill_sockets(holder, it, win=None, e=None):
         return
     name = clip[1]
     msg = rc('fill.done', '{n} x {name} socketed', n=free, name=name)
+    if total > have:
+        msg += rc('fill.added', ' ({n} sockets added)', n=total - have)
     if win is None:
         try:
             bak = edit_stash(holder.path, holder.data, remove=[it['_offset']],
@@ -1205,28 +1263,26 @@ def _remove_socketed(holder, it, win=None, e=None):
 
 
 def _fill_sockets_entry(holder, menu, it, win=None, e=None):
-    """The menu entry when the clipboard holds a socketable filler and the item has free sockets."""
+    """The menu entry, only when the action can work: the clipboard holds a socketable filler and the item
+    has free sockets, or can be given some (then the label says how many are added)."""
     app = getattr(holder, 'app', holder)
     clip = getattr(app, '_capy_clip', None)
     if not clip:
         return
     try:
-        data = holder.data
         blob = win.ch.stash_blob(e) if win is not None else item_blob(read_file(holder.path), it)
-        rec, kids = _children_blobs(blob, data)
-        cr = _creator_for(holder)
         code = it['code'] if win is None else e.it['code']
-        cap = min(cr.max_sockets(code, rec['ilvl']), 7)
-        if cap - len(kids) <= 0:
+        rec, kids, have, free, total = _fill_plan(holder, blob, code)
+        if not _filler_ok(holder, clip):
             return
-        chrec, _n = decode_item(clip[0], data)
-        if not any(c == chrec['code'] for c, _n2 in cr.sockets_fillers()):
-            return
-    except (EditError, FormatError, OSError, CreateError, AttributeError, ValueError, KeyError):
+    except (EditError, FormatError, OSError, CreateError, AttributeError, ValueError, KeyError, IndexError):
         return
-    menu.add_command(label=rc('fill.menu', 'Fill sockets with {name} (now {k} of {m})',
-                              name=clip[1], k=len(kids), m=cap),
-                     command=lambda: _fill_sockets(holder, it, win, e))
+    if total > have:
+        label = rc('fill.menu_add', 'Fill sockets with {name} (adds {n} sockets: {k} of {m})',
+                   name=clip[1], n=total - have, k=len(kids), m=total)
+    else:
+        label = rc('fill.menu', 'Fill sockets with {name} (now {k} of {m})', name=clip[1], k=len(kids), m=total)
+    menu.add_command(label=label, command=lambda: _fill_sockets(holder, it, win, e))
 
 
 # ------------------------------------------------------------------ magic-attributes buffer

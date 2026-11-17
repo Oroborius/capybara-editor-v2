@@ -31,6 +31,22 @@ def record(app, kind, **kw):
         if kind in ('delete', 'replace') and 'blob' not in kw:
             blob = item_blob(open(app.path, 'rb').read(), kw['item'])
             op['blob'] = bytes(blob)
+        # where the item stands in its page's item list in the file: the undo puts it back at that index,
+        # so that action + undo gives the original file bytes (not only the same items)
+        try:
+            import mxl_stash_order
+            if kind == 'delete' and 'index' not in kw:
+                at = mxl_stash_order.page_index(app.path, app.data, kw['item']['_offset'])
+                if at is not None and at[0] == op['page']:
+                    op['index'] = at[1]
+            elif kind == 'replace' and 'index' not in kw:
+                # recorded after the write: the writer noted the index of the item it removed
+                last = mxl_stash_order.last_removed
+                if last and last.get('path') == os.path.abspath(app.path) and last.get('page') == op.get('old_page') \
+                        and last.get('blob') == bytes(op['blob']):
+                    op['index'] = last['index']
+        except Exception:
+            pass
         stack.append(op)
         del stack[:-MAX_UNDO]
     except Exception:
@@ -55,6 +71,7 @@ def undo(app):
         items = parse_stash(app.path, app.data)
         if op['kind'] == 'delete':
             spot = (op['page'], op['x'], op['y'])
+            index = op.get('index')
             if any((i['page'], i['x'], i['y']) == spot for i in items):
                 new = blob_item(op['blob'], app.data)
                 spot = free_spot(items, new, app.data, (op['page'],) + tuple(
@@ -62,7 +79,7 @@ def undo(app):
                 if spot is None:
                     return T('undo.nospace', 'Undo: no free place for {name} any more',
                              name=op.get('name') or 'item')
-            bak = edit_stash(app.path, app.data, insert=[(spot[0], spot[1], spot[2], op['blob'])],
+            bak = edit_stash(app.path, app.data, insert=[_ins(spot, op['blob'], index, op['page'])],
                              backup=app.needs_backup(app.path))
             app.backup_made(app.path, bak)
             _refresh(app, spot)
@@ -91,7 +108,7 @@ def undo(app):
                              name=op.get('name') or 'item')
             bak = edit_stash(app.path, app.data,
                              remove=[cur['_offset']] if cur is not None else [],
-                             insert=[(old_spot[0], old_spot[1], old_spot[2], op['blob'])],
+                             insert=[_ins(old_spot, op['blob'], op.get('index'), op['old_page'])],
                              backup=app.needs_backup(app.path))
             app.backup_made(app.path, bak)
             _refresh(app, old_spot)
@@ -103,6 +120,15 @@ def undo(app):
     except Exception:
         return None
     return None
+
+
+def _ins(spot, blob, index, page):
+    """The insert tuple of an undo: at the item's old index in its page's list when the item goes back to
+    its own page and the writer knows indexed inserts (mxl_stash_order), appended otherwise."""
+    import mxl_save
+    if index is not None and spot[0] == page and getattr(mxl_save.edit_stash, '_capy_in_place', False):
+        return (spot[0], spot[1], spot[2], blob, index)
+    return (spot[0], spot[1], spot[2], blob)
 
 
 def _refresh(app, sel_key=None):
