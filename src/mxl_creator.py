@@ -2016,6 +2016,26 @@ class Creator:
             return lines[0]
         return lines[-1] + ' - ' + ' / '.join(reversed(lines[:-1]))
 
+    def granted_skills(self, u):
+        """Names of the skills a unique's mods grant: what tells the 200+ uniques all named "Relic" apart. The skill
+        is the param of an oskill mod (stat 97, "+x to Bladestorm"); a relic without one is told by its class-only
+        skill bonus (stat 107). Unnamed skills ("skill #1905": hidden helper skills) are left out."""
+        d = self.data
+        for sid in (97, 107):
+            out = []
+            for m in u.get('mods') or ():
+                if not 0 <= m['prop'] < len(d.props) or sid not in d.props[m['prop']]:
+                    continue
+                try:
+                    name = str(d.skill(m['param']) or '').strip()
+                except Exception:
+                    continue
+                if name and not name.startswith('skill #') and name not in out:
+                    out.append(name)
+            if out:
+                return out
+        return []
+
     def _orb_table(self):
         """Median XL Sigma mysticorbs.bin: one 143-byte row per mystic orb, in the order of the 'myst' items of
         misc.txt. Row: name (32 bytes), max orbs of this kind per item (u8 @43), then 6 property blocks of 16 bytes

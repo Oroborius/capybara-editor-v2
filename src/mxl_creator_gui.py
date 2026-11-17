@@ -541,7 +541,13 @@ class CreatorWindow:
                 if kind and b.kind != kind or orbs_only and cr.orb_effects(u['code']) is None or dyes_only:
                     continue
                 label = f"{clean(name)} - {clean(b.name)}"
+                if clean(name) == clean(b.name):                 # "Relic - Relic" x200: the granted skill instead
+                    skills = cr.granted_skills(u)
+                    if skills:
+                        label = f"{clean(name)} - {' / '.join(skills)}"
                 rows.append((label, i))
+            if q == 'unique':                                    # the relics by skill (their table order is none)
+                rows.sort(key=lambda r: r[0].lower())
         elif q == 'angelic':
             for b in cr.angelic_bases():
                 if kind and b.kind != kind:
