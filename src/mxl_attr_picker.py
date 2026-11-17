@@ -305,6 +305,9 @@ def closest(text, labels):
 
 
 # ---------------------------------------------------------------------------------------------- plain name list
+_NUMBER = re.compile(r'^#?\s*(\d{1,9})$')
+
+
 class ChoiceList(tk.Frame):
     """A filter box over a list of names (skills, classes): Enter / double-click picks, Escape cancels."""
 
@@ -314,6 +317,7 @@ class ChoiceList(tk.Frame):
         super().__init__(parent, bg=pal['bg'])
         exempt(self)
         self.on_pick, self.on_cancel = on_pick, on_cancel
+        self.numbers = False          # True: a typed number ('505', '#505') is a pick of its own ('#505')
         self.names, self.shown = [], []
         self.columnconfigure(0, weight=1)
         self.rowconfigure(2, weight=1)
@@ -351,6 +355,9 @@ class ChoiceList(tk.Frame):
         pat = self.var.get().strip().lower()
         if pat:
             self.shown = [self.names[i][0] for i in search(pat, [low for _n, low in self.names])]
+            num = _NUMBER.match(pat) if self.numbers else None
+            if num and f'#{int(num.group(1))}' not in self.shown:
+                self.shown.insert(0, f'#{int(num.group(1))}')     # the raw value itself, first
         else:
             self.shown = [n for n, _l in self.names]
         self.lb.delete(0, 'end')
@@ -589,7 +596,20 @@ class AttrPicker(tk.Frame):
                 bits = pb = 0
             txt = T('ap.info', 'stat #{sid}, {bits} bits', sid=sid, bits=bits)
             if pb:
-                txt += T('ap.info_param', ', param {bits} bits', bits=pb)
+                what = ''
+                try:
+                    import mxl_statnames
+                    spec = mxl_statnames.param_spec(sid)
+                    if spec is not None and spec.get('kind') not in ('unknown', 'number'):
+                        what = mxl_statnames.param_title(sid)
+                        if mxl_statnames.param_kind(sid) == 'skill':
+                            what += T('ap.info_level', ' + level')
+                except Exception:
+                    what = ''
+                if what:
+                    txt += T('ap.info_param_kind', ', param = {what} ({bits} bits)', what=what, bits=pb)
+                else:
+                    txt += T('ap.info_param', ', param {bits} bits', bits=pb)
             txt += '  -  ' + category_name(self.category_of(sid) or 'misc')
         self.info.configure(text=txt)
         if self.on_select:
@@ -692,9 +712,10 @@ def popup(parent, data, on_pick, anchor=None, choices=None, title=None):
     return top
 
 
-def popup_choices(parent, names, on_pick, anchor=None, current=None, title=None):
+def popup_choices(parent, names, on_pick, anchor=None, current=None, title=None, numbers=False):
     """A ChoiceList (filter box over a list of names: skills, states, classes...) in a small window under
-    `anchor`; closes on pick (Enter / Tab / double-click) or Escape. Returns the Toplevel (.picker)."""
+    `anchor`; closes on pick (Enter / Tab / double-click) or Escape. Returns the Toplevel (.picker).
+    numbers: a typed number is offered as '#N' (a raw param value)."""
     m = metrics(parent)
     pal = palette()
     top = tk.Toplevel(parent)
@@ -715,6 +736,7 @@ def popup_choices(parent, names, on_pick, anchor=None, current=None, title=None)
             on_pick(name)
 
     top.picker = ChoiceList(top, on_pick=done, on_cancel=done, title=title or '')
+    top.picker.numbers = numbers
     top.picker.pack(fill='both', expand=True)
     top.picker.set(names, current)
     longest = max([len(str(n)) for n in names] or [20])

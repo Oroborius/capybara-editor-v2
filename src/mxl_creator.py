@@ -26,7 +26,7 @@ from mxl_format_fix import body_kind
 from mxl_lang import T
 from mxl_rules import (mod_ranges, mods_stats, item_type_codes, is_innate_damage, runeword_row,
                        stat_range, unique_name, rare_name)
-from mxl_statnames import stat_text, param_kind, skilldesc_name
+from mxl_statnames import stat_text, param_kind, skilldesc_name, generic_label
 
 HONORIFIC_STAT = 289                            # 'Orb Effects Applied to this Item are Doubled' (honorific items)
 RELIC_CODE = 'cotw'                             # the base of every relic (327 unique rows, 90 of them empty)
@@ -1160,10 +1160,12 @@ class Creator:
                     continue
                 if not bits:
                     continue
-                try:
-                    txt = stat_text(d, sid, None, value=1, desc=ic.get('desc'))
-                except Exception:
-                    txt = ''
+                txt = generic_label(sid)                   # the game's string names ONE param value: the neutral name
+                if not txt:
+                    try:
+                        txt = stat_text(d, sid, None, value=1, desc=ic.get('desc'))
+                    except Exception:
+                        txt = ''
                 if not txt:
                     import mxl_statnames_ext
                     txt = mxl_statnames_ext.fallback_label(sid)

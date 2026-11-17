@@ -23,7 +23,8 @@ from mxl_format import FormatError, STAT_GROUPS
 from mxl_rules import stat_label, stat_hidden, mods_stats
 from mxl_statnames import (stat_text, param_kind, decode_param, encode_param, encode_skill_param,
                            skill_fits, skill_names_sorted, CHANCE_TO_CAST, SINGLE_SKILLS, CLASS_SKILLS,
-                           STATE_STAT, state_names_sorted, skilldesc_name)
+                           STATE_STAT, state_names_sorted, skilldesc_name, param_choices, param_short,
+                           param_title, rendered_line)
 from mxl_gui_detail import DetailHost, DetailPanel, setup_detail_tags
 from mxl_creator import Creator, CreateError, MAX_ILVL, CRAFTED_AFFIXES
 from mxl_lang import T
@@ -1358,16 +1359,18 @@ class CreatorWindow:
             top.picker.focus_filter()
         return top
 
-    def _name_popup(self, anchor, names, on_pick, typed=None, current=None, title=None):
-        """A searchable name list (skills, states, texts) under `anchor`: on_pick(name)."""
+    def _name_popup(self, anchor, names, on_pick, typed=None, current=None, title=None, numbers=False):
+        """A searchable name list (skills, states, texts) under `anchor`: on_pick(name). numbers: a typed
+        number is offered as '#N' (the raw value of a param)."""
         self._close_popup()
-        top = self._popup = AP.popup_choices(anchor, names, on_pick, anchor=anchor, current=current, title=title)
+        top = self._popup = AP.popup_choices(anchor, names, on_pick, anchor=anchor, current=current, title=title,
+                                             numbers=numbers)
         if typed:
             top.picker.var.set(typed)
             top.picker.entry.icursor('end')
         return top
 
-    def _name_field(self, parent, names, var, on_change=None, chars=20, title=None, clip=False):
+    def _name_field(self, parent, names, var, on_change=None, chars=20, title=None, clip=False, numbers=False):
         """Pick field over a long name list; var (StringVar) holds the chosen name, on_change() follows a pick."""
         def opener(typed=None):
             def picked(name):
@@ -1379,7 +1382,8 @@ class CreatorWindow:
                     pass
                 if on_change:
                     on_change()
-            self._name_popup(f, list(names() if callable(names) else names), picked, typed, var.get(), title)
+            self._name_popup(f, list(names() if callable(names) else names), picked, typed, var.get(), title,
+                             numbers)
         f = self._pick_field(parent, var.get(), opener, chars, clip)
         return f
 
@@ -1453,7 +1457,7 @@ class CreatorWindow:
             sid = pick['sid']
             param, why = self._edit_picked_param(pick, ep)
             if why is not None:
-                self._skill_status(why, str(ep.get('name') and ep['name'].get() or ''))
+                self._skill_status(why, str(ep.get('name') and ep['name'].get() or ''), sid)
                 return None
             return sid, param, value()
 
@@ -1541,7 +1545,13 @@ class CreatorWindow:
                 self.set_status(T('cr.raw.statinfo', 'stat #{sid}, {pb} param bits, save range {lo} to {hi}',
                                   sid=new, pb=pbits, lo=rng[0], hi=rng[1]))
                 self.render_options()
-            c = self._pick_field(box, labels.get(sid, f'(unknown stat #{sid})'), None, 26)
+            shown = labels.get(sid, f'(unknown stat #{sid})')
+            if param_kind(sid) or (d.isc[sid].get('param') if sid in d.isc else 0):
+                # a stat with a param: the line the item shows on hover for THIS param, when it has one
+                p0 = e_local.get('param')
+                line = rendered_line(d, sid, p0 if p0 is not None else 0, e_local.get('value') or 0)
+                shown = line or shown
+            c = self._pick_field(box, shown, None, 26)
             c.open = lambda typed=None, c=c, fn=id_picked, sid=sid: self._stat_popup(c, fn, typed, sid)
             c.grid(row=0, column=0, sticky='w')
             try:
@@ -1549,13 +1559,10 @@ class CreatorWindow:
             except (IndexError, KeyError, TypeError):
                 pbits = 0
             kind = param_kind(sid)
-            if kind in ('skill', 'skill_only', 'class'):
+            if kind:                                    # the param is picked by NAME (see mxl_statparams)
                 parts = decode_param(d, sid, e_local.get('param'))
-                if kind == 'class':
-                    from mxl_rules import CLASSES
-                    names = list(CLASSES)
-                else:
-                    names = [n for n, _sk in skill_names_sorted(d, sid)]
+                names = [n for n, _v in param_choices(d, sid)]
+                short = param_short(d, sid)
                 nm = tk.StringVar(value=(parts or ('',))[0] or (names[0] if names else ''))
                 lv = None
                 if kind == 'skill':
@@ -1568,18 +1575,21 @@ class CreatorWindow:
                         level = 1
                     newp, why = encode_skill_param(d, e['id'], nm.get(), level)
                     if newp is None:
-                        self._skill_status(why, nm.get())
+                        self._skill_status(why, nm.get(), e['id'])
                         return
+                    newp = newp or None                 # value 0 is stored as "no param", like the game's rows
                     e['param'] = newp
                     self._take_over((e['id'], newp))
                     self.refresh()
-                if kind == 'class':                     # a handful of names: a plain dropdown
-                    cb = ttk.Combobox(box, values=names, textvariable=nm, width=14)
+                if short:                               # a handful of names: a plain dropdown
+                    cb = ttk.Combobox(box, values=names, textvariable=nm,
+                                      width=max(14, min(34, max(len(n) for n in names) + 1)))
                     self.scroll.no_wheel(cb)
                     bind_typeahead(cb, names)
                     cb.bind('<<ComboboxSelected>>', commit_param)
+                    cb.bind('<Return>', commit_param)   # a typed '#N' (raw value) is taken too
                 else:                                   # thousands of skills: the searchable list
-                    cb = self._name_field(box, names, nm, commit_param, 20, T('cr.pick.skill', 'Skill'))
+                    cb = self._name_field(box, names, nm, commit_param, 20, param_title(sid), numbers=True)
                 cb.grid(row=0, column=1, sticky='w', padx=(4, 2))
                 if lv is not None:
                     sl = ttk.Spinbox(box, from_=1, to=63, textvariable=lv, width=4)
@@ -1804,8 +1814,12 @@ class CreatorWindow:
                 n += 1
         return n
 
-    def _skill_status(self, why, name):
-        """Why a skill (or class) param could not be encoded."""
+    def _skill_status(self, why, name, sid=None):
+        """Why a skill (or class, state, element...) param could not be encoded."""
+        if why not in ('rolled', 'level') and sid is not None and param_kind(sid) in ('class', 'named'):
+            self.set_status(T('cr.raw.unknown_param', 'unknown {what}: {name}', what=param_title(sid).lower(),
+                              name=name), error=True)
+            return
         if why == 'rolled':
             self.set_status(T('cr.raw.rolled_skill',
                               '{name}: skill id too large for this stat\'s param field - the game would '
@@ -1825,6 +1839,8 @@ class CreatorWindow:
         txt = ''
         if not hidden:
             try:
+                if param is None and param_kind(sid) in ('class', 'named'):
+                    param = 0                    # value 0 is stored as "no param": still a value with a name
                 txt = stat_text(d, sid, param, value=val,
                                 desc=(d.isc[sid]['desc'] if 0 <= sid < len(d.isc) else None))
             except Exception:
@@ -1834,8 +1850,10 @@ class CreatorWindow:
             txt = mxl_statnames_ext.fallback_label(sid)
         if not txt:
             txt = f'(stat #{sid})'
-        if param_kind(sid) in ('skill', 'skill_only', 'class'):
+        if param_kind(sid):
             parts = decode_param(d, sid, param)     # the skill's name is usually already in the game text
+            if param_kind(sid) == 'named' and rendered_line(d, sid, param, val):
+                parts = None                        # the hover line names the value in its own words
             if parts and (not txt or str(parts[0]).lower() not in txt.lower()):
                 txt += f'  [{parts[0]}]'
         elif param is not None:
@@ -1983,15 +2001,12 @@ class CreatorWindow:
             sv.grid(row=r, column=1, sticky='w', pady=1)
             self._spin_commit(sv, commit_value)
             if kind:
-                if kind == 'class':
-                    from mxl_rules import CLASSES
-                    names = list(CLASSES)
-                else:
-                    names = [n for n, _sk in skill_names_sorted(d, sid)]
+                names = [n for n, _v in param_choices(d, sid)]
                 nm = tk.StringVar(value=(parts or ('',))[0] or (names[0] if names else ''))
                 cb = None
-                if kind == 'class':                     # a handful of names: a plain dropdown
-                    cb = ttk.Combobox(parent, values=names, textvariable=nm, width=14)
+                if param_short(d, sid):                 # a handful of names: a plain dropdown
+                    cb = ttk.Combobox(parent, values=names, textvariable=nm,
+                                      width=max(14, min(34, max(len(n) for n in names) + 1)))
                     cb.grid(row=r, column=2, sticky='w', padx=(4, 2), pady=1)
                     self.scroll.no_wheel(cb)
                     bind_typeahead(cb, names)
@@ -2011,20 +2026,21 @@ class CreatorWindow:
                             level = 1
                         newp, why = encode_skill_param(d, k[0], nm.get(), level)
                         if newp is None:
-                            self._skill_status(why, nm.get())
+                            self._skill_status(why, nm.get(), k[0])
                             return
                         self._edit_set_param(k, newp)
                 else:
                     def commit_param(_e=None, nm=nm, lv=None, k=k):
                         newp, why = encode_skill_param(d, k[0], nm.get(), None)
                         if newp is None:
-                            self._skill_status(why, nm.get())
+                            self._skill_status(why, nm.get(), k[0])
                             return
                         self._edit_set_param(k, newp)
                 if cb is not None:
                     cb.bind('<<ComboboxSelected>>', commit_param)
+                    cb.bind('<Return>', commit_param)
                 else:                                   # thousands of skills: the searchable list
-                    self._name_field(parent, names, nm, commit_param, 20, T('cr.pick.skill', 'Skill')).grid(
+                    self._name_field(parent, names, nm, commit_param, 20, param_title(sid), numbers=True).grid(
                         row=r, column=2, sticky='w', padx=(4, 2), pady=1)
                 if lv is not None:
                     self._spin_commit(sl, commit_param)
@@ -2073,25 +2089,30 @@ class CreatorWindow:
         kind = param_kind(sid)
         pbits = (d.isc[sid]['param'] or 0) if 0 <= sid < len(d.isc) else 0
         if kind in ('skill', 'skill_only'):
-            names = [n for n, _k in skill_names_sorted(d, sid)]
+            names = [n for n, _k in param_choices(d, sid)]
             ttk.Label(pf, text=T('cr.edit.skill', 'skill')).grid(row=0, column=0)
             nm = ep['name'] = tk.StringVar(value=names[0] if names else '')
-            self._name_field(pf, names, nm, None, 20, T('cr.pick.skill', 'Skill')).grid(row=0, column=1, padx=(4, 6))
+            self._name_field(pf, names, nm, None, 20, T('cr.pick.skill', 'Skill'), numbers=True).grid(
+                row=0, column=1, padx=(4, 6))
             if kind == 'skill':
                 ttk.Label(pf, text=T('cr.edit.level', 'level')).grid(row=0, column=2)
                 lv = ep['level'] = tk.IntVar(value=1)
                 sl = ttk.Spinbox(pf, from_=1, to=63, textvariable=lv, width=4)
                 sl.grid(row=0, column=3, padx=(2, 6))
                 self.scroll.no_wheel(sl)
-        elif kind == 'class':
-            from mxl_rules import CLASSES
-            names = list(CLASSES)
-            ttk.Label(pf, text=T('cr.edit.class', 'class')).grid(row=0, column=0)
-            nm = ep['name'] = tk.StringVar(value=names[0] if names else '')
-            cb = ttk.Combobox(pf, state='readonly', values=names, textvariable=nm, width=14)
-            cb.grid(row=0, column=1, padx=(4, 6))
-            self.scroll.no_wheel(cb)
-            bind_typeahead(cb, names)
+        elif kind in ('class', 'named'):                # state, monster, orb, element / attribute...: by name
+            names = [n for n, _v in param_choices(d, sid)]
+            ttk.Label(pf, text=param_title(sid).lower()).grid(row=0, column=0)
+            nm = ep['name'] = tk.StringVar(value=names[0] if names else '#0')
+            if param_short(d, sid):                     # a handful of names: a plain dropdown ('#N' can be typed)
+                cb = ttk.Combobox(pf, state='readonly' if kind == 'class' else 'normal', values=names,
+                                  textvariable=nm, width=max(14, min(34, max(len(n) for n in names) + 1)))
+                cb.grid(row=0, column=1, padx=(4, 6))
+                self.scroll.no_wheel(cb)
+                bind_typeahead(cb, names)
+            else:
+                self._name_field(pf, names, nm, None, 24, param_title(sid), numbers=True).grid(
+                    row=0, column=1, padx=(4, 6))
         elif sid == STATE_STAT and pbits:
             # the state stat (98): param = state id, named after the skills that set it
             snames = ep['state_names'] = state_names_sorted(d)
@@ -2112,13 +2133,16 @@ class CreatorWindow:
         p = ep
         sid = pick['sid']
         kind = param_kind(sid)
-        if kind in ('skill', 'skill_only', 'class'):
+        if kind:
             name = str(p.get('name') and p['name'].get() or '')
             try:
                 lvl = int(p['level'].get()) if kind == 'skill' else None
             except (KeyError, AttributeError, ValueError, tk.TclError):
                 lvl = 1
-            return encode_skill_param(self.data, sid, name, lvl)
+            newp, why = encode_skill_param(self.data, sid, name, lvl)
+            if why is None and kind in ('class', 'named'):
+                newp = newp or None                  # value 0 is stored as "no param"
+            return newp, why
         if sid == STATE_STAT and 'state_names' in p:
             name = str(p.get('name') and p['name'].get() or '')
             v = next((v for n, v in p['state_names'] if n == name), None)

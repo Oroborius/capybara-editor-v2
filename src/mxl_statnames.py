@@ -9,6 +9,17 @@ editors can show the skill's name in a dropdown and type the chance separately:
   param = (skill id << 6) | level shown;
 - the SINGLE_SKILL stats (97, 107), e.g. 'to %s': param = skill id;
 - the class skill stat (83), e.g. 'to %s Skill Levels': param = class index.
+
+What the param of EVERY stat with param bits means comes from the generated table mxl_statparams.PARAMS
+(tools/gen_statparams.py): param_spec() / param_kind() / param_choices() / param_name() / param_value() /
+param_title() / param_text() below turn it into names for the editors:
+- 'skill'      skill << 6 | level (chance to cast, charges, the hidden procs): a skill name + a level;
+- 'skill_only' a skill id (oskills, cooldown, the per-skill modifier slots, the worn aura);
+- 'class'      a class index;
+- 'named'      one value picked by name: state, monster, mystic orb, monster group, or - for a packed param of
+               two small enumerations (innate elemental damage: element | attribute << 8) - their combination;
+- None         a plain number (unknown meaning, string index, no param).
+A value without a name is shown and accepted as '#N', so raw numbers stay possible everywhere.
 """
 import re
 import struct
@@ -16,6 +27,18 @@ import struct
 CHANCE_TO_CAST = list(range(195, 204))
 SINGLE_SKILLS = (97, 107)
 CLASS_SKILLS = 83
+SHORT_LIST = 40              # up to this many names: a plain dropdown; more: the searchable list
+_RAW = re.compile(r'^\s*#?\s*(\d+)\s*$')
+_RAW_TAIL = re.compile(r'#(\d+)\)?\s*$')
+
+
+def param_spec(sid):
+    """The generated entry of a stat with param bits (see mxl_statparams), or None."""
+    try:
+        import mxl_statparams
+        return mxl_statparams.PARAMS.get(sid)
+    except Exception:
+        return None
 
 
 def stat_text(data, sid, param=None, value=1, desc=None):
@@ -28,19 +51,90 @@ def stat_text(data, sid, param=None, value=1, desc=None):
     except Exception:
         return ''
     if not txt or 'OLAR BUFFALO' in txt.upper():
+        txt = ''
+    spec = param_spec(sid)
+    if spec is not None and param is not None and value is not None:
+        line = rendered_line(data, sid, param, value)    # what the item shows on hover, word for word
+        if line:
+            return line
+    if spec is not None:                  # the stat's string needs its param: the game's line for this param
+        kinds = [f[1] for f in spec.get('fields') or ()]
+        if kinds in (['element', 'attribute'], ['number', 'class']) or '%s' in txt \
+                or (not txt and kinds == ['string'] and param):
+            alt = param_text(data, sid, param, value=value if kinds == ['element', 'attribute'] else None)
+            if alt:
+                return alt
+    return txt
+
+
+def rendered_line(data, sid, param, value):
+    """The line the item tooltip shows for one stored stat (stat id, param, value) - the text of the hover
+    display, plain; '' when the tooltip shows nothing for it (hidden stats) or only a placeholder."""
+    try:
+        from mxl_stat_text import stat_lines
+        out = []
+        for ln in stat_lines([dict(id=sid, param=param or None, value=value)], data):
+            text = str(ln[1])
+            for seg in (ln[2] if len(ln) > 2 else ()) or ():
+                text += str(seg[1] if isinstance(seg, (tuple, list)) else seg)
+            out.append(re.sub(r'\xffc.', '', text).replace('\n', ' / ').strip())
+        txt = ' / '.join(t for t in out if t)
+    except Exception:
+        return ''
+    if not txt or BUFFALO in txt.upper() or '%s' in txt or '%d' in txt:
         return ''
     return txt
 
 
+def generic_label(sid):
+    """The stat's label for the pickers when the game's own string bakes ONE param value into it ('to Amazon
+    Skill Levels', 'Innate Fire Damage', '+%d to Javelin and Spear Skills'), else None."""
+    return (param_spec(sid) or {}).get('label')
+
+
+_NAMED = ('state', 'monster', 'orb', 'montype', 'element', 'attribute')
+
+
 def param_kind(sid):
-    """What kind of param the stat carries: 'skill' (+ level), 'skill_only', 'class' or None."""
-    if sid in CHANCE_TO_CAST:
+    """How the editors show the stat's param: 'skill' (a skill + a level), 'skill_only', 'class', 'named' (one
+    name out of a list: state, monster, orb, element / attribute...) or None (a plain number / no param)."""
+    spec = param_spec(sid)
+    if spec is None:
+        if sid in CHANCE_TO_CAST:
+            return 'skill'
+        if sid in SINGLE_SKILLS:
+            return 'skill_only'
+        if sid == CLASS_SKILLS:
+            return 'class'
+        return None
+    kinds = [f[1] for f in spec.get('fields') or ()]
+    if kinds == ['number', 'skill'] and spec['fields'][0][0] == 'level':
         return 'skill'
-    if sid in SINGLE_SKILLS:
+    if kinds == ['skill']:
         return 'skill_only'
-    if sid == CLASS_SKILLS:
+    if kinds == ['class']:
         return 'class'
+    if kinds and all(k in _NAMED for k in kinds):
+        if len(kinds) == 1 and kinds[0] in ('montype', 'element') and not spec.get('enums'):
+            return None                                  # no value of it has a known name: a plain number
+        return 'named'
     return None
+
+
+def param_title(sid):
+    """What the param names, for column / popup titles: 'Skill', 'Class', 'State', 'Element / attribute'..."""
+    from mxl_lang import T
+    spec = param_spec(sid) or {}
+    names = {'skill': T('sn.kind.skill', 'Skill'), 'class': T('sn.kind.class', 'Class'),
+             'state': T('sn.kind.state', 'State'), 'monster': T('sn.kind.monster', 'Monster'),
+             'orb': T('sn.kind.orb', 'Mystic orb'), 'montype': T('sn.kind.montype', 'Monster group'),
+             'element': T('sn.kind.element', 'Element'), 'attribute': T('sn.kind.attribute', 'Attribute'),
+             'string': T('sn.kind.string', 'Text'), 'number': T('sn.kind.number', 'Param')}
+    kinds = [f[1] for f in spec.get('fields') or () if f[0] != 'level']
+    if not kinds:
+        return {'skill': names['skill'], 'skill_only': names['skill'],
+                'class': names['class']}.get(param_kind(sid), names['number'])
+    return ' / '.join(names.get(k, k) for k in kinds)
 
 
 def _classes():
@@ -48,11 +142,197 @@ def _classes():
     return CLASSES
 
 
+def _uniq(pairs):
+    """[(name, value)] with every name unique: a name shared by several values gets ' (#value)'."""
+    count = {}
+    for n, _v in pairs:
+        count[n] = count.get(n, 0) + 1
+    return [(n if count[n] == 1 else f'{n} (#{v})', v) for n, v in pairs]
+
+
+def _orb_names(data):
+    """[(orb name, row)] of mysticorbs.bin (the mystic orb counter's param is the orb's row)."""
+    try:
+        import mxl_creator
+        cr = data.__dict__.get('_sn_creator')
+        if cr is None:
+            cr = data.__dict__['_sn_creator'] = mxl_creator.Creator(data)
+        out = []
+        for i, (code, o) in enumerate(cr._orb_table().items()):
+            n = re.sub(r'^MO - ', '', o.get('name') or '') or str(code).strip()
+            try:
+                shown = cr.display_name(code).split(' - ')[0].strip()
+            except Exception:
+                shown = ''
+            if shown and shown.lower() not in n.lower() and 'mystic orb' not in shown.lower():
+                n = f'{shown} [{n}]'
+            out.append((n, i))
+        return out
+    except Exception:
+        return []
+
+
+def _field_choices(data, spec, field):
+    """[(name, value)] of one field of a param, by the field's kind; [] when its values have no names."""
+    name, kind, _shift, bits = field
+    enum = (spec.get('enums') or {}).get(name)
+    if enum:
+        return [(str(n), v) for v, n in sorted(enum.items())]
+    if kind == 'class':
+        return list((n, i) for i, n in enumerate(_classes()))
+    if kind == 'state':
+        return state_names_sorted(data)
+    if kind == 'monster':
+        names = getattr(data, 'monster_names', None) or []
+        return [(str(n).replace('\n', ' ').strip(), i) for i, n in enumerate(names)
+                if n and BUFFALO not in str(n).upper() and i < (1 << bits)]
+    if kind == 'orb':
+        return _orb_names(data)
+    return []
+
+
+def param_choices(data, sid):
+    """[(name, value)] the stat's param can be picked from, names unique, sorted for the lists: skills (value
+    = skill id; the level of a 'skill' stat is typed separately), classes, states, monsters, orbs, or the
+    combinations of a packed param of small enumerations ('Lightning / Dexterity'). [] for plain numbers."""
+    kind = param_kind(sid)
+    if kind is None:
+        return []
+    cache = data.__dict__.setdefault('_sn_param_choices', {})
+    if sid in cache:
+        return cache[sid]
+    spec = param_spec(sid) or {}
+    if kind in ('skill', 'skill_only'):
+        out = skill_names_sorted(data, sid, hidden=bool(spec.get('hidden_skills')))
+    elif kind == 'class':
+        out = [(n, i) for i, n in enumerate(_classes())]
+    else:
+        fields = spec['fields']
+        if len(fields) == 1:
+            out = _uniq(_field_choices(data, spec, fields[0]))
+            if fields[0][1] not in ('orb', 'class', 'element', 'attribute', 'montype'):
+                out.sort(key=lambda x: x[0].lower())
+        else:                                            # a packed param: every combination, first field first
+            out = [('', 0)]
+            for f in fields:
+                ch = _field_choices(data, spec, f)
+                out = [((a + ' / ' if a else '') + n, v0 | (v << f[2])) for a, v0 in out for n, v in ch]
+    cache[sid] = out
+    return out
+
+
+def param_short(data, sid):
+    """True when the stat's param list is short enough for a plain dropdown (classes, elements...)."""
+    return param_kind(sid) in ('class', 'named') and len(param_choices(data, sid)) <= SHORT_LIST
+
+
+def _field_name(data, spec, field, v):
+    n = next((n for n, val in _field_choices(data, spec, field) if val == v), None)
+    if n is None and field[1] == 'state':
+        n = state_name(data, v)
+    return n
+
+
+def param_name(data, sid, param):
+    """The name of a 'class' / 'named' param value ('Lightning / Dexterity', 'Undead Marksman'), exactly as
+    param_choices lists it; '#N' when the value has no name (param_value takes that back)."""
+    param = param or 0
+    for n, v in param_choices(data, sid):
+        if v == param:
+            return n
+    spec = param_spec(sid) or {}
+    fields = spec.get('fields') or ()
+    if len(fields) > 1:                                  # name the parts that have one
+        parts = []
+        for f in fields:
+            v = (param >> f[2]) & ((1 << f[3]) - 1)
+            parts.append(_field_name(data, spec, f, v) or f'{f[0]} {v}')
+        return ' / '.join(parts) + f' (#{param})'
+    if fields and fields[0][1] == 'state':
+        n = state_name(data, param)
+        if n:
+            return f'{n} (#{param})'
+    return f'#{param}'
+
+
+def param_value(data, sid, name):
+    """The param value of a name given by param_choices / param_name, or of a typed number ('505', '#505');
+    None when it is neither or does not fit the stat's param bits."""
+    name = str(name or '').strip()
+    v = next((v for n, v in param_choices(data, sid) if n == name), None)
+    if v is None:
+        low = name.lower()
+        v = next((v for n, v in param_choices(data, sid) if n.lower() == low), None)
+    if v is None:
+        m = _RAW.match(name) or _RAW_TAIL.search(name)
+        if m:
+            v = int(m.group(1))
+    bits = min(param_bits(data, sid), 32)
+    if v is None or not 0 <= v < (1 << bits):
+        return None
+    return v
+
+
+def param_text(data, sid, param, numbers='#', value=None):
+    """The game's own line for a stat + param where the stat's string needs the param to make sense, with
+    `numbers` in place of the values: 'Innate Lightning Damage: # (#% of Dexterity)', "Jitan's Gate Cooldown
+    Reduced by #", 'Split Arrow: +8 Projectiles' (the orange texts). '' when there is no such line."""
+    spec = param_spec(sid)
+    if spec is None:
+        return ''
+    try:
+        ic = data.isc[sid]
+        func = ic.get('func')
+        desc = _clean(ic.get('desc'))
+        param = param or 0
+        kinds = [f[1] for f in spec['fields']]
+        if kinds == ['element', 'attribute']:
+            el, at = param & 0xFF, param >> 8
+            enums = spec.get('enums') or {}
+            ename = (enums.get('element') or {}).get(el)
+            aname = (enums.get('attribute') or {}).get(at) or f'attribute {at}'
+            if ename is None:
+                return ''
+            if value is not None and value != 1:         # the tooltip's form: the damage needs the character
+                return f'Innate {ename} Damage: ({float(value):.1f}% of {aname})'
+            return f'Innate {ename} Damage: {numbers} ({numbers}% of {aname})'
+        if kinds == ['string']:
+            t = data.strings.get(param)
+            text = _clean(t[1] if t else '')
+            lines = [ln.strip() for ln in text.split('\n') if ln.strip()]
+            return ' / '.join(lines) if lines else ''
+        if kinds == ['skill'] and func in (33, 37) and '%s' in desc and param:
+            sk = skill_name(data, param) or f'skill #{param}'
+            txt = desc.replace('%s', sk)
+            return re.sub(r'%[+]?\.?\d*[dgfi]', numbers, txt).replace('%%', '%')
+        if kinds == ['number', 'class'] and func == 14:           # skill tab: class * 8 + tab
+            cl = _classes()
+            c, tab = param >> 3, param & 7
+            cname = cl[c] if 0 <= c < len(cl) else f'class {c}'
+            return f'+{numbers} to {cname} Skills (skill tab {tab})'
+    except Exception:
+        return ''
+    return ''
+
+
+def _clean(text):
+    text = re.sub(r'\xffc.', '', str(text or ''))
+    return '' if BUFFALO in text.upper() else text
+
+
 def decode_param(data, sid, param):
     """Human name of the param the row stored: ('Arrow', 16) for a chance-to-cast stat, ('Tantrum', None),
-    ('Necromancer', None) for the class skill stat; None when the stat has no such param."""
+    ('Necromancer', None) for the class skill stat, ('Lightning / Dexterity', None) for a named param; None
+    when the stat has no such param."""
     kind = param_kind(sid)
-    if param is None or kind is None:
+    if kind is None:
+        return None
+    if kind in ('class', 'named'):                       # value 0 (stored as no param) is a value of its own
+        try:
+            return (param_name(data, sid, param), None)
+        except Exception:
+            return None
+    if param is None:
         return None
     try:
         if kind == 'skill':
@@ -60,9 +340,6 @@ def decode_param(data, sid, param):
             return (skill_label(data, sk) or f'skill #{sk}', lv)
         if kind == 'skill_only':
             return (skill_label(data, param) or f'skill #{param}', None)
-        cl = _classes()
-        if kind == 'class':
-            return (cl[param] if isinstance(param, int) and 0 <= param < len(cl) else f'class #{param}', None)
     except Exception:
         return None
     return None
@@ -82,9 +359,8 @@ def encode_param(data, sid, name, level=None):
             return (sk << 6) | (int(level or 0) & 63) if level is not None else sk << 6
         if kind == 'skill_only':
             return skill_id(data, name)
-        if kind == 'class':
-            cl = _classes()
-            return cl.index(name) if name in cl else None
+        if kind in ('class', 'named'):
+            return param_value(data, sid, name)
     except Exception:
         return None
     return None
@@ -294,6 +570,54 @@ def install():
         return orig(self, sid)
     cls.skill = skill
     cls._sn_skill_patch = True
+    _install_param_texts()
+
+
+def _install_param_texts():
+    """Two tooltip lines the host leaves unfinished because they need the stat's param:
+    - '%s Maximum Skill Level Increased by %d' (stat 449) keeps its placeholders;
+    - innate elemental damage with attribute 4 reads '(33.0% of FLYING POLAR BUFFALO ERROR)': the host looks
+      the attribute up as a stat, 4 is 'the higher of Strength and Dexterity' (see mxl_statparams, stat 415)."""
+    try:
+        import mxl_stat_text as st
+    except Exception:
+        return
+    if getattr(st, '_sn_param_patch', False):
+        return
+    orig_text, orig_innate = st._stat_text, st._innate_damage_line
+    st._sn_host_texts = (orig_text, orig_innate)         # tools/gen_statparams.py reads the host's own lines
+
+    def _stat_text(s, c, v, p, s1, data, *rest):
+        out = orig_text(s, c, v, p, s1, data, *rest)
+        try:
+            if isinstance(out, str) and '%s' in out and (c or {}).get('func') == 37 and p:
+                sk = skill_name(data, p) or f'skill #{p}'
+                return out.replace('%s', sk).replace('%d', str(v))
+        except Exception:
+            pass
+        return out
+
+    def _innate_damage_line(c, v, p, s1, data, *rest):
+        out = orig_innate(c, v, p, s1, data, *rest)
+        try:
+            at = (p or 0) >> 8
+            name = (((param_spec(415) or {}).get('enums') or {}).get('attribute') or {}).get(at)
+            if name and at > 3:
+                def fix(x):
+                    if isinstance(x, str):
+                        return re.sub(r'of (FLYING POLAR BUFFALO ERROR|\?)\)', f'of {name})', x)
+                    if isinstance(x, tuple):
+                        return tuple(fix(y) for y in x)
+                    if isinstance(x, list):
+                        return [fix(y) for y in x]
+                    return x
+                return fix(out)
+        except Exception:
+            pass
+        return out
+    st._stat_text = _stat_text
+    st._innate_damage_line = _innate_damage_line
+    st._sn_param_patch = True
 
 
 def encode_skill_param(data, sid, name, level=None):
@@ -304,14 +628,14 @@ def encode_skill_param(data, sid, name, level=None):
     kind = param_kind(sid)
     if kind is None:
         return None, 'unknown'
-    if kind == 'class':
-        from mxl_rules import CLASSES
-        try:
-            ci = list(CLASSES).index(name)
-        except (ValueError, TypeError):
-            return None, 'unknown'
-        return (ci, None) if skill_fits(data, sid, ci) else (None, 'rolled')
+    if kind in ('class', 'named'):                       # one name out of a list, or a typed '#N'
+        v = param_value(data, sid, name)
+        return (v, None) if v is not None else (None, 'unknown')
     sk = skill_id(data, name)
+    if sk is None:
+        m = _RAW.match(str(name or ''))                  # a typed skill number
+        if m and skill_label(data, int(m.group(1))):
+            sk = int(m.group(1))
     if sk is None:
         return None, 'unknown'
     if not skill_fits(data, sid, sk):
@@ -327,13 +651,25 @@ def encode_skill_param(data, sid, name, level=None):
     return sk, None
 
 
-def skill_names_sorted(data, sid=None):
+def skill_names_sorted(data, sid=None, hidden=False):
     """[(skill name, skill id)] sorted by name for the dropdowns. With sid: only the skills that fit
-    into the stat's param field (see skill_fits) - the others would roll in the game."""
+    into the stat's param field (see skill_fits) - the others would roll in the game. hidden: the skills
+    without a display name follow ('Aura: Movement Speed (hidden #1888)'), for the stats whose game rows use
+    such skills (the worn aura, the hidden procs, the per-skill modifier slots)."""
     out = [(skill_label(data, k), k) for k in data.skill_names if _own_name(data, k)]
     if sid is not None:
         out = [(n, k) for n, k in out if skill_fits(data, sid, k)]
-    return sorted(out, key=lambda x: x[0].lower())
+    out.sort(key=lambda x: x[0].lower())
+    if hidden:
+        more = []
+        for k in range(1, len(_skill_rows(data))):
+            if _own_name(data, k) or (sid is not None and not skill_fits(data, sid, k)):
+                continue
+            n = hidden_skill_name(data, k)
+            if n:
+                more.append((n, k))
+        out += sorted(more, key=lambda x: x[0].lower())
+    return out
 
 
 def skilldesc_name(data, idx):
@@ -404,4 +740,4 @@ def state_names_sorted(data):
         n = state_name(data, sid)
         if n:
             out.append((n, sid))
-    return sorted(out, key=lambda x: x[0].lower())
+    return sorted(_uniq(out), key=lambda x: x[0].lower())

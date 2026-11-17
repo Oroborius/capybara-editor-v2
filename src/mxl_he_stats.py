@@ -39,7 +39,7 @@ from mxl_rules import stat_hidden
 from mxl_lang import T
 from mxl_creator import decode_blob, build_blob
 from mxl_statnames import (stat_text, param_kind, decode_param, encode_skill_param, skill_names_sorted,
-                           param_bits)
+                           param_bits, param_choices, param_title, param_spec, param_name)
 import mxl_attr_picker as AP
 
 SLOTS_MIN = 30          # Hero Editor showed 30 magic attribute slots
@@ -59,6 +59,10 @@ def _stat_info(data, sid):
         return None
     return {'bits': c.get('bits') or 0, 'param': c.get('param') or 0, 'desc': c.get('desc'),
             'add': c.get('add') or 0}
+
+
+def info_bits(c):
+    return bool((c or {}).get('param'))
 
 
 def value_range(data, sid):
@@ -84,6 +88,10 @@ def _row_label(data, s):
     txt = ''
     if not hidden:
         shown = s.get('value') if param_kind(sid) == 'skill' else 1      # '5% Chance to cast level 3 ...'
+        if param_spec(sid) is not None:         # a stat with a param: the line the item shows on hover
+            shown = s.get('value')
+            if param is None and param_kind(sid) in ('class', 'named'):
+                param = 0                       # value 0 is stored as "no param"
         txt = stat_text(data, sid, param, value=shown if shown is not None else 1, desc=c.get('desc'))
     if not txt:
         import mxl_statnames_ext
@@ -97,6 +105,18 @@ def _row_info_text(data, s):
     c = _stat_info(data, sid)
     bits = (c or {}).get('bits') or 0
     par = f', param {param}' if param is not None else ''
+    spec = param_spec(sid)
+    if spec is not None and info_bits(c):
+        try:
+            if param_kind(sid) in ('class', 'named'):
+                par = f', param {param or 0} = {param_title(sid)}: {param_name(data, sid, param)}'
+            elif param_kind(sid) and param is not None:
+                parts = decode_param(data, sid, param) or ('?', None)
+                par += f' = {param_title(sid)}: {parts[0]}' + (f', level {parts[1]}' if parts[1] is not None else '')
+            if spec.get('conf') and spec.get('kind') != 'number':
+                par += f' [{spec["kind"]}, {spec["conf"]}]'
+        except Exception:
+            pass
     rng = value_range(data, sid)
     lim = f', {rng[0]}..{rng[1]}' if rng else ''
     return f'stat #{sid}{par}, {bits} bits{lim}, value {s.get("value")}'
@@ -691,7 +711,7 @@ class ItemStatsWindow:
             names = skill_names_sorted(data, sid)
             if names:
                 param, _why = encode_skill_param(data, sid, names[0][0], 1)
-        elif kind == 'class':
+        elif kind in ('class', 'named'):
             param = 0
         lo, hi = value_range(data, sid)
         if r['s'] is not None:
@@ -739,9 +759,13 @@ class ItemStatsWindow:
             from mxl_rules import CLASSES
             names = list(CLASSES)
             title = he('pick_class', 'Slot {n}: class', n=r['n'])
+        elif r['pk'] == 'named':                # state, monster, orb, element / attribute...: by name
+            names = [nm for nm, _v in param_choices(self.app.data, sid)]
+            title = he('pick_named', 'Slot {n}: {what}', n=r['n'], what=param_title(sid).lower())
         else:
-            names = [nm for nm, _k in skill_names_sorted(self.app.data, sid)]
+            names = [nm for nm, _k in param_choices(self.app.data, sid)]
             title = he('pick_skill', 'Slot {n}: skill', n=r['n'])
+        self.names.numbers = True               # a typed number is taken as the raw value ('#505')
         self._pick_mode = self.sel
         self.names.set(names, current=r['name'], title=title)
         self.names.tkraise()
@@ -794,7 +818,7 @@ class ItemStatsWindow:
                                                   'show another skill)', name=nm),
                        'level': he('err.level', 'cast level must be 0..63')}.get(why)
                 self._say(txt or he('err.param', 'unknown {what}: {name}', name=nm,
-                                    what=('class' if r['pk'] == 'class' else 'skill')), error=True)
+                                    what=param_title(sid).lower()), error=True)
                 return False
         if (newp or None) == (s.get('param') or None):
             return True
