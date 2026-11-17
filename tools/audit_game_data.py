@@ -23,7 +23,8 @@ What is checked, per category (uniques, relics, set items, runewords, mystic orb
 - names: empty names, labels the creator list cannot tell apart, placeholder rows.
 Extra sections: honorific (quality 9) items built from the cube recipe's output; the extracted tables against the
 game's own MPQ (--game-dir); every item of the save files of --save-dir (re-encode byte-identical, no-op character
-rebuild byte-identical, tooltip, edit path); the binary readers against vanilla text tables (--txt-dir).
+rebuild byte-identical, tooltip, edit path; with --noop-edit also: an unchanged edit gives the item's own bytes);
+the binary readers against vanilla text tables (--txt-dir).
 """
 import argparse
 import collections
@@ -238,6 +239,7 @@ class Audit:
                 continue
             try:
                 sp2 = cr.spec_from_item(it)
+                sp2.pop('_orig', None)            # the spec model alone (the editor also carries the original item)
                 blob2, _rec2 = cr.build(sp2)
                 r2, _n2 = cm.decode_item(blob2, d)
                 diff = sorted(k for k in set(r1) | set(r2) if k not in ('id', 'image') and r1.get(k) != r2.get(k))
@@ -429,6 +431,7 @@ class Audit:
                     if cm.encode_item(r1, d) != blob[:k]:
                         rep.problem('honorific does not re-encode identically', where)
                     sp2 = cr.spec_from_item(it)
+                    sp2.pop('_orig', None)
                     r2 = cm.decode_item(cr.build(sp2)[0], d)[0]
                     diff = [x for x in set(r1) | set(r2) if x != 'id' and r1.get(x) != r2.get(x)]
                     if diff:
@@ -510,7 +513,7 @@ class Audit:
         cr, d, rep, cm = self.cr, self.d, self.rep, self.cm
         rep.section('Items of the save files')
 
-        def item(where, it, blob):
+        def item(where, it, blob, full=None):
             rep.total('items')
             if it.get('quality') == 'tempered':
                 rep.total('honorific (quality 9) items')
@@ -531,11 +534,51 @@ class Audit:
                 elif table[row]['code'] != it['code']:
                     rep.problem('unique / set row belongs to another base', f'{where}: row {row} is {table[row]["code"]!r}')
             try:
-                cr.spec_from_item(it)
+                sp = cr.spec_from_item(it)
             except cm.CreateError:
                 rep.total('items the creator does not edit (simple / unknown rows)')
+                return
             except Exception as e:
                 rep.problem('edit path raised', f'{where}: {e!r}'[:200])
+                return
+            if self.args.noop_edit:
+                noop(where, sp, full if full is not None else blob)
+
+        PLACE = ('location', 'equipped', 'x', 'y', 'panel')
+
+        def noop(where, sp, blob):
+            """Edit item -> Replace with nothing changed: the bytes the creator would write against the item's
+            own (socketed items included). Twice: as the editor does it (the original item carried through,
+            Creator._carry) and from the spec model alone, which shows what the model itself cannot hold."""
+            rep.total('no-op edit: items tried')
+            try:
+                new, _rec = cr.build(dict(sp))
+                if bytes(new) == bytes(blob):
+                    rep.total('no-op edit: byte-identical')
+                else:
+                    rep.total('no-op edit: NOT byte-identical')
+                    rep.problem('no-op edit is not byte-identical', where)
+            except Exception as e:
+                rep.total('no-op edit: NOT byte-identical')
+                rep.problem('no-op edit raised', f'{where}: {e!r}'[:200])
+            try:
+                sp2 = {k: v for k, v in sp.items() if k != '_orig'}
+                new, _rec = cr.build(sp2)
+                r1, k1 = cm.decode_blob(bytes(blob), d)
+                r2, k2 = cm.decode_blob(bytes(new), d)
+                diff = sorted(k for k in set(r1) | set(r2) if k not in PLACE and r1.get(k) != r2.get(k))
+                for k in [k for k in diff if 'stats' in k]:
+                    if self.norm(r1.get(k)) == self.norm(r2.get(k)):
+                        diff.remove(k)
+                strip = [[{k: v for k, v in c.items() if k not in PLACE} for c in ks] for ks in (k1, k2)]
+                if strip[0] != strip[1]:
+                    diff.append('socketed items')
+                if not diff:
+                    rep.total('no-op edit, spec model alone: same item (place aside)')
+                for k in diff:
+                    rep.total(f'no-op edit, spec model alone: differs in {k}')
+            except Exception as e:
+                rep.problem('no-op edit (spec model alone) raised', f'{where}: {e!r}'[:200])
         for p in sorted(glob.glob(os.path.join(sd, '*'))):
             n = os.path.basename(p)
             try:
@@ -556,7 +599,7 @@ class Audit:
                     for it in items:
                         if '_offset' in it and '_size' in it:
                             item(f'{n} {it["code"]!r} {str(it.get("name"))[:30]!r}', it,
-                                 raw[it['_offset']:it['_offset'] + it['_size']])
+                                 raw[it['_offset']:it['_offset'] + it['_size']], mxl_save.item_blob(raw, it))
             except Exception as e:
                 rep.problem('file could not be read', f'{n}: {e!r}'[:200])
 
@@ -632,6 +675,9 @@ def main():
     ap.add_argument('--game-dir', default=os.environ.get('MXL_GAME_DIR'), help='Median XL folder (read only)')
     ap.add_argument('--save-dir', default=os.environ.get('MXL_SAVE_DIR'), help='COPY of a save folder (read only)')
     ap.add_argument('--txt-dir', default=os.environ.get('MXL_TXT_DIR'), help='folder with vanilla *.txt tables')
+    ap.add_argument('--noop-edit', action='store_true',
+                    help='with --save-dir: Edit item -> Replace with nothing changed, for every item of the save files; '
+                         'counts the items whose bytes are not identical afterwards')
     ap.add_argument('--out', help='report file (default: stdout)')
     args = ap.parse_args()
     if not args.app or not args.user_dir:
