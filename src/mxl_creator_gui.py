@@ -1067,7 +1067,7 @@ class CreatorWindow:
         fr = ttk.Frame(box)
         fr.pack(fill='x')
         var = tk.IntVar(value=cur)
-        val = ttk.Label(fr, text=fmt(cur), width=22)
+        val = ttk.Label(fr, text=fmt(cur), width=8 if fmt is str else 22)   # names need room, numbers do not
 
         def moved(x):
             v = int(round(float(x)))
@@ -1075,12 +1075,13 @@ class CreatorWindow:
                 var.set(v)
             val.configure(text=fmt(var.get()))
 
-        sc = ttk.Scale(fr, from_=lo, to=hi, orient='horizontal', length=300, command=moved)
+        sc = ttk.Scale(fr, from_=lo, to=hi, orient='horizontal', length=120, command=moved)
         sc.set(cur)
-        sc.pack(side='left', padx=(12, 0))
-        val.pack(side='left', padx=8)
+        # range and value keep their place at the right; the slider takes the width the column has
         ttk.Label(fr, text=T('cr.range_fmt', '{lo} to {hi}', lo=fmt(lo), hi=fmt(hi)) if fmt is not str else
-                  T('cr.range', '({lo} to {hi})', lo=lo, hi=hi)).pack(side='left')
+                  T('cr.range', '({lo} to {hi})', lo=lo, hi=hi)).pack(side='right', padx=(0, 4))
+        val.pack(side='right', padx=6)
+        sc.pack(side='left', fill='x', expand=True, padx=(10, 0))
         sc.bind('<ButtonRelease-1>', lambda e: on_release(var.get()))
         for key, dv in (('<Left>', -1), ('<Right>', 1)):
             sc.bind(key, lambda e, dv=dv: (sc.set(max(lo, min(hi, var.get() + dv))), on_release(var.get()), 'break')[-1])

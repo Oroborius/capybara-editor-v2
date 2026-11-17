@@ -260,7 +260,7 @@ class CharacterWindow:
         for text, cmd in ((T('ch.btn.to_stash', 'To stash'), self.to_stash), (T('ch.btn.from_stash', 'From stash'), self.from_stash),
                           (T('ch.btn.edit', 'Edit...'), self.edit), (T('ch.btn.create_here', 'Create here...'), self.create_here),
                           (T('ch.btn.delete', 'Delete'), self.delete)):
-            ttk.Button(btns, text=text, command=cmd).pack(side='left', padx=2)
+            ttk.Button(btns, text=text, command=cmd).pack(side='left', padx=1)
         self.status = ttk.Label(left, text=T('ch.inv_hint', 'Drag items between the slots and the inventory. '
                                              '"From stash" takes the item selected in the main window.'),
                                 wraplength=max(260, INV_W * c), justify='left')
@@ -268,7 +268,7 @@ class CharacterWindow:
         right = ttk.Frame(f)
         right.pack(side='left', fill='both', expand=True, padx=(4, 0))
         d = self.app.detail
-        self.preview = tk.Text(right, width=24, wrap='word', bg=d.cget('bg'), fg=d.cget('fg'), bd=0,
+        self.preview = tk.Text(right, width=16, wrap='word', bg=d.cget('bg'), fg=d.cget('fg'), bd=0,
                                padx=int(str(d.cget('padx'))), pady=8, font=d.cget('font'), cursor='arrow',
                                highlightthickness=0)
         sb = ttk.Scrollbar(right, orient='vertical', command=self.preview.yview)

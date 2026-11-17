@@ -153,8 +153,11 @@ class Toolbar:
 
     # ------------------------------------------------------------------ the menu
     def post(self):
-        m = self.menu
-        m.delete(0, 'end')
+        try:                                     # a new menu each time (Tk 9: no 'delete' on an empty menu)
+            self.menu.destroy()
+        except tk.TclError:
+            pass
+        m = self.menu = tk.Menu(self.bar, tearoff=0)
         hidden = getattr(self, 'hidden', set())
         partners = {it.partner for it in self.order if it.partner is not None}
         seen = [it for it in self._leaves() if it in hidden and it not in partners]

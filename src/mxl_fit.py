@@ -58,8 +58,6 @@ class Fit:
             app.notebook.configure(style='Pages.TNotebook')
             for b in self._views():                      # a plain tool button with a visible selected state
                 b.configure(style='Toolbutton')
-            if app.view.get() not in app.btn_views:      # a stored value of another kind: the character's
-                app.view.set('character')                # stash is what is shown, so mark its button
             for i, t in enumerate(app.notebook.tabs()):      # '1' instead of ' 1 '
                 app.notebook.tab(t, text=str(i + 1))
         except tk.TclError:
@@ -221,18 +219,42 @@ def start_size(root):
         geo = f'{w}x{h}+{(sw - w) // 2}+{max(0, (sh - h) // 3)}'
         root.geometry(geo)
         root.minsize(min(w, 640), min(h, 400))
-        # once more when the event loop starts: a launcher may have cut the window down to what the content
-        # asked for at that moment (the Linux launcher's fit_to_screen does, before the styles are in place)
-        root.after(1, lambda: root.geometry(geo))
+        _pending['geo'] = (root, geo)                # applied once more when the event loop starts (_mainloop)
         return w, h
     except tk.TclError:
         return None
+
+
+_pending = {}
+
+
+def _hook_mainloop():
+    """The start size is set again as the first thing the event loop does: a launcher may have cut the window
+    down to what the content asked for just before the loop (the Linux launcher's fit_to_screen does, before
+    the styles are in place and the layouts have settled)."""
+    import tkinter
+    prev = tkinter.Misc.mainloop
+    if getattr(prev, '_mxl_fit', False):
+        return
+
+    def mainloop(self, n=0):
+        got = _pending.pop('geo', None)
+        if got is not None:
+            root, geo = got
+            try:
+                root.after(1, lambda: root.geometry(geo))
+            except tk.TclError:
+                pass
+        return prev(self, n)
+    mainloop._mxl_fit = True
+    tkinter.Misc.mainloop = mainloop
 
 
 def install(App):
     """Installed after mxl_inv_gui and before mxl_tabs' wrapper runs (any position after mxl_inv_gui in the chain:
     mxl_tabs is the first installed, so its wrapper is the last to run among the earlier ones)."""
     o_build = App._build
+    _hook_mainloop()
 
     def _build(self):
         o_build(self)

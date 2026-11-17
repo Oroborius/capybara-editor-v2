@@ -119,7 +119,7 @@ def _style(root):
         try:
             if not _state['elements']:
                 st.element_create('D2.Button.face', 'image', imgs[0], ('disabled', imgs[3]), ('pressed', imgs[2]),
-                                  ('active', imgs[1]), border=(16, 6, 16, 6), padding=(11, 1, 11, 1), sticky='nsew',
+                                  ('active', imgs[1]), border=(16, 6, 16, 6), padding=(12, 1, 12, 1), sticky='nsew',
                                   width=40, height=20)   # minimum size: else the image's own 135 px
                 _state['elements'] = True
             st.layout('TButton', [('D2.Button.face', {'sticky': 'nsew', 'children': [

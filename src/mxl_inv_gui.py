@@ -236,12 +236,8 @@ class MainInventory:
         self.refresh(force=True)
 
     def icon(self, it, bg):
-        app = self.app
-        if self.cell == app.cell:
-            try:
-                return app.icon(it, bg)
-            except Exception:
-                return None
+        # always this panel's own cache: the collector empties its cache when another stash is opened, and an
+        # image still shown here would go blank with it
         try:
             d = self.data
             key = (it['code'], icon_name(it, d), it.get('image'), it.get('ethereal'), it.get('sockets'),
