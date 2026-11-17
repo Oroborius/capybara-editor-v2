@@ -2665,6 +2665,7 @@ def run():
     remove_library(mxl_gui)
     install(mxl_gui.App)
     mxl_char_gui.install(mxl_gui.App)
+    import mxl_quests; mxl_quests.install(mxl_gui.App)   # Character window page "Quests+": raw quest words
     import mxl_rc_menu                     # Hero-Editor-style right-click menus on items (stash + character)
     mxl_rc_menu.install(mxl_gui.App)
     mxl_rc_menu.install_char()
