@@ -1022,6 +1022,13 @@ class Character:
         self.parse(content)
         return bak
 
+    # ------------------------------------------------------------------ generic header access
+    def header_u32(self, off):
+        return struct.unpack_from('<I', self.head, off)[0]
+
+    def set_header_u32(self, off, value):
+        struct.pack_into('<I', self.head, off, value)
+
 
 def blob_item(blob, data):
     from mxl_save import blob_item as _bi

@@ -2665,6 +2665,8 @@ def run():
     remove_library(mxl_gui)
     install(mxl_gui.App)
     mxl_char_gui.install(mxl_gui.App)
+    import mxl_hotkeys                     # Character page "Hotkeys": skill hotkeys and mouse-button skills
+    mxl_hotkeys.install(mxl_gui.App)
     import mxl_rc_menu                     # Hero-Editor-style right-click menus on items (stash + character)
     mxl_rc_menu.install(mxl_gui.App)
     mxl_rc_menu.install_char()
