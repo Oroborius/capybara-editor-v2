@@ -2,13 +2,15 @@
 # Build the native Linux AppImage: dist/linux/MXL_Capybara_Editor_V2-x86_64.AppImage
 #
 # The AppImage holds a standalone CPython 3.10 (python-build-standalone: static Tcl/Tk and X11, glibc >= 2.17),
-# Pillow + ttkbootstrap, the collector's modules taken from the base exe as 3.10 bytecode (extract_host.py), the
-# editor's modules from src/, the language files and the Linux launcher. No Wine is involved, and nothing is
-# installed on the system: everything stays in dist/ and .cache/ of this repository.
+# a Tk rebuilt with Xft for antialiased text (build_tk_xft.sh), Pillow + ttkbootstrap, the collector's modules
+# taken from the base exe as 3.10 bytecode (extract_host.py), the editor's modules from src/, the language files
+# and the Linux launcher. No Wine is involved, and nothing is installed on the system: everything stays in dist/
+# and .cache/ of this repository.
 #
 # Usage: packaging/build_appimage.sh [--appdir-only]
 # Env:   BASE_DIR=<folder with the base exe>   PYTHON_DIR=<unpacked standalone python 3.10 to bundle>
 #        PY_URL=<python-build-standalone tarball>   APPIMAGETOOL=<appimagetool binary>
+#        MXL_NO_XFT=1   skip the Tk rebuild with Xft (no compiler needed; text is then drawn with X core fonts)
 set -euo pipefail
 source "$(dirname "$0")/common.sh"
 PY_URL="${PY_URL:-https://github.com/astral-sh/python-build-standalone/releases/download/20261009/cpython-3.10.22%2B20261009-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz}"
@@ -38,6 +40,17 @@ PY="$APPDIR/opt/python/bin/python3.10"
 rm -f "$APPDIR/opt/python/lib/python3.10/EXTERNALLY-MANAGED"
 "$PY" -I -m pip install -q --no-warn-script-location --disable-pip-version-check "$PILLOW" "$TTKBOOTSTRAP" >>"$LOG" 2>&1 \
     || { tail -20 "$LOG"; exit 1; }
+
+# 1b. Tk with Xft: antialiased text (packaging/build_tk_xft.sh). Kept beside the interpreter's own Tk, which stays
+#     the fallback: the launcher loads lib/xft/libtcl9tk9.0.so first when the host can.
+if [ -z "${MXL_NO_XFT:-}" ] || [ "${MXL_NO_XFT}" = 0 ]; then
+    TK_VER="$("$PY" -I -c 'import tkinter; print(tkinter.Tcl().call("info", "patchlevel"))')"
+    "$ROOT/packaging/build_tk_xft.sh" "$TK_VER" "$CACHE/tk-xft-$TK_VER"
+    mkdir -p "$APPDIR/opt/python/lib/xft"
+    cp "$CACHE/tk-xft-$TK_VER"/lib*.so* "$APPDIR/opt/python/lib/xft/"
+else
+    echo "MXL_NO_XFT: Tk is not rebuilt, text will use X core fonts"
+fi
 
 # 2. the application: host modules (bytecode), editor modules (source), languages, launcher
 "$PY" -I "$ROOT/packaging/extract_host.py" "$BASE_EXE" "$APPDIR/opt/capybara" >>"$LOG"

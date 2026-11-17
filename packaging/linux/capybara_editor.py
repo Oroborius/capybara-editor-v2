@@ -6,7 +6,9 @@ Same start sequence as the launcher repack.py puts in the Windows exe, after map
   ($WINEPREFIX, ~/.wine, Lutris / Bottles / Steam prefixes);
 - "is the game open?": the collector only reads the Windows process list; here /proc is read for a Wine Game.exe;
 - UI scale: MXL_UI_SCALE=<factor> (1 = 100 %), or "auto" for Tk's own detection. Default under Wayland: 1, because
-  the compositor already scales XWayland windows and Tk 9 would scale a second time from Xft.dpi;
+  the compositor already scales XWayland windows and Tk 9 / Xft would scale a second time from Xft.dpi;
+- text: Tk rebuilt with Xft (antialiased TrueType fonts through the host's fontconfig) is loaded from
+  <python>/lib/xft when it can be; otherwise, or with MXL_NO_XFT=1, the interpreter's own Tk (X core fonts);
 - first window size: never larger than the screen (a floating window on a tiling WM takes the requested size)."""
 import atexit, glob, os, shutil, sys, tempfile
 
@@ -84,6 +86,22 @@ def setup_env():
             os.environ['MXL_SAVE_DIR'] = save
 
 
+def setup_xft():
+    """Load the Xft build of Tk (packaging/build_tk_xft.sh) before tkinter is imported: _tkinter asks the dynamic
+    linker for 'libtcl9tk9.0.so', and a library with that soname that is already loaded is the one it gets. When it
+    cannot be loaded (no libfontconfig / libfreetype / libX11 on the host), the interpreter's own Tk is used."""
+    lib = os.path.join(sys.base_prefix, 'lib', 'xft', 'libtcl9tk9.0.so')
+    if os.environ.get('MXL_NO_XFT', '').strip() not in ('', '0') or not os.path.isfile(lib):
+        return False
+    try:
+        import ctypes
+        ctypes.CDLL(lib, mode=ctypes.RTLD_GLOBAL)
+        return True
+    except OSError as e:
+        print('Xft text rendering not available, using X core fonts:', e)
+        return False
+
+
 def setup_scaling():
     """Tk 9 sizes fonts and widgets from `xrdb -query | grep Xft.dpi` when it starts (tk9.0/scaling.tcl). The only
     way to choose another scale before any widget exists is to answer that query: a one-line xrdb in front of PATH."""
@@ -100,6 +118,31 @@ def setup_scaling():
         f.write('#!/bin/sh\nprintf \'Xft.dpi:\\t%s\\n\' {}\n'.format(round(96 * scale)))
     os.chmod(os.path.join(shim, 'xrdb'), 0o755)
     os.environ['PATH'] = shim + os.pathsep + os.environ.get('PATH', '')
+    # Xft does not ask xrdb: it sizes fonts from the Xft.dpi X resource itself (120 on a 1.25 desktop), which would
+    # enlarge the text a second time. Xlib lets the file named by XENVIRONMENT override the server's resources.
+    res = os.path.join(shim, 'Xresources')
+    with open(res, 'w') as f:
+        try:
+            with open(os.environ['XENVIRONMENT']) as user:
+                f.write(user.read() + '\n')
+        except (KeyError, OSError):
+            pass
+        f.write('Xft.dpi: {}\n'.format(round(96 * scale)))
+    _XENV.append(os.environ.get('XENVIRONMENT'))
+    os.environ['XENVIRONMENT'] = res
+
+
+_XENV = []          # the user's XENVIRONMENT while ours is in place (setup_scaling)
+
+
+def restore_xenvironment():
+    """Xlib has read the resources once the first window exists; programs started from the editor get the user's."""
+    if _XENV:
+        old = _XENV.pop()
+        if old is None:
+            os.environ.pop('XENVIRONMENT', None)
+        else:
+            os.environ['XENVIRONMENT'] = old
 
 
 def fit_to_screen():
@@ -115,6 +158,7 @@ def fit_to_screen():
             try:
                 root = self.winfo_toplevel()
                 root.update_idletasks()
+                restore_xenvironment()
                 sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
                 w, h = root.winfo_reqwidth(), root.winfo_reqheight()
                 mw, mh = int(sw * 0.86), int(sh * 0.86)
@@ -129,6 +173,7 @@ def fit_to_screen():
 
 def main():
     setup_env()
+    setup_xft()
     setup_scaling()
     import mxl_userdir
     mxl_userdir.setup()

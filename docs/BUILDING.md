@@ -48,11 +48,31 @@ chmod +x dist/linux/MXL_Capybara_Editor_V2-x86_64.AppImage
 ./dist/linux/MXL_Capybara_Editor_V2-x86_64.AppImage
 ```
 
-Needs only `curl`, `tar` and `unzip`. The script downloads (once, into `.cache/`):
+Needs `curl`, `tar`, `unzip`, and for antialiased text (see below) a C compiler, `make` and the development headers
+of libXft / fontconfig / FreeType / X11 (Arch: `libxft`; Debian/Ubuntu: `libxft-dev`; Fedora: `libXft-devel`).
+The script downloads (once, into `.cache/`):
 
 - a standalone CPython 3.10 ([python-build-standalone](https://github.com/astral-sh/python-build-standalone);
   Tcl/Tk and X11 built in, glibc 2.17 or later, so the AppImage runs on any current x86_64 distribution);
-- `appimagetool` (skipped when `appimagetool` is on `PATH` or `APPIMAGETOOL=` is set).
+- `appimagetool` (skipped when `appimagetool` is on `PATH` or `APPIMAGETOOL=` is set);
+- the Tcl and Tk source releases matching the bundled Python's Tk (9.0.4, `prdownloads.sourceforge.net/tcl`,
+  SHA-256 pinned in `packaging/build_tk_xft.sh`).
+
+**Antialiased text (Tk with Xft).** The standalone Python's Tk is built without Xft and can only draw X core bitmap
+fonts. `packaging/build_tk_xft.sh` (called by the build) compiles the same Tk version with `--enable-xft` into
+`.cache/tk-xft-<version>/` (about 30 s, once; rebuilt only when the script changes) and the AppImage gets
+`opt/python/lib/xft/`:
+
+- `libtcl9tk9.0.so`: Tk with Xft. It talks to the bundled `libtcl9.0.so` through Tcl's stubs table and uses the
+  bundled `lib/tk9.0` scripts. Built with `-std=gnu11` and `packaging/linux/glibc_compat.h`, which bind it
+  to old glibc symbol versions (2.7 at most) whatever the build machine's glibc is.
+- `libXft.so.2`, `libXrender.so.1`: copied from the build machine (they need glibc 2.14 on Arch today).
+- Not bundled, taken from the host like every AppImage does: glibc, `libX11` / `libxcb`, and `libfontconfig` +
+  `libfreetype` (with their own dependencies), so the host's fonts and font configuration are used.
+
+The interpreter's own Tk stays in place. At start the launcher loads the Xft build first; when that fails (a host
+without libfontconfig / libfreetype / libX11), or with `MXL_NO_XFT=1` in the environment, the editor runs with the
+old Tk and X core fonts. `MXL_NO_XFT=1 packaging/build_appimage.sh` builds without the Xft Tk (no compiler needed).
 
 Options:
 
@@ -61,7 +81,7 @@ Options:
   `PYTHON_DIR=~/.local/share/uv/python/cpython-3.10-linux-x86_64-gnu` after `uv python install 3.10`.
 - The build log is `dist/linux/build.log`.
 
-What is in the AppImage: `opt/python/` (CPython 3.10, Pillow 10.4.0, ttkbootstrap 2.2.7) and `opt/capybara/`
+What is in the AppImage: `opt/python/` (CPython 3.10, Pillow 10.4.0, ttkbootstrap 2.2.7, `lib/xft/`) and `opt/capybara/`
 (collector modules as `.pyc`, editor modules, `lang/`, `capybara_editor.py`).
 
 ### How the Linux version differs from Windows
@@ -75,7 +95,10 @@ What is in the AppImage: `opt/python/` (CPython 3.10, Pillow 10.4.0, ttkbootstra
 - **Game folder**: asked on first start; pick the Median XL folder inside the Wine prefix.
 - **"Game must be closed" check**: the collector reads the Windows process list; on Linux `/proc` is read for a
   Wine `Game.exe` running from the game folder, with the same rule (unknown path: the write is refused).
-- **Fonts**: the standalone Python's Tk has no Xft, so text uses X core fonts (not antialiased).
+- **Fonts**: text is drawn by Xft with the host's fonts (see "Antialiased text" above). The D2 look asks for
+  Palatino Linotype / Segoe UI and falls back to P052, TeX Gyre Pagella, DejaVu, Liberation or Noto.
+- **UI scale**: `MXL_UI_SCALE=<factor>` or `auto`. Under Wayland the default is 1: the launcher answers Tk's
+  `xrdb` query and overrides `Xft.dpi` (through `XENVIRONMENT`) so that neither Tk nor Xft scales a second time.
 - The AppImage needs FUSE to mount; without it run `./MXL_Capybara_Editor_V2-x86_64.AppImage --appimage-extract-and-run`.
 
 ### Testing without touching real saves

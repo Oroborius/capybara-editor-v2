@@ -28,12 +28,13 @@ HE_GOLD = '#d8c27a'
 SELECT_BG = '#3a5f8a'      # the list selection the item list already uses
 
 FALLBACKS = {              # families that may not exist (esp. on Linux) -> what usually does
-    'palatino linotype': ('Palatino Linotype', 'Book Antiqua', 'Palatino', 'Times New Roman',
-                          'DejaVu Serif', 'Liberation Serif'),
+    'palatino linotype': ('Palatino Linotype', 'Book Antiqua', 'Palatino', 'P052', 'TeX Gyre Pagella',
+                          'URW Palladio L', 'Times New Roman', 'DejaVu Serif', 'Liberation Serif'),
     'times new roman': ('Times New Roman', 'Liberation Serif', 'DejaVu Serif'),
     'segoe ui': ('Segoe UI', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans'),
 }
-_SERIF = ('Palatino Linotype', 'Book Antiqua', 'Times New Roman', 'DejaVu Serif', 'Liberation Serif')
+_SERIF = ('Palatino Linotype', 'Book Antiqua', 'P052', 'TeX Gyre Pagella', 'URW Palladio L', 'Times New Roman',
+          'DejaVu Serif', 'Liberation Serif')      # P052 / Pagella / Palladio: the free Palatino clones
 _SANS = ('Segoe UI', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans')
 
 _state = {'families': None, 'hooked': False, 'tick': 2500}
