@@ -234,6 +234,10 @@ class Art:
             return DC6.compose(fr[variant * 6:variant * 6 + 6], self.pal(), 2)
         return self._cached(f'panel-{name}-{variant}', build)
 
+    def panel_variants(self, name):
+        """How many 512x704 pages a panel DC6 holds (the stat screen has one per page)."""
+        return len(DC6.dc6_frames(self._theme_file(f'panels\\{name}.dc6'))) // 6
+
     def base_frame(self, name, index):
         """One frame of a base-game panel DC6 (data\\global\\ui\\PANEL\\...), e.g. the gold button."""
         def build():
