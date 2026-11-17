@@ -83,7 +83,24 @@
   **Fill sockets** copies a clipboard gem/rune into the item's free sockets, up to the base's cap.
 - Every write goes through the collector's own safe writers (edit_stash, Character.save / apply_edits; backups).
 
-## Item stats window (`mxl_he_stats.py`): Hero-Editor-style flat stat table
+## Item stats tab (`mxl_he_stats.py` + `mxl_attr_picker.py`): Hero-Editor "Magic Attributes" list (current)
+- "Item stats" (toolbar, stash and character right-click menus) opens the `Item stats` tab again (it had been
+  routed to the Item Creator's edit mode): left a compact numbered slot list drawn on one canvas (row = font
+  linespace + 4 px; used slots + "(empty)" ones, at least 30 - the save format has no slot limit, a stat list
+  just ends with the 0x1FF marker), right the attribute picker (categories | stats, one filter over all
+  categories); the right pane turns into a skill / class name list while a row's skill is chosen.
+- Keys: Up/Down/PgUp/PgDn/Home/End, Enter or double-click = picker for the slot (pick replaces / fills),
+  Delete = clear slot, digits or F2 = edit value in place (Enter writes, Tab = next cell of the row, Up/Down
+  keep the typed value as pending `*`), letters = start the filter, Ctrl+S = save, Escape = back to the list.
+- Engine unchanged (see the section below): value edits through `apply_edits`, add / replace / clear / param
+  changes through the lossless decode -> encode path; pending values are written first before a rewrite.
+  New: values are capped to the real stored range `-add .. 2^bits-1-add` (negative values work).
+- `mxl_attr_picker`: `palette()` (colours from mxl_d2_theme / mxl_he_theme), `metrics()` (font-relative
+  sizes), `build_index()`, `categorize()` (rules on stat id / display func / label words; Hero Editor's own
+  forms hold no category names - its tree was filled at run time), `AttrPicker`, `ChoiceList`, `popup()` for
+  the Item Creator later. Settings: `attr_picker_cat` (last category), `attr_picker_recent` (12 stat ids).
+
+## Former Item stats window: Hero-Editor-style flat stat table (replaced by the tab above; engine notes still apply)
 - "Item stats" button in the main bar (next to "Edit item"): opens a plain Hero-Editor-style table of the
   selected item (a stash item, or one of the character's equipment / inventory items opened from the
   character window's right-click menu) — one row per stored stat, the game's own label (plus a `[stat #id, bits]` reference for
