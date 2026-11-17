@@ -23,6 +23,12 @@ STASH_PAGE = (256, 124)
 INV_GOLD = (78, 651)              # gold of the character (inventory panel, bottom left box), left end
 CLOSE_STASH = (477, 8)            # the panels' close button (buttons\\close.dc6, 23 x 23) fills their top corner hole
 CLOSE_INV = (6, 8)
+# what stays of each panel when the window is small: the frame around the grid / the gear, without the title
+# plate and the filigree at the bottom (panel pixels: x0, y0, x1, y1)
+STASH_CROP = (40, 80, 472, 570)
+INV_CROP = (28, 82, 484, 668)
+FULL = (0, 0, PANEL_W, PANEL_H)
+CREATOR_ART = False               # the Item Creator keeps the theme's compact ttk widgets (no stone header)
 GEAR_FILE = 'panel-elements\\inventory-gear'
 # slot -> (frame with the slot's silhouette (empty), plain frame (holding an item), x, y) in panel pixels
 GEAR = {1: (5, 17, 218, 90), 2: (6, 18, 296, 153), 3: (3, 15, 218, 168), 4: (2, 14, 93, 110), 5: (4, 16, 344, 110),
@@ -53,6 +59,7 @@ CHAR_GRID_LINE = '#646464'
 _state = {'checked': False, 'art': None, 'error': None, 'off': False,
           'char_checked': False, 'char_art': None, 'char_error': None, 'char_off': False}
 _photos = {}
+_tags = {}
 
 
 # ---------------------------------------------------------------------------------------------- availability
@@ -92,8 +99,12 @@ def char_active():
 
 
 def wanted():
-    v = settings.get(SETTING)
-    return True if v is None else bool(v)
+    """The game-art panels belong to the dark Diablo look ("Dark D2 theme" box of mxl_d2_theme)."""
+    try:
+        import mxl_d2_theme
+        return mxl_d2_theme.dark()
+    except Exception:
+        return False
 
 
 def art():
@@ -124,10 +135,20 @@ def active():
 
 
 # ---------------------------------------------------------------------------------------------- images
-def photo(path, size=None, crop=None):
+def release(tag):
+    """Forgets the cached images of one user (the main window's panels when their scale changes): the canvases
+    are redrawn right after, so nothing shown loses its image."""
+    for key in [k for k, t in _tags.items() if t == tag]:
+        _tags.pop(key, None)
+        _photos.pop(key, None)
+
+
+def photo(path, size=None, crop=None, tag=None):
     """tk image of a cached PNG, cropped (panel pixels) and resized to size (w, h)."""
     from PIL import Image, ImageTk
     key = (path, size, crop)
+    if tag and key not in _photos:
+        _tags[key] = tag
     if key not in _photos:
         im = Image.open(path).convert('RGBA')
         if crop:
@@ -140,7 +161,7 @@ def photo(path, size=None, crop=None):
 
 def gear_photo(index, k):
     w, h = GEAR_SIZE.get(index if index < 12 else index - 12, (WSET_TAB[2], WSET_TAB[3]))   # 14-23: plain frames
-    return photo(art().frame(GEAR_FILE, index), (round(w * k), round(h * k)))
+    return photo(art().frame(GEAR_FILE, index), (round(w * k), round(h * k)), tag='main')
 
 
 def draw_text(cv, x, y, text, k=1.0, font='font16', color=GOLD_TXT, anchor='center', tags=()):
@@ -153,7 +174,7 @@ def draw_text(cv, x, y, text, k=1.0, font='font16', color=GOLD_TXT, anchor='cent
             p = a.text(text, font, color)
             from PIL import Image
             im = Image.open(p)
-            img = photo(p, (max(1, round(im.width * k)), max(1, round(im.height * k))))
+            img = photo(p, (max(1, round(im.width * k)), max(1, round(im.height * k))), tag='main')
             return cv.create_image(x, y, image=img, anchor=anchor, tags=tags)
     except Exception:
         pass
@@ -183,23 +204,37 @@ def panel_cell(root, cell):
 def _relayout_stash(app):
     cv = app.canvas
     left = cv.master
-    s = app.cell
-    k = s / ART_CELL
-    a = art()
-    bg = tk.Canvas(left, width=round(PANEL_W * k), height=round(PANEL_H * k), bg='#000000', highlightthickness=0)
+    bg = tk.Canvas(left, bg='#000000', highlightthickness=0)
     cv.pack_forget()
-    bg.pack(side='top', anchor='nw', pady=(4, 0))
-    bg.create_image(0, 0, anchor='nw', image=photo(a.panel('stash'), (round(PANEL_W * k), round(PANEL_H * k))))
+    bg.pack(side='top', anchor='nw', pady=(2, 0))
     cv.configure(bg=CELL_BG)
+    app.d2_bg = bg
+    layout_stash(app, app.cell)
+
+
+def layout_stash(app, cell, crop=False):
+    """Sizes the stash panel for a cell size (mxl_fit chooses it from the room the window has); crop=True keeps
+    only the frame around the grid."""
+    import mxl_gui
+    bg, cv = app.d2_bg, app.canvas
+    k = cell / ART_CELL
+    box = STASH_CROP if crop else FULL
+    ox, oy = box[0], box[1]
+    a = art()
+    bg.delete('all')
+    bg.configure(width=round((box[2] - ox) * k), height=round((box[3] - oy) * k))
+    bg.create_image(round(-ox * k), round(-oy * k), anchor='nw',
+                    image=photo(a.panel('stash'), (round(PANEL_W * k), round(PANEL_H * k)), tag='main'))
     try:
-        bg.create_image(round(CLOSE_STASH[0] * k), round(CLOSE_STASH[1] * k), anchor='nw',
+        bg.create_image(round((CLOSE_STASH[0] - ox) * k), round((CLOSE_STASH[1] - oy) * k), anchor='nw',
                         image=photo(a.frame('buttons\\close', 0), (round(23 * k), round(23 * k))))
     except Exception:
         pass
-    cv.place(in_=bg, x=round(STASH_GRID[0] * k), y=round(STASH_GRID[1] * k))
+    cv.configure(width=mxl_gui.COLS * cell, height=mxl_gui.ROWS * cell)
+    cv.place(in_=bg, x=round((STASH_GRID[0] - ox) * k), y=round((STASH_GRID[1] - oy) * k))
     cv.tk.call('raise', cv._w)           # above the panel (Canvas.lift raises items, not the widget)
-    app.d2_bg = bg
     app.d2_k = k
+    app.d2_org = (ox, oy)
 
 
 def _stash_header(app):
@@ -207,6 +242,7 @@ def _stash_header(app):
     if bg is None:
         return
     k = app.d2_k
+    ox, oy = getattr(app, 'd2_org', (0, 0))
     bg.delete('hdr')
     try:
         from mxl_save import STASH_PAGES
@@ -221,8 +257,8 @@ def _stash_header(app):
     except Exception:
         gold = ''
     if gold:
-        draw_text(bg, STASH_GOLD[0] * k, STASH_GOLD[1] * k, gold, k, tags=('hdr',))
-    draw_text(bg, STASH_PAGE[0] * k, STASH_PAGE[1] * k,
+        draw_text(bg, (STASH_GOLD[0] - ox) * k, (STASH_GOLD[1] - oy) * k, gold, k, tags=('hdr',))
+    draw_text(bg, (STASH_PAGE[0] - ox) * k, (STASH_PAGE[1] - oy) * k,
               T('d2.storage_page', 'Storage Page: {n} / {total}', n=n, total=STASH_PAGES), k, tags=('hdr',))
 
 
@@ -234,7 +270,8 @@ def _draw_stash(app, mxl_gui):
     a = art()
     c.create_image(0, 0, anchor='nw', image=photo(
         a.panel('stash'), (mxl_gui.COLS * s, mxl_gui.ROWS * s),
-        (STASH_GRID[0], STASH_GRID[1], STASH_GRID[0] + mxl_gui.COLS * ART_CELL, STASH_GRID[1] + mxl_gui.ROWS * ART_CELL)))
+        (STASH_GRID[0], STASH_GRID[1], STASH_GRID[0] + mxl_gui.COLS * ART_CELL, STASH_GRID[1] + mxl_gui.ROWS * ART_CELL),
+        tag='main'))
     for it in app.items:
         if it['page'] != app.page():
             continue
@@ -272,8 +309,6 @@ def install(App):
 
     def _build(self):
         self.d2 = active()
-        if self.d2:
-            self.cell = panel_cell(self.root, self.cell)
         o_build(self)
         if self.d2:
             try:
@@ -281,7 +316,9 @@ def install(App):
             except Exception as e:                        # plain look
                 print('D2 look (stash) disabled:', e)
                 self.d2 = False
-        _add_toggle(self)
+        if wanted() and not self.d2 and _state['error'] is not None:
+            self.root.after(500, lambda: self.status.configure(
+                text=T('d2.unavailable', 'D2 look unavailable (game art not found: {error})', error=_state['error'])))
 
     def draw_grid(self):
         if getattr(self, 'd2', False):
@@ -294,25 +331,6 @@ def install(App):
 
     App._build = _build
     App.draw_grid = draw_grid
-
-
-def _add_toggle(app):
-    """"D2 look" checkbox in the top bar (applied at the next start)."""
-    from tkinter import ttk, messagebox
-    try:
-        bar = app.char_combo.master
-    except AttributeError:
-        return
-    var = tk.BooleanVar(value=wanted())
-
-    def changed():
-        settings.put(SETTING, bool(var.get()))
-        messagebox.showinfo(T('d2.title', 'D2 look'),
-                            T('d2.restart', 'The new look is used the next time the editor starts.'), parent=app.root)
-    ttk.Checkbutton(bar, text=T('d2.toggle', 'D2 look'), variable=var, command=changed).pack(side='left', padx=(10, 2))
-    if wanted() and not active() and _state['error'] is not None:
-        app.root.after(500, lambda: app.status.configure(
-            text=T('d2.unavailable', 'D2 look unavailable (game art not found: {error})', error=_state['error'])))
 
 
 # ---------------------------------------------------------------------------------------------- Item Creator
@@ -338,7 +356,7 @@ class D2Button(tk.Button):
 def button(parent, text, command, width=None):
     """Game-style button in the D2 look, the theme's ttk button otherwise."""
     from tkinter import ttk
-    if not active():
+    if not (CREATOR_ART and active()):
         kw = {'width': width} if width else {}
         return ttk.Button(parent, text=text, command=command, **kw)
     kw = dict(BTN)

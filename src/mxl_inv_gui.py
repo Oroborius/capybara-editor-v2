@@ -72,53 +72,38 @@ class MainInventory:
         left = stash.master
         body = left.master
         right = app.detail.master
-        # same cell size as the stash when the screen is big enough, smaller otherwise
-        c = app.cell
-        try:
-            room_w = app.root.winfo_screenwidth() - STASH_COLS * app.cell - 620
-            room_h = app.root.winfo_screenheight() - 330
-            c = max(22, min(c, room_w // INV_W, int(room_h / (INV_H + DOLL_H))))
-        except tk.TclError:
-            pass
-        self.d2 = D2.char_active()          # the standard Diablo II character screen (base-game art)
-        if self.d2 and getattr(app, 'd2', False):
-            c = app.cell                    # same scale as the stash panels, like in game
-        self.cell = c
-        self.k = c / D2.ART_CELL
-        self.boxes = ({slot: (x / D2.ART_CELL, y / D2.ART_CELL, w / D2.ART_CELL, h / D2.ART_CELL)
-                       for slot, (x, y, w, h) in D2.GEAR_D2.items()} if self.d2 else DOLL)
-        fr = ttk.Frame(body, padding=(10, 0, 0, 0))
+        # same cell size as the stash; mxl_fit chooses it from the room the window has (layout())
+        self.sigma = bool(getattr(app, 'd2', False)) and D2.active()   # Median XL's own inventory panel (dark look)
+        self.d2 = self.sigma or D2.char_active()   # else the standard Diablo II character screen (base-game art)
+        self.org = (0, 0)
+        fr = ttk.Frame(body, padding=(4, 0, 0, 0))
         fr.pack(side='left', fill='y', before=right)
         self.frame = fr
         row = ttk.Frame(fr)
-        row.pack(fill='x', pady=(4, 0))
+        row.pack(fill='x', pady=(2, 0))
+        self.row = row
         self.title = ttk.Label(row, text=T('inv.equipment', 'Equipment'))
-        self.title.pack(side='left')
+        self.row_btns = ttk.Frame(row)
         self.rb_merc = []
         for text, val in ((T('ch.character', 'Character'), False), (T('ch.mercenary', 'Mercenary'), True)):
-            b = ttk.Radiobutton(row, text=text, value=val, variable=self.merc, command=self.on_view)
-            b.pack(side='left', padx=(8 if not val else 2, 2))
+            b = ttk.Radiobutton(self.row_btns, text=text, value=val, variable=self.merc, command=self.on_view)
+            b.pack(side='left', padx=(6 if not val else 2, 2))
             self.rb_merc.append(b)
-        ttk.Label(row, text='   ' + T('ch.weapon_set', 'Weapon set')).pack(side='left')
-        for n in (1, 2):
-            ttk.Radiobutton(row, text='I' if n == 1 else 'II', value=n, variable=self.wset,
-                            command=self.redraw).pack(side='left', padx=2)
-        if self.d2:                                   # the game's character screen; the grid sits on its own grid
-            k = self.k
-            self.doll = tk.Canvas(fr, width=round(D2.PANEL_W * k), height=round(D2.PANEL_H * k), bg='#000000',
-                                  highlightthickness=0)
-            self.doll.pack(anchor='nw', pady=(4, 0))
+        self._wset_made = False
+        if not self.d2:                               # on the game's panels the I / II tabs themselves are clicked
+            self._wset_buttons()
+        self.row_rows = None
+        self.set_rows(1)
+        self.doll = tk.Canvas(fr, bg='#000000' if self.d2 else BG, highlightthickness=0)
+        self.doll.pack(anchor='nw', pady=(2, 0))
+        if self.d2:                                   # the game's own panel; the grid sits on the panel's grid
             self.inv_label = ttk.Label(fr, text='')
-            self.canvas = tk.Canvas(fr, width=INV_W * c, height=INV_H * c, bg=D2.CHAR_CELL_BG, highlightthickness=0)
-            self.canvas.place(in_=self.doll, x=round(D2.CHAR_GRID[0] * k), y=round(D2.CHAR_GRID[1] * k))
-            self.canvas.tk.call('raise', self.canvas._w)
+            self.canvas = tk.Canvas(fr, bg=D2.CELL_BG if self.sigma else D2.CHAR_CELL_BG, highlightthickness=0)
         else:
-            self.doll = tk.Canvas(fr, width=int(DOLL_W * c) + 1, height=int(DOLL_H * c) + 1, bg=BG, highlightthickness=0)
-            self.doll.pack(anchor='nw', pady=(6, 0))
             self.inv_label = ttk.Label(fr, text=T('ch.tab.inventory', 'Inventory'))
-            self.inv_label.pack(anchor='w', pady=(6, 0))
-            self.canvas = tk.Canvas(fr, width=INV_W * c + 1, height=INV_H * c + 1, bg=BG, highlightthickness=0)
-            self.canvas.pack(anchor='nw', pady=(4, 0))
+            self.inv_label.pack(anchor='w', pady=(2, 0))
+            self.canvas = tk.Canvas(fr, bg=BG, highlightthickness=0)
+            self.canvas.pack(anchor='nw', pady=(2, 0))
         for cv in (self.doll, self.canvas):
             cv.bind('<Button-1>', self.on_press)
             cv.bind('<B1-Motion>', self.on_drag)
@@ -128,11 +113,85 @@ class MainInventory:
             cv.bind('<ButtonRelease-3>', self.on_menu)      # on release, like the stash menu (see mxl_rc_menu)
         self.hint = ttk.Label(fr, text=T('inv.hint', 'Drag items between the stash, the inventory and the equipment. '
                                          'It can stay open while the game runs; a backup is made before the first change.'),
-                              justify='left', wraplength=INV_W * c)
-        if not self.d2:
-            self.hint.pack(anchor='w', pady=(6, 0))
+                              justify='left')
         self.panel = PreviewPanel(app.detail, PreviewHost(app))
+        self.layout(app.cell, redraw=False)
         self.refresh(force=True)
+
+    def _wset_buttons(self):
+        if self._wset_made:
+            return
+        self._wset_made = True
+        ttk.Label(self.row_btns, text='  ' + T('ch.weapon_set', 'Weapon set')).pack(side='left')
+        for n in (1, 2):
+            ttk.Radiobutton(self.row_btns, text='I' if n == 1 else 'II', value=n, variable=self.wset,
+                            command=self.redraw).pack(side='left', padx=2)
+
+    # ------------------------------------------------------------------ sizes
+    def set_rows(self, n):
+        """The row above the paperdoll on one line, or on two (title above the buttons) when the panel is narrow."""
+        if n == self.row_rows:
+            return
+        self.row_rows = n
+        self.title.pack_forget()
+        self.row_btns.pack_forget()
+        if n == 1:
+            self.title.pack(side='left')
+            self.row_btns.pack(side='left')
+        else:
+            self.title.pack(side='top', anchor='w')
+            self.row_btns.pack(side='top', anchor='w')
+
+    def row_width(self, n):
+        t, b = self.title.winfo_reqwidth(), self.row_btns.winfo_reqwidth()
+        return t + b if n == 1 else max(t, b)
+
+    def row_height(self, n):
+        t, b = self.title.winfo_reqheight(), self.row_btns.winfo_reqheight()
+        return (max(t, b) if n == 1 else t + b) + 2
+
+    def panel_units(self, crop=False):
+        """(width, height) of everything below the row in cells, plus extra pixels of height."""
+        if self.sigma:
+            box = D2.INV_CROP if crop else D2.FULL
+            return (box[2] - box[0]) / D2.ART_CELL, (box[3] - box[1]) / D2.ART_CELL, 2
+        if self.d2:
+            return D2.PANEL_W / D2.ART_CELL, D2.PANEL_H / D2.ART_CELL, 2
+        return max(DOLL_W, INV_W) + 0.1, DOLL_H + INV_H + 0.1, self.inv_label.winfo_reqheight() + 8
+
+    def layout(self, c, crop=False, hint=False, redraw=True):
+        """Sizes the paperdoll and the inventory for a cell size; crop=True keeps only the framed part of the
+        Median XL panel (small windows)."""
+        self.cell = c
+        self.k = k = c / D2.ART_CELL
+        A = D2.ART_CELL
+        if self.sigma:
+            box = D2.INV_CROP if crop else D2.FULL
+            ox, oy = self.org = box[0], box[1]
+            self.boxes = {slot: ((x - ox) / A, (y - oy) / A, D2.GEAR_SIZE[f][0] / A, D2.GEAR_SIZE[f][1] / A)
+                          for slot, (f, _p, x, y) in D2.GEAR.items()}
+            self.doll.configure(width=round((box[2] - ox) * k), height=round((box[3] - oy) * k))
+            self.canvas.configure(width=INV_W * c, height=INV_H * c)
+            self.canvas.place(in_=self.doll, x=round((D2.INV_GRID[0] - ox) * k), y=round((D2.INV_GRID[1] - oy) * k))
+            self.canvas.tk.call('raise', self.canvas._w)
+        elif self.d2:
+            self.org = (0, 0)
+            self.boxes = {slot: (x / A, y / A, w / A, h / A) for slot, (x, y, w, h) in D2.GEAR_D2.items()}
+            self.doll.configure(width=round(D2.PANEL_W * k), height=round(D2.PANEL_H * k))
+            self.canvas.configure(width=INV_W * c, height=INV_H * c)
+            self.canvas.place(in_=self.doll, x=round(D2.CHAR_GRID[0] * k), y=round(D2.CHAR_GRID[1] * k))
+            self.canvas.tk.call('raise', self.canvas._w)
+        else:
+            self.boxes = DOLL
+            self.doll.configure(width=int(DOLL_W * c) + 1, height=int(DOLL_H * c) + 1)
+            self.canvas.configure(width=INV_W * c + 1, height=INV_H * c + 1)
+        self.hint.configure(wraplength=max(120, INV_W * c))
+        if hint and not self.d2:
+            self.hint.pack(anchor='w', pady=(4, 0))
+        else:
+            self.hint.pack_forget()
+        if redraw:
+            self.redraw()
 
     # ------------------------------------------------------------------ loading / drawing
     def is_merc(self):
@@ -169,6 +228,9 @@ class MainInventory:
         if not hired:
             self.merc.set(False)
         self.redraw()
+        cb = getattr(self, 'on_loaded', None)   # mxl_fit: the title changed, the row may need another layout
+        if cb is not None:
+            cb()
 
     def reload(self):
         self.refresh(force=True)
@@ -236,8 +298,14 @@ class MainInventory:
                 return self.redraw_d2()
             except Exception as e:
                 print('D2 look (inventory) drawing failed:', e)
-                self.d2 = False                    # plain layout from now on (also for the hit tests)
-                self.boxes = DOLL
+                self.d2 = self.sigma = False       # plain layout from now on (also for the hit tests)
+                self.doll.configure(bg=BG)
+                self.canvas.place_forget()
+                self.inv_label.pack(anchor='w', pady=(2, 0))
+                self.canvas.pack(anchor='nw', pady=(2, 0))
+                self.canvas.configure(bg=BG)
+                self._wset_buttons()
+                self.layout(c, redraw=False)
         # paperdoll
         dv = self.doll
         dv.delete('all')
@@ -282,6 +350,8 @@ class MainInventory:
                                  if self.error else T('inv.title_none', 'Equipment - choose a character'))
         else:
             self.title.configure(text=T('inv.title', 'Equipment - {name}, level {level}', name=ch.name, level=ch.level))
+        if self.sigma:
+            return self.redraw_sigma()
         a = D2.char_art()
         dv = self.doll
         dv.delete('all')
@@ -322,13 +392,64 @@ class MainInventory:
             x0, y0 = it['x'] * c, it['y'] * c
             self.draw_item_d2(cv, it, x0, y0, x0 + w * c, y0 + h * c, e is self.selected)
 
+    def redraw_sigma(self):
+        """Dark look: Median XL's own inventory panel, gear frames (silhouette when empty), weapon-set tabs, gold,
+        the inventory on the panel's own grid."""
+        k, c, ch = self.k, self.cell, self.ch
+        ox, oy = self.org
+        merc = self.is_merc()
+        a = D2.art()
+        dv = self.doll
+        dv.delete('all')
+        dv.create_image(round(-ox * k), round(-oy * k), anchor='nw',
+                        image=D2.photo(a.panel('character-inventory'), (round(D2.PANEL_W * k), round(D2.PANEL_H * k)),
+                                       tag='main'))
+        try:
+            dv.create_image(round((D2.CLOSE_INV[0] - ox) * k), round((D2.CLOSE_INV[1] - oy) * k), anchor='nw',
+                            image=D2.photo(a.frame('buttons\\close', 0), (round(23 * k), round(23 * k))))
+        except Exception:
+            pass
+        eq = ch.equipped(merc) if ch is not None else {}
+        boxes = self.visible_boxes()
+        for box in boxes:
+            sil, plain, x, y = D2.GEAR[box]
+            x, y = x - ox, y - oy
+            e = eq.get(self.slot_of(box))
+            dv.create_image(round(x * k), round(y * k), anchor='nw',
+                            image=D2.gear_photo(plain if e is not None else sil, k))
+            if e is not None:
+                w, h = D2.GEAR_SIZE[sil]
+                i = D2.GEAR_INSET
+                self.draw_item_d2(dv, e.it, (x + i) * k, (y + i) * k, (x + w - i) * k, (y + h - i) * k,
+                                  e is self.selected, check_req=not merc)
+        if 4 in boxes or 5 in boxes:
+            f = D2.WSET_TAB[0] if self.wset.get() == 1 else D2.WSET_TAB[1]
+            for tx, ty in D2.WSET_TABS:
+                dv.create_image(round((tx - ox) * k), round((ty - oy) * k), anchor='nw', image=D2.gear_photo(f, k))
+        if ch is not None and not merc:
+            D2.draw_text(dv, (D2.INV_GOLD[0] - ox) * k, (D2.INV_GOLD[1] - oy) * k, D2.fmt_gold(ch.stat(14)), k,
+                         anchor='w')
+        cv = self.canvas
+        cv.delete('all')
+        gx, gy = D2.INV_GRID
+        cv.create_image(0, 0, anchor='nw', image=D2.photo(
+            a.panel('character-inventory'), (INV_W * c, INV_H * c),
+            (gx, gy, gx + INV_W * D2.ART_CELL, gy + INV_H * D2.ART_CELL), tag='main'))
+        if ch is None:
+            return
+        for e in ch.inventory():
+            it = e.it
+            w, h = self.size(it)
+            x0, y0 = it['x'] * c, it['y'] * c
+            self.draw_item_d2(cv, it, x0, y0, x0 + w * c, y0 + h * c, e is self.selected)
+
     def draw_item_d2(self, cv, it, x0, y0, x1, y1, sel, check_req=True):
         d, char = self.data, self.app.char
         try:
             unmet = check_req and char is not None and requirements_unmet(it, d, char)
         except Exception:
             unmet = False
-        bg = D2.UNMET_BG if unmet else D2.CHAR_CELL_BG
+        bg = D2.UNMET_BG if unmet else (D2.CELL_BG if self.sigma else D2.CHAR_CELL_BG)
         fill = blend(SELECTION, bg, 0.14) if sel else bg
         col = item_color(it, d)
         if unmet or sel:
@@ -348,6 +469,14 @@ class MainInventory:
         if not self.d2 or not any(b in self.visible_boxes() for b in (4, 5)):
             return None
         k = self.k
+        if self.sigma:
+            ox, oy = self.org
+            _a, _b, tw, th = D2.WSET_TAB
+            for tx, ty in D2.WSET_TABS:
+                tx, ty = tx - ox, ty - oy
+                if tx * k <= x < (tx + tw) * k and ty * k <= y < (ty + th) * k:
+                    return 1 if x < (tx + tw / 2) * k else 2
+            return None
         tw, th = D2.WSET_TAB_D2
         for n, tabs in D2.WSET_TABS_D2.items():
             for tx, ty in tabs:

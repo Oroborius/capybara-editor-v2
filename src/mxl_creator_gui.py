@@ -411,7 +411,7 @@ class CreatorWindow:
         self.paned.add(mid, weight=4)
         self.title = ttk.Label(mid, text='', font=('Segoe UI', 12, 'bold'))
         self.header = None
-        if D2.active():                                   # D2 look: the game's stone, fonts and gear frame
+        if D2.CREATOR_ART and D2.active():                # D2 look: the game's stone, fonts and gear frame
             try:
                 self.header = D2.CreatorHeader(mid, T('cr.title.editor', 'Item Editor') if self.edit_item else
                                                T('cr.title.creator', 'Item Creator'), getattr(self.app, 'cell', 32))
@@ -2478,8 +2478,11 @@ def run():
     rename_app(mxl_gui)
     import mxl_d2_theme                   # which look: dark Diablo ('d2', default) or Hero-Editor light ('he')
     dark = mxl_d2_theme.dark()
-    import mxl_d2look                     # no game-art panels: plain grids (dark, or the Hero-Editor light ones)
-    mxl_d2look.disable()
+    import mxl_d2look                     # dark look: Median XL's own stash / inventory panels (game art);
+    if dark:                              # innermost wrapper, plain dark grids when the game folder is unknown
+        mxl_d2look.install(mxl_gui.App)
+    else:
+        mxl_d2look.disable()              # light look: the Hero-Editor grids
     import mxl_tabs                       # every editor window becomes a tab of the main window (tiling WM)
     mxl_tabs.install(mxl_gui.App)
     import mxl_hover                      # item stats follow the mouse hover (no click needed)
@@ -2504,9 +2507,13 @@ def run():
     mxl_import.install(mxl_gui.App)
     import mxl_inv_gui
     mxl_inv_gui.install(mxl_gui.App)
+    import mxl_fit                         # stash / inventory cell size from the window's size, on every resize
+    mxl_fit.install(mxl_gui.App)
     import mxl_he_theme                    # the Hero-Editor look for every window - outermost (walks what others build)
     mxl_he_theme.install(mxl_gui.App)      # (in the dark look it repaints with mxl_d2_theme's palette)
     mxl_d2_theme.install_toggle(mxl_gui.App)
+    import mxl_toolbar                     # the top bar at every width: what does not fit goes into "More"
+    mxl_toolbar.install(mxl_gui.App)
     import mxl_app_icon
     mxl_app_icon.install(mxl_gui.App)
     mxl_splash.install(mxl_gui.App)       # last: outermost, closes the splash once everything is built

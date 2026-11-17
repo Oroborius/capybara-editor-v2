@@ -111,7 +111,7 @@ def _style(root):
     st.configure('TLabelframe.Label', background=STONE, foreground=GOLD_HI, font=F_B)
     st.configure('TSeparator', background=BRONZE)
     st.configure('TButton', background=LEATHER, foreground=GOLD_HI, bordercolor=BRONZE, lightcolor=BRONZE_HI,
-                 darkcolor=STONE_LO, relief='raised', font=F_B, padding=(8, 3), anchor='center')
+                 darkcolor=STONE_LO, relief='raised', font=F_B, padding=(6, 1), anchor='center')
     st.map('TButton', background=[('disabled', STONE_HI), ('pressed', '#33100c'), ('active', LEATHER_HI)],
            foreground=[('disabled', DIM), ('pressed', GOLD_HI), ('active', GOLD_HI)])
     imgs = _button_images(root)
@@ -119,12 +119,12 @@ def _style(root):
         try:
             if not _state['elements']:
                 st.element_create('D2.Button.face', 'image', imgs[0], ('disabled', imgs[3]), ('pressed', imgs[2]),
-                                  ('active', imgs[1]), border=(16, 6, 16, 6), sticky='nsew',
-                                  width=40, height=24)   # minimum size: else the image's own 135 px
+                                  ('active', imgs[1]), border=(16, 6, 16, 6), padding=(11, 1, 11, 1), sticky='nsew',
+                                  width=40, height=20)   # minimum size: else the image's own 135 px
                 _state['elements'] = True
             st.layout('TButton', [('D2.Button.face', {'sticky': 'nsew', 'children': [
                 ('Button.padding', {'sticky': 'nsew', 'children': [('Button.label', {'sticky': 'nsew'})]})]})])
-            st.configure('TButton', padding=(7, 4))
+            st.configure('TButton', padding=(3, 1))
         except tk.TclError as e:
             print('D2 theme: flat buttons,', e)
     for name in ('TRadiobutton', 'TCheckbutton'):
@@ -145,9 +145,15 @@ def _style(root):
         root.option_add('*TCombobox*Listbox.' + opt, val)
     root.option_add('*TCombobox*Listbox.font', F)
     st.configure('TNotebook', background=STONE, bordercolor=BRONZE, lightcolor=STONE, darkcolor=STONE_LO,
-                 tabmargins=[2, 4, 2, 0])
+                 tabmargins=[2, 2, 2, 0])
     st.configure('TNotebook.Tab', background=STONE_LO, foreground=GOLD, bordercolor=BRONZE, lightcolor=STONE_HI,
-                 padding=[12, 4], font=F_B)
+                 padding=[8, 2], font=F_B)
+    st.configure('Pages.TNotebook.Tab', padding=[5, 1])       # the stash's page tabs 1..10
+    st.configure('Pages.TNotebook', tabmargins=[0, 2, 0, 0])
+    st.configure('Toolbutton', background=STONE_LO, foreground=GOLD, bordercolor=BRONZE, lightcolor=STONE_HI,
+                 darkcolor=STONE_LO, relief='raised', padding=(6, 1), font=F)   # Character stash / Shared stash
+    st.map('Toolbutton', background=[('selected', LEATHER), ('active', STONE_HI)],
+           foreground=[('selected', GOLD_HI), ('disabled', DIM)], relief=[('selected', 'sunken')])
     st.map('TNotebook.Tab', background=[('selected', LEATHER), ('active', STONE_HI)],
            foreground=[('selected', GOLD_HI), ('disabled', DIM)], lightcolor=[('selected', BRONZE_HI)])
     for name in ('TScrollbar', 'Vertical.TScrollbar', 'Horizontal.TScrollbar'):
@@ -261,7 +267,7 @@ def _add_toggle(app):
                             T('theme.restart', 'The new look is used the next time the editor starts.'),
                             parent=app.root)
     ttk.Checkbutton(bar, text=T('theme.toggle', 'Dark D2 theme'), variable=var, command=changed).pack(
-        side='left', padx=(10, 2))
+        side='left', padx=(6, 2))
 
 
 def install_toggle(App):
