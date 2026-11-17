@@ -567,7 +567,7 @@ class CharacterWindow(StatEditMixin):
         app = self.app
         try:
             bak = self.ch.save(backup=app.needs_backup(self.ch.path))
-        except CharError as e:
+        except (CharError, EditError) as e:      # EditError: the safe writer or the save check refused
             messagebox.showerror(T('ch.title', 'Character'), str(e) + (
                 '\n\n' + T('ch.kept_pending', 'The file has been read again. The changes not yet saved are still '
                            'shown: check them and click SAVE again (RELOAD drops them).') if self.dirty() else ''),
