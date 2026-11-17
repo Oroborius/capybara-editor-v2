@@ -292,7 +292,7 @@ after writing, and a `.bak` backup is made once per session.
 Items are opened with Edit item exactly as they are, even when they break the game's rules (hacked or
 out-of-range values, Sigma upgrades the editor does not model): every stat the item's mods don't give, or give
 outside their range, is kept as it is and listed above the sliders, and the status line warns instead of blocking
-"Replace item". Moving a slider changes only that value. Tempered (quality 9) items open too (name only).
+"Replace item". Moving a slider changes only that value. Honorific (quality 9, key `tempered`) items open too (name only).
 
 ## Crafted items
 - "Crafted" in the quality list. The list shows every base a crafting recipe takes (Angelic bases included):
@@ -400,8 +400,11 @@ Homage to Udie's editor: while the editor loads, Diablo II's "door opening" load
 ## Median XL Sigma item layouts (mxl_format_fix.py)
 The collector's item reader is replaced at start-up by the same reader plus two Sigma cases it did not know, which
 stopped stashes from opening ("FormatError: 'JM' expected at byte ..."):
-- quality 9 items ("tempered", e.g. the "Orb Effects Applied to this Item are Doubled" / Shrine Blessed gear): only
-  the two name bytes follow the header, no affix slots;
+- quality 9 = Honorific items (internal name "tempered"; cube: magic / rare weapon or armor + Mark of Infusion ->
+  blank item, rare-style name, maximum sockets, stat 289 = 2 "Orb Effects Applied to this Item are Doubled"): only
+  the two name bytes follow the header, no affix slots. Verified on a real save (Leather Armor (3) "Eagle Pelt",
+  name bytes 184 / 70, ilvl 99, 5 sockets, stats 36 = 1 and 289 = 2); `Creator.honorific_recipes()` /
+  `honorific_stats(code)` give the recipe's output. `tools/audit_game_data.py` rebuilds and re-reads them;
 - weapons / armor whose item type is not under 'weap' / 'armo' (the Staff of Herding): no defense or durability in
   the save, as the game reads them only for those types.
 The creator's encoder / decoder and the import follow the same rules.

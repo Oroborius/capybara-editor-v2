@@ -1,8 +1,13 @@
 """Two item layouts of Median XL Sigma that the collector's reader (mxl_format.parse_item) did not know, which made it
 lose its place in a stash ("FormatError: 'JM' expected at byte ..."):
 
-1. Quality 9 ("tempered": e.g. Shrine Blessed gear). After the item header it holds only the two rare-name bytes
-   (8 + 8 bits); there are no affix slots, the affixes' stats are in the stat list.
+1. Quality 9: HONORIFIC items ('tempered' is the game's internal name - string key StrLootFilterCfgTempered reads
+   "Honorific"; this code keeps the key 'tempered'). Made in the cube: magic / rare weapon or armor + Mark of
+   Infusion (cubemain rows with output quality 9) -> a blank item with a rare-style name, maximum sockets and
+   stat 289 = 2 ("Orb Effects Applied to this Item are Doubled"). After the item header it holds only the two
+   rare-name bytes (8 + 8 bits); there are no affix slots, every stat is in the stat list. The collector's own
+   reader takes quality 9 for 'unknown', reads no name bytes and loses its place: a character or stash holding
+   one honorific item did not open at all (the "honorific items crash the editor" report).
 2. Weapons / armor whose item type is not under 'weap' / 'armo' (Staff of Herding, wd02). The game reads defense
    and durability only for items of those types (D2Common: item type 0x2d weap / 0x32 armo checks); for any other
    type these fields are not in the save.
