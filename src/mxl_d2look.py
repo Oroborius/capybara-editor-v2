@@ -357,7 +357,7 @@ def button(parent, text, command, width=None):
     """Game-style button in the D2 look, the theme's ttk button otherwise."""
     from tkinter import ttk
     if not (CREATOR_ART and active()):
-        kw = {'width': width} if width else {}
+        kw = {'width': -width} if width else {}     # negative: a minimum, the text is never cut
         return ttk.Button(parent, text=text, command=command, **kw)
     kw = dict(BTN)
     if width:

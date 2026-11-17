@@ -280,14 +280,34 @@ class ScrollFrame(ttk.Frame):
         # little: in a narrow column the scrollbar beside it must not be the part that is cut off
         self.sb = ttk.Scrollbar(self, orient='vertical', command=self.canvas.yview)
         self.inner = ttk.Frame(self.canvas)
-        self.inner.bind('<Configure>', lambda e: self.canvas.configure(scrollregion=self.canvas.bbox('all')))
+        self.hsb = ttk.Scrollbar(self, orient='horizontal', command=self.canvas.xview)
+        self._hsb_on = False
         self.win = self.canvas.create_window((0, 0), window=self.inner, anchor='nw')
-        self.canvas.bind('<Configure>', lambda e: self.canvas.itemconfigure(self.win, width=e.width))
-        self.canvas.configure(yscrollcommand=self.sb.set)
+        self.inner.bind('<Configure>', self._fit_width)
+        self.canvas.bind('<Configure>', self._fit_width)
+        self.canvas.configure(yscrollcommand=self.sb.set, xscrollcommand=self.hsb.set)
         self.sb.pack(side='right', fill='y')              # first: the canvas is what gives way
         self.canvas.pack(side='left', fill='both', expand=True)
         self.bind('<Enter>', lambda e: self._grab(True))
         self.bind('<Leave>', lambda e: self._grab(self._inside(e)))
+
+    def _fit_width(self, _e=None):
+        """The content is as wide as the column; when it needs more (a narrow window), it keeps its own width and
+        a horizontal scrollbar appears, so nothing at the right end is out of reach."""
+        try:
+            cw, need = self.canvas.winfo_width(), self.inner.winfo_reqwidth()
+            over = need > cw + 2 and cw > 20
+            self.canvas.itemconfigure(self.win, width=max(cw, need) if over else cw)
+            if over != self._hsb_on:
+                self._hsb_on = over
+                if over:
+                    self.hsb.pack(side='bottom', fill='x', before=self.canvas)
+                else:
+                    self.hsb.pack_forget()
+                    self.canvas.xview_moveto(0)
+            self.canvas.configure(scrollregion=self.canvas.bbox('all'))
+        except tk.TclError:
+            pass
 
     def _inside(self, e):
         try:
@@ -493,6 +513,7 @@ class CreatorWindow:
         body = self.scroll.inner
         body.columnconfigure(0, weight=1)
         self.scroll.canvas.bind('<Configure>', self._rewrap, add='+')
+        body.bind('<Configure>', self._rewrap, add='+')     # new content: built with the width known by then
         self.opts = ttk.Frame(body)
         self.opts.grid(row=0, column=0, sticky='we', pady=(0, 2))
         self.opts.columnconfigure(1, weight=1)
@@ -558,7 +579,7 @@ class CreatorWindow:
         def walk(x):
             for c in x.winfo_children():
                 try:
-                    if c.winfo_class() == 'TLabel' and int(str(c.cget('wraplength')) or 0) > 0:
+                    if c.winfo_class() == 'TLabel' and int(str(c.cget('wraplength')) or 0) not in (0, w):
                         c.configure(wraplength=w)
                 except (tk.TclError, ValueError):
                     pass
