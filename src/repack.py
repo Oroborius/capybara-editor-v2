@@ -7,6 +7,21 @@ HERE = os.path.dirname(os.path.abspath(__file__))          # carch.py and the ed
 sys.path.insert(0, HERE)
 import carch
 
+# packages packed into the exe from outside src/: {name: folder}. tools/mxlsave is the independent save-format
+# library (one copy of the source: the command line tool there, the package `mxlsave` in both builds)
+PACKAGES = {'mxlsave': os.path.join(os.path.dirname(HERE), 'tools', 'mxlsave')}
+
+def package_modules(name, folder):
+    """{dotted name: code} of a flat package folder: 'pkg' (its __init__) and 'pkg.<module>' for every other .py."""
+    out = {}
+    for f in sorted(os.listdir(folder)):
+        if f.endswith('.py'):
+            mod = name if f == '__init__.py' else f'{name}.{f[:-3]}'
+            out[mod] = compile(open(os.path.join(folder, f), encoding='utf-8').read(), f'{name}/{f}', 'exec')
+    if name not in out:
+        sys.exit(f'{folder}: no __init__.py')
+    return out
+
 def build_pyz(z, extra):
     toff = struct.unpack('!i', z[8:12])[0]
     toc = marshal.loads(z[toff:])
@@ -16,7 +31,8 @@ def build_pyz(z, extra):
             continue
         blobs.append((name, typ, z[off:off + ln]))
     for name, code in extra.items():
-        blobs.append((name, 0, zlib.compress(marshal.dumps(code), 9)))
+        # PYZ type codes: 0 module, 1 package (the importer gives it a __path__, so its submodules are found)
+        blobs.append((name, 1 if name in PACKAGES else 0, zlib.compress(marshal.dumps(code), 9)))
     out = bytearray(z[:8]) + b'\0\0\0\0'
     newtoc = []
     for name, typ, data in blobs:
@@ -62,6 +78,8 @@ if __name__ == '__main__':
     # every editor module of src/ (mxl_*.py); a new module needs no entry here
     for mod in sorted(f[:-3] for f in os.listdir(plugin) if f.startswith('mxl_') and f.endswith('.py')):
         extra[mod] = compile(open(f'{plugin}/{mod}.py', encoding='utf-8').read(), f'{mod}.py', 'exec')
+    for name, folder in PACKAGES.items():
+        extra.update(package_modules(name, folder))
     script = [e for e in ents if e['typ'] == 's' and e['name'] == 'mxl_gui'][0]
     z = [e for e in ents if e['typ'] == 'z'][0]
     zd = z['data']

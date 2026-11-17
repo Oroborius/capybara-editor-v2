@@ -13,6 +13,12 @@ from tkinter import ttk
 from mxl_lang import T
 
 GAP = 6            # largest horizontal gap kept between two items
+EXTRA = []         # entries that live only in the "More" menu: (label function, command(app)) - add_entry()
+
+
+def add_entry(label, command):
+    """An entry at the end of the "More" menu (the button then shows at every width). label() -> text."""
+    EXTRA.append((label, command))
 
 
 def _pad(v):
@@ -108,7 +114,7 @@ class Toolbar:
                     total += inner + sum(it.opts['padx'])
             elif it not in hidden:
                 total += it.cost
-        if hidden:
+        if hidden or EXTRA:
             total += self.more.winfo_reqwidth() + GAP
         return total + 8
 
@@ -136,7 +142,7 @@ class Toolbar:
                     c.w.pack_forget()
                 it.w.pack_forget()
             self.more.pack_forget()
-            if hidden:                           # at the right end, before the right-side items take their room
+            if hidden or EXTRA:                  # at the right end, before the right-side items take their room
                 self.more.pack(side='right', padx=(GAP // 2, GAP // 2))
             for it in self.items:
                 if it.children:
@@ -184,6 +190,10 @@ class Toolbar:
                     m.add_command(label=text, state='disabled')
             except tk.TclError:
                 continue
+        if EXTRA and seen:
+            m.add_separator()
+        for label, command in EXTRA:
+            m.add_command(label=label(), command=lambda c=command: c(self.app))
         try:
             import mxl_he_theme
             mxl_he_theme._walk(m)

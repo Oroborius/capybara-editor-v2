@@ -9,16 +9,21 @@ class BitReader:
     """Reads fields of n bits from `data`, starting at byte `start`. `pos` is the bit position from `start`."""
 
     def __init__(self, data, start=0, end=None):
-        chunk = bytes(data[start:end])
-        self._v = int.from_bytes(chunk, 'little')
-        self.nbits = len(chunk) * 8
+        self._d = data if isinstance(data, bytes) else bytes(data)
+        self._start = start
+        self.nbits = (min(len(self._d) if end is None else end, len(self._d)) - start) * 8
         self.pos = 0
 
     def read(self, n):
-        if self.pos + n > self.nbits:
+        pos = self.pos
+        if pos + n > self.nbits:
             raise FormatError('read past the end of the data')
-        v = (self._v >> self.pos) & ((1 << n) - 1)
-        self.pos += n
+        # only the bytes that hold the field are converted: an item does not know its length, so the reader is
+        # opened on the rest of the file, and shifting one big number per field made a file cost O(size^2)
+        b = self._start + (pos >> 3)
+        sh = pos & 7
+        v = (int.from_bytes(self._d[b:b + ((sh + n + 7) >> 3)], 'little') >> sh) & ((1 << n) - 1)
+        self.pos = pos + n
         return v
 
     def bytes_used(self):

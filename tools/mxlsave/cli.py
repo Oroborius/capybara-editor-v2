@@ -1,10 +1,15 @@
 """Command line:  python -m mxlsave dump <file> [--json] [--data DIR]
                   python -m mxlsave verify <file>... [--data DIR]
+                  python -m mxlsave diff <old> <new> [--json] [--user-dir DIR | --data DIR]
 
 dump    prints what the file holds (human readable, or everything as JSON)
 verify  parse -> rebuild -> compare with the file's bytes; exit status 1 when any file differs or fails
+diff    structural differences of two character / stash files (a file and its backup): header fields, stats,
+        skills, quests, waypoints, mercenary, skill keys, items added / removed / moved / changed. Exit status
+        0 = no difference, 1 = differences, 2 = a file could not be read
 
-The game tables are looked for in --data, $MXLSAVE_DATA, $MXL_USER_DIR/data, then the editor's user folder.
+The game tables are looked for in --data, <--user-dir>/data, $MXLSAVE_DATA, $MXL_USER_DIR/data, then the
+editor's user folder.
 Without tables a .d2s is read up to its skills section and the items are kept as raw bytes.
 """
 import argparse
@@ -200,13 +205,32 @@ def main(argv=None):
     d.add_argument('--json', action='store_true')
     v = sub.add_parser('verify', help='parse, rebuild and compare with the file')
     v.add_argument('file', nargs='+')
-    for p in (d, v):
+    x = sub.add_parser('diff', help='structural differences of two character / stash files')
+    x.add_argument('old')
+    x.add_argument('new')
+    x.add_argument('--json', action='store_true')
+    for p in (d, v, x):
         p.add_argument('--data', help='folder with the extracted game tables (*.bin)')
+        p.add_argument('--user-dir', help="the editor's user folder (its data/ subfolder holds the game tables)")
         p.add_argument('--no-tables', action='store_true', help='do not use game tables')
     a = ap.parse_args(argv)
-    tables = None if a.no_tables else Tables.find(a.data)
+    tables = None if a.no_tables else Tables.find(a.data or (os.path.join(a.user_dir, 'data') if a.user_dir
+                                                                else None))
     if tables is None and not a.no_tables:
         print('note: game tables not found, items are not decoded (--data DIR)', file=sys.stderr)
+    if a.cmd == 'diff':
+        from .diff import diff_files, format_text, summary
+        try:
+            changes = diff_files(a.old, a.new, tables)
+        except (FormatError, OSError, TypeError, ValueError, KeyError, IndexError) as e:
+            print(f'{type(e).__name__}: {e}', file=sys.stderr)
+            return 2
+        if a.json:
+            print(json.dumps(dict(old=a.old, new=a.new, summary=summary(changes), changes=changes), indent=1))
+        else:
+            print(f'{a.old} -> {a.new}')
+            print(format_text(changes))
+        return 1 if changes else 0
     if a.cmd == 'dump':
         try:
             obj = load(a.file, tables)
