@@ -225,7 +225,7 @@ def _style(root):
     st.configure('TLabel', background=HE_BG, foreground=HE_FG)
     st.configure('TLabelframe', background=HE_BG, foreground=HE_FG)
     st.configure('TLabelframe.Label', background=HE_BG, foreground=HE_FG, font=F)
-    st.configure('TButton', background=HE_BTN, foreground=HE_FG, relief='raised', font=F)
+    st.configure('TButton', background=HE_BTN, foreground=HE_FG, relief='raised', font=F, padding=(6, 1))
     st.map('TButton', background=[('disabled', '#d4d4d4'), ('pressed', '#c8c4b5'), ('active', '#e9e7dd')],
            foreground=[('disabled', '#888888')])
     st.configure('TRadiobutton', background=HE_BG, foreground=HE_FG, focuscolor=HE_BG)
@@ -241,8 +241,13 @@ def _style(root):
            foreground=[('disabled', '#888888')])
     st.configure('TCombobox.Listbox', background=HE_ENTRY, foreground=HE_FG,
                  selectbackground=SELECT_BG, selectforeground='#ffffff', font=F)
-    st.configure('TNotebook', background=HE_BG, bordercolor='#a8a493', tabmargins=[2, 4, 2, 0])
-    st.configure('TNotebook.Tab', background=HE_BTN, foreground=HE_FG, padding=[8, 3], font=F_B)
+    st.configure('TNotebook', background=HE_BG, bordercolor='#a8a493', tabmargins=[2, 2, 2, 0])
+    st.configure('TNotebook.Tab', background=HE_BTN, foreground=HE_FG, padding=[8, 2], font=F_B)
+    st.configure('Pages.TNotebook.Tab', padding=[5, 1])       # the stash's page tabs 1..10
+    st.configure('Pages.TNotebook', tabmargins=[0, 2, 0, 0])
+    st.configure('Toolbutton', background=HE_BTN, foreground=HE_FG, relief='raised', padding=(6, 1), font=F)
+    st.map('Toolbutton', background=[('selected', '#d8d4c5'), ('active', '#e9e7dd')],
+           relief=[('selected', 'sunken')])                  # Character stash / Shared stash
     st.map('TNotebook.Tab', background=[('selected', '#d8d4c5')], foreground=[('disabled', '#888888')])
     st.configure('TPanedwindow', background=HE_BG)
     st.configure('TScrollbar', background='#d8d4c5', arrowcolor='#404040', bordercolor='#a8a493',

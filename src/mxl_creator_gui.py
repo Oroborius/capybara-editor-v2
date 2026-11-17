@@ -276,17 +276,38 @@ class ScrollFrame(ttk.Frame):
     def __init__(self, master, **kw):
         super().__init__(master, **kw)
         bg = ttk.Style().lookup('TFrame', 'background') or None
-        self.canvas = tk.Canvas(self, highlightthickness=0, borderwidth=0, bg=bg)
+        self.canvas = tk.Canvas(self, highlightthickness=0, borderwidth=0, bg=bg, width=120, height=80)   # asks for
+        # little: in a narrow column the scrollbar beside it must not be the part that is cut off
         self.sb = ttk.Scrollbar(self, orient='vertical', command=self.canvas.yview)
         self.inner = ttk.Frame(self.canvas)
-        self.inner.bind('<Configure>', lambda e: self.canvas.configure(scrollregion=self.canvas.bbox('all')))
+        self.hsb = ttk.Scrollbar(self, orient='horizontal', command=self.canvas.xview)
+        self._hsb_on = False
         self.win = self.canvas.create_window((0, 0), window=self.inner, anchor='nw')
-        self.canvas.bind('<Configure>', lambda e: self.canvas.itemconfigure(self.win, width=e.width))
-        self.canvas.configure(yscrollcommand=self.sb.set)
+        self.inner.bind('<Configure>', self._fit_width)
+        self.canvas.bind('<Configure>', self._fit_width)
+        self.canvas.configure(yscrollcommand=self.sb.set, xscrollcommand=self.hsb.set)
+        self.sb.pack(side='right', fill='y')              # first: the canvas is what gives way
         self.canvas.pack(side='left', fill='both', expand=True)
-        self.sb.pack(side='left', fill='y')
         self.bind('<Enter>', lambda e: self._grab(True))
         self.bind('<Leave>', lambda e: self._grab(self._inside(e)))
+
+    def _fit_width(self, _e=None):
+        """The content is as wide as the column; when it needs more (a narrow window), it keeps its own width and
+        a horizontal scrollbar appears, so nothing at the right end is out of reach."""
+        try:
+            cw, need = self.canvas.winfo_width(), self.inner.winfo_reqwidth()
+            over = need > cw + 2 and cw > 20
+            self.canvas.itemconfigure(self.win, width=max(cw, need) if over else cw)
+            if over != self._hsb_on:
+                self._hsb_on = over
+                if over:
+                    self.hsb.pack(side='bottom', fill='x', before=self.canvas)
+                else:
+                    self.hsb.pack_forget()
+                    self.canvas.xview_moveto(0)
+            self.canvas.configure(scrollregion=self.canvas.bbox('all'))
+        except tk.TclError:
+            pass
 
     def _inside(self, e):
         try:
@@ -377,26 +398,29 @@ class CreatorWindow:
         # three resizable columns: catalog list | options and values | preview (drag the separators)
         self.paned = ttk.Panedwindow(top, orient='horizontal')
         self.paned.pack(fill='both', expand=True)
-        left = ttk.Frame(self.paned, padding=6)
+        self._sash_user = False
+        self.paned.bind('<B1-Motion>', lambda e: setattr(self, '_sash_user', True), add='+')
+        self.paned.bind('<Configure>', self._resashed, add='+')
+        left = ttk.Frame(self.paned, padding=3)
         self.paned.add(left, weight=1)
         ttk.Label(left, text=T('cr.item_type', 'Item type')).pack(anchor='w')
         self.quality = tk.StringVar()
-        cb = ttk.Combobox(left, state='readonly', values=[q for q, _ in qualities()], textvariable=self.quality, width=34)
+        cb = ttk.Combobox(left, state='readonly', values=[q for q, _ in qualities()], textvariable=self.quality, width=20)
         cb.pack(fill='x')
         cb.bind('<<ComboboxSelected>>', lambda e: self.on_quality())
         self.kind_filter = tk.StringVar(value=filters()[0][0])
         kf = ttk.Combobox(left, state='readonly', values=[lab for lab, _ in filters()],
-                          textvariable=self.kind_filter, width=34)
-        kf.pack(fill='x', pady=(4, 0))
+                          textvariable=self.kind_filter, width=20)
+        kf.pack(fill='x', pady=(2, 0))
         kf.bind('<<ComboboxSelected>>', lambda e: self.fill_list())
-        ttk.Label(left, text=T('cr.search', 'Search')).pack(anchor='w', pady=(6, 0))
+        ttk.Label(left, text=T('cr.search', 'Search')).pack(anchor='w', pady=(2, 0))
         self.search = tk.StringVar()
         ent = ttk.Entry(left, textvariable=self.search)
         ent.pack(fill='x')
         self.search.trace_add('write', lambda *a: self.fill_list())
         lf = ttk.Frame(left)
-        lf.pack(fill='both', expand=True, pady=(4, 0))
-        self.listbox = tk.Listbox(lf, width=34, height=10, exportselection=False, activestyle='none',
+        lf.pack(fill='both', expand=True, pady=(2, 0))
+        self.listbox = tk.Listbox(lf, width=20, height=6, exportselection=False, activestyle='none',
                                   bg=self.app.detail.cget('bg'), fg=self.app.detail.cget('fg'),
                                   selectbackground='#3a5f8a', selectforeground='white', highlightthickness=0, bd=0)
         sb = ttk.Scrollbar(lf, orient='vertical', command=self.listbox.yview)
@@ -407,11 +431,11 @@ class CreatorWindow:
         self.count = ttk.Label(left, text='')
         self.count.pack(anchor='w')
 
-        mid = self._mid = ttk.Frame(self.paned, padding=6)
+        mid = self._mid = ttk.Frame(self.paned, padding=3)
         self.paned.add(mid, weight=4)
         self.title = ttk.Label(mid, text='', font=('Segoe UI', 12, 'bold'))
         self.header = None
-        if D2.active():                                   # D2 look: the game's stone, fonts and gear frame
+        if D2.CREATOR_ART and D2.active():                # D2 look: the game's stone, fonts and gear frame
             try:
                 self.header = D2.CreatorHeader(mid, T('cr.title.editor', 'Item Editor') if self.edit_item else
                                                T('cr.title.creator', 'Item Creator'), getattr(self.app, 'cell', 32))
@@ -422,26 +446,52 @@ class CreatorWindow:
             self.title.pack(side='top', anchor='w')
 
         bottom = ttk.Frame(mid)                          # packed before the scroll area: never pushed out of sight
-        bottom.pack(side='bottom', fill='x', pady=(6, 0))
+        bottom.pack(side='bottom', fill='x', pady=(2, 0))
         self.status = ttk.Label(bottom, text='', wraplength=520, justify='left')
         self.status.pack(side='top', anchor='w', fill='x')
         self.status.bind('<Configure>', lambda e: self.status.configure(wraplength=max(200, e.width - 8)))
-        row = ttk.Frame(bottom)
-        row.pack(fill='x', pady=(4, 0))
-        self.btn_ok = D2.button(row, T('cr.btn.replace', 'Replace item') if self.edit_item else
+        outer = ttk.Frame(bottom)
+        outer.pack(fill='x', pady=(2, 0))
+        row = ttk.Frame(outer)                           # copies / stash page
+        rowb = ttk.Frame(outer)                          # unrestricted / destination
+        rowr = ttk.Frame(outer)                          # Close, Create
+        # one line when the column is wide enough, else the buttons go under, else every group on its own line
+
+        def fold(_e=None, st=[None]):
+            try:
+                W = outer.winfo_width()
+                a, b, c = row.winfo_reqwidth(), rowb.winfo_reqwidth(), rowr.winfo_reqwidth()
+            except tk.TclError:
+                return
+            lines = 1 if (W <= 1 or a + b + c + 8 <= W) else (2 if a + b <= W else 3)
+            if lines != st[0]:
+                st[0] = lines
+                for i in range(3):
+                    outer.columnconfigure(i, weight=0)
+                outer.columnconfigure(1 if lines < 3 else 0, weight=1)
+                row.grid(row=0, column=0, sticky='w')
+                rowb.grid(row=0 if lines < 3 else 1, column=1 if lines < 3 else 0, sticky='w')
+                rowr.grid(row=lines - 1, column=2 if lines == 1 else (1 if lines == 2 else 0), sticky='e',
+                          columnspan=1 if lines != 2 else 1, pady=(2, 0) if lines > 1 else 0)
+                if lines == 2:
+                    rowr.grid(row=1, column=0, columnspan=3, sticky='e')
+        fold()
+        for w in (outer, row, rowb):
+            w.bind('<Configure>', fold)
+        self.btn_ok = D2.button(rowr, T('cr.btn.replace', 'Replace item') if self.edit_item else
                                 (T('cr.btn.create', 'Create') if self.target else T('cr.btn.create_stash', 'Create in stash')),
                                 self.commit)
         self.btn_ok.pack(side='right')            # packed first: never squeezed out of the window
-        D2.button(row, T('cr.btn.close', 'Close'), self.top.destroy).pack(side='right', padx=6)
+        D2.button(rowr, T('cr.btn.close', 'Close'), self.top.destroy).pack(side='right', padx=4)
         # bulk add: write N copies into the first N free spots (plain stash-create mode only)
         self.copies = tk.IntVar(value=1)
         self._copies_widgets = []
         if self.edit_item is None and self.target is None:
-            ttk.Label(row, text=T('cr.copies', 'copies')).pack(side='left', padx=(10, 2))
+            ttk.Label(row, text=T('cr.copies', 'copies')).pack(side='left', padx=(2, 2))
             self.copies_spin = ttk.Spinbox(row, from_=1, to=100, textvariable=self.copies, width=4)
             self.copies_spin.pack(side='left')
             self._copies_widgets = [self.copies_spin]
-        ttk.Label(row, text=T('cr.stash_page', 'Stash page')).pack(side='left')
+        ttk.Label(row, text=T('cr.stash_page', 'Stash page')).pack(side='left', padx=(4, 0))
         self.page_current, self.page_first = T('cr.page.current', 'Current page'), T('cr.page.first_free', 'First free')
         self.page = tk.StringVar(value=self.page_current)
         ttk.Combobox(row, state='readonly', width=14, textvariable=self.page,
@@ -449,24 +499,26 @@ class CreatorWindow:
         if settings.get('capy_unrestricted') is None:          # first start: unrestricted on (this build's point)
             settings.put('capy_unrestricted', True)
         self.unrestricted = tk.BooleanVar(value=bool(settings.get('capy_unrestricted')))
-        ttk.Checkbutton(row, text=T('cr.unrestricted', 'Unrestricted'), variable=self.unrestricted,
-                        command=self.set_unrestricted).pack(side='left', padx=(8, 0))
-        self.dest = ttk.Label(row, text='')
-        self.dest.pack(side='left', padx=6)
+        ttk.Checkbutton(rowb, text=T('cr.unrestricted', 'Unrestricted'), variable=self.unrestricted,
+                        command=self.set_unrestricted).pack(side='left', padx=(6, 0))
+        self.dest = ttk.Label(rowb, text='')
+        self.dest.pack(side='left', padx=4)
 
         self.scroll = ScrollFrame(mid)
-        self.scroll.pack(side='top', fill='both', expand=True, pady=(4, 0))
+        self.scroll.pack(side='top', fill='both', expand=True, pady=(2, 0))
         try:
             self.scroll.no_wheel(self.copies_spin)     # (self.scroll exists only from here on)
         except (AttributeError, KeyError):
             pass
         body = self.scroll.inner
         body.columnconfigure(0, weight=1)
+        self.scroll.canvas.bind('<Configure>', self._rewrap, add='+')
+        body.bind('<Configure>', self._rewrap, add='+')     # new content: built with the width known by then
         self.opts = ttk.Frame(body)
-        self.opts.grid(row=0, column=0, sticky='we', pady=(0, 4))
+        self.opts.grid(row=0, column=0, sticky='we', pady=(0, 2))
         self.opts.columnconfigure(1, weight=1)
         bar = ttk.Frame(body)
-        bar.grid(row=1, column=0, sticky='we', pady=(6, 0))
+        bar.grid(row=1, column=0, sticky='we', pady=(2, 0))
         ttk.Label(bar, text=T('cr.variable_values', 'Variable values'), font=('Segoe UI', 10, 'bold')).pack(side='left')
         for t, how in ((T('cr.btn.max', 'Max'), 'max'), (T('cr.btn.random', 'Random'), 'random'), (T('cr.btn.min', 'Min'), 'min')):
             D2.button(bar, t, lambda h=how: self.reroll(h), 8).pack(side='right', padx=2)
@@ -478,10 +530,10 @@ class CreatorWindow:
         self.mods_frame.inner.grid(row=2, column=0, sticky='we', pady=(4, 0))
         self.mods_frame.inner.columnconfigure(1, weight=1)
 
-        right = ttk.Frame(self.paned, padding=6)
+        right = ttk.Frame(self.paned, padding=3)
         self.paned.add(right, weight=1)
         app_detail = self.app.detail
-        self.preview = tk.Text(right, width=int(app_detail.cget('width')), wrap='word', bg=app_detail.cget('bg'),
+        self.preview = tk.Text(right, width=20, wrap='word', bg=app_detail.cget('bg'),
                                fg=app_detail.cget('fg'), bd=0, padx=int(str(app_detail.cget('padx'))), pady=8,
                                font=app_detail.cget('font'), cursor='arrow', highlightthickness=0)
         psb = ttk.Scrollbar(right, orient='vertical', command=self.preview.yview)
@@ -499,12 +551,49 @@ class CreatorWindow:
             w = self.paned.winfo_width()
             if w < 50:
                 return
-            pw = max(300, min(int(w * 0.28), 460))
-            lw = max(220, min(int(w * 0.22), 360))
+            try:
+                from tkinter import font as tkfont
+                ch = tkfont.Font(font=self.preview.cget('font')).measure('0')
+            except tk.TclError:
+                ch = 7
+            pw = max(26 * ch, min(int(w * 0.28), 66 * ch))
+            lw = max(24 * ch, min(int(w * 0.22), 52 * ch))
+            self._sash_w = w
             self.paned.sashpos(0, lw)
-            self.paned.sashpos(1, max(lw + 300, w - pw))
+            self.paned.sashpos(1, max(lw + 30 * ch, w - pw))
         except tk.TclError:
             pass
+
+    def _wrap_w(self):
+        """Wrap width of the notes in the options column: the column's own width (520 before it is on screen)."""
+        try:
+            w = self.scroll.canvas.winfo_width()
+            return max(200, w - 16) if w > 50 else 520
+        except (tk.TclError, AttributeError):
+            return 520
+
+    def _rewrap(self, _e=None):
+        """The options column changed width: its wrapped notes follow."""
+        w = self._wrap_w()
+
+        def walk(x):
+            for c in x.winfo_children():
+                try:
+                    if c.winfo_class() == 'TLabel' and int(str(c.cget('wraplength')) or 0) not in (0, w):
+                        c.configure(wraplength=w)
+                except (tk.TclError, ValueError):
+                    pass
+                walk(c)
+        try:
+            walk(self.scroll.inner)
+        except tk.TclError:
+            pass
+
+    def _resashed(self, e):
+        """The window changed width: the columns keep their shares (until a separator is dragged by hand)."""
+        if e.widget is self.paned and not self._sash_user and abs(e.width - getattr(self, '_sash_w', 0)) > 8:
+            self._sash_w = e.width
+            self.top.after_idle(self._place_sashes)
 
     def update_dest(self):
         if self.target is not None:
@@ -999,7 +1088,7 @@ class CreatorWindow:
         fr = ttk.Frame(box)
         fr.pack(fill='x')
         var = tk.IntVar(value=cur)
-        val = ttk.Label(fr, text=fmt(cur), width=22)
+        val = ttk.Label(fr, text=fmt(cur), width=8 if fmt is str else 22)   # names need room, numbers do not
 
         def moved(x):
             v = int(round(float(x)))
@@ -1007,12 +1096,13 @@ class CreatorWindow:
                 var.set(v)
             val.configure(text=fmt(var.get()))
 
-        sc = ttk.Scale(fr, from_=lo, to=hi, orient='horizontal', length=300, command=moved)
+        sc = ttk.Scale(fr, from_=lo, to=hi, orient='horizontal', length=120, command=moved)
         sc.set(cur)
-        sc.pack(side='left', padx=(12, 0))
-        val.pack(side='left', padx=8)
+        # range and value keep their place at the right; the slider takes the width the column has
         ttk.Label(fr, text=T('cr.range_fmt', '{lo} to {hi}', lo=fmt(lo), hi=fmt(hi)) if fmt is not str else
-                  T('cr.range', '({lo} to {hi})', lo=lo, hi=hi)).pack(side='left')
+                  T('cr.range', '({lo} to {hi})', lo=lo, hi=hi)).pack(side='right', padx=(0, 4))
+        val.pack(side='right', padx=6)
+        sc.pack(side='left', fill='x', expand=True, padx=(10, 0))
         sc.bind('<ButtonRelease-1>', lambda e: on_release(var.get()))
         for key, dv in (('<Left>', -1), ('<Right>', 1)):
             sc.bind(key, lambda e, dv=dv: (sc.set(max(lo, min(hi, var.get() + dv))), on_release(var.get()), 'break')[-1])
@@ -1062,7 +1152,7 @@ class CreatorWindow:
             except Exception:
                 lines = [f"stat {x['id']}: {x['value']}" for x in raw_extra]
             ttk.Label(inner, text=T('cr.kept_list', 'Kept as they are on the item (not from its affixes or its recipe): {lines}',
-                                    lines='; '.join(lines)), wraplength=520, justify='left').grid(row=r, column=0, columnspan=2, sticky='w')
+                                    lines='; '.join(lines)), wraplength=self._wrap_w(), justify='left').grid(row=r, column=0, columnspan=2, sticky='w')
             r += 1
         elif unr:
             note = (T('cr.edit_note', 'Unrestricted: the item\'s own stat list is below - click a stat to select '
@@ -1071,7 +1161,7 @@ class CreatorWindow:
                     T('cr.unrestricted_note', 'Unrestricted: the values below can go anywhere the save format '
                       'holds (a value the format cannot store is warned about, never written). Raw stats to add, '
                       'edit or delete by stat id are at the bottom.'))
-            ttk.Label(inner, text=note, wraplength=520, justify='left').grid(
+            ttk.Label(inner, text=note, wraplength=self._wrap_w(), justify='left').grid(
                 row=r, column=0, columnspan=2, sticky='w')
             r += 1
         for m in mods:
@@ -2478,8 +2568,11 @@ def run():
     rename_app(mxl_gui)
     import mxl_d2_theme                   # which look: dark Diablo ('d2', default) or Hero-Editor light ('he')
     dark = mxl_d2_theme.dark()
-    import mxl_d2look                     # no game-art panels: plain grids (dark, or the Hero-Editor light ones)
-    mxl_d2look.disable()
+    import mxl_d2look                     # dark look: Median XL's own stash / inventory panels (game art);
+    if dark:                              # innermost wrapper, plain dark grids when the game folder is unknown
+        mxl_d2look.install(mxl_gui.App)
+    else:
+        mxl_d2look.disable()              # light look: the Hero-Editor grids
     import mxl_tabs                       # every editor window becomes a tab of the main window (tiling WM)
     mxl_tabs.install(mxl_gui.App)
     import mxl_hover                      # item stats follow the mouse hover (no click needed)
@@ -2504,9 +2597,13 @@ def run():
     mxl_import.install(mxl_gui.App)
     import mxl_inv_gui
     mxl_inv_gui.install(mxl_gui.App)
+    import mxl_fit                         # stash / inventory cell size from the window's size, on every resize
+    mxl_fit.install(mxl_gui.App)
     import mxl_he_theme                    # the Hero-Editor look for every window - outermost (walks what others build)
     mxl_he_theme.install(mxl_gui.App)      # (in the dark look it repaints with mxl_d2_theme's palette)
     mxl_d2_theme.install_toggle(mxl_gui.App)
+    import mxl_toolbar                     # the top bar at every width: what does not fit goes into "More"
+    mxl_toolbar.install(mxl_gui.App)
     import mxl_app_icon
     mxl_app_icon.install(mxl_gui.App)
     mxl_splash.install(mxl_gui.App)       # last: outermost, closes the splash once everything is built

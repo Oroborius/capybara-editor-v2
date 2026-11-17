@@ -539,3 +539,20 @@ longer in the stash).
 - `mxl_lang.py`: translation helper of the added windows (see Languages).
 - `repack.py`, `carch.py`: rebuild the PyInstaller exe with these modules (Python 3.10:
   `python repack.py "MXL Item Collector.exe" "MXL Item Collector (Creator).exe"`, plugin folder path set inside).
+
+## Compact layout (window-size driven)
+- `mxl_fit`: the Stash tab's cell size (`app.cell`, shared by `MainInventory.layout()`) is chosen from the tab's
+  own size on every resize: largest cell with which stash + equipment/inventory + a detail panel of at least
+  26 characters fit, `MIN_CELL` 14. Dark look with game art: whole Median XL panels when their cell is >= 26 px,
+  else only the framed part (`mxl_d2look.STASH_CROP` / `INV_CROP`). Header rows fold onto two lines. The window
+  gets an explicit start size (86 % of the screen, at most 1500x900 x scale), set again as the loop starts.
+- `mxl_d2look` is installed again in the dark look (art panels); `wanted()` follows `mxl_d2_theme.dark()`, the
+  separate "D2 look" box is gone. `MainInventory` has three modes: `sigma` (Median XL inventory panel, dark look),
+  classic D2 character screen (light look), plain boxes (no game art). Its icons always come from its own cache.
+- `mxl_toolbar`: top bar items that do not fit go into a "More" menu (invokes the hidden widgets); hide order:
+  theme box, Language, Game folder, version, then the buttons from the right. Re-laid out on `<Configure>`.
+- `mxl_scroll.Scrolled`: page wrapper that scrolls only when the content does not fit (Character tab). Call
+  `refresh()` after swapping content: Tk reports no size change while the inner frame is held at a given size.
+- Creator: sashes follow the window width until one is dragged; bottom row folds onto 2-3 lines; sliders expand.
+- Tk 9 gotchas met: `Menu.delete(0, 'end')` raises on an empty menu; PhotoImages must not be dropped before the
+  event loop runs (another thread may collect them) - the splash process therefore ends with `os._exit`.

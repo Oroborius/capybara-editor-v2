@@ -92,26 +92,32 @@ class CharacterWindow:
         except Exception:
             pass
         self.cell = app.cell
+        self.icons = {}
+        self._fit_job = None
         # tab row and stone buttons at the bottom, like the Hero Editor
         bottom = tk.Frame(self.top, bg='#000000')
         bottom.pack(side='bottom', fill='x')
         tabbar = tk.Frame(bottom, bg='#000000')
         tabbar.pack(side='top', fill='x')
         actions = tk.Frame(bottom, bg='#000000')
-        actions.pack(side='top', fill='x', padx=8, pady=(4, 6))
-        StoneButton(actions, 'SAVE', self.save_progress).pack(side='left', padx=(0, 10))
-        StoneButton(actions, 'RELOAD', self.reload).pack(side='left', padx=(0, 10))
+        actions.pack(side='top', fill='x', padx=4, pady=(1, 2))
+        StoneButton(actions, 'SAVE', self.save_progress).pack(side='left', padx=(0, 6))
+        StoneButton(actions, 'RELOAD', self.reload).pack(side='left', padx=(0, 6))
         StoneButton(actions, 'CLOSE', self.close).pack(side='right')
-        tk.Label(actions, text=T('ch.glory', 'Glory to the real Heroes ZonFire99 and Mastadex'), font=('Times New Roman', 12, 'italic'),
-                 bg='#000000', fg=HE_GOLD).pack(side='right', padx=16)
+        # packed before the credit line: in a narrow window the credit is what gets cut, not the status
         self.bar_status = tk.Label(actions, text='', font=HE_FONT, bg='#000000', fg=HE_GOLD, anchor='w')
-        self.bar_status.pack(side='left', fill='x', expand=True, padx=8)
+        self.bar_status.pack(side='left', fill='x', expand=True, padx=6)
+        tk.Label(actions, text=T('ch.glory', 'Glory to the real Heroes ZonFire99 and Mastadex'), font=('Times New Roman', 12, 'italic'),
+                 bg='#000000', fg=HE_GOLD).pack(side='right', padx=8)
         self.top.protocol('WM_DELETE_WINDOW', self.close)
-        body = tk.Frame(self.top, bg=HE_BG)
-        body.pack(fill='both', expand=True, padx=6, pady=(6, 0))
+        import mxl_scroll                            # the pages scroll when the window is smaller than they are
+        self.scroll = mxl_scroll.Scrolled(self.top, bg=HE_BG)
+        self.scroll.pack(fill='both', expand=True, padx=2, pady=(2, 0))
+        body = self.scroll.inner
         self.body = body
+        self.scroll.bind('<Configure>', self._fit_later, add='+')
         self.st_tab = tk.Frame(body, bg=HE_BG)
-        self.eq_tab = ttk.Frame(body, padding=6)
+        self.eq_tab = ttk.Frame(body, padding=3)
         self.sk_tab = tk.Frame(body, bg=HE_BG)
         self.wp_tab = tk.Frame(body, bg=HE_BG)
         self.q_tab = tk.Frame(body, bg=HE_BG)
@@ -123,9 +129,9 @@ class CharacterWindow:
                           ('skills', T('ch.tab.skills', 'Skills')),
                           ('waypoints', T('ch.tab.waypoints', 'Waypoints')), ('quests', T('ch.tab.quests', 'Quests'))):
             rb = tk.Radiobutton(tabbar, text=text, value=key, variable=self.tab, indicatoron=0, font=('Times New Roman', 12),
-                                underline=0, bd=1, relief='raised', padx=8, pady=2, bg='#e8e8e8', selectcolor='#ffffff',
+                                underline=0, bd=1, relief='raised', padx=6, pady=0, bg='#e8e8e8', selectcolor='#ffffff',
                                 activebackground='#ffffff', command=self.show_tab)
-            rb.pack(side='left', padx=(2 if key == 'stats' else 0, 0), pady=(0, 3))
+            rb.pack(side='left', padx=(2 if key == 'stats' else 0, 0), pady=(0, 1))
             self.tab_buttons.append(rb)
             ch0 = text[:1].lower()
             if ch0.isascii() and ch0.isalpha():              # Alt + first letter (a translated label may not have one)
@@ -145,7 +151,7 @@ class CharacterWindow:
         self.dark = tk.BooleanVar(value=dark)
         tk.Checkbutton(tabbar, text=T('ch.dark', 'Dark mode'), variable=self.dark, command=self.apply_theme, font=('Times New Roman', 12),
                        bg='#000000', fg=HE_GOLD, selectcolor='#000000', activebackground='#000000',
-                       activeforeground=HE_GOLD, bd=0, highlightthickness=0).pack(side='left', padx=(14, 0), pady=(0, 3))
+                       activeforeground=HE_GOLD, bd=0, highlightthickness=0).pack(side='left', padx=(10, 0), pady=(0, 1))
         self._build_skills()
         self._build_equipment()
         self._build_progress()
@@ -200,6 +206,7 @@ class CharacterWindow:
                 walk(c)
         self.top.configure(bg=t['bg'])
         self.body.configure(bg=t['bg'])
+        self.scroll.set_bg(t['bg'])
         for page in (self.st_tab, self.wp_tab, self.q_tab):
             walk(page)
         for tree in self.wp_trees + self.q_trees:
@@ -215,6 +222,7 @@ class CharacterWindow:
                 page.pack(fill='both', expand=True)
             else:
                 page.pack_forget()
+        self.scroll.refresh()
 
     # ================================================================== equipment tab
     def _build_equipment(self):
@@ -222,7 +230,7 @@ class CharacterWindow:
         left = ttk.Frame(f)
         left.pack(side='left', fill='y')
         row = ttk.Frame(left)
-        row.pack(fill='x', pady=(0, 4))
+        row.pack(fill='x', pady=(0, 2))
         for text, val in ((T('ch.character', 'Character'), False), (T('ch.mercenary', 'Mercenary'), True)):
             b = ttk.Radiobutton(row, text=text, value=val, variable=self.merc, command=self.on_view)
             b.pack(side='left', padx=2)
@@ -236,7 +244,7 @@ class CharacterWindow:
         self.doll = tk.Canvas(left, width=int(DOLL_W * c) + 1, height=int(DOLL_H * c) + 1, bg=BG, highlightthickness=0)
         self.doll.pack(anchor='w')
         self.inv_label = ttk.Label(left, text=T('ch.tab.inventory', 'Inventory'))
-        self.inv_label.pack(anchor='w', pady=(8, 2))
+        self.inv_label.pack(anchor='w', pady=(3, 1))
         self.inv = tk.Canvas(left, width=INV_W * c + 1, height=INV_H * c + 1, bg=BG, highlightthickness=0)
         self.inv.pack(anchor='w')
         for cv in (self.doll, self.inv):
@@ -248,19 +256,19 @@ class CharacterWindow:
         # wherever the focus is; the handler only acts when the pointer is over these canvases
         self.top.bind('<Delete>', self.on_delete_key, add='+')
         btns = ttk.Frame(left)
-        btns.pack(fill='x', pady=(8, 0))
+        btns.pack(fill='x', pady=(3, 0))
         for text, cmd in ((T('ch.btn.to_stash', 'To stash'), self.to_stash), (T('ch.btn.from_stash', 'From stash'), self.from_stash),
                           (T('ch.btn.edit', 'Edit...'), self.edit), (T('ch.btn.create_here', 'Create here...'), self.create_here),
                           (T('ch.btn.delete', 'Delete'), self.delete)):
-            ttk.Button(btns, text=text, command=cmd).pack(side='left', padx=2)
+            ttk.Button(btns, text=text, command=cmd).pack(side='left', padx=1)
         self.status = ttk.Label(left, text=T('ch.inv_hint', 'Drag items between the slots and the inventory. '
                                              '"From stash" takes the item selected in the main window.'),
-                                wraplength=620, justify='left')
-        self.status.pack(anchor='w', pady=(6, 0))
+                                wraplength=max(260, INV_W * c), justify='left')
+        self.status.pack(anchor='w', pady=(2, 0))
         right = ttk.Frame(f)
-        right.pack(side='left', fill='both', expand=True, padx=(10, 0))
+        right.pack(side='left', fill='both', expand=True, padx=(4, 0))
         d = self.app.detail
-        self.preview = tk.Text(right, width=int(d.cget('width')), wrap='word', bg=d.cget('bg'), fg=d.cget('fg'), bd=0,
+        self.preview = tk.Text(right, width=16, wrap='word', bg=d.cget('bg'), fg=d.cget('fg'), bd=0,
                                padx=int(str(d.cget('padx'))), pady=8, font=d.cget('font'), cursor='arrow',
                                highlightthickness=0)
         sb = ttk.Scrollbar(right, orient='vertical', command=self.preview.yview)
@@ -286,10 +294,63 @@ class CharacterWindow:
 
     # ---- drawing
     def icon(self, it, bg):
+        """Icon layers at this page's own cell size, in its own cache (the main window drops its icons whenever
+        its cell size changes; an image that is still shown here must not go with them)."""
         try:
-            return self.app.icon(it, bg)
+            from PIL import Image, ImageTk
+            from mxl_gfx import icon_layers, icon_name, ICON_CELL
+            from paths import ICONS_DIR
+            d = self.data
+            key = (it['code'], icon_name(it, d), it.get('image'), it.get('ethereal'), it.get('sockets'),
+                   tuple(icon_name(x, d) for x in it.get('socketed', [])), bg, self.cell)
+            if key not in self.icons:
+                layers = icon_layers(it, d, bg, ICONS_DIR)
+                if layers is not None and layers.get(1) is not None:
+                    f = self.cell / ICON_CELL
+                    size = (max(1, round(layers[1].width * f) - 2), max(1, round(layers[1].height * f) - 2))
+                    layers = {k: (ImageTk.PhotoImage(im.resize(size, Image.LANCZOS)) if im is not None else None)
+                              for k, im in layers.items()}
+                self.icons[key] = layers
+            return self.icons[key]
         except Exception:
             return None
+
+    def fit_cell(self, _e=None):
+        """Cell size of the Inventory page from the room the page has (called when the page is resized)."""
+        self._fit_job = None
+        try:
+            W, H = self.scroll.winfo_width(), self.scroll.winfo_height()
+            if W < 50 or H < 50 or not hasattr(self, 'inv') or not self.doll.winfo_exists():
+                return
+            c0 = self.cell
+            left = self.doll.master
+            over = left.winfo_reqheight() - (int(DOLL_H * c0) + 1) - (int(self.inv.cget('height')))
+            try:
+                from tkinter import font as tkfont
+                side = 26 * tkfont.Font(font=self.preview.cget('font')).measure('0')
+            except tk.TclError:
+                side = 180
+            cap = getattr(getattr(self.app, 'fit', None), 'cap', 48)
+            c = int(min(cap, (H - over - 12) / (DOLL_H + INV_H), (W - side - 24) / INV_W))
+            c = max(14, c)
+            if c == c0:
+                return
+            self.cell = c
+            self.icons.clear()
+            self.doll.configure(width=int(DOLL_W * c) + 1, height=int(DOLL_H * c) + 1)
+            self.inv.configure(width=INV_W * c + 1, height=INV_H * c + 1)
+            self.status.configure(wraplength=max(260, INV_W * c))
+            self.redraw()
+            self.scroll.refresh()
+        except (tk.TclError, AttributeError) as e:
+            print('character inventory fit:', e)
+
+    def _fit_later(self, _e=None):
+        if getattr(self, '_fit_job', None) is None:
+            try:
+                self._fit_job = self.top.after(80, self.fit_cell)
+            except tk.TclError:
+                pass
 
     def draw_item(self, cv, it, x0, y0, x1, y1, selected):
         d = self.data
@@ -640,7 +701,7 @@ class CharacterWindow:
         self.sk_page_of = {}
         self._skills_cls = None
         top = tk.Frame(f, bg=HE_BG)
-        top.pack(fill='x', padx=8, pady=(6, 2))
+        top.pack(fill='x', padx=4, pady=(2, 1))
         self.sk_title = tk.Label(top, text='', font=HE_FONT_I, bg=HE_BG)
         self.sk_title.pack(side='left')
         tk.Label(top, text='   ' + T('he.skills_find', 'Find:'), font=HE_FONT, bg=HE_BG).pack(side='left')
@@ -657,7 +718,7 @@ class CharacterWindow:
         # the game's skill screen: stone tree area, the trees in a vertical tab bar on its right,
         # the tab's long note as the caption under the tree
         self.sk_body = tk.Frame(f, bg=HE_BG)
-        self.sk_body.pack(fill='both', expand=True, padx=8, pady=(4, 0))
+        self.sk_body.pack(fill='both', expand=True, padx=4, pady=(2, 0))
         self.sk_holder = tk.Frame(self.sk_body, bg=SK_BG)
         self.sk_holder.pack(fill='both', expand=True, side='left')
         self.sk_bar = tk.Frame(self.sk_body, bg=HE_BG)
@@ -666,10 +727,10 @@ class CharacterWindow:
         self.sk_pages = {}
         self.sk_show = tk.StringVar(value='')
         self.sk_caption = tk.Label(f, text='', font=HE_FONT, bg=HE_BG, fg=HE_GOLD, anchor='w')
-        self.sk_caption.pack(fill='x', padx=8, pady=(2, 2))
+        self.sk_caption.pack(fill='x', padx=4, pady=(1, 1))
         tk.Label(f, text=T('he.skills_note', 'Each box is the skill\'s own hard-point level (0 to 255). '
                                              'Changes are written on SAVE.'), font=HE_FONT_S,
-                 bg=HE_BG, fg='#8a7a4a').pack(anchor='w', padx=8, pady=(0, 6))
+                 bg=HE_BG, fg='#8a7a4a').pack(anchor='w', padx=4, pady=(0, 2))
 
     def _theme_art(self):
         """The game's Sigma theme artwork (None without the game folder): stone panels and fonts.
@@ -931,7 +992,8 @@ class CharacterWindow:
         self._sk_caption_of(self.sk_show.get())
         try:
             self.sk_holder.update_idletasks()
-        except tk.TclError:
+            self.scroll.refresh()
+        except (tk.TclError, AttributeError):
             pass
 
     def _filter_skills(self):
@@ -948,7 +1010,8 @@ class CharacterWindow:
             self._sk_show_tab()
         try:
             self.sk_holder.update_idletasks()
-        except tk.TclError:
+            self.scroll.refresh()
+        except (tk.TclError, AttributeError):
             pass
 
     def _zero_skills(self):
@@ -1009,9 +1072,9 @@ class CharacterWindow:
         def frame(parent, text, **grid):
             """One of the character screen's sections: stone box, gold title, gold game-font text."""
             fr = tk.LabelFrame(parent, text=' ' + text, font=HE_FONT_I, bg=SK_STONE, fg=HE_GOLD,
-                               bd=2, relief='groove', padx=8, pady=4,
+                               bd=2, relief='groove', padx=4, pady=1,
                                highlightbackground=SK_EDGE, highlightthickness=1)
-            fr.grid(sticky='nsew', padx=6, pady=4, **grid)
+            fr.grid(sticky='nsew', padx=2, pady=1, **grid)
             return fr
 
         def field(parent, r, label, key, width=12, col=0):
@@ -1031,12 +1094,14 @@ class CharacterWindow:
 
         for c in range(3):
             f.grid_columnconfigure(c, weight=1, uniform='he')
+        from tkinter import font as tkfont
+        note_w = tkfont.Font(font=HE_FONT_S).measure('0') * 34    # notes wrap instead of widening their column
         fr = frame(f, T('he.name', 'Name'), row=0, column=0)
         self.sv_name = tk.Label(fr, text='', font=('Times New Roman', 14, 'bold'), bg=SK_STONE, anchor='w')
         self.sv_name.grid(row=0, column=0, columnspan=3, sticky='w')
         tk.Label(fr, text=T('he.copy_as', 'Copy as'), font=HE_FONT, bg=SK_STONE).grid(row=1, column=0, sticky='w', pady=(4, 0))
         self.copy_name = tk.StringVar()
-        tk.Entry(fr, textvariable=self.copy_name, width=16, font=HE_FONT, relief='sunken', bd=2).grid(row=1, column=1, pady=(4, 0))
+        tk.Entry(fr, textvariable=self.copy_name, width=11, font=HE_FONT, relief='sunken', bd=2).grid(row=1, column=1, pady=(4, 0))
         tk.Button(fr, text=T('he.copy', 'Copy'), font=HE_FONT, command=self.copy_char, bg=HE_BTN).grid(row=1, column=2, padx=4, pady=(4, 0))
 
         fr = frame(f, T('he.class', 'Class'), row=1, column=0)
@@ -1048,7 +1113,7 @@ class CharacterWindow:
         self.class_box.grid(row=0, column=1, sticky='w', pady=1)
         self.class_box.bind('<<ComboboxSelected>>', lambda _e: self.on_class_change())
         tk.Label(fr, text=T('he.class_note', 'Changing the class resets the skill levels\n(the save keeps one skill list per class).'),
-                 font=HE_FONT_S, bg=SK_STONE, justify='left').grid(row=1, column=0, columnspan=2, sticky='w', pady=(2, 0))
+                 font=HE_FONT_S, bg=SK_STONE, justify='left', wraplength=note_w).grid(row=1, column=0, columnspan=2, sticky='w', pady=(2, 0))
         fr = frame(f, T('he.level', 'Level'), row=2, column=0)
         tk.Label(fr, text=T('he.level_c', 'Level:'), font=HE_FONT, bg=SK_STONE).grid(row=0, column=0, sticky='e', padx=(0, 4))
         self.new_level = tk.StringVar(value=str(ch.level))
@@ -1056,7 +1121,7 @@ class CharacterWindow:
         self.level_box.grid(row=0, column=1, sticky='w')
         tk.Label(fr, text=T('he.level_note', 'Raising the level works like the game: experience, 5 stat points\n'
                             'and 1 skill point per level, life / mana / stamina per level.'),
-                 font=HE_FONT_S, bg=SK_STONE, justify='left').grid(row=1, column=0, columnspan=2, sticky='w', pady=(2, 0))
+                 font=HE_FONT_S, bg=SK_STONE, justify='left', wraplength=note_w).grid(row=1, column=0, columnspan=2, sticky='w', pady=(2, 0))
         fr = frame(f, T('he.experience', 'Experience'), row=3, column=0)
         field(fr, 0, T('he.experience_c', 'Experience:'), 'exp', 14)
 
@@ -1106,8 +1171,9 @@ class CharacterWindow:
         field(fr, 1, T('he.version', 'Version:'), 'version', 10)
         tk.Label(f, text=T('he.stats_note', 'Type any value in the number boxes (gold, experience, strength ..., '
                            'life / mana / stamina) and click SAVE; the level box works like the game: raising it '
-                           'gives experience, stat and skill points.'), font=HE_FONT_S, bg=SK_STONE).grid(
-            row=4, column=0, columnspan=3, sticky='w', padx=8, pady=(6, 0))
+                           'gives experience, stat and skill points.'), font=HE_FONT_S, bg=SK_STONE,
+                 justify='left', wraplength=note_w * 2).grid(
+            row=4, column=0, columnspan=3, sticky='w', padx=4, pady=(2, 0))
 
         # ---------------------------------------------------------------- Waypoints / Quests
         self.wp_trees = []
@@ -1116,8 +1182,8 @@ class CharacterWindow:
             dn = difficulty_name(k)
             self.wp_tab.grid_columnconfigure(k, weight=1, uniform='he')
             self.q_tab.grid_columnconfigure(k, weight=1, uniform='he')
-            fr = tk.LabelFrame(self.wp_tab, text=dn, font=HE_FONT_I, bg=SK_STONE, bd=2, relief='groove', padx=4, pady=4)
-            fr.grid(row=0, column=k, sticky='nsew', padx=6, pady=4)
+            fr = tk.LabelFrame(self.wp_tab, text=dn, font=HE_FONT_I, bg=SK_STONE, bd=2, relief='groove', padx=2, pady=2)
+            fr.grid(row=0, column=k, sticky='nsew', padx=2, pady=2)
             t = CheckTree(fr, self.on_tree_change)
             root = t.add('', T('he.mode_waypoints', '{mode} Mode Waypoints', mode=dn))
             for act, wps in WAYPOINTS:
@@ -1128,8 +1194,8 @@ class CharacterWindow:
                     t.add(a, name + (T('he.hell_suffix', ' (Hell)') if n in MC.HELL_ONLY_WAYPOINTS else ''), key=('wp', k, n), locked=(n == 0))
             t.open(root)
             self.wp_trees.append(t)
-            fr = tk.LabelFrame(self.q_tab, text=dn, font=HE_FONT_I, bg=SK_STONE, bd=2, relief='groove', padx=4, pady=4)
-            fr.grid(row=0, column=k, sticky='nsew', padx=6, pady=4)
+            fr = tk.LabelFrame(self.q_tab, text=dn, font=HE_FONT_I, bg=SK_STONE, bd=2, relief='groove', padx=2, pady=2)
+            fr.grid(row=0, column=k, sticky='nsew', padx=2, pady=2)
             t = CheckTree(fr, self.on_tree_change)
             root = t.add('', T('he.mode_quests', '{mode} Mode Quests', mode=dn))
             for act, intro, quests, done in ACTS:
@@ -1149,10 +1215,10 @@ class CharacterWindow:
         self.q_tab.grid_rowconfigure(0, weight=1)
         tk.Label(self.wp_tab, text=T('he.wp_note', 'Waypoints marked (Hell) are Median XL areas that only exist in Hell. '
                                      'Click a box to tick it; a mode or act box ticks everything under it.'),
-                 font=HE_FONT_S, bg=SK_STONE).grid(row=1, column=0, columnspan=3, sticky='w', padx=8)
+                 font=HE_FONT_S, bg=SK_STONE, justify='left', wraplength=note_w * 2).grid(row=1, column=0, columnspan=3, sticky='w', padx=4)
         tk.Label(self.q_tab, text=T('he.q_note', 'Ticking a quest gives its reward in that difficulty (shown in brackets). '
                                     'Quests completed in game stay ticked and cannot be changed here.'),
-                 font=HE_FONT_S, bg=SK_STONE).grid(row=1, column=0, columnspan=3, sticky='w', padx=8)
+                 font=HE_FONT_S, bg=SK_STONE, justify='left', wraplength=note_w * 2).grid(row=1, column=0, columnspan=3, sticky='w', padx=4)
         self.refresh_progress()
 
     def _init_state(self):
@@ -1396,14 +1462,20 @@ class CheckTree:
 
     def __init__(self, parent, on_change):
         style = ttk.Style()
+        from tkinter import font as tkfont
+        try:                                         # rows as tall as the text (and the 13 px tick box) needs
+            row_h = max(16, tkfont.Font(font=HE_FONT).metrics('linespace') + 3)
+        except tk.TclError:
+            row_h = 20
         style.configure('HE.Treeview', background='#ffffff', fieldbackground='#ffffff', foreground='#000000',
-                        font=HE_FONT, rowheight=27, borderwidth=0, indent=26)
+                        font=HE_FONT, rowheight=row_h, borderwidth=0, indent=20)
         style.map('HE.Treeview', background=[('selected', '#ffffff')], foreground=[('selected', '#000000')])
         style.layout('HE.Treeview', [('Treeview.treearea', {'sticky': 'nswe'})])
         wrap = tk.Frame(parent, bg='#ffffff', bd=2, relief='sunken')
         self.wrap = wrap
         wrap.pack(fill='both', expand=True)
         self.tv = ttk.Treeview(wrap, show='tree', style='HE.Treeview', selectmode='browse')
+        self.tv.column('#0', width=150, minwidth=150, stretch=True)   # asks for little, takes what the column has
         sb = ttk.Scrollbar(wrap, orient='vertical', command=self.tv.yview)
         self.tv.configure(yscrollcommand=sb.set)
         self.tv.pack(side='left', fill='both', expand=True)

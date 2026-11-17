@@ -322,10 +322,15 @@ def run_splash(parent_pid):
 
     root.after(10, tick)
     root.mainloop()
+    del imgs[:]                                              # freed here, in the thread that made them: left to the
+    root._pic = root._title = None                           # collector they could go while the worker still runs
     try:
         os.remove(flag)
     except OSError:
         pass
+    th.join()                                                # the build finishes hidden; then leave without the
+    sys.stdout.flush()                                       # interpreter's teardown, which would free Tk objects
+    os._exit(0)                                              # from whichever thread happens to collect them
 
 
 def main():
