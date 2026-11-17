@@ -75,5 +75,8 @@ if [ -z "$TOOL" ]; then
     fi
 fi
 OUT="$ROOT/dist/linux/MXL_Capybara_Editor_V2-x86_64.AppImage"
-ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 "$TOOL" "$APPDIR" "$OUT" >>"$LOG" 2>&1 || { tail -20 "$LOG"; exit 1; }
+# packed under a temporary name, then renamed: the previous AppImage may be running ("Text file busy")
+rm -f "$OUT.new"
+ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 "$TOOL" "$APPDIR" "$OUT.new" >>"$LOG" 2>&1 || { tail -20 "$LOG"; exit 1; }
+mv -f "$OUT.new" "$OUT"
 echo "built: $OUT ($(du -h "$OUT" | cut -f1))"
