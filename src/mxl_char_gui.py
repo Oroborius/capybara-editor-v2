@@ -257,8 +257,8 @@ class CharacterWindow(StatEditMixin):
         for text, val in ((T('ch.character', 'Character'), False), (T('ch.mercenary', 'Mercenary'), True)):
             b = ttk.Radiobutton(row, text=text, value=val, variable=self.merc, command=self.on_view)
             b.pack(side='left', padx=2)
-            if val and not self.ch.merc_hired:
-                b.state(['disabled'])
+            if val:
+                self.merc_rb = b                     # enabled while a mercenary is hired (see redraw)
         ttk.Label(row, text='   ' + T('ch.weapon_set', 'Weapon set')).pack(side='left')
         for n in (1, 2):
             ttk.Radiobutton(row, text='I' if n == 1 else 'II', value=n, variable=self.wset,
@@ -394,6 +394,9 @@ class CharacterWindow(StatEditMixin):
 
     def redraw(self):
         c = self.cell
+        if not self.ch.merc_hired:                   # none, or dismissed on the Mercenary page
+            self.merc.set(False)
+        self.merc_rb.state(['!disabled'] if self.ch.merc_hired else ['disabled'])
         merc = self.is_merc()
         eq = self.ch.equipped(merc)
         cv = self.doll

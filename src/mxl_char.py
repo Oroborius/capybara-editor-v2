@@ -84,7 +84,10 @@ def difficulty_name(k):
 
 
 BODYLOC_CODES = ['', 'head', 'neck', 'tors', 'rarm', 'larm', 'rrin', 'lrin', 'belt', 'feet', 'glov']
-MERC_SLOTS = (1, 3, 4, 5)
+# Slots a Median XL Sigma mercenary has: the game's inventory table (inventory.bin, the two "Hireling" rows)
+# defines boxes for both arms, torso, head, neck, belt, feet and gloves and none for the two rings; the samples
+# hold mercenary items in 1, 2, 3, 4, 8, 9, 10. No weapon set II (11, 12).
+MERC_SLOTS = (1, 2, 3, 4, 5, 8, 9, 10)
 INV_W, INV_H = 15, 10
 LOC_STORED, LOC_EQUIPPED, LOC_BELT = 0, 1, 2
 PANEL_INVENTORY, PANEL_CUBE = 1, 4
@@ -904,7 +907,7 @@ class Character:
         """None if the item can go in this equipment slot, else the reason."""
         d = self.data
         if merc and slot not in MERC_SLOTS:
-            return T('ch.err.merc_slots', 'mercenaries only use helm, armor and weapons')
+            return T('ch.err.merc_slots2', 'mercenaries have no ring slots and no second weapon set')
         locs = item_bodylocs(d, it['code'])
         if SLOTS[slot] not in locs:
             return T('ch.err.cannot_equip', '{item} cannot be equipped as {slot}', item=d.base(it['code']).name, slot=slot_name(slot))
