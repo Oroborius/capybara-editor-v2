@@ -339,6 +339,17 @@ def _set_cluster_quantity(app, it, newq):
 
 
 # ------------------------------------------------------------------ character window
+def inventory_menu(inv, ev):
+    """Right-click on an item of the main window's equipment / inventory panel (mxl_inv_gui, next to the stash):
+    the item is edited where it is, no trip through the stash."""
+    menu = tk.Menu(ev.widget, tearoff=0)
+    menu.add_command(label=rc('edit', 'Edit item...'), command=inv.edit)
+    try:
+        menu.tk_popup(ev.x_root, ev.y_root)
+    finally:
+        menu.grab_release()
+
+
 def _char_menu(win, cv, ev):
     menu = tk.Menu(cv, tearoff=0)
     from mxl_char_gui import CharacterWindow

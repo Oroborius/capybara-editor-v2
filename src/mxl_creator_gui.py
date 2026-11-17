@@ -2367,6 +2367,10 @@ def delete_selected(app):
 
 def edit_selected(app):
     it = app.selected
+    inv = getattr(app, 'inventory', None)
+    if it is None and inv is not None and inv.selected is not None:
+        inv.edit()                       # an item of the character / mercenary / inventory panel: edited in place
+        return
     if it is None or not app.path:
         messagebox.showinfo(T('cr.edit', 'Edit item'), T('cr.select_first', 'Select an item of the stash first.'))
         return

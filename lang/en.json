@@ -502,6 +502,7 @@
   "inv.err.no_char": "choose a character first",
   "inv.err.no_stash": "open a stash first",
   "inv.err.changed": "the character file changed on disk: it has been reloaded, try again",
+  "inv.err.item_gone": "the item is no longer where it was: select it again",
   "inv.title": "Equipment — {name}, level {level}",
   "inv.inv_title": "Inventory — {name}",
   "inv.slot": "slot",
