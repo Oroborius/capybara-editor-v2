@@ -118,9 +118,9 @@ def every_enumeration_round_trips():
     T.check(n > 2000, f'only {n} names checked')
 
 
-# BUG: the pick list of stat 98 (state, 11 param bits = 0..2047) offers "Dragon's Blessing (#65535)" - a states
-# row whose id is 0xFFFF. It cannot be stored: param_value() answers None, so picking it does nothing.
-@T.test(xfail='stat 98 offers the state "Dragon\'s Blessing (#65535)", which does not fit its 11 param bits')
+# Was a bug until 2026-11: the pick list of stat 98 (state, 11 param bits) offered "Dragon's Blessing (#65535)".
+# 0xFFFF is the "no state" marker of two stateicons.bin rows (icons no state uses), not a state.
+@T.test
 def offered_choices_fit_the_param_bits():
     E = T.engine()
     import mxl_statparams as SP
@@ -128,6 +128,49 @@ def offered_choices_fit_the_param_bits():
         bits = E.data.isc[sid]['param']
         for name, value in offered(E, sid):
             T.check(0 <= value < (1 << bits), f'stat {sid} ({bits} param bits) offers {name!r} = {value}')
+
+
+@T.test
+def offered_states_are_rows_of_the_states_table():
+    """Stat 98: every offered state is a row of states.bin, none is the 0xFFFF "no state" marker of the icon
+    table, and a name the marker row shared with a real state is no longer numbered."""
+    E = T.engine()
+    import mxl_statnames as SN
+    n = len(E.data._rows('states'))
+    states = SN.state_names_sorted(E.data)
+    T.check(len(states) > 300, f'only {len(states)} named states')
+    for name, value in states:
+        T.check(0 < value < n, f'state {name!r} = {value}: not a row of the states table ({n} rows)')
+    T.eq(SN.state_names_sorted(E.data), SN.param_choices(E.data, 98), 'choices of stat 98 = the named states')
+    T.eq(SN.state_name(E.data, 0xFFFF), None, 'name of state 65535')
+    T.eq(SN.param_value(E.data, 98, "Dragon's Blessing (#65535)"), None, 'the marker row cannot be picked by name')
+    marker = [st for st in SN._state_icon_names(E.data) if st >= n]
+    T.eq(marker, [], 'icon rows of states that do not exist')
+    for name, value in states:                         # "(#N)" only where two states really share the name
+        if name.endswith(f'(#{value})'):
+            base = name[:name.rindex(' (#')]
+            T.check(sum(1 for nm, _v in states if nm.startswith(base + ' (#')) > 1, f'{name!r}: numbered but alone')
+
+
+@T.test
+def named_choices_name_real_rows():
+    """The other enumerations taken from tables: monsters are rows of the monster table, mystic orbs rows of
+    mysticorbs.bin, skills rows of the skills table that fit the stat's skill field."""
+    E = T.engine()
+    import mxl_statnames as SN
+    import mxl_statparams as SP
+    n_skills = len(E.data._rows('skills'))
+    for sid in sorted(SP.PARAMS):
+        kind = SN.param_kind(sid)
+        fields = SP.PARAMS[sid].get('fields') or ()
+        for name, value in offered(E, sid):
+            T.check(isinstance(name, str) and name.strip(), f'stat {sid}: empty name for {value}')
+            if kind in ('skill', 'skill_only'):
+                T.check(0 <= value < n_skills and SN.skill_fits(E.data, sid, value), f'stat {sid}: skill {name!r} = {value}')
+            elif len(fields) == 1 and fields[0][1] == 'monster':
+                T.check(0 <= value < len(E.data.monster_names), f'stat {sid}: monster {name!r} = {value}')
+            elif len(fields) == 1 and fields[0][1] == 'orb':
+                T.check(0 <= value < len(E.cr._orb_table()), f'stat {sid}: orb {name!r} = {value}')
 
 
 T.main(globals())

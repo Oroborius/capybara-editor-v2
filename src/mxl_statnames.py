@@ -425,13 +425,21 @@ def _skill_rows(data):
 
 def _state_icon_names(data):
     """{state id: name} from stateicons.bin (8-byte rows: u16 state, u16 -, u16 icon, u16 string): the name the
-    game writes under the buff icon of the state."""
+    game writes under the buff icon of the state. A row whose state is 0xFFFF is an icon no state uses (the
+    table's "none" marker: 2 rows in 2.14.6, one of them a second "Dragon's Blessing" beside state 471): it is
+    no state, and so is any id past the end of states.bin."""
     m = getattr(data, '_sn_state_icons', None)
     if m is None:
         m = {}
         try:
+            try:
+                n_states = len(data._rows('states'))
+            except Exception:
+                n_states = 0xFFFF
             for r in data._rows('stateicons'):
                 st, _a, _icon, si = struct.unpack_from('<4H', r, 0)
+                if st >= min(n_states, 0xFFFF):
+                    continue
                 n = (data.s(si) or '').replace('\n', ' ').strip()
                 if n and BUFFALO not in n.upper():
                     m.setdefault(st, n)

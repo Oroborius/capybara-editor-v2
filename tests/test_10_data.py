@@ -1,5 +1,6 @@
 """Game data: every extracted table loads, and tools/audit_game_data.py (builds and round-trips every catalogue
 item) reports no round-trip failure."""
+import collections
 import os
 import re
 import struct
@@ -76,6 +77,11 @@ def creator_catalogue_counts():
 
 
 _audit = {}
+_info = {}                        # {section title: {game-data property: count}} - the audit's 'i' lines
+
+
+def title_of(cur):
+    return next(t for t, v in _audit.items() if v is cur)
 
 
 def audit():
@@ -98,6 +104,9 @@ def audit():
             elif cur is not None and line.startswith('   ! '):
                 m = re.match(r'   ! (.*): (\d+)$', line.rstrip())
                 cur[1][m.group(1)] = int(m.group(2))
+            elif line.startswith('   i '):
+                m = re.match(r'   i (.*): (\d+)$', line.rstrip())
+                _info.setdefault(title_of(cur), {})[m.group(1)] = int(m.group(2))
             elif cur is not None and re.match(r'   \S', line) and ': ' in line:
                 k, v = line.strip().rsplit(': ', 1)
                 cur[0][k] = v
@@ -153,17 +162,85 @@ def audit_skill_names_resolve():
     T.eq(problems, {}, 'skills table problems')
 
 
-@T.test(xfail='open data items of WORKLOG W12: states without a name, mod values above the save range, uniques '
-              'without mods, labels shared by several rows, blank tooltip line on Explorer\'s Caches')
+# The open data items of WORKLOG W12 are closed: same-named rows are told apart (Creator.catalog_labels /
+# base_list_rows), the empty not-enabled "Windforce" row is hidden, and what is a property of the game's own tables
+# is listed by the audit as information (next test).
+@T.test
 def audit_open_data_items():
-    """Everything else the audit lists. Not round-trip failures: oddities of the game's tables the editor does not
-    handle yet. Kept visible here so that a new class or a fixed one shows up."""
+    """Everything else the audit lists as a problem. Not round-trip failures: oddities of the game's tables the
+    editor does not handle. Kept visible here so that a new class shows up."""
     left = []
     for title, (_tot, problems) in audit().items():
         for cls, n in problems.items():
             if not cls.startswith(ROUNDTRIP) and not cls.startswith('no base can hold it'):
                 left.append(f'{title}: {cls}: {n}')
     T.eq(left, [], 'open data items')
+
+
+# what the audit may list as a property of the game's data ('i' lines), and why it is no editor defect
+GAME_DATA = {
+    'game data: state without a name in any table (no skill sets it, no buff icon)':
+        'states.bin has no name strings; the editor shows #N',
+    "game data: mod value outside the stat's save range (the creator stores the nearest value)":
+        'the table asks for more than the save bits hold; Creator.roll narrows the range',
+    'game data: enabled row without any mod (quest / reagent items)':
+        'the item\'s text is its base item\'s description',
+    'game data: name string starts with a line break (one empty line ends the tooltip)':
+        'the string itself begins with a line break',
+}
+
+
+@T.test
+def audit_game_data_properties_are_known():
+    """The audit's information lines: only the known classes, each really present in the sample tables (a class
+    that no longer occurs should leave this list), none of them a round-trip matter."""
+    audit()
+    seen = collections.Counter()
+    for title, classes in _info.items():
+        for cls, n in classes.items():
+            T.check(cls in GAME_DATA, f'{title}: unknown information class {cls!r} ({n})')
+            T.check(n > 0, f'{title}: {cls}: {n}')
+            seen[cls] += n
+    for cls in GAME_DATA:
+        T.check(seen[cls] > 0, f'not reported any more: {cls!r}')
+
+
+@T.test
+def over_range_mod_values_are_stored_at_the_nearest_value():
+    """What the creator does with a mod whose table value the stat's save bits cannot hold (the audit's 'mod value
+    outside the save range' rows): the item builds, the stat is stored at the end of its range, never wrapped."""
+    E = T.engine()
+    d, cr = E.data, E.cr
+    import mxl_rules
+    found = 0
+    for i, _name, u in cr.uniques():
+        over = []
+        for m in u['mods']:
+            if not 0 <= m['prop'] < len(d.props):
+                continue
+            for v in (m['min'], m['max']):
+                for s in mxl_rules.mods_stats([(m['prop'], m['param'], v, v)], d, 'min'):
+                    c = d.isc.get(s['id'])
+                    if c and c.get('bits') and not 0 <= s['value'] + c['add'] < (1 << c['bits']):
+                        over.append((s['id'], s['value'], -c['add'], (1 << c['bits']) - 1 - c['add']))
+        if not over:
+            continue
+        found += 1
+        for how in ('min', 'max'):
+            spec = cr.new_spec('unique', None, i)
+            auto = cr.auto_choices(spec['code'], spec['ilvl'])
+            if auto:
+                spec['auto'] = auto[0][0]
+            cr.roll(spec, how)
+            _blob, rec = cr.build(spec)
+            for sid, want, lo, hi in over:
+                got = [s['value'] for s in rec['stats'] if s['id'] == sid]
+                T.check(got and all(lo <= g <= hi for g in got), f'unique {i} stat {sid} ({how}): stored {got}, range {lo}..{hi}')
+                if how == 'max' and want > hi:
+                    T.eq(got, [hi], f'unique {i} stat {sid}: table value {want} above the range is stored as')
+                if how == 'min' and want < lo:
+                    T.eq(got, [lo], f'unique {i} stat {sid}: table value {want} below the range is stored as')
+    T.check(found > 0, 'the sample tables have no mod value outside a save range (nothing was checked)')
 
 
 T.main(globals())

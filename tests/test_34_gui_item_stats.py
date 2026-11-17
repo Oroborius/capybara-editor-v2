@@ -374,12 +374,10 @@ def enumerated_param_picked_by_name():
     T.eq(sorted(s for s in it.stats(now) if s[0] != 415), sorted(before), 'the other stats')
 
 
-# BUG: on a STASH item the Item stats tab writes typed values in place through the collector's apply_edits, which
-# refuses stat 415 ("innate damage, based on a character attribute, cannot be edited"). The tab itself adds the
-# stat (at 0) and sets its element / attribute, but its value can then not be typed: 'not written: ...'. On a
-# character item (variants 'panel', 'tab') the same edit is written.
-@T.test(xfail="Item stats tab, stash item: the value of stat 415 cannot be set ('not written: stat 415 (innate damage, "
-              "based on a character attribute) cannot be edited'); works on character items" if TARGET == 'stash' else None)
+# Was a bug until 2026-11: on a STASH item the tab wrote typed values in place through the collector's apply_edits,
+# which refuses stat 415 ("innate damage, based on a character attribute, cannot be edited"). The value of a stat
+# with a parameter now goes through the same lossless re-encode as on a character item.
+@T.test
 def enumerated_param_stat_takes_a_value():
     it = Item()
     if any(s[0] == 415 for s in it.stats()):
@@ -396,6 +394,137 @@ def enumerated_param_stat_takes_a_value():
     now = T.rec_of(it.snap()[it.key][1])['stats']
     T.eq([(s['id'], s.get('param'), s['value']) for s in now if s['id'] == 415], [(415, 2 | 3 << 8, 40)],
          f'stat 415 on disk (status of the tab: {it.w.bar["text"]!r})')
+
+
+def param_for(sid, bits):
+    """A parameter value other than the one a freshly added stat gets, that the stat's param bits hold."""
+    import mxl_statnames as SN
+    kind = SN.param_kind(sid)
+    if kind == 'skill':                                   # skill << 6 | level
+        ids = [v for _n, v in SN.param_choices(G.app.data, sid) if SN.skill_fits(G.app.data, sid, v)]
+        return (ids[len(ids) // 2] << 6 | 9) if ids else (5 << 6 | 9)
+    if kind is not None:
+        vals = [v for _n, v in SN.param_choices(G.app.data, sid) if 0 < v < (1 << bits)]
+        if vals:
+            return vals[len(vals) // 2]
+    return min(5, (1 << bits) - 1)
+
+
+def param_stat_cycle(it, sid):
+    """Add stat sid to the item, give it another parameter, type a value, clear the slot: [problems]."""
+    import mxl_he_stats as H
+    data = G.app.data
+    bits = data.isc[sid]['param']
+    out = []
+
+    def on_disk():
+        return [x for x in it.stats() if x[0] == sid]
+
+    def slot_of():
+        return next(k for k, x in enumerate(it.stats()) if x[0] == sid)
+
+    if it.w._ed is not None:
+        it.w._ed_done('cancel')
+    it.w._name_cancel(focus=False)
+    it.slot(None)
+    it.w.picked(sid)
+    if it.w._ed is not None:
+        it.w._ed_done('cancel')
+    it.w._name_cancel(focus=False)
+    T.pump()
+    if len(on_disk()) != 1:
+        return [f'add: on disk {on_disk()} (status: {it.w.bar["text"]!r})']
+    # ---- the parameter
+    want = param_for(sid, bits)
+    if (on_disk()[0][1] or 0) == want:
+        want = want - 1 if want > 1 else want + 1
+    ok = it.w._set_param(it.slot(slot_of()), raw=want)
+    T.pump()
+    if not ok or [x[1] for x in on_disk()] != [want]:
+        out.append(f'param {want}: on disk {on_disk()} (status: {it.w.bar["text"]!r})')
+    # ---- the value
+    lo, hi = H.value_range(data, sid)
+    cur = on_disk()[0][2]
+    new = hi if cur != hi else lo
+    if new != cur:
+        it.set_value(slot_of(), new)
+        if [x[2] for x in on_disk()] != [new]:
+            out.append(f'value {new}: on disk {on_disk()} (status: {it.w.bar["text"]!r})')
+        elif 'written' not in it.w.bar['text']:
+            out.append(f'value {new}: status of the tab {it.w.bar["text"]!r}')
+        if on_disk() and (on_disk()[0][1] or 0) != want and not any(o.startswith('param') for o in out):
+            out.append(f'value {new}: the parameter changed to {on_disk()[0][1]}')
+    # ---- clear the slot
+    it.slot(slot_of())
+    it.w.delete_selected()
+    T.pump()
+    if on_disk():
+        out.append(f'delete: still on disk {on_disk()} (status: {it.w.bar["text"]!r})')
+    return out
+
+
+# one stat of every kind of parameter (mxl_statparams): class, skill, skill + level (chance to cast), charges,
+# state, monster, mystic-orb row, element | attribute, string index
+PARAM_KINDS = (83, 97, 198, 204, 98, 415, 290, 375)
+
+
+@T.test
+def every_param_stat_adds_edits_and_deletes():
+    """Every stat with parameter bits (48 in 2.14.6): add it to the item, change its parameter, type a value, clear
+    the slot - each step read back from the file - and the item is byte for byte what it was at the end. On the
+    stash item all of them; on a character item (same code path for every stat) one stat per kind of parameter."""
+    import mxl_statparams as SP
+    it = Item()
+    data = G.app.data
+    have = {x[0] for x in it.stats()}
+    all_ids = sorted(sid for sid, c in data.isc.items() if c.get('param') and c.get('bits'))
+    T.eq(sorted(set(SP.PARAMS) - {sid for sid, c in data.isc.items() if c.get('param')}), [],
+         'stats of mxl_statparams without param bits in the stat table')
+    T.check(len(all_ids) >= 40, f'only {len(all_ids)} stats with param bits and save bits')
+    ids = all_ids if TARGET == 'stash' else [sid for sid in PARAM_KINDS if sid in all_ids]
+    done = 0
+    for sid in ids:
+        if sid in have:
+            continue
+        problems = param_stat_cycle(it, sid)
+        for pr in problems:
+            T.check(False, f'stat {sid}: {pr}')
+        done += 1
+        if problems and any(x[0] == sid for x in it.stats()):
+            break                                         # the item is not what it was: the rest would only repeat it
+    T.check(done >= len(ids) - len(have), f'{done} of {len(ids)} stats tried')
+    now = it.check('add / param / value / delete of every param stat', changed=False)
+    T.eq(now[it.key][1], it.snap0[it.key][1], 'bytes of the item after the cycles')
+
+
+@T.test
+def param_stat_value_typed_with_a_plain_value():
+    """A value typed on a stat with a parameter and one on a plain stat, saved together: both are on disk (on a
+    stash item the first goes through the re-encode of the item, the second through the in-place writer)."""
+    it = Item()
+    if any(s[0] == 415 for s in it.stats()):
+        T.skip('the picked item already has stat 415')
+    it.slot(None)
+    it.w.picked(415)
+    T.pump()
+    it.w._name_picked('Lightning / Dexterity')
+    if it.w._ed is not None:
+        it.w._ed_done('cancel')
+    T.pump()
+    before = it.stats()
+    i, new = it.editable_slot()
+    sid = before[i][0]
+    j = next(k for k, s in enumerate(before) if s[0] == 415)
+    it.set_value(i, new, how='down')                     # pending
+    it.set_value(j, 33, how='down')                      # pending
+    T.eq(len(it.w.pending), 2, 'pending values')
+    it.w.save()
+    T.pump()
+    now = it.check('plain + param value')
+    after = it.stats(now)
+    T.eq(sorted(after), sorted([s for k, s in enumerate(before) if k not in (i, j)] + [(sid, None, new), (415, 1 | 2 << 8, 33)]),
+         f'stats on disk (status of the tab: {it.w.bar["text"]!r})')
+    T.eq(it.w.pending, {}, 'pending values after the write')
 
 
 T.main(globals())

@@ -287,7 +287,7 @@ class Gen:
             ok = [i for i, n in enumerate(self.d.monster_names) if n and 'BUFFALO' not in str(n).upper() and i <= top]
             vals |= set(ok[::max(1, len(ok) // 40)])
         elif kind == 'state':
-            vals |= {v for _n, v in self.sn.state_names_sorted(self.d)[:40]}
+            vals |= {v for _n, v in self.sn.state_names_sorted(self.d)[:40] if v <= top}   # never the 0xFFFF "none" marker
         elif kind == 'string':
             pass
         else:
