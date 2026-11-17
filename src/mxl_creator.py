@@ -35,6 +35,7 @@ QUALITY_NAME = {v: k for k, v in QUALITY_ID.items()}
 ITEM_VERSION = 101
 FLAG_IDENTIFIED = 1 << 4
 FLAG_SOCKETED = 1 << 11
+FLAG_NEW = 1 << 13                              # set on the one real honorific sample (fresh cube output)
 FLAG_SIMPLE = 1 << 21
 FLAG_ETHEREAL = 1 << 22
 FLAG_ALWAYS = 1 << 23
@@ -1634,6 +1635,8 @@ class Creator:
             flags |= FLAG_SOCKETED
         if q == 'runeword':
             flags |= FLAG_RUNEWORD
+        if spec.get('_new_flag'):         # a created honorific: as the cube leaves it (see the creator's on_pick)
+            flags |= FLAG_NEW
         rq = 'superior' if (q == 'runeword' and spec.get('superior') is not None) else ('normal' if q == 'runeword' else q)
         rec = dict(flags=flags, code=code, id=random.getrandbits(32), ilvl=spec['ilvl'], quality=rq,
                    socketed_count=len(spec['socketed']))

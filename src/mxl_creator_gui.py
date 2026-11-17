@@ -28,9 +28,11 @@ from mxl_gui_detail import DetailHost, DetailPanel, setup_detail_tags
 from mxl_creator import Creator, CreateError, MAX_ILVL, CRAFTED_AFFIXES
 from mxl_lang import T
 import mxl_d2look as D2
+import mxl_attr_picker as AP
 
 QUALITY_KEYS = [('Unique', 'unique'), ('Set item', 'set'), ('Runeword', 'runeword'), ('Angelic', 'angelic'), ('Rare', 'rare'),
-                ('Crafted', 'crafted'), ('Magic', 'magic'), ('Superior', 'superior'), ('Normal', 'normal')]
+                ('Crafted', 'crafted'), ('Honorific', 'tempered'), ('Magic', 'magic'), ('Superior', 'superior'), ('Normal', 'normal')]
+LONG_LIST = 25                 # option lists longer than this get the searchable picker instead of a dropdown
 FILTER_KEYS = [('All', None), ('Weapon', 'weapons'), ('Armor', 'armor'), ('Misc', 'misc'), ('Mystic Orb', 'orb'),
                ('Mystic Dye', 'dye')]
 
@@ -86,112 +88,6 @@ def bind_typeahead(cb, values):
 
     cb.bind('<KeyRelease>', on_key)
     cb._typeahead_on_key = on_key
-    return on_key
-
-
-def bind_stat_picker(cb, get_labels, on_pick):
-    """The attribute picker of the stat rows: type to autofill, Enter commits the closest stat, and a
-    letter / digit key jumps to the first entry starting with it (pressing it again goes to the next).
-    - while typing, the entry completes to the first match of the typed text (the completed part is
-      selected, so just keep typing to narrow it down);
-    - a single key pressed again cycles through the entries starting with it;
-    - Enter picks the closest stat: prefix match first, then a substring match, else the current one;
-    - Up / Down walk the whole list.
-    on_pick(label) commits the picked stat (resolving the label back to the stat id is the caller's)."""
-    st = {'q': '', 'i': -1}
-
-    def labels():
-        vals = get_labels() if callable(get_labels) else get_labels
-        return list(vals)
-
-    def first_match(text, start=0):
-        text = text.lower()
-        vals = labels()
-        n = len(vals)
-        for i in list(range(start, n)) + list(range(0, min(start, n))):
-            if vals[i].lower().startswith(text):
-                return i
-        return -1
-
-    def complete_to(i, typed_len=None):
-        vals = labels()
-        if not 0 <= i < len(vals):
-            return
-        st['i'] = i
-        cb.set(vals[i])
-        try:
-            cb.icursor(typed_len if typed_len is not None else len(vals[i]))
-            if typed_len is not None and typed_len < len(vals[i]):
-                cb.selection_range(typed_len, 'end')
-        except Exception:
-            pass
-
-    def on_key(e):
-        ks = e.keysym
-        if ks in ('Return', 'KP_Enter'):
-            text = cb.get().strip().lower()
-            vals = labels()
-            i = -1
-            if text:
-                i = first_match(text)
-                if i < 0:
-                    i = next((k for k, v in enumerate(vals) if text in v.lower()), -1)
-            if i < 0:
-                try:
-                    i = cb.current()
-                except Exception:
-                    i = -1
-            if i >= 0:
-                on_pick(vals[i])
-            return 'break'
-        if ks == 'Escape':
-            cb.set('')
-            st['q'], st['i'] = '', -1
-            return 'break'
-        if ks == 'Down':
-            i = first_match(st['q']) if st['q'] else max(st['i'], 0)
-            complete_to(i + 1 if 0 <= i + 1 < len(labels()) else i, len(st['q']) or None)
-            return 'break'
-        if ks == 'Up':
-            i = first_match(st['q']) if st['q'] else max(st['i'], 0)
-            complete_to(max(i - 1, 0), len(st['q']) or None)
-            return 'break'
-        if ks in ('BackSpace',):
-            st['q'] = st['q'][:-1]
-            i = first_match(st['q']) if st['q'] else -1
-            if i >= 0:
-                complete_to(i, len(st['q']) or None)
-            else:
-                cb.set(st['q'])
-                cb.icursor(len(st['q']))
-            return 'break'
-        if ks in ('Delete', 'Home', 'End', 'Left', 'Right', 'Tab', 'space'):
-            return None
-        ch = (e.char or '').lower()
-        if len(ch) == 1 and (ch.isalpha() or ch.isdigit()):
-            vals = labels()
-            if not vals:
-                return 'break'
-            if st['q'] == ch and st['i'] >= 0:
-                # the same single key again: the next entry starting with it (wrapping around)
-                i = first_match(ch, st['i'] + 1)
-                if i >= 0:
-                    complete_to(i, 1)
-                return 'break'
-            q = st['q'] + ch
-            i = first_match(q)
-            if i < 0 and st['q']:
-                q = ch                                     # restart with the new key
-                i = first_match(q)
-            if i < 0:
-                return 'break'                             # nothing matches: keep what is there
-            st['q'] = q
-            complete_to(i, len(q))
-            return 'break'
-        return None
-
-    cb.bind('<KeyRelease>', on_key)
-    cb._stat_picker_on_key = on_key        # headless tests drive it directly (synthetic events need a mapped window)
     return on_key
 
 
@@ -520,8 +416,9 @@ class CreatorWindow:
         bar = ttk.Frame(body)
         bar.grid(row=1, column=0, sticky='we', pady=(2, 0))
         ttk.Label(bar, text=T('cr.variable_values', 'Variable values'), font=('Segoe UI', 10, 'bold')).pack(side='left')
-        for t, how in ((T('cr.btn.max', 'Max'), 'max'), (T('cr.btn.random', 'Random'), 'random'), (T('cr.btn.min', 'Min'), 'min')):
-            D2.button(bar, t, lambda h=how: self.reroll(h), 8).pack(side='right', padx=2)
+        # at the left, right after the heading: in sight when the column is narrower than its widest row
+        for t, how in ((T('cr.btn.min', 'Min'), 'min'), (T('cr.btn.random', 'Random'), 'random'), (T('cr.btn.max', 'Max'), 'max')):
+            D2.button(bar, t, lambda h=how: self.reroll(h), 6).pack(side='left', padx=(4, 0))
 
         class _Mods:
             pass
@@ -579,6 +476,9 @@ class CreatorWindow:
         def walk(x):
             for c in x.winfo_children():
                 try:
+                    if getattr(c, '_wrap_less', False):
+                        getattr(c, '_fit', lambda: None)()
+                        continue                         # a value row's text: fitted by its own row
                     if c.winfo_class() == 'TLabel' and int(str(c.cget('wraplength')) or 0) not in (0, w):
                         c.configure(wraplength=w)
                 except (tk.TclError, ValueError):
@@ -681,7 +581,8 @@ class CreatorWindow:
                 label = f"{clean(name)} - {' '.join(clean(d.base(r).name).replace(' Rune', '') for r in runes)}"
                 rows.append((label, i))
         else:
-            for b in (self._craft_bases() if q == 'crafted' else self._bases()):
+            for b in (self._craft_bases() if q == 'crafted' else self._honorific_bases() if q == 'tempered'
+                      else self._bases()):
                 if kind and b.kind != kind:
                     continue
                 if q != 'normal' and b.kind == 'misc' and not cr.can_have_quality(b.code, q):
@@ -756,6 +657,37 @@ class CreatorWindow:
             self.cr._good_bases = out
         return self.cr._good_bases
 
+    def _honorific_bases(self):
+        """Bases the honorific recipe takes (cube: magic / rare weapon or armor + Mark of Infusion): weapons and
+        armor its input item type covers, which can carry a rare-style name."""
+        if not hasattr(self.cr, '_honorific_bases'):
+            out = []
+            for b in self._bases():
+                if b.kind not in ('weapons', 'armor') or not self.cr.honorific_stats(b.code):
+                    continue
+                names = self.cr.rare_name_choices(b.code)
+                if names['rareprefix'] and names['raresuffix']:
+                    out.append(b)
+            self.cr._honorific_bases = out
+        return self.cr._honorific_bases
+
+    def _honorific_roll(self, how='max'):
+        """A created honorific item's recipe stats (stat 289 = 2 'Orb Effects ... Doubled', Physical Resist 0-1%
+        on armor, the weapon bonus) at their min / max / a random value, in the item's own stat list; stats
+        added by hand stay as they are."""
+        spec = self.spec
+        lo = {(x['id'], x.get('param')): x['value'] for x in self.cr.honorific_stats(spec['code'], 'min')}
+        hi = {(x['id'], x.get('param')): x['value'] for x in self.cr.honorific_stats(spec['code'], 'max')}
+        extra = spec.setdefault('extra', [])
+        for k, top in hi.items():
+            a, b = sorted((lo.get(k, top), top))
+            v = b if how == 'max' else a if how == 'min' else random.randint(a, b)
+            e = next((e for e in extra if (e['id'], e.get('param')) == k), None)
+            if e is None:
+                extra.append(dict(id=k[0], param=k[1], value=v))
+            else:
+                e['value'] = v
+
     def _craft_bases(self):
         """Bases a crafting recipe takes (Angelic bases included, they are not in the drop pool)."""
         if not hasattr(self.cr, '_craft_bases'):
@@ -790,7 +722,15 @@ class CreatorWindow:
         else:
             spec = cr.new_spec(q, key)
         spec['ilvl'] = max(spec['ilvl'], min(99, MAX_ILVL))
-        spec['max_sockets'] = q in ('unique', 'set', 'crafted')     # as the game gives them (Sacred gear)
+        spec['max_sockets'] = q in ('unique', 'set', 'crafted', 'tempered')   # as the game gives them (Sacred gear)
+        if q == 'tempered':                    # the cube recipe's output: a blank item, a rare-style name, the
+            spec['extra'] = []                 # maximum sockets and the recipe's own stats (in its stat list)
+            spec['_new_flag'] = True           # header flag 0x2000, as on the real sample (XBone's Eagle Pelt)
+            self.spec, old = spec, self.spec
+            try:
+                self._honorific_roll('max')
+            finally:
+                self.spec = old
         self.prepare_defaults(spec)
         if q == 'crafted':                     # one roll, as the cube gives it: name, affixes, values
             cr.reroll_crafted(spec)
@@ -840,12 +780,13 @@ class CreatorWindow:
             for kind, key in (('magicprefix', 'rare_prefixes'), ('magicsuffix', 'rare_suffixes')):
                 ok = {i for i, _, _ in cr.affix_choices(kind, code, ilvl, rare=True)}
                 spec[key] = [x for x in (spec.get(key) or []) if x in ok]
-        if q == 'rare':
+        if q in ('rare', 'tempered'):
             names = cr.rare_name_choices(code)
             rn = spec.get('rare_names')
             if not rn or rn[0] not in [i for i, _ in names['rareprefix']] or rn[1] not in [i for i, _ in names['raresuffix']]:
                 spec['rare_names'] = (names['rareprefix'][0][0] if names['rareprefix'] else 0,
                                       names['raresuffix'][0][0] if names['raresuffix'] else 0)
+        if q == 'rare':
             for kind, key in (('magicprefix', 'rare_prefixes'), ('magicsuffix', 'rare_suffixes')):
                 ok = {i for i, _, _ in cr.affix_choices(kind, code, ilvl, rare=True)}
                 spec[key] = [x for x in (spec.get(key) or []) if x in ok]
@@ -893,6 +834,8 @@ class CreatorWindow:
         for w in self.mods_frame.inner.winfo_children():
             w.destroy()
         self.mod_vars = {}
+        self.number_rows = {}                # roll source (or 'defense') -> its number field
+        self._spins = {w: rec for w, rec in self._spins.items() if w.winfo_exists()}
         spec = self.spec
         if spec is None:
             self.title.configure(text=T('cr.choose', 'Choose an item in the list'))
@@ -915,11 +858,17 @@ class CreatorWindow:
             r += 1
             return r - 1
 
-        def combo(label, values, current, on_change, width=40, stretch=True):
+        def combo(label, values, current, on_change, width=40, stretch=True, search=True):
             """Read-only combobox; on_change(index in values). Each call keeps its own list (no shared variable)."""
             rr = row(label)
             values = list(values)
             var = tk.StringVar(value=current)
+            if search and len(values) > LONG_LIST:       # affixes, socket fillers...: type to search
+                c = self._name_field(f, values, var, lambda: on_change(values.index(var.get()))
+                                     if var.get() in values else None, 12 if stretch else min(width, 24),
+                                     label.strip(), clip=stretch)
+                c.grid(row=rr, column=1, sticky='we' if stretch else 'w', pady=2)
+                return c, rr
             c = ttk.Combobox(f, state='readonly', values=values, textvariable=var, width=width)
             c.grid(row=rr, column=1, sticky='we' if stretch else 'w', pady=2)
             self.scroll.no_wheel(c)
@@ -933,7 +882,7 @@ class CreatorWindow:
 
         def spin(label, lo, hi, cur, on_change):
             vals = [str(v) for v in range(lo, hi + 1)]
-            return combo(label, vals, str(cur), lambda i, vals=vals: on_change(int(vals[i])), 8, False)
+            return combo(label, vals, str(cur), lambda i, vals=vals: on_change(int(vals[i])), 8, False, False)
 
         if q == 'runeword':
             bases = cr.runeword_bases(spec['row'])
@@ -1060,8 +1009,9 @@ class CreatorWindow:
                 if spec.get('defense') is None or not lo <= spec['defense'] <= hi and not spec.get('_defense_raw'):
                     spec['defense'] = hi
                 cur = spec['defense']
-                self.slider(self.opts, r, T('cr.base_defense', 'Base defense'), min(lo, cur), max(hi, cur), cur,
-                            lambda v: self.set_field('defense', v, False))
+                self.number_rows['defense'] = self.number_row(
+                    self.opts, r, T('cr.base_defense', 'Base defense'), min(lo, cur), max(hi, cur), cur,
+                    lambda v: self.set_field('defense', v, False), option=True)
                 r += 1
             else:
                 rr = row(T('cr.base_defense', 'Base defense'))
@@ -1080,33 +1030,146 @@ class CreatorWindow:
             txt.append(f"{desc.replace('%d%%', '').replace('%d', '').strip()} {lo}-{hi}")
         return f"[{i}] " + '; '.join(txt)
 
-    def slider(self, parent, r, label, lo, hi, cur, on_release, fmt=str):
-        """Label on its own line, then the slider, its value and its range; saving on release."""
+    def number_row(self, parent, r, label, lo, hi, cur, on_change, fmt=str, range_w=0, field_w=0, option=False):
+        """One compact row per rollable value: a typed number field, the range as [min-max] and the value's text
+        (field first: it stays in sight however narrow the column is).
+        Digits only; a number inside the range is applied (and previewed) while typing, Return / leaving the
+        field / pressing any button clamps what is typed to the range. Up / Down step by 1, Page Up / Down by
+        10; the mouse wheel steps the field that has the keyboard focus (over any other field it scrolls the
+        page, so scrolling never changes a value by accident). on_change(value) is what the slider's release
+        called. fmt: the name of a value that stands for a skill / monster, shown under the text.
+        range_w / field_w: common widths (characters) of a block of rows, so their fields line up.
+        option: a row of the options grid above (label column | field and range).
+        Returns the entry (.set_value(v) / .step(d) for tests)."""
         box = ttk.Frame(parent)
-        box.grid(row=r, column=0, columnspan=2, sticky='we', pady=(4, 0))
-        ttk.Label(box, text=label).pack(anchor='w')
-        fr = ttk.Frame(box)
-        fr.pack(fill='x')
-        var = tk.IntVar(value=cur)
-        val = ttk.Label(fr, text=fmt(cur), width=8 if fmt is str else 22)   # names need room, numbers do not
+        if option:
+            ttk.Label(parent, text=label).grid(row=r, column=0, sticky='nw', padx=(0, 8), pady=2)
+            box.grid(row=r, column=1, sticky='w', pady=1)
+            label = ''
+        else:
+            box.grid(row=r, column=0, columnspan=2, sticky='we', pady=1)
+        box.columnconfigure(2, weight=1)
+        rng = T('cr.range_box', '[{lo}-{hi}]', lo=lo, hi=hi) if lo >= 0 else \
+            T('cr.range_box_neg', '[{lo} to {hi}]', lo=lo, hi=hi)
+        digits = max(len(str(lo)), len(str(hi)), 4, field_w - 1) + 1
+        lab = ttk.Label(box, text=label, justify='left')
+        lab._wrap_less = True                    # _rewrap: this label shares its line with the field and the range
+        lab.grid(row=0, column=2, sticky='w', padx=(4, 0))
+        var = tk.StringVar(value=str(cur))
+        ent = ttk.Entry(box, textvariable=var, width=digits, justify='right')
+        ent.grid(row=0, column=0, sticky='w', padx=(0, 2))
+        rl = ttk.Label(box, text=rng, width=max(range_w, len(rng)), anchor='w')
+        rl.grid(row=0, column=1, sticky='w')
+        name = None
+        if fmt is not str:
+            name = ttk.Label(box, text=fmt(cur), justify='left')
+            name.grid(row=1, column=0, columnspan=3, sticky='w', padx=(12, 0))
+            name._wrap_less = True
+        st = {'v': cur, 'job': None}
+        try:
+            normal_fg = str(ent.cget('foreground')) or ''
+        except tk.TclError:
+            normal_fg = ''
 
-        def moved(x):
-            v = int(round(float(x)))
-            if v != var.get():
-                var.set(v)
-            val.configure(text=fmt(var.get()))
+        def fit(_e=None):
+            try:
+                w = self._wrap_w() - ent.winfo_reqwidth() - rl.winfo_reqwidth() - 12
+                if w > 60 and int(str(lab.cget('wraplength')) or 0) != w:
+                    lab.configure(wraplength=w)
+            except (tk.TclError, ValueError):
+                pass
+        box.bind('<Configure>', fit)
+        lab._fit = fit
 
-        sc = ttk.Scale(fr, from_=lo, to=hi, orient='horizontal', length=120, command=moved)
-        sc.set(cur)
-        # range and value keep their place at the right; the slider takes the width the column has
-        ttk.Label(fr, text=T('cr.range_fmt', '{lo} to {hi}', lo=fmt(lo), hi=fmt(hi)) if fmt is not str else
-                  T('cr.range', '({lo} to {hi})', lo=lo, hi=hi)).pack(side='right', padx=(0, 4))
-        val.pack(side='right', padx=6)
-        sc.pack(side='left', fill='x', expand=True, padx=(10, 0))
-        sc.bind('<ButtonRelease-1>', lambda e: on_release(var.get()))
-        for key, dv in (('<Left>', -1), ('<Right>', 1)):
-            sc.bind(key, lambda e, dv=dv: (sc.set(max(lo, min(hi, var.get() + dv))), on_release(var.get()), 'break')[-1])
-        return var
+        def parsed():
+            try:
+                return int(var.get().strip())
+            except (ValueError, tk.TclError):
+                return None
+
+        def apply(v):
+            st['job'] = None
+            if v == st['v']:
+                return
+            st['v'] = v
+            if name is not None:
+                try:
+                    name.configure(text=fmt(v))
+                except tk.TclError:
+                    pass
+            on_change(v)
+
+        def typed(*_a):
+            """While typing: a number inside the range is previewed shortly after the last key."""
+            v = parsed()
+            ok = v is not None and lo <= v <= hi
+            try:
+                ent.configure(foreground=normal_fg if ok else '#e05a4a')
+                if st['job'] is not None:
+                    ent.after_cancel(st['job'])
+                    st['job'] = None
+                if ok and v != st['v']:
+                    st['job'] = ent.after(250, lambda: apply(v))
+            except tk.TclError:
+                pass
+
+        def commit(_e=None):
+            """Return / focus out / a button press: what is typed, clamped to the range (nothing typed: as it was)."""
+            v = parsed()
+            v = st['v'] if v is None else max(lo, min(hi, v))
+            try:
+                if st['job'] is not None:
+                    ent.after_cancel(st['job'])
+                    st['job'] = None
+                if var.get() != str(v):
+                    var.set(str(v))
+                ent.configure(foreground=normal_fg)
+            except tk.TclError:
+                pass
+            apply(v)
+
+        def step(d):
+            v = parsed()
+            v = st['v'] if v is None else v
+            var.set(str(max(lo, min(hi, v + d))))
+            commit()
+            try:
+                ent.icursor('end')
+            except tk.TclError:
+                pass
+            return 'break'
+
+        def wheel(e):
+            try:
+                focused = ent.focus_get() is ent
+            except (KeyError, tk.TclError):
+                focused = False
+            if not focused:
+                return self.scroll._wheel(e)
+            if getattr(e, 'num', None) in (4, 5):
+                up = e.num == 4
+            else:
+                up = e.delta > 0
+            return step(1 if up else -1)
+
+        def key_ok(text):
+            return text in ('', '-') or bool(re.fullmatch(r'-?\d{1,11}', text)) and (lo < 0 or text[0] != '-')
+        ent.configure(validate='key', validatecommand=(ent.register(key_ok), '%P'))
+        var.trace_add('write', typed)
+        ent.bind('<Return>', commit)
+        ent.bind('<KP_Enter>', commit)
+        ent.bind('<FocusOut>', commit)
+        ent.bind('<Up>', lambda e: step(1))
+        ent.bind('<Down>', lambda e: step(-1))
+        ent.bind('<Prior>', lambda e: step(10))
+        ent.bind('<Next>', lambda e: step(-10))
+        for ev in ('<MouseWheel>', '<Button-4>', '<Button-5>'):
+            ent.bind(ev, wheel)
+        self._spins[ent] = [commit, None]        # a number still being typed is committed before any button runs
+        ent.set_value = lambda v: (var.set(str(v)), commit())[-1]
+        ent.step = step
+        ent.value_range = (lo, hi)
+        return ent
 
     def value_format(self, m):
         """Display of a rolled value: monster or skill name for the 'random skill / monster' properties."""
@@ -1151,8 +1214,11 @@ class CreatorWindow:
                 lines = [str(x[1]).strip() for x in stat_lines(raw_extra, self.data, None) if str(x[1]).strip()]
             except Exception:
                 lines = [f"stat {x['id']}: {x['value']}" for x in raw_extra]
-            ttk.Label(inner, text=T('cr.kept_list', 'Kept as they are on the item (not from its affixes or its recipe): {lines}',
-                                    lines='; '.join(lines)), wraplength=self._wrap_w(), justify='left').grid(row=r, column=0, columnspan=2, sticky='w')
+            made = self.spec.get('quality') == 'tempered' and not self.spec.get('_from_item')
+            ttk.Label(inner, text=(T('cr.honorific_list', 'Honorific recipe (Min / Random / Max roll it): {lines}',
+                                     lines='; '.join(lines)) if made else
+                                   T('cr.kept_list', 'Kept as they are on the item (not from its affixes or its recipe): {lines}',
+                                     lines='; '.join(lines))), wraplength=self._wrap_w(), justify='left').grid(row=r, column=0, columnspan=2, sticky='w')
             r += 1
         elif unr:
             note = (T('cr.edit_note', 'Unrestricted: the item\'s own stat list is below - click a stat to select '
@@ -1164,15 +1230,22 @@ class CreatorWindow:
             ttk.Label(inner, text=note, wraplength=self._wrap_w(), justify='left').grid(
                 row=r, column=0, columnspan=2, sticky='w')
             r += 1
+        rows = []
         for m in mods:
             lo, hi = m.min, m.max
-            if unr and m.variable:                       # free slider: the whole storable range of its stat
+            if unr and m.variable:                       # free value: the whole storable range of its stat
                 rng = self.cr.storage_range(m)
                 if rng:
                     lo, hi = min(m.min, rng[0]), max(m.max, rng[1])
+            rows.append((m, lo, hi))
+        range_w = max([len(f'[{lo}-{hi}]') if lo >= 0 else len(f'[{lo} to {hi}]') for _m, lo, hi in rows] or [0])
+        range_w = min(range_w, 14)                       # one column of fields; a huge free range may stick out
+        field_w = min(max([len(str(v)) for _m, lo, hi in rows for v in (lo, hi)] or [0]) + 1, 8)
+        for m, lo, hi in rows:
             label = f"{T('cr.mod.' + m.label.lower(), m.label) + ': ' if m.label else ''}{self.mod_label(m)}"
-            self.slider(inner, r, label, lo, hi, m.value, lambda v, src=m.source: self.set_roll(src, v),
-                        self.value_format(m))
+            self.number_rows[m.source] = self.number_row(
+                inner, r, label, lo, hi, m.value, lambda v, src=m.source: self.set_roll(src, v),
+                self.value_format(m), range_w, field_w)
             r += 1
         if unr or table:
             if table:
@@ -1225,9 +1298,193 @@ class CreatorWindow:
         except Exception as e:
             print('spin commit:', e)
 
-    def _stat_choices_labels(self):
+    # --------------------------------------------------------------- searchable pickers (mxl_attr_picker)
+    def _stat_labels(self):
+        """{stat id: label} of every stat the save format holds, as the categorised picker lists them."""
+        cache = self.cr.__dict__.get('_ap_labels')
+        if cache is None:
+            cache = self.cr._ap_labels = {sid: lab for sid, lab, _c in
+                                          AP.build_index(self.data, self.cr.stat_choices())}
+        return cache
+
+    def _pick_field(self, parent, text, opener, chars=26, clip=False):
+        """A field that shows the current choice and opens its picker: a click, Enter / Space, or simply
+        typing (the typed letter starts the search). opener(typed text or None). .show(text) sets it.
+        clip: the field is stretched by its grid cell (chars is only its least width), a long text is cut
+        by the field's edge instead of after `chars` characters."""
+        pal, m = AP.palette(), AP.metrics(parent)
+        b = tk.Button(parent, anchor='w', width=chars, font=m['font'], bg=pal['field'], fg=pal['fg_hi'],
+                      activebackground=pal['sel'], activeforeground=pal['sel_fg'], bd=1, relief='sunken',
+                      padx=3, pady=0, highlightthickness=1, highlightbackground=pal['line'],
+                      highlightcolor=pal['fg_hi'], takefocus=1, cursor='hand2')
+        AP.exempt(b)
+
+        def show(t):
+            t = str(t)
+            b.full_text = t
+            b.configure(text=t if clip or len(t) <= chars else t[:chars - 2] + '..')
+
+        def key(e):
+            ch = e.char
+            if ch and ch.isprintable() and not ch.isspace() and not (e.state & 0x4):
+                b.open(ch)
+                return 'break'
+            return None
+        b.show, b.open = show, opener            # .open may be set after the field exists (it is its anchor)
+        show(text)
+        b.configure(command=lambda: b.open(None))
+        b.bind('<Key>', key)
+        b.bind('<Return>', lambda _e: (b.open(None), 'break')[1])
+        return b
+
+    def _close_popup(self):
+        top, self._popup = getattr(self, '_popup', None), None
+        if top is not None:
+            try:
+                top.destroy()
+            except tk.TclError:
+                pass
+
+    def _stat_popup(self, anchor, on_pick, typed=None, current=None):
+        """The categorised stat picker (categories | stats, Recent, Find over all categories) under `anchor`.
+        Enter / Tab / double-click pick the highlighted (= closest) stat and close it: on_pick(stat id)."""
+        self._close_popup()
+        top = self._popup = AP.popup(anchor, self.data, on_pick, anchor=anchor, choices=self.cr.stat_choices(),
+                                     title=T('cr.pick.stat', 'Stat - type to search, Enter takes the first match'))
+        if typed:
+            top.picker.focus_filter(typed)
+        elif current is not None:
+            top.picker.select_stat(current)
+            top.picker.focus_filter()
+        return top
+
+    def _name_popup(self, anchor, names, on_pick, typed=None, current=None, title=None):
+        """A searchable name list (skills, states, texts) under `anchor`: on_pick(name)."""
+        self._close_popup()
+        top = self._popup = AP.popup_choices(anchor, names, on_pick, anchor=anchor, current=current, title=title)
+        if typed:
+            top.picker.var.set(typed)
+            top.picker.entry.icursor('end')
+        return top
+
+    def _name_field(self, parent, names, var, on_change=None, chars=20, title=None, clip=False):
+        """Pick field over a long name list; var (StringVar) holds the chosen name, on_change() follows a pick."""
+        def opener(typed=None):
+            def picked(name):
+                var.set(name)
+                try:
+                    f.show(name)
+                    f.focus_set()
+                except tk.TclError:
+                    pass
+                if on_change:
+                    on_change()
+            self._name_popup(f, list(names() if callable(names) else names), picked, typed, var.get(), title)
+        f = self._pick_field(parent, var.get(), opener, chars, clip)
+        return f
+
+    def _stat_add_row(self, parent, r, on_add, on_replace=None):
+        """The add row of a stat list. Line 1: the stat (pick field -> categorised picker; Enter / Tab there
+        fill in the closest stat's full name, load its skill / param / value controls and move to the value -
+        nothing is added yet). Line 2: its param, if it has one. Line 3: the value, '+ Add stat' (Enter in
+        the value field does the same) and, with on_replace, 'Replace selected'. on_add / on_replace(sid, param, value)."""
+        d = self.data
+        labels = self._stat_labels()
         choices = self.cr.stat_choices()
-        return choices, [lab for _sid, lab in choices], {lab: sid for sid, lab in choices}
+        last = self.cr.__dict__.get('_last_pick_sid')
+        pick = {'sid': last if last in labels else (choices[0][0] if choices else 0)}
+        ep = {}
+        box = ttk.Frame(parent)
+        box.grid(row=r, column=0, columnspan=2, sticky='we', pady=(4, 2))
+        line1 = ttk.Frame(box)
+        line1.grid(row=0, column=0, sticky='w')
+        ttk.Label(line1, text=T('cr.edit.add_stat', 'Add stat:')).grid(row=0, column=0, sticky='w')
+        line2 = ttk.Frame(box)
+        line2.grid(row=1, column=0, sticky='w', pady=(2, 0))
+        pf = ttk.Frame(box)                              # the param's own line (empty for most stats)
+        pf.grid(row=1, column=0, sticky='w')
+        line2.grid(row=2, column=0, sticky='w', pady=(2, 0))
+        ttk.Label(line2, text=T('cr.edit.value', 'value')).grid(row=0, column=1, sticky='w', padx=(0, 2))
+        rng = self.cr.stat_bounds(pick['sid']) or (0, 0)
+        vvar = tk.StringVar(value=str(max(rng[0], min(rng[1], 1))))
+        sv = ttk.Spinbox(line2, from_=rng[0], to=rng[1], textvariable=vvar, width=10)
+        sv.grid(row=0, column=2, sticky='w')
+        self.scroll.no_wheel(sv)
+        rl = ttk.Label(line2, text='')
+        rl.grid(row=0, column=3, sticky='w', padx=(4, 0))
+
+        def value():
+            rng2 = self.cr.stat_bounds(pick['sid']) or (0, 0)
+            try:
+                return max(rng2[0], min(rng2[1], int(vvar.get())))
+            except (ValueError, tk.TclError):
+                return max(rng2[0], min(rng2[1], 1))
+
+        def load(focus=False):
+            sid = pick['sid']
+            field.show(labels.get(sid, f'(stat #{sid})'))
+            pb = (d.isc[sid]['param'] or 0) if 0 <= sid < len(d.isc) else 0
+            rng2 = self.cr.stat_bounds(sid) or (0, 0)
+            self._edit_pick_param_zone(pf, pick, ep)
+            sv.configure(from_=rng2[0], to=rng2[1])
+            rl.configure(text=f'[{rng2[0]}-{rng2[1]}]' if rng2[0] >= 0 else f'[{rng2[0]} to {rng2[1]}]')
+            vvar.set(str(value() or max(rng2[0], min(rng2[1], 1))))
+            if focus:
+                self.set_status(T('cr.raw.statinfo', 'stat #{sid}, {pb} param bits, save range {lo} to {hi}',
+                                  sid=sid, pb=pb, lo=rng2[0], hi=rng2[1]))
+                try:
+                    sv.focus_force()
+                    sv.selection_range(0, 'end')
+                    sv.icursor('end')
+                except tk.TclError:
+                    pass
+
+        def picked(sid):
+            pick['sid'] = self.cr._last_pick_sid = sid
+            load(True)
+
+        field = self._pick_field(line1, '', None, 30)
+        field.open = lambda typed=None: self._stat_popup(field, picked, typed, pick['sid'])
+        field.grid(row=0, column=1, sticky='w', padx=(4, 0))
+        load()
+
+        def chosen():
+            """(sid, param, value) of the row, or None when a skill pick was refused (the status says why)."""
+            sid = pick['sid']
+            param, why = self._edit_picked_param(pick, ep)
+            if why is not None:
+                self._skill_status(why, str(ep.get('name') and ep['name'].get() or ''))
+                return None
+            return sid, param, value()
+
+        def add(*_a):
+            c = chosen()
+            if c is not None:
+                on_add(*c)
+                f = getattr(self, '_add_field', None)      # the list was rebuilt: on to the next stat
+                try:
+                    if f is not None and f.winfo_exists():
+                        f.focus_set()
+                except tk.TclError:
+                    pass
+            return 'break'
+
+        def replace(*_a):
+            c = chosen()
+            if c is not None:
+                on_replace(*c)
+
+        sv.bind('<Return>', add)
+        sv.bind('<KP_Enter>', add)
+        line3 = ttk.Frame(line2)                         # the buttons: on the value's line
+        line3.grid(row=0, column=4, sticky='w', padx=(6, 0))
+        D2.button(line3, T('cr.edit.add', '+ Add stat'), add, 10).pack(side='left')
+        if on_replace is not None:
+            D2.button(line3, T('cr.edit.replace', 'Replace selected'), replace, 15).pack(side='left', padx=(4, 0))
+        self._add_field = field
+        field.pick, field.value_var, field.value_box, field.add, field.replace, field.ep = \
+            picked, vvar, sv, add, replace, ep            # (driven directly by the headless tests)
+        return r + 1
 
     def _raw_stat_commit(self, e, var, sid, value=True):
         """Commits one raw stat entry (value or param), clamped by the save format's bounds."""
@@ -1259,99 +1516,82 @@ class CreatorWindow:
 
     def _raw_stats(self, parent, r, key, title):
         """The unrestricted raw stat rows of spec[key] (['extra'] = the item's own list, ['extra_rw'] = the
-        runeword's): per row the stat id (every stat the save format holds), its param and its free value,
-        with a delete button, and an add button. Same (stat, param) entries add up when the item is written,
-        like the game's own stat lists."""
+        runeword's): per row the stat (pick field: any stat the save format holds), its param and its free
+        value, with a delete button; under them the add row (_stat_add_row). Same (stat, param) entries add up
+        when the item is written, like the game's own stat lists."""
         spec, d, cr = self.spec, self.data, self.cr
         entries = spec.setdefault(key, [])
         ttk.Label(parent, text=title, font=('Segoe UI', 10, 'bold')).grid(
             row=r, column=0, columnspan=2, sticky='w', pady=(8, 0))
         r += 1
-        choices, labels, by_label = self._stat_choices_labels()
+        labels = self._stat_labels()
         for e in entries:
             e_local = e
             sid = e_local['id']
-            cur = next((lab for s, lab in choices if s == sid), f'(unknown stat #{sid})')
             box = ttk.Frame(parent)
             box.grid(row=r, column=0, columnspan=2, sticky='we', pady=1)
-            c = ttk.Combobox(box, values=labels, width=44)     # not readonly: typing autofills (Enter commits)
-            c.set(cur)
-            c.grid(row=0, column=0, sticky='w')
-            self.scroll.no_wheel(c)
 
-            def id_picked(_e, e=e_local, cb=c):
-                i = cb.current()
-                if i < 0:
-                    lab = cb.get().strip().lower()             # typed text: resolve it back to the stat
-                    i = next((k for k, (_s, l) in enumerate(choices) if l.lower() == lab), -1)
-                if i < 0 or i >= len(choices):
-                    return
-                e['id'] = sid = choices[i][0]
-                pbits = (d.isc[sid]['param'] or 0) if 0 <= sid < len(d.isc) else 0
+            def id_picked(new, e=e_local):
+                e['id'] = new
+                pbits = (d.isc[new]['param'] or 0) if 0 <= new < len(d.isc) else 0
                 if not pbits:
                     e['param'] = None
-                rng = cr.stat_bounds(sid)
+                rng = cr.stat_bounds(new)
                 e['value'] = max(rng[0], min(rng[1], e.get('value') or 1))
                 self.set_status(T('cr.raw.statinfo', 'stat #{sid}, {pb} param bits, save range {lo} to {hi}',
-                                  sid=sid, pb=pbits, lo=rng[0], hi=rng[1]))
+                                  sid=new, pb=pbits, lo=rng[0], hi=rng[1]))
                 self.render_options()
-            c.bind('<<ComboboxSelected>>', id_picked)
-            bind_stat_picker(c, labels, lambda lab, e=e_local, cb=c: id_picked(None, e, cb))
+            c = self._pick_field(box, labels.get(sid, f'(unknown stat #{sid})'), None, 26)
+            c.open = lambda typed=None, c=c, fn=id_picked, sid=sid: self._stat_popup(c, fn, typed, sid)
+            c.grid(row=0, column=0, sticky='w')
             try:
                 pbits = d.isc[sid]['param'] or 0
             except (IndexError, KeyError, TypeError):
                 pbits = 0
             kind = param_kind(sid)
             if kind in ('skill', 'skill_only', 'class'):
+                parts = decode_param(d, sid, e_local.get('param'))
                 if kind == 'class':
                     from mxl_rules import CLASSES
                     names = list(CLASSES)
                 else:
                     names = [n for n, _sk in skill_names_sorted(d, sid)]
-                parts = decode_param(d, sid, e_local.get('param'))
                 nm = tk.StringVar(value=(parts or ('',))[0] or (names[0] if names else ''))
-                cb = ttk.Combobox(box, values=names, textvariable=nm, width=22)
-                cb.grid(row=0, column=1, sticky='w', padx=(6, 2))
-                self.scroll.no_wheel(cb)
-                bind_typeahead(cb, names)
                 lv = None
                 if kind == 'skill':
                     lv = tk.IntVar(value=(parts or ('', 1))[1] if parts and parts[1] is not None else 1)
+
+                def commit_param(_e=None, nm=nm, lv=lv, e=e_local):
+                    try:
+                        level = int(lv.get()) if lv is not None else None
+                    except (ValueError, tk.TclError):
+                        level = 1
+                    newp, why = encode_skill_param(d, e['id'], nm.get(), level)
+                    if newp is None:
+                        self._skill_status(why, nm.get())
+                        return
+                    e['param'] = newp
+                    self._take_over((e['id'], newp))
+                    self.refresh()
+                if kind == 'class':                     # a handful of names: a plain dropdown
+                    cb = ttk.Combobox(box, values=names, textvariable=nm, width=14)
+                    self.scroll.no_wheel(cb)
+                    bind_typeahead(cb, names)
+                    cb.bind('<<ComboboxSelected>>', commit_param)
+                else:                                   # thousands of skills: the searchable list
+                    cb = self._name_field(box, names, nm, commit_param, 20, T('cr.pick.skill', 'Skill'))
+                cb.grid(row=0, column=1, sticky='w', padx=(4, 2))
+                if lv is not None:
                     sl = ttk.Spinbox(box, from_=1, to=63, textvariable=lv, width=4)
                     sl.grid(row=0, column=2, sticky='w', padx=(2, 2))
                     self.scroll.no_wheel(sl)
-
-                    def commit_param(_e=None, nm=nm, lv=lv):
-                        newp, why = encode_skill_param(d, e_local['id'], nm.get(),
-                                                       int(lv.get()) if lv is not None else None)
-                        if newp is None:
-                            self._skill_status(why, nm.get())
-                            return
-                        e_local['param'] = newp
-                        self._take_over((e_local['id'], newp))
-                        self.refresh()
-                else:
-                    def commit_param(_e=None, nm=nm):
-                        newp, why = encode_skill_param(d, e_local['id'], nm.get(), None)
-                        if newp is None:
-                            self._skill_status(why, nm.get())
-                            return
-                        e_local['param'] = newp
-                        self._take_over((e_local['id'], newp))
-                        self.refresh()
-                cb.bind('<<ComboboxSelected>>', commit_param)
-                if lv is not None:
                     self._spin_commit(sl, commit_param)
             elif sid == STATE_STAT and pbits:
-                # the state stat (98): param = state id - a dropdown of the states the skills set,
-                # named after the skills that set them (the states table carries no names)
+                # the state stat (98): param = state id - the states the skills set, named after the
+                # skills that set them (the states table carries no names)
                 snames = state_names_sorted(d)
                 cur = next((n for n, v in snames if v == e_local.get('param')), None)
                 nm = tk.StringVar(value=cur or (snames[0][0] if snames else ''))
-                cb = ttk.Combobox(box, values=[n for n, _v in snames], textvariable=nm, width=22)
-                cb.grid(row=0, column=1, sticky='w', padx=(6, 2))
-                self.scroll.no_wheel(cb)
-                bind_typeahead(cb, [n for n, _v in snames])
 
                 def commit_state(_e=None, nm=nm, e=e_local, snames=snames):
                     v = next((v for n, v in snames if n == nm.get()), None)
@@ -1360,19 +1600,20 @@ class CreatorWindow:
                     e['param'] = v
                     self._take_over((e['id'], v))
                     self.refresh()
-                cb.bind('<<ComboboxSelected>>', commit_state)
+                cb = self._name_field(box, [n for n, _v in snames], nm, commit_state, 20, T('cr.pick.state', 'State'))
+                cb.grid(row=0, column=1, sticky='w', padx=(4, 2))
             elif pbits:
                 pv = tk.IntVar(value=max(0, e.get('param') or 0))
                 sp = ttk.Spinbox(box, from_=0, to=(1 << pbits) - 1, textvariable=pv, width=8)
-                sp.grid(row=0, column=1, sticky='w', padx=(6, 2))
+                sp.grid(row=0, column=1, sticky='w', padx=(4, 2))
+                self.scroll.no_wheel(sp)
                 self._spin_commit(sp, lambda pv=pv, e=e_local, sid=sid: self._raw_stat_commit(e, pv, sid, value=False))
-            else:
-                ttk.Label(box, text=' - ').grid(row=0, column=1, padx=(6, 2))
             rng = cr.stat_bounds(sid) or (0, 0)
             vc = 3 if kind == 'skill' else 2          # skill rows keep a slot for the cast level at col 2
             vv = tk.IntVar(value=max(rng[0], min(rng[1], e.get('value') or 0)))
-            sv = ttk.Spinbox(box, from_=rng[0], to=rng[1], textvariable=vv, width=10)
-            sv.grid(row=0, column=vc, sticky='w', padx=(6, 2))
+            sv = ttk.Spinbox(box, from_=rng[0], to=rng[1], textvariable=vv, width=8)
+            sv.grid(row=0, column=vc, sticky='w', padx=(4, 2))
+            self.scroll.no_wheel(sv)
             self._spin_commit(sv, lambda vv=vv, e=e_local, sid=sid: self._raw_stat_commit(e, vv, sid))
 
             def remove(e=e_local):
@@ -1381,16 +1622,14 @@ class CreatorWindow:
                 except ValueError:
                     pass
                 self.render_options()
-            D2.button(box, 'x', remove, 2).grid(row=0, column=vc + 1, padx=(6, 0))
+            D2.button(box, 'x', remove, 2).grid(row=0, column=vc + 1, padx=(4, 0))
             r += 1
-        add_entries = entries
 
-        def add(*_a):
-            sid = choices[0][0] if choices else 0
-            add_entries.append(dict(id=sid, param=None, value=1))
+        def add(sid, param, v, entries=entries):
+            entries.append(dict(id=sid, param=param, value=v))
+            self._take_over((sid, param))
             self.render_options()
-        D2.button(parent, T('cr.raw.add', '+ Add stat'), add, 8).grid(row=r, column=0, columnspan=2, sticky='w', pady=(4, 2))
-        return r + 1
+        return self._stat_add_row(parent, r, add)
 
     # --------------------------------------------------------------- unique orange text
     def _orange_text(self, parent, r):
@@ -1430,13 +1669,13 @@ class CreatorWindow:
         box = ttk.Frame(parent)
         box.grid(row=r, column=0, columnspan=2, sticky='we', pady=1)
         ttk.Label(box, text=T('cr.orange.display', 'display')).grid(row=0, column=0, sticky='w')
-        cb = ttk.Combobox(box, values=labels, width=46)      # typing autofills (Enter commits)
+        dvar, hvar = tk.StringVar(value=labels[0]), tk.StringVar()
+        hid = {'choices': []}
+        cb = self._name_field(box, labels, dvar, lambda: sync(), 34, T('cr.orange.title', 'Unique orange text (display + hidden)'))
         cb.grid(row=0, column=1, sticky='w', padx=(4, 2))
-        self.scroll.no_wheel(cb)
         ttk.Label(box, text=T('cr.orange.hidden', 'hidden')).grid(row=1, column=0, sticky='w')
-        hb = ttk.Combobox(box, state='readonly', width=46)
+        hb = self._name_field(box, lambda: hid['choices'], hvar, None, 34, T('cr.orange.hidden', 'hidden'))
         hb.grid(row=1, column=1, sticky='w', padx=(4, 2))
-        self.scroll.no_wheel(hb)
         # the paired effects: the other attributes the game's own source row writes with this text
         # (the counter / oskill grant / companion block that make it true). Multi-select; every
         # selected entry is written into the item's stat list next to the text, where it shows up
@@ -1445,7 +1684,7 @@ class CreatorWindow:
         eff = tk.Listbox(box, selectmode='extended', height=4, exportselection=False,
                          activestyle='none')
         eff.grid(row=2, column=1, sticky='we', padx=(4, 2))
-        eff.configure(width=48)
+        eff.configure(width=36)
         self.scroll.no_wheel(eff)
         rng = cr.stat_bounds(texts[0]['display']['id']) or (0, 1)
         vv = tk.IntVar(value=texts[0]['display']['value'])
@@ -1455,21 +1694,18 @@ class CreatorWindow:
         self.scroll.no_wheel(sv)
 
         def sync(_e=None):
-            lab = cb.get().strip().lower()
-            i = next((k for k, t in enumerate(texts) if t['label'].lower() == lab), -1)
-            if i < 0:
-                i = next((k for k, t in enumerate(texts) if t['label'].lower().startswith(lab)), -1)
-            if i < 0:
-                i = st['i']
+            lab = dvar.get()
+            i = labels.index(lab) if lab in labels else st['i']
             st['i'] = i
-            cb.set(labels[i])
-            ch = hidden_choices(i)
-            hb.configure(values=ch)
+            dvar.set(labels[i])
+            cb.show(labels[i])
+            ch = hid['choices'] = hidden_choices(i)
             t = texts[i]
             if t['skilldesc'] and t['display']['param'] < len(sd_names):
-                hb.set(f"{sd_names[t['display']['param']]}  (param {t['display']['param']})")   # the game's own pairing
+                hvar.set(f"{sd_names[t['display']['param']]}  (param {t['display']['param']})")   # the game's own pairing
             else:
-                hb.current(1 if t['hidden'] else 0)
+                hvar.set(ch[1 if t['hidden'] else 0])
+            hb.show(hvar.get())
             eff.delete(0, 'end')
             for fx in t['effects']:
                 eff.insert('end', fx['label'])
@@ -1484,17 +1720,13 @@ class CreatorWindow:
             value = vv.get()
             param = t['display']['param']
             if t['skilldesc']:
-                m = re.search(r'\(param (\d+)\)', hb.get())
+                m = re.search(r'\(param (\d+)\)', hvar.get())
                 if m:
                     param = int(m.group(1))          # a skill picked in the hidden dropdown overrides
             entries = self.spec.setdefault('extra', [])
             entries.append(dict(id=t['display']['id'], param=param, value=value))
             if not t['skilldesc']:
-                idx = 0
-                try:
-                    idx = hb.current()
-                except Exception:
-                    idx = 0
+                idx = hid['choices'].index(hvar.get()) if hvar.get() in hid['choices'] else 0
                 if idx >= 1 and idx - 1 < len(t['hidden']):
                     h = t['hidden'][idx - 1]         # (no hidden stat) sits at index 0
                     entries.append(dict(id=h['id'], param=h['param'], value=h['value']))
@@ -1512,8 +1744,7 @@ class CreatorWindow:
             self.set_status(T('cr.orange.added', 'orange text added: {lab}', lab=t['label'][:60])
                             + (T('cr.orange.effects', ' + {n} effect stat(s)', n=n_fx) if n_fx else ''))
             self.render_options()
-        cb.bind('<<ComboboxSelected>>', sync)
-        bind_stat_picker(cb, labels, lambda _lab: sync())
+        sync()
         D2.button(parent, T('cr.orange.add', '+ Add orange text'), add, 8).grid(
             row=r + 1, column=0, columnspan=2, sticky='w', pady=(4, 2))
         return r + 2
@@ -1758,10 +1989,12 @@ class CreatorWindow:
                 else:
                     names = [n for n, _sk in skill_names_sorted(d, sid)]
                 nm = tk.StringVar(value=(parts or ('',))[0] or (names[0] if names else ''))
-                cb = ttk.Combobox(parent, values=names, textvariable=nm, width=22)
-                cb.grid(row=r, column=2, sticky='w', padx=(4, 2), pady=1)
-                self.scroll.no_wheel(cb)
-                bind_typeahead(cb, names)
+                cb = None
+                if kind == 'class':                     # a handful of names: a plain dropdown
+                    cb = ttk.Combobox(parent, values=names, textvariable=nm, width=14)
+                    cb.grid(row=r, column=2, sticky='w', padx=(4, 2), pady=1)
+                    self.scroll.no_wheel(cb)
+                    bind_typeahead(cb, names)
                 lv = None
                 lc = 3
                 if kind == 'skill':
@@ -1771,8 +2004,12 @@ class CreatorWindow:
                     sl.grid(row=r, column=3, sticky='w', padx=(2, 0))
                     lc = 4
 
-                    def commit_param(_e=None, nm=nm, lv=lv, k=k, cb_=cb):
-                        newp, why = encode_skill_param(d, k[0], nm.get(), int(lv.get()))
+                    def commit_param(_e=None, nm=nm, lv=lv, k=k):
+                        try:
+                            level = int(lv.get())
+                        except (ValueError, tk.TclError):
+                            level = 1
+                        newp, why = encode_skill_param(d, k[0], nm.get(), level)
                         if newp is None:
                             self._skill_status(why, nm.get())
                             return
@@ -1784,7 +2021,11 @@ class CreatorWindow:
                             self._skill_status(why, nm.get())
                             return
                         self._edit_set_param(k, newp)
-                cb.bind('<<ComboboxSelected>>', commit_param)
+                if cb is not None:
+                    cb.bind('<<ComboboxSelected>>', commit_param)
+                else:                                   # thousands of skills: the searchable list
+                    self._name_field(parent, names, nm, commit_param, 20, T('cr.pick.skill', 'Skill')).grid(
+                        row=r, column=2, sticky='w', padx=(4, 2), pady=1)
                 if lv is not None:
                     self._spin_commit(sl, commit_param)
                 bcol = lc + 1
@@ -1821,67 +2062,61 @@ class CreatorWindow:
         self.render_mods()
         self.refresh()
 
-    def _edit_pick_param_zone(self, pf, pick):
-        """The param widgets of the picked stat in the add/replace row: a skill dropdown (+ cast level),
-        a class dropdown, or a plain param box. Rebuilt on every pick."""
+    def _edit_pick_param_zone(self, pf, pick, ep):
+        """The param widgets of the picked stat in an add row: a searchable skill list (+ cast level), a
+        state list, a class dropdown, or a plain param box. Rebuilt on every pick; ep: the row's own state."""
         d = self.data
         for w in pf.winfo_children():
             w.destroy()
-        kind = param_kind(pick['sid'])
-        self._ep = {k: v for k, v in getattr(self, '_ep', {}).items() if k in ('sid',)}
-        self._ep['sid'] = pick['sid']
-        names = None
+        ep.clear()
+        sid = pick['sid']
+        kind = param_kind(sid)
+        pbits = (d.isc[sid]['param'] or 0) if 0 <= sid < len(d.isc) else 0
         if kind in ('skill', 'skill_only'):
-            names = [n for n, _k in skill_names_sorted(d, pick['sid'])]
+            names = [n for n, _k in skill_names_sorted(d, sid)]
             ttk.Label(pf, text=T('cr.edit.skill', 'skill')).grid(row=0, column=0)
+            nm = ep['name'] = tk.StringVar(value=names[0] if names else '')
+            self._name_field(pf, names, nm, None, 20, T('cr.pick.skill', 'Skill')).grid(row=0, column=1, padx=(4, 6))
+            if kind == 'skill':
+                ttk.Label(pf, text=T('cr.edit.level', 'level')).grid(row=0, column=2)
+                lv = ep['level'] = tk.IntVar(value=1)
+                sl = ttk.Spinbox(pf, from_=1, to=63, textvariable=lv, width=4)
+                sl.grid(row=0, column=3, padx=(2, 6))
+                self.scroll.no_wheel(sl)
         elif kind == 'class':
             from mxl_rules import CLASSES
             names = list(CLASSES)
             ttk.Label(pf, text=T('cr.edit.class', 'class')).grid(row=0, column=0)
-        elif pick['sid'] == STATE_STAT and pick['sid'] < len(d.isc) and (d.isc[pick['sid']]['param'] or 0):
-            # the state stat (98): param = state id, named after the skills that set it
-            snames = state_names_sorted(d)
-            ttk.Label(pf, text=T('cr.edit.state', 'state')).grid(row=0, column=0)
-            nm = tk.StringVar(value=snames[0][0] if snames else '')
-            cb = ttk.Combobox(pf, state='readonly', values=[n for n, _v in snames], textvariable=nm, width=24)
-            cb.grid(row=0, column=1, padx=(4, 2))
+            nm = ep['name'] = tk.StringVar(value=names[0] if names else '')
+            cb = ttk.Combobox(pf, state='readonly', values=names, textvariable=nm, width=14)
+            cb.grid(row=0, column=1, padx=(4, 6))
             self.scroll.no_wheel(cb)
-            bind_typeahead(cb, [n for n, _v in snames])
-            self._ep['name'] = nm
-            self._ep['state_names'] = snames
-            return
-        elif (d.isc[pick['sid']]['param'] or 0) if 0 <= pick['sid'] < len(d.isc) else 0:
+            bind_typeahead(cb, names)
+        elif sid == STATE_STAT and pbits:
+            # the state stat (98): param = state id, named after the skills that set it
+            snames = ep['state_names'] = state_names_sorted(d)
+            ttk.Label(pf, text=T('cr.edit.state', 'state')).grid(row=0, column=0)
+            nm = ep['name'] = tk.StringVar(value=snames[0][0] if snames else '')
+            self._name_field(pf, [n for n, _v in snames], nm, None, 20, T('cr.pick.state', 'State')).grid(
+                row=0, column=1, padx=(4, 6))
+        elif pbits:
             ttk.Label(pf, text=T('cr.edit.param', 'param')).grid(row=0, column=0)
-            pv = tk.IntVar(value=0)
-            sp = ttk.Spinbox(pf, from_=0, to=(1 << (d.isc[pick['sid']]['param'] or 1)) - 1, textvariable=pv, width=8)
-            sp.grid(row=0, column=1, padx=(4, 0))
-            self._ep['param'] = pv
-            return
-        else:
-            return
-        nm = tk.StringVar(value=names[0] if names else '')
-        cb = ttk.Combobox(pf, state='readonly', values=names, textvariable=nm, width=24)
-        cb.grid(row=0, column=1, padx=(4, 2))
-        self.scroll.no_wheel(cb)
-        bind_typeahead(cb, names)
-        self._ep['name'] = nm
-        if kind == 'skill':
-            ttk.Label(pf, text=T('cr.edit.level', 'level')).grid(row=0, column=2, padx=(8, 0))
-            lv = tk.IntVar(value=1)
-            ttk.Spinbox(pf, from_=1, to=63, textvariable=lv, width=4).grid(row=0, column=3, padx=(2, 0))
-            self._ep['level'] = lv
+            pv = ep['param'] = tk.IntVar(value=0)
+            sp = ttk.Spinbox(pf, from_=0, to=(1 << pbits) - 1, textvariable=pv, width=8)
+            sp.grid(row=0, column=1, padx=(4, 6))
+            self.scroll.no_wheel(sp)
 
-    def _edit_picked_param(self, pick):
+    def _edit_picked_param(self, pick, ep):
         """(param, why) of the picked stat's param widgets: (param, None) on success, else (None, reason)
         (see encode_skill_param; a plain param box only clamps itself, so reason is always None there)."""
-        p = getattr(self, '_ep', {})
+        p = ep
         sid = pick['sid']
         kind = param_kind(sid)
         if kind in ('skill', 'skill_only', 'class'):
             name = str(p.get('name') and p['name'].get() or '')
             try:
                 lvl = int(p['level'].get()) if kind == 'skill' else None
-            except (AttributeError, ValueError, tk.TclError):
+            except (KeyError, AttributeError, ValueError, tk.TclError):
                 lvl = 1
             return encode_skill_param(self.data, sid, name, lvl)
         if sid == STATE_STAT and 'state_names' in p:
@@ -1894,69 +2129,9 @@ class CreatorWindow:
             return None, None
 
     def _edit_build_pick(self, parent, r):
-        """The add / replace row of the item-stats table: pick a stat (whole list), its skill or param, a
-        value; '+ Add stat' appends it, 'Replace selected' turns the clicked row's stat into this one."""
-        d = self.data
-        choices, labels, _m = self._stat_choices_labels()
-        pick = {'sid': choices[0][0] if choices else 0}
-        box = ttk.Frame(parent)
-        box.grid(row=r, column=0, columnspan=2, sticky='we', pady=(4, 2))
-        ttk.Label(box, text=T('cr.edit.add_stat', 'Add stat:')).grid(row=0, column=0, sticky='w')
-        c = ttk.Combobox(box, values=labels, width=44)     # not readonly: typing autofills (Enter commits)
-        if labels:
-            c.set(labels[0])
-        c.grid(row=0, column=1, sticky='w', padx=(6, 2))
-        self.scroll.no_wheel(c)
-
-        def pick_by_label(lab):
-            i = next((k for k, (_s, l) in enumerate(choices) if l == lab), -1)
-            if i >= 0:
-                pick['sid'] = choices[i][0]
-                picked()
-        pf = ttk.Frame(box)
-        pf.grid(row=0, column=2, sticky='w')
-        self._edit_pick_param_zone(pf, pick)
-        rng = self.cr.stat_bounds(pick['sid']) or (0, 0)
-        vvar = tk.IntVar(value=max(rng[0], min(rng[1], 1)))
-        sv = ttk.Spinbox(box, from_=rng[0], to=rng[1], textvariable=vvar, width=10)
-        sv.grid(row=0, column=3, sticky='w', padx=(6, 2))
-        self.scroll.no_wheel(sv)
-
-        def picked(_e=None):
-            i = c.current()
-            if 0 <= i < len(choices):
-                pick['sid'] = choices[i][0]
-                sid = pick['sid']
-                pb = (d.isc[sid]['param'] or 0) if 0 <= sid < len(d.isc) else 0
-                self.set_status(T('cr.raw.statinfo', 'stat #{sid}, {pb} param bits, save range {lo} to {hi}',
-                                  sid=sid, pb=pb, lo=self.cr.stat_bounds(sid)[0],
-                                  hi=self.cr.stat_bounds(sid)[1]))
-            self._edit_pick_param_zone(pf, pick)
-            rng2 = self.cr.stat_bounds(pick['sid']) or (0, 0)
-            sv.configure(from_=rng2[0], to=rng2[1])
-            vvar.set(max(rng2[0], min(rng2[1], vvar.get() or rng2[1])))
-        c.bind('<<ComboboxSelected>>', picked)
-        bind_stat_picker(c, labels, pick_by_label)
-
-        def picked_param():
-            """(sid, param, v, why) of the picked stat: why is not None only when a skill pick was
-            refused (encode_skill_param); a stat without a param field comes back as (sid, None, v, None)."""
-            sid = pick['sid']
-            param, why = self._edit_picked_param(pick)
-            if param is None and why is not None:
-                name = str(getattr(self, '_ep', {}).get('name') and self._ep['name'].get() or '')
-                self._skill_status(why, name)
-            rng2 = self.cr.stat_bounds(sid) or (0, 0)
-            try:
-                v = max(rng2[0], min(rng2[1], int(vvar.get())))
-            except (ValueError, tk.TclError):
-                v = rng2[1]
-            return sid, param, v, why
-
-        def add(*_a):
-            sid, param, v, why = picked_param()
-            if why is not None:
-                return                      # refused skill pick: the status bar says why
+        """The add / replace row of the item-stats table (see _stat_add_row): '+ Add stat' appends the picked
+        stat, 'Replace selected' turns the clicked row's stat into it."""
+        def add(sid, param, v):
             key = (sid, param)
             self.set_extra_delta(key, v - self._edit_made().get(key, 0))
             self._take_over(key)
@@ -1964,12 +2139,9 @@ class CreatorWindow:
             self.render_mods()
             self.refresh()
 
-        def replace(*_a):
+        def replace(sid, param, _v):
             if not getattr(self, '_edit_sel', None):
                 self.set_status(T('cr.edit.no_sel', 'Click a stat row first: the picked stat replaces it.'))
-                return
-            sid, param, _v, why = picked_param()
-            if why is not None:
                 return
             made = self._edit_made()
             old = self._edit_sel
@@ -1982,10 +2154,7 @@ class CreatorWindow:
             self._edit_sel = key
             self.render_mods()
             self.refresh()
-
-        D2.button(box, T('cr.edit.replace', 'Replace selected'), replace, 15).grid(row=0, column=5, padx=(2, 0))
-        D2.button(box, T('cr.edit.add', '+ Add stat'), add, 10).grid(row=0, column=4, padx=(2, 0))
-        return r + 1
+        return self._stat_add_row(parent, r, add, replace)
 
     # ------------------------------------------------------------------ changes
     def _int(self, var, lo, hi):
@@ -2162,6 +2331,8 @@ class CreatorWindow:
         if self.spec is None:
             return
         self.cr.roll(self.spec, how)
+        if self.spec['quality'] == 'tempered' and not self.spec.get('_from_item'):
+            self._honorific_roll(how)
         if how == 'max' and self.spec['code'] and self.data.base(self.spec['code']).kind == 'armor':
             self.spec['defense'] = self.cr.defense_range(self.spec)[1]
         self.render_options()
