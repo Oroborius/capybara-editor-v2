@@ -765,8 +765,10 @@ class StatScreen:
         key = ('btn', w, h, down)
         im = self._pil.get(key)
         if im is None:
-            from PIL import ImageDraw, ImageEnhance
-            im = ImageEnhance.Brightness(self._box(w, h)).enhance(0.9 if down else 1.9)
+            from PIL import Image, ImageDraw
+            f = 0.9 if down else 1.9              # brightness by hand: the Windows build has no PIL.ImageEnhance
+            r, g, b, a = self._box(w, h).split()
+            im = Image.merge('RGBA', [c.point(lambda v: min(255, int(v * f))) for c in (r, g, b)] + [a])
             d = ImageDraw.Draw(im)
             d.rectangle((0, 0, w - 1, h - 1), outline=(111, 90, 58, 255))
             d.rectangle((1, 1, w - 2, h - 2), outline=(40, 32, 20, 255) if not down else (154, 127, 82, 255))
