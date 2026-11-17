@@ -26,31 +26,18 @@ def get_art(game_dir, theme, cache_root):
     return _ART[key]
 
 
-def skill_web(self, code, tab, size):
-        """The tree's connector web (the arrows between the skill nodes): the class's
-        layout-<code>.dc6 holds 4 art frames per tree tab, in tab order; they tile into the
-        tree-sized web, which the editor stretches over the stone panel under the nodes."""
-        from PIL import Image
-
-        def build():
-            fr = DC6.dc6_frames(self._theme_file(f'skills\\layout-{code}.dc6'))
-            base = max(0, tab) * 4
-            im = Image.new('RGBA', (512, 704))
-            for ty in range(0, 704, 256):
-                for tx in range(0, 512, 256):
-                    for i in (base, base + 1, base + 2, base + 3):
-                        if i >= len(fr):
-                            continue
-                        w, h, _ox, _oy, px, mask = fr[i]
-                        if not any(mask[:w * h]):
-                            continue
-                        rw, rh, rgba = DC6.to_rgba(fr[i], self.pal())
-                        t = Image.frombytes('RGBA', (rw, rh), bytes(rgba))
-                        im.paste(t, (tx, ty), t)
-            return im.width, im.height, im.tobytes()
-
-        w, h = size
-        return self._cached(f'web-{code}-{tab}-{w}x{h}', build)
+def skill_web(self, code, tab, size=None):
+    """The connector web of one tree (the arrows between the skill nodes) as a 512 x 704 overlay in the
+    skill-tree panel's own coordinates: skills\\layout-<class>.dc6 holds one panel (6 tiles of 256 px,
+    2 per row, like every game panel) per tree tab, in tab order. ArtError for a tree without a web
+    (masteries, rewards). size is ignored (kept for older callers)."""
+    def build():
+        fr = DC6.dc6_frames(self._theme_file(f'skills\\layout-{code}.dc6'))
+        part = fr[(tab - 1) * 6:tab * 6] if tab >= 1 else []
+        if len(part) < 6:
+            raise ArtError(f'no web for tab {tab} of {code}')
+        return DC6.compose(part, self.pal(), 2)
+    return self._cached(f'web6-{code}-{tab}', build)
 
 
 def warm(game_dir, cache_root):
