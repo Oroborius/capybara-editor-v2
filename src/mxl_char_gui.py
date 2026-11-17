@@ -20,6 +20,7 @@ from mxl_char import Character, CharError, SLOT_NAMES, MERC_SLOTS, INV_W, INV_H,
 from mxl_char import slot_name, difficulty_name
 from mxl_lang import T
 from mxl_creator_gui import CreatorWindow, PreviewPanel, PreviewHost, clean, clamp_window
+from mxl_statscreen import StatEditMixin
 
 # the Skills tab's game-like look: near-black stone, the icons and colours of the game itself
 SK_BG = '#0b0a08'
@@ -42,7 +43,7 @@ SET2 = {4: 11, 5: 12}
 DOLL_W, DOLL_H = 11, 7.5
 
 
-class CharacterWindow:
+class CharacterWindow(StatEditMixin):
     def __init__(self, app, tab='stats'):
         self.app = app
         self.data = app.data
@@ -139,19 +140,13 @@ class CharacterWindow:
                     self.top.bind(f'<Alt-{ch0}>', lambda e, k=key: (self.tab.set(k), self.show_tab()))
                 except tk.TclError:
                     pass
-        try:
-            import settings
-            dark = settings.get('hero_dark_mode')
-            if dark is None:                      # never chosen: follow the editor's look (dark D2 by default)
-                import mxl_d2_theme
-                dark = mxl_d2_theme.dark()
-            dark = bool(dark)
+        try:                                  # one look for the whole editor: the global theme decides
+            import mxl_d2_theme
+            dark = bool(mxl_d2_theme.dark())
         except Exception:
             dark = False
         self.dark = tk.BooleanVar(value=dark)
-        tk.Checkbutton(tabbar, text=T('ch.dark', 'Dark mode'), variable=self.dark, command=self.apply_theme, font=('Times New Roman', 12),
-                       bg='#000000', fg=HE_GOLD, selectcolor='#000000', activebackground='#000000',
-                       activeforeground=HE_GOLD, bd=0, highlightthickness=0).pack(side='left', padx=(10, 0), pady=(0, 1))
+        self.scroll.bind('<Configure>', self._fit_stats, add='+')
         self._build_skills()
         self._build_equipment()
         self._build_progress()
@@ -176,12 +171,6 @@ class CharacterWindow:
         """Light (Hero Editor grey) or dark colours for the Stats, Inventory, Waypoints and Quests tabs."""
         dark = bool(self.dark.get())
         t = THEMES[dark]
-        if save:
-            try:
-                import settings
-                settings.put('hero_dark_mode', dark)
-            except Exception:
-                pass
 
         def walk(w):
             cls = w.winfo_class()
@@ -222,6 +211,7 @@ class CharacterWindow:
                 page.pack(fill='both', expand=True)
             else:
                 page.pack_forget()
+        self._fit_stats()
         self.scroll.refresh()
 
     # ================================================================== equipment tab
@@ -1058,122 +1048,57 @@ class CharacterWindow:
     # frames, Times New Roman, white tree panes with check boxes, the tab row at the bottom of the window.
     # Stat fields the user may edit: key -> (character stat id, right shift). Life / mana / stamina are stored
     # in the save in 256ths, so their boxes show the game's own numbers (value >> 8) and writes go << 8.
-    STAT_FIELDS = {'exp': (13, 0), 'str': (0, 0), 'ene': (1, 0), 'dex': (2, 0), 'vit': (3, 0),
-                   'statpts': (4, 0), 'skillpts': (5, 0), 'gold': (14, 0), 'goldbank': (15, 0),
-                   'life_cur': (6, 8), 'life_max': (7, 8), 'mana_cur': (8, 8), 'mana_max': (9, 8),
-                   'stamina_cur': (10, 8), 'stamina_max': (11, 8)}
+    # the grey page's number boxes: mxl_char field keys (edited through the StatEditMixin engine)
+    GREY_KEYS = ('level', 'experience', 'strength', 'dexterity', 'vitality', 'energy', 'stat_points', 'skill_points',
+                 'life_cur', 'life_max', 'mana_cur', 'mana_max', 'stamina_cur', 'stamina_max', 'gold', 'gold_stash',
+                 'progression', 'name')
+
+    def _stat_art(self):
+        """The game art for the in-game stat screen (dark look with the game folder known), or None."""
+        try:
+            import mxl_d2look
+            art = mxl_d2look.art() if self.dark.get() else None
+            if art is not None:
+                art.panel('stat-screen')
+                art.frame('buttons\\stat-screen', 0)
+                art.font('font16')
+                art.font('font6')
+            return art
+        except Exception as e:
+            print('in-game stat screen disabled:', e)
+            return None
+
+    def _fit_stats(self, _e=None):
+        scr = getattr(self, 'statscreen', None)
+        if scr is None or self.tab.get() != 'stats':
+            return
+        try:
+            W, H = self.scroll.winfo_width(), self.scroll.winfo_height()
+            if W > 40 and H > 40:
+                scr.fit(W - 2, H - 2)
+        except tk.TclError:
+            pass
+
     def _build_progress(self):
         ch, d = self.ch, self.data
         self._init_state()
         # ---------------------------------------------------------------- Stats
         f = self.st_tab
         self.sv = {}
-
-        def frame(parent, text, **grid):
-            """One of the character screen's sections: stone box, gold title, gold game-font text."""
-            fr = tk.LabelFrame(parent, text=' ' + text, font=HE_FONT_I, bg=SK_STONE, fg=HE_GOLD,
-                               bd=2, relief='groove', padx=4, pady=1,
-                               highlightbackground=SK_EDGE, highlightthickness=1)
-            fr.grid(sticky='nsew', padx=2, pady=1, **grid)
-            return fr
-
-        def field(parent, r, label, key, width=12, col=0):
-            tk.Label(parent, text=label, font=HE_FONT, bg=SK_STONE).grid(row=r, column=col, sticky='e', padx=(0, 4), pady=1)
-            e = tk.Entry(parent, width=width, font=HE_FONT, relief='sunken', bd=2, bg='#000000',
-                         readonlybackground='#0b0a08', fg=HE_GOLD, insertbackground=HE_GOLD, justify='right')
-            e.grid(row=r, column=col + 1, sticky='w', pady=1)
-            if key in self.STAT_FIELDS:              # editable: type a value, Save writes it
-                e.configure(state='normal')
-                e.bind('<KeyRelease>', lambda _e: self.update_dirty())
-                e.bind('<Return>', lambda _e: self.save_progress())
-                e.bind('<Escape>', lambda _e: (self.refresh_progress(), self._init_state()))
-            else:
-                e.configure(state='readonly')
-            self.sv[key] = e
-            return e
-
-        for c in range(3):
-            f.grid_columnconfigure(c, weight=1, uniform='he')
-        from tkinter import font as tkfont
-        note_w = tkfont.Font(font=HE_FONT_S).measure('0') * 34    # notes wrap instead of widening their column
-        fr = frame(f, T('he.name', 'Name'), row=0, column=0)
-        self.sv_name = tk.Label(fr, text='', font=('Times New Roman', 14, 'bold'), bg=SK_STONE, anchor='w')
-        self.sv_name.grid(row=0, column=0, columnspan=3, sticky='w')
-        tk.Label(fr, text=T('he.copy_as', 'Copy as'), font=HE_FONT, bg=SK_STONE).grid(row=1, column=0, sticky='w', pady=(4, 0))
+        self.statscreen = None
         self.copy_name = tk.StringVar()
-        tk.Entry(fr, textvariable=self.copy_name, width=11, font=HE_FONT, relief='sunken', bd=2).grid(row=1, column=1, pady=(4, 0))
-        tk.Button(fr, text=T('he.copy', 'Copy'), font=HE_FONT, command=self.copy_char, bg=HE_BTN).grid(row=1, column=2, padx=4, pady=(4, 0))
-
-        fr = frame(f, T('he.class', 'Class'), row=1, column=0)
-        tk.Label(fr, text=T('he.class_c', 'Class:'), font=HE_FONT, bg=SK_STONE).grid(row=0, column=0, sticky='e', padx=(0, 4), pady=1)
         self.class_names = MC.class_names(d)
         self.new_class = tk.StringVar(value=self.class_names[ch.cls] if ch.cls < len(self.class_names) else str(ch.cls))
-        self.class_box = ttk.Combobox(fr, state='readonly', width=14, textvariable=self.new_class,
-                                      values=self.class_names)
-        self.class_box.grid(row=0, column=1, sticky='w', pady=1)
-        self.class_box.bind('<<ComboboxSelected>>', lambda _e: self.on_class_change())
-        tk.Label(fr, text=T('he.class_note', 'Changing the class resets the skill levels\n(the save keeps one skill list per class).'),
-                 font=HE_FONT_S, bg=SK_STONE, justify='left', wraplength=note_w).grid(row=1, column=0, columnspan=2, sticky='w', pady=(2, 0))
-        fr = frame(f, T('he.level', 'Level'), row=2, column=0)
-        tk.Label(fr, text=T('he.level_c', 'Level:'), font=HE_FONT, bg=SK_STONE).grid(row=0, column=0, sticky='e', padx=(0, 4))
-        self.new_level = tk.StringVar(value=str(ch.level))
-        self.level_box = ttk.Combobox(fr, state='readonly', width=6, textvariable=self.new_level)
-        self.level_box.grid(row=0, column=1, sticky='w')
-        tk.Label(fr, text=T('he.level_note', 'Raising the level works like the game: experience, 5 stat points\n'
-                            'and 1 skill point per level, life / mana / stamina per level.'),
-                 font=HE_FONT_S, bg=SK_STONE, justify='left', wraplength=note_w).grid(row=1, column=0, columnspan=2, sticky='w', pady=(2, 0))
-        fr = frame(f, T('he.experience', 'Experience'), row=3, column=0)
-        field(fr, 0, T('he.experience_c', 'Experience:'), 'exp', 14)
-
-        fr = frame(f, T('he.characteristics', 'Characteristics'), row=0, column=1, rowspan=2)
-        for r, (lab, key) in enumerate(((T('he.str', 'Strength:'), 'str'), (T('he.dex', 'Dexterity:'), 'dex'),
-                                        (T('he.vit', 'Vitality:'), 'vit'), (T('he.ene', 'Energy:'), 'ene'),
-                                        (T('he.statpts', 'Stat Points Left:'), 'statpts'),
-                                        (T('he.skillpts', 'Skill Points Left:'), 'skillpts'))):
-            field(fr, r, lab, key, 8)
-        fr = frame(f, T('he.constitution', 'Constitution'), row=2, column=1, rowspan=2)
-        tk.Label(fr, text=T('he.current', 'Current'), font=HE_FONT_S, bg=SK_STONE).grid(row=0, column=1)
-        tk.Label(fr, text=T('he.max', 'Max'), font=HE_FONT_S, bg=SK_STONE).grid(row=0, column=3)
-        for r, (lab, key) in enumerate(((T('he.life', 'Life:'), 'life'), (T('he.mana', 'Mana:'), 'mana'),
-                                        (T('he.stamina', 'Stamina:'), 'stamina')), start=1):
-            field(fr, r, lab, key + '_cur', 8)
-            tk.Label(fr, text='/', font=HE_FONT, bg=SK_STONE).grid(row=r, column=2, padx=2)
-            e = tk.Entry(fr, width=8, font=HE_FONT, relief='sunken', bd=2, bg='#000000',
-                         readonlybackground='#0b0a08', fg=HE_GOLD, insertbackground=HE_GOLD, justify='right')
-            e.grid(row=r, column=3, sticky='w')
-            if key + '_max' in self.STAT_FIELDS:    # editable like the other stat boxes
-                e.configure(state='normal')
-                e.bind('<KeyRelease>', lambda _e: self.update_dirty())
-                e.bind('<Return>', lambda _e: self.save_progress())
-            else:
-                e.configure(state='readonly')
-            self.sv[key + '_max'] = e
-
-        fr = frame(f, T('he.gold', 'Gold'), row=0, column=2)
-        field(fr, 0, T('he.person', 'Person:'), 'gold', 12)
-        field(fr, 1, T('he.stash', 'Stash:'), 'goldbank', 12)
-        fr = frame(f, T('he.char_type', 'Character Type'), row=1, column=2)
-        self.sv_type = {}
-        for r, (text, bit) in enumerate(((T('he.expansion', 'Expansion'), 0x20), (T('he.ladder', 'Ladder'), 0x40),
-                                         (T('he.hardcore', 'Hardcore'), 0x04), (T('he.dead', 'You were Dead'), 0x08))):
-            v = tk.BooleanVar()
-            tk.Checkbutton(fr, text=text, variable=v, font=HE_FONT, bg=SK_STONE, state='disabled',
-                           disabledforeground='#000000').grid(row=r, column=0, sticky='w')
-            self.sv_type[bit] = v
-        fr = frame(f, T('he.char_diff', 'Character Difficulty'), row=2, column=2)
-        self.sv_diff = tk.IntVar()
-        for r, n in enumerate(DIFFICULTIES):
-            tk.Radiobutton(fr, text=difficulty_name(r), value=r, variable=self.sv_diff, font=HE_FONT, bg=SK_STONE, state='disabled',
-                           disabledforeground='#000000').grid(row=r, column=0, sticky='w')
-        tk.Label(fr, text=T('he.diff_note', '(highest difficulty unlocked)'), font=HE_FONT_S, bg=SK_STONE).grid(row=3, column=0, sticky='w')
-        fr = frame(f, T('he.misc', 'Miscellaneous Info.'), row=3, column=2)
-        field(fr, 0, T('he.file_size', 'File Size:'), 'size', 10)
-        field(fr, 1, T('he.version', 'Version:'), 'version', 10)
-        tk.Label(f, text=T('he.stats_note', 'Type any value in the number boxes (gold, experience, strength ..., '
-                           'life / mana / stamina) and click SAVE; the level box works like the game: raising it '
-                           'gives experience, stat and skill points.'), font=HE_FONT_S, bg=SK_STONE,
-                 justify='left', wraplength=note_w * 2).grid(
-            row=4, column=0, columnspan=3, sticky='w', padx=4, pady=(2, 0))
+        from tkinter import font as tkfont
+        note_w = tkfont.Font(font=HE_FONT_S).measure('0') * 34    # notes wrap instead of widening their column
+        art = self._stat_art()
+        if art is not None:                 # the game's own character screen, values edited in place
+            import mxl_statscreen
+            f.configure(bg='#000000')
+            self.statscreen = mxl_statscreen.StatScreen(f, self, art)
+            self.statscreen.frame.pack(fill='both', expand=True)
+        else:
+            self._build_stats_grey(f, note_w)
 
         # ---------------------------------------------------------------- Waypoints / Quests
         self.wp_trees = []
@@ -1221,6 +1146,190 @@ class CharacterWindow:
                  font=HE_FONT_S, bg=SK_STONE, justify='left', wraplength=note_w * 2).grid(row=1, column=0, columnspan=3, sticky='w', padx=4)
         self.refresh_progress()
 
+    def _build_stats_grey(self, f, note_w):
+        """The Hero-Editor style page (light look, or no game art): the same values, edited through the same engine."""
+        ch, d = self.ch, self.data
+
+        def frame(parent, text, **grid):
+            """One of the character screen's sections: stone box, gold title, gold game-font text."""
+            fr = tk.LabelFrame(parent, text=' ' + text, font=HE_FONT_I, bg=SK_STONE, fg=HE_GOLD,
+                               bd=2, relief='groove', padx=4, pady=1,
+                               highlightbackground=SK_EDGE, highlightthickness=1)
+            fr.grid(sticky='nsew', padx=2, pady=1, **grid)
+            return fr
+
+        def entry(parent, key, width, justify='right', **grid):
+            e = tk.Entry(parent, width=width, font=HE_FONT, relief='sunken', bd=2, bg='#000000',
+                         readonlybackground='#0b0a08', fg=HE_GOLD, insertbackground=HE_GOLD, justify=justify)
+            e.grid(**grid)
+            if key in self.GREY_KEYS:                # editable: Enter / leaving the box stores it, SAVE writes it
+                e.bind('<KeyRelease>', lambda _e: self.update_dirty())
+                e.bind('<Return>', lambda _e, k=key: self._grey_commit(k))
+                e.bind('<KP_Enter>', lambda _e, k=key: self._grey_commit(k))
+                e.bind('<FocusOut>', lambda _e, k=key: self._grey_commit(k, leaving=True))
+                e.bind('<Escape>', lambda _e: self._refresh_stats_grey())
+                if key != 'name':
+                    e.bind('<Up>', lambda ev, k=key: self._grey_step(k, 10 if ev.state & 1 else 1))
+                    e.bind('<Down>', lambda ev, k=key: self._grey_step(k, -10 if ev.state & 1 else -1))
+            else:
+                e.configure(state='readonly')
+            self.sv[key] = e
+            return e
+
+        def field(parent, r, label, key, width=12, col=0):
+            tk.Label(parent, text=label, font=HE_FONT, bg=SK_STONE).grid(row=r, column=col, sticky='e', padx=(0, 4), pady=1)
+            return entry(parent, key, width, row=r, column=col + 1, sticky='w', pady=1)
+
+        for c in range(3):
+            f.grid_columnconfigure(c, weight=1, uniform='he')
+        fr = frame(f, T('he.name', 'Name'), row=0, column=0)
+        e = entry(fr, 'name', 16, justify='left', row=0, column=0, columnspan=3, sticky='w')
+        e.configure(font=('Times New Roman', 13, 'bold'))
+        tk.Label(fr, text=T('he.copy_as', 'Copy as'), font=HE_FONT, bg=SK_STONE).grid(row=1, column=0, sticky='w', pady=(4, 0))
+        tk.Entry(fr, textvariable=self.copy_name, width=11, font=HE_FONT, relief='sunken', bd=2).grid(row=1, column=1, pady=(4, 0))
+        tk.Button(fr, text=T('he.copy', 'Copy'), font=HE_FONT, command=self.copy_char, bg=HE_BTN).grid(row=1, column=2, padx=4, pady=(4, 0))
+
+        fr = frame(f, T('he.class', 'Class'), row=1, column=0)
+        tk.Label(fr, text=T('he.class_c', 'Class:'), font=HE_FONT, bg=SK_STONE).grid(row=0, column=0, sticky='e', padx=(0, 4), pady=1)
+        self.class_box = ttk.Combobox(fr, state='readonly', width=14, textvariable=self.new_class,
+                                      values=self.class_names)
+        self.class_box.grid(row=0, column=1, sticky='w', pady=1)
+        self.class_box.bind('<<ComboboxSelected>>', lambda _e: self.on_class_change())
+        tk.Label(fr, text=T('he.class_note', 'Changing the class resets the skill levels\n(the save keeps one skill list per class).'),
+                 font=HE_FONT_S, bg=SK_STONE, justify='left', wraplength=note_w).grid(row=1, column=0, columnspan=2, sticky='w', pady=(2, 0))
+        fr = frame(f, T('he.level', 'Level'), row=2, column=0)
+        field(fr, 0, T('he.level_c', 'Level:'), 'level', 6)
+        tk.Label(fr, text=T('he.level_up_c', 'Level up to:'), font=HE_FONT, bg=SK_STONE).grid(row=1, column=0, sticky='e', padx=(0, 4))
+        self.new_level = tk.StringVar(value='')
+        self.level_box = ttk.Combobox(fr, state='readonly', width=6, textvariable=self.new_level)
+        self.level_box.grid(row=1, column=1, sticky='w')
+        self.level_box.bind('<<ComboboxSelected>>', lambda _e: self._grey_levelup())
+        tk.Label(fr, text=T('he.level_note2', 'The Level box is written as typed. "Level up to" works like the game: '
+                            'experience, 5 stat points and 1 skill point per level, life / mana / stamina per level.'),
+                 font=HE_FONT_S, bg=SK_STONE, justify='left', wraplength=note_w).grid(row=2, column=0, columnspan=2, sticky='w', pady=(2, 0))
+        fr = frame(f, T('he.experience', 'Experience'), row=3, column=0)
+        field(fr, 0, T('he.experience_c', 'Experience:'), 'experience', 14)
+        tk.Button(fr, text=T('ss.match', 'Match to level'), font=HE_FONT_S, command=self.st_match_exp, bg=HE_BTN,
+                  pady=0).grid(row=1, column=1, sticky='w')
+        self.exp_note = tk.Label(fr, text='', font=HE_FONT_S, bg=SK_STONE, justify='left', wraplength=note_w)
+        self.exp_note.grid(row=2, column=0, columnspan=2, sticky='w')
+
+        fr = frame(f, T('he.characteristics', 'Characteristics'), row=0, column=1, rowspan=2)
+        for r, (lab, key) in enumerate(((T('he.str', 'Strength:'), 'strength'), (T('he.dex', 'Dexterity:'), 'dexterity'),
+                                        (T('he.vit', 'Vitality:'), 'vitality'), (T('he.ene', 'Energy:'), 'energy'),
+                                        (T('he.statpts', 'Stat Points Left:'), 'stat_points'),
+                                        (T('he.skillpts', 'Skill Points Left:'), 'skill_points'))):
+            field(fr, r, lab, key, 8)
+            if key in ('strength', 'dexterity', 'vitality', 'energy'):
+                b = tk.Button(fr, text='+', font=HE_FONT_S, bg=HE_BTN, padx=3, pady=0, takefocus=0)
+                b.grid(row=r, column=2, padx=(3, 0))
+                b.bind('<ButtonRelease-1>', lambda ev, k=key: self._grey_plus(k, ev))
+                b.bind('<ButtonRelease-3>', lambda ev, k=key: self._grey_plus(k, ev, take=True))
+        fr = frame(f, T('he.constitution', 'Constitution'), row=2, column=1, rowspan=2)
+        tk.Label(fr, text=T('he.current', 'Current'), font=HE_FONT_S, bg=SK_STONE).grid(row=0, column=1)
+        tk.Label(fr, text=T('he.max', 'Max'), font=HE_FONT_S, bg=SK_STONE).grid(row=0, column=3)
+        for r, (lab, key) in enumerate(((T('he.life', 'Life:'), 'life'), (T('he.mana', 'Mana:'), 'mana'),
+                                        (T('he.stamina', 'Stamina:'), 'stamina')), start=1):
+            field(fr, r, lab, key + '_cur', 8)
+            tk.Label(fr, text='/', font=HE_FONT, bg=SK_STONE).grid(row=r, column=2, padx=2)
+            entry(fr, key + '_max', 8, row=r, column=3, sticky='w')
+
+        fr = frame(f, T('he.gold', 'Gold'), row=0, column=2)
+        field(fr, 0, T('he.person', 'Person:'), 'gold', 12)
+        field(fr, 1, T('he.stash', 'Stash:'), 'gold_stash', 12)
+        fr = frame(f, T('he.char_type', 'Character Type'), row=1, column=2)
+        self.sv_type = {}
+        for r, (text, key) in enumerate(((T('he.expansion', 'Expansion'), 'expansion'), (T('he.ladder', 'Ladder'), 'ladder'),
+                                         (T('he.hardcore', 'Hardcore'), 'hardcore'), (T('he.dead', 'You were Dead'), 'died'))):
+            v = tk.BooleanVar()
+            tk.Checkbutton(fr, text=text, variable=v, font=HE_FONT, bg=SK_STONE,
+                           command=lambda k=key, v=v: self.st_flag(k, v.get())).grid(row=r, column=0, sticky='w')
+            self.sv_type[key] = v
+        fr = frame(f, T('he.char_diff', 'Character Difficulty'), row=2, column=2)
+        self.sv_diff = tk.IntVar()
+        names = [difficulty_name(r) for r in range(len(DIFFICULTIES))] + [T('ss.hell_done', 'Hell finished')]
+        for r, n in enumerate(names):
+            tk.Radiobutton(fr, text=n, value=r, variable=self.sv_diff, font=HE_FONT, bg=SK_STONE,
+                           command=lambda: self.st_done(self.sv_diff.get())).grid(row=r, column=0, sticky='w')
+        tk.Label(fr, text=T('he.diff_note', '(highest difficulty unlocked)'), font=HE_FONT_S, bg=SK_STONE).grid(row=4, column=0, sticky='w')
+        field(fr, 5, T('ss.progression_c', 'Progression:'), 'progression', 5)
+        fr = frame(f, T('he.misc', 'Miscellaneous Info.'), row=3, column=2)
+        field(fr, 0, T('he.file_size', 'File Size:'), 'size', 10)
+        field(fr, 1, T('he.version', 'Version:'), 'version', 10)
+        tk.Label(f, text=T('he.stats_note2', 'Type any value in the boxes (Enter stores it, Up / Down step by 1, '
+                           'Shift: 10) and click SAVE. The + buttons spend stat points like the game (Shift +10, '
+                           'Ctrl all, right click gives a point back, Alt leaves the stat points alone).'),
+                 font=HE_FONT_S, bg=SK_STONE, justify='left', wraplength=note_w * 2).grid(
+            row=4, column=0, columnspan=3, sticky='w', padx=4, pady=(2, 0))
+
+    def _grey_commit(self, key, leaving=False):
+        e = self.sv.get(key)
+        if e is None or e.get() == str(self.st_value(key)):
+            return True
+        ok = self.st_set(key, e.get())
+        if not ok and leaving:                   # refused and the box was left: back to the stored value
+            e.delete(0, 'end')
+            e.insert(0, str(self.st_value(key)))
+        return ok
+
+    def _grey_step(self, key, n):
+        e = self.sv[key]
+        try:
+            v = int(e.get().replace(',', '').replace(' ', ''))
+        except ValueError:
+            v = self.st_value(key)
+        lo, hi = self.st_range(key)
+        e.delete(0, 'end')
+        e.insert(0, str(max(lo, min(hi, v + n))))
+        self._grey_commit(key)
+        return 'break'
+
+    def _grey_plus(self, key, ev, take=False):
+        if not self._grey_flush():
+            return
+        self.st_plus(key, 10 if ev.state & 0x1 else 1, take=take, free=bool(ev.state & 0x8),
+                     everything=bool(ev.state & 0x4) and not ev.state & 0x8 and not take)
+
+    def _grey_levelup(self):
+        try:
+            self.st_do('levelup', int(self.new_level.get()))
+        except ValueError:
+            pass
+        self.new_level.set('')
+
+    def _grey_flush(self):
+        """Stores what is typed in the boxes and not yet committed. False when a value is refused."""
+        return all(self._grey_commit(k) for k in self.GREY_KEYS if k in self.sv)
+
+    def _refresh_stats_grey(self):
+        ch, sim = self.ch, self.st_sim
+        vals = {k: self.st_value(k) for k in self.GREY_KEYS}
+        vals['size'] = f'{len(ch.raw):,}'
+        vals['version'] = str(struct.unpack_from('<I', ch.raw, 4)[0])
+        for key, e in self.sv.items():
+            e.configure(state='normal')
+            e.delete(0, 'end')
+            e.insert(0, str(vals.get(key, '')))
+            e.configure(state='normal' if key in self.GREY_KEYS else 'readonly')
+        top = MC.max_level(self.data, sim.cls) if sim.cls < 7 else sim.level
+        self.level_box.configure(values=[str(v) for v in range(sim.level + 1, top + 1)])
+        self.new_level.set('')
+        flags = sim.flags()
+        for key, v in self.sv_type.items():
+            v.set(flags[key])
+        self.sv_diff.set(sim.difficulties_done)
+        if sim.cls < 7:
+            lo, hi = sim.exp_range()
+            self.exp_note.configure(text=T('ss.exp_note', 'level {level}: {lo} to {hi}', level=sim.level, lo=lo, hi=hi),
+                                    fg='#ff6060' if not lo <= sim.field('experience') <= hi else HE_GOLD)
+
+    def st_flush(self):
+        """Commits an edit still open in a box (the art page's entry or the grey page's boxes)."""
+        scr = getattr(self, 'statscreen', None)
+        if scr is not None:
+            return scr.commit_edit()
+        return self._grey_flush()
+
     def _init_state(self):
         ch = self.ch
         self.q0 = {k: {w for _, _, quests, _ in ACTS for w, _ in quests if ch.quest_done(k, w)} for k in range(3)}
@@ -1231,6 +1340,7 @@ class CharacterWindow:
         self.qlocked = {k: {w for w in self.q0[k] if ch.quest_word(k, w) != MC.QUEST_DONE} for k in range(3)}
         self.pending_cls = None
         self.sk0 = ch.skill_levels()
+        self.st_reset()
 
     def on_tree_change(self, key, value):
         kind, k, n = key
@@ -1239,12 +1349,10 @@ class CharacterWindow:
         self.update_dirty()
 
     def dirty(self):
-        sv0 = getattr(self, 'sv0', {})
-        typed = any(sv0.get(k) != e.get() for k, e in self.sv.items() if k in self.STAT_FIELDS)
         sk0 = getattr(self, 'sk0', {})
         sk_typed = any(sk0.get(sid, 0) != self._level_of(v) for sid, v in self.sk_vars.items())
-        return (self.qstate != self.q0 or self.wstate != self.w0
-                or self.new_level.get() != str(self.ch.level) or typed
+        typed = any(e.get() != str(self.st_value(k)) for k, e in getattr(self, 'sv', {}).items() if k in self.GREY_KEYS)
+        return (self.qstate != self.q0 or self.wstate != self.w0 or self.st_dirty() or typed
                 or getattr(self, 'pending_cls', None) is not None or sk_typed)
 
     @staticmethod
@@ -1262,9 +1370,7 @@ class CharacterWindow:
 
     def refresh_progress(self):
         ch, d = self.ch, self.data
-        self.sv_name.configure(text=ch.name)
-        self.level_box.configure(values=[str(v) for v in range(ch.level, MC.max_level(d, ch.cls) + 1)])
-        self.new_level.set(str(ch.level))
+        self.st_rebuild()                 # the character may have been written (items) or read again
         self.new_class.set(self.class_names[ch.cls] if ch.cls < len(self.class_names) else str(ch.cls))
         self.pending_cls = None
         if getattr(self, '_skills_cls', None) != ch.cls:
@@ -1273,31 +1379,19 @@ class CharacterWindow:
             lv = ch.skill_levels()
             for sid, var in self.sk_vars.items():
                 var.set(str(lv.get(sid, 0)))
-        vals = {'exp': ch.stat(13), 'str': ch.stat(0), 'ene': ch.stat(1), 'dex': ch.stat(2),
-                'vit': ch.stat(3), 'statpts': ch.stat(4), 'skillpts': ch.stat(5),
-                'life_cur': ch.stat(6) >> 8, 'life_max': ch.stat(7) >> 8, 'mana_cur': ch.stat(8) >> 8,
-                'mana_max': ch.stat(9) >> 8, 'stamina_cur': ch.stat(10) >> 8, 'stamina_max': ch.stat(11) >> 8,
-                'gold': ch.stat(14), 'goldbank': ch.stat(15), 'size': f'{len(ch.raw):,}',
-                'version': str(struct.unpack_from('<I', ch.raw, 4)[0])}
-        for key, e in self.sv.items():
-            e.configure(state='normal')
-            e.delete(0, 'end')
-            e.insert(0, str(vals.get(key, '')))
-            e.configure(state='normal' if key in self.STAT_FIELDS else 'readonly')
+        if self.statscreen is not None:
+            self.statscreen.redraw()
+        else:
+            self._refresh_stats_grey()
         if getattr(self, 'sk_pts', None) is not None:       # the game's skill-screen header
             self.sk_pts.configure(text=T('he.skills_points', 'Remaining skill points: {n}',
                                          n=ch.stat(5)))
-        status = ch.head[0x24]
-        for bit, v in self.sv_type.items():
-            v.set(bool(status & bit))
-        self.sv_diff.set(min(2, ch.progression // 5) if ch.progression >= 5 else 0)
         for k in range(3):
             self.wp_trees[k].set_values({('wp', k, n): n in self.wstate[k] for n in MC.waypoint_ids(k)})
             self.q_trees[k].set_values({('q', k, w): w in self.qstate[k] for _, _, qs, _ in ACTS for w, _ in qs})
             for _, _, qs, _ in ACTS:
                 for w, _ in qs:
                     self.q_trees[k].set_locked(('q', k, w), w in self.qlocked[k])
-        self.sv0 = {k: e.get() for k, e in self.sv.items() if k in self.STAT_FIELDS}   # typed-value baseline
         self.update_dirty()
 
     def all_waypoints(self):
@@ -1307,47 +1401,23 @@ class CharacterWindow:
 
     def save_progress(self):
         ch = self.ch
+        if not self.st_flush():               # a value still being typed is refused: nothing is written
+            return
+        new_name = self.st_name if self.st_name and self.st_name != ch.name else None
+        before = ch.level
         try:
-            lvl = int(self.new_level.get())
-            before = ch.level
-            ch.set_level(lvl)
+            self.st_commit(ch)                # the stat-screen edits, in the order they were made
             cls_changed = self.pending_cls is not None and self.pending_cls != ch.cls
             if cls_changed:
                 ch.set_class(self.pending_cls)    # resets the skills: the old levels are the other class's
                 self.pending_cls = None
-            elif self.sk_vars:
-                ch.set_skill_levels(self._skills_from_vars())
-            widths = MC._csv(self.data)
-            widthbad = []
-            cap_note = ''
-            for key, (sid, shift) in self.STAT_FIELDS.items():
-                txt = self.sv[key].get().replace(',', '').strip()
-                try:
-                    v = int(txt)
-                except ValueError:
-                    continue                      # blank / junk: keep what the game stored
-                cur = ch.stat(sid) >> shift if shift else ch.stat(sid)
-                if v == cur:
-                    continue
-                bits = widths.get(sid, (0, 32))[1]
-                top = ((1 << bits) >> shift) - 1
-                if v < 0:
-                    v = 0
-                    self.sv[key].delete(0, 'end'); self.sv[key].insert(0, '0')
-                    widthbad.append((key, 0))
-                elif (v << shift) >= (1 << bits):
-                    v = top
-                    self.sv[key].delete(0, 'end'); self.sv[key].insert(0, str(v))
-                    widthbad.append((key, v))
-                ch.set_stat(sid, (v << shift) if shift else v)
+            elif any(self.sk0.get(sid, 0) != self._level_of(v) for sid, v in self.sk_vars.items()):
+                ch.set_skill_levels(self._skills_from_vars())     # only when edited: the section is kept as it is
             for k in range(3):
                 if self.qstate[k] != self.q0[k]:
                     ch.set_quests(k, self.qstate[k])
                 if self.wstate[k] != self.w0[k]:
                     ch.set_waypoints(k, self.wstate[k])
-            cap_note = ''
-            if widthbad:
-                capped = ', '.join(f'{k} {T("he.capped_to", "capped to")} {v}' for k, v in widthbad)
         except CharError as e:
             messagebox.showerror(T('ch.title', 'Character'), str(e), parent=self.top)
             self.reload()
@@ -1357,17 +1427,41 @@ class CharacterWindow:
                  'stats': (T('he.n_stat1', 'stat point'), T('he.n_stat', 'stat points')),
                  'life': (T('he.n_life', 'life'), T('he.n_life', 'life'))}
         rewards = ', '.join(f'{v:+d} {names[k][0] if abs(v) == 1 else names[k][1]}' for k, v in log.items() if v)
-        if self.save(T('he.saved', '{name} saved', name=ch.name)):
+        if (self._save_renamed(new_name) if new_name else self.save(T('he.saved', '{name} saved', name=ch.name))):
             self._init_state()
             self.refresh_progress()
             self.set_bar(T('he.saved_level', '{name} saved: level {level}', name=ch.name, level=ch.level)
                          + (T('he.saved_up', ' (+{n}: stat and skill points to spend in game)', n=ch.level - before)
                             if ch.level > before else '')
-                         + (T('he.saved_rewards', ' - quest rewards: {rewards}', rewards=rewards) if rewards else '')
-                         + (' - ' + cap_note if cap_note else ''))
+                         + (T('he.saved_rewards', ' - quest rewards: {rewards}', rewards=rewards) if rewards else ''))
             self.top.title(f'Median XL Capybara Editor V2 - {ch.name}')
 
+    def _save_renamed(self, new_name):
+        """SAVE with a new name: the character (with every pending change) is written as <new name>.d2s through
+        mxl_char.Character.rename, its companion files follow, and the main window moves to the renamed files."""
+        app, ch = self.app, self.ch
+        old = ch.name
+        try:
+            _dst, bak = ch.rename(new_name, backup=app.needs_backup(ch.path))
+        except (CharError, EditError, OSError) as e:
+            messagebox.showerror(T('ch.title', 'Character'), str(e), parent=self.top)
+            self.reload()
+            return False
+        self.selected = None
+        self.redraw()
+        try:                                  # the dropdown lists the new name; its stash is the one shown
+            view = app.view.get()
+            app.select_character(new_name, view)
+            app.open_view(keep_page=True)
+        except Exception as e:
+            print('main window not moved to the renamed character:', e)
+        self.set_status(T('he.renamed', '{old} renamed to {new}', old=old, new=new_name)
+                        + (T('cr.backup', ' - backup: {file}', file=os.path.basename(bak)) if bak else ''))
+        return True
+
     def copy_char(self):
+        if self.statscreen is not None and not self.statscreen.commit_edit():
+            return
         name = self.copy_name.get().strip()
         try:
             dst = MC.copy_character(self.ch.path, name, self.data)
