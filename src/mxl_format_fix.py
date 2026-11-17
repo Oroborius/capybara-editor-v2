@@ -49,6 +49,21 @@ def body_kind(data, code):
     return kind
 
 
+def _keep_raw(it, blob, br):
+    """The item's own bytes ('JM' to its last byte, socketed items not included) as the ATTRIBUTE it._raw - not a
+    key: nothing that copies, compares or lists the item's fields sees it. The creator's edit mode uses it to give
+    back, untouched, everything its spec model does not hold (mxl_creator.Creator.spec_from_item)."""
+    try:
+        it._raw = bytes(blob[:2 + (br.pos + 7) // 8])
+    except Exception:
+        pass
+
+
+def raw_of(it):
+    """Bytes of a parsed item as they were read (None when unknown: a plain dict, a copy)."""
+    return getattr(it, '_raw', None)
+
+
 def parse_item(blob, data):
     expect(blob, 0, b'JM')
     br = BitReader(blob[2:])
@@ -75,6 +90,7 @@ def parse_item(blob, data):
     it['stats'] = []
     if simple:
         it['socketed_count'] = br.read(1)
+        _keep_raw(it, blob, br)
         return it, br
     it['socketed_count'] = br.read(3)
     it['id'] = br.read(32)
@@ -132,6 +148,7 @@ def parse_item(blob, data):
             it['set_stats_%d' % i] = read_stats(br, data)
     if runeword:
         it['stats_runeword'] = read_stats(br, data)
+    _keep_raw(it, blob, br)
     return it, br
 
 
@@ -150,6 +167,11 @@ def install():
     try:
         import mxl_statnames              # names for the skills without a skilldesc string ("skill #2064")
         mxl_statnames.install()
+    except Exception:
+        pass
+    try:
+        import mxl_stash_order            # a replaced stash item keeps its place in the file (no-op edit = same file)
+        mxl_stash_order.install()
     except Exception:
         pass
     mxl_format._sigma_fix = True

@@ -15,6 +15,7 @@ Rules used (from the game's code and tables):
 - stats are saved sorted by (stat, param), same stat+param from several mods are added together.
 """
 import collections
+import copy
 import os
 import random
 import re
@@ -1611,6 +1612,8 @@ class Creator:
         """(blob, record) of a validated spec: bytes of the item and its socketed items."""
         self.validate(spec)
         blob, rec = self._build(spec)
+        if spec.get('_from_item') and spec.get('_orig'):
+            blob, rec = self._carry(spec, blob, rec)
         try:
             from mxl_format_fix import parse_item
             parse_item(blob, self.data)      # the written item must read back exactly (a bad write once
@@ -1642,6 +1645,8 @@ class Creator:
         rq = 'superior' if (q == 'runeword' and spec.get('superior') is not None) else ('normal' if q == 'runeword' else q)
         rec = dict(flags=flags, code=code, id=random.getrandbits(32), ilvl=spec['ilvl'], quality=rq,
                    socketed_count=len(spec['socketed']))
+        if spec.get('_from_item') and spec.get('_item_id') is not None:
+            rec['id'] = spec['_item_id']                      # an edited item stays the same item
         n_img = self.image_count(code)
         if n_img:
             rec['image'] = spec['image'] if spec.get('image') is not None else random.randrange(n_img)
@@ -1675,8 +1680,9 @@ class Creator:
         rw = [s for m in mods if m.source.split(':')[0] == 'rw' for s in m.stats(d)]
         own += [dict(x) for x in spec.get('extra') or []]              # kept as they were on an edited item
         own = [s for s in merge_stats(own) if d.isc[s['id']]['bits']]
-        if is_vessel(d, code):              # a fresh vessel / barrel / crate starts full (Quantity: 1000)
-            own = stats_with_cluster_quantity(own)
+        if is_vessel(d, code) and not spec.get('_from_item'):
+            own = stats_with_cluster_quantity(own)   # a fresh vessel / barrel / crate starts full (Quantity: 1000);
+                                                     # an edited one keeps the amount it holds (or no attribute)
         if spec.get('_drop'):                 # edited item: attributes the user deleted (see the editor)
             own = [s for s in own if (s['id'], s.get('param')) not in spec['_drop']]
         if '_keep_zero' in spec:              # edited item: a stat its mods give but the item had not cancels out
@@ -1730,7 +1736,147 @@ class Creator:
     def spec_from_item(self, it):
         """Spec of an item read by mxl_format (quality, base, affixes, rolled values), to edit it in the creator.
         Values that several mods add together cannot be split back: those mods get their maximum. A corrupted
-        item: the corruption outcome that explains its stats best is found and taken out of them first."""
+        item: the corruption outcome that explains its stats best is found and taken out of them first.
+
+        The spec is a model: it holds what the creator can choose, not everything an item stores (item id, the
+        header flags it does not set, worn durability, socketed jewels, personalisation, set bonus lists, the place
+        of the item...). So the item as it was read is kept beside it (spec['_orig']: its bytes, their lossless
+        decode, the bytes of its socketed items and a copy of the spec as it starts), and build() writes only what
+        the user changed over it (_carry): an edit that changes nothing gives the item's own bytes back."""
+        spec = self._spec_model(it)
+        spec['_item_id'] = it.get('id')
+        spec.pop('_orig', None)
+        try:
+            orig = self._original(it)
+        except Exception:
+            orig = None
+        if orig is not None:
+            orig['spec'] = copy.deepcopy(spec)
+            spec['_orig'] = orig
+        return spec
+
+    def _original(self, it):
+        """What _carry needs of the item as read, or None when its bytes are not known (an item that did not come
+        from mxl_format_fix.parse_item) or do not match the fields any more."""
+        raw = getattr(it, '_raw', None)
+        if not raw:
+            return None
+        rec, n = decode_item(raw, self.data)
+        if n != len(raw) or encode_item(rec, self.data) != raw:
+            return None
+
+        def key(stats):
+            return sorted((s['id'], s.get('param') or 0, s['value']) for s in stats or [])
+        if rec['code'] != it.get('code') or rec.get('id') != it.get('id') or key(rec.get('stats')) != key(it.get('stats')):
+            return None
+        if (rec.get('ilvl'), rec.get('quality'), rec.get('sockets'), bool(rec['flags'] & FLAG_ETHEREAL)) != \
+                (it.get('ilvl'), it.get('quality'), it.get('sockets'), bool(it.get('ethereal'))):
+            return None                       # the fields were changed after the item was read: no original to keep
+        kids = [getattr(k, '_raw', None) for k in it.get('socketed') or []]
+        want = rec.get('socketed_count', 0) if rec['flags'] & FLAG_SOCKETED else 0
+        if len(kids) != want or not all(kids):
+            return None
+        return dict(raw=raw, rec=rec, kids=kids, base={})
+
+    @staticmethod
+    def _split(blob, data):
+        """(bytes of the item, [bytes of each socketed item]) of a built blob."""
+        _rec, n = decode_item(blob, data)
+        kids, p = [], n
+        while p < len(blob):
+            _k, m = decode_item(blob[p:], data)
+            kids.append(blob[p:p + m])
+            p += m
+        return blob[:n], kids
+
+    def _carry(self, spec, blob, rec):
+        """The edited item written over the original one: (blob, record). `blob` / `rec` are what the spec alone
+        builds. The same build of the spec as it was when the item was opened (the baseline) shows what the user
+        changed: every header field, flag bit, stat and socketed item that is the same in both builds is taken
+        from the original item, everything else from the new build. Nothing changed -> the original bytes."""
+        d, o = self.data, spec['_orig']
+        orec = o['rec']
+        free = bool(spec.get('unrestricted'))
+        if free not in o['base']:
+            try:
+                bs = copy.deepcopy(o['spec'])
+                bs['unrestricted'] = free
+                self.validate(bs)
+                o['base'][free] = self._build(bs) + (bs,)
+            except Exception:
+                o['base'][free] = None
+        base = o['base'][free]
+        if base is None:
+            return blob, rec
+        bblob, brec, bspec = base
+        oblob = o['raw'] + b''.join(o['kids'])
+        if rec is None or brec is None or orec['flags'] & FLAG_SIMPLE:
+            return (oblob if blob == bblob else blob), rec          # simple items: all or nothing
+        _n, nkids = self._split(blob, d)
+        _b, bkids = self._split(bblob, d)
+        out = dict(orec)
+        for k in set(rec) | set(brec):
+            if k in ('id', 'flags', 'socketed_count') or k.startswith('stats') or k.startswith('set_stats'):
+                continue
+            if k == 'image':
+                if spec.get('image') != bspec.get('image'):
+                    out[k] = rec.get(k)
+                continue
+            if rec.get(k) != brec.get(k):
+                if k in rec:
+                    out[k] = rec[k]
+                else:
+                    out.pop(k, None)
+        out['flags'] = orec['flags'] ^ (rec['flags'] ^ brec['flags'])     # only the bits the edit switched
+        for k in {x for r in (rec, brec, orec) for x in r if x.startswith('stats') or x.startswith('set_stats')}:
+            out[k] = self._carry_stats(orec.get(k), rec.get(k), brec.get(k))
+            if out[k] is None:
+                del out[k]
+        if nkids == bkids:
+            kids = list(o['kids'])
+        else:
+            # the socket fillers were changed: the new ones, and the original socketed items the spec cannot
+            # name (jewels and other items with a stat list of their own) stay in the item
+            kept = []
+            for raw in o['kids']:
+                k, _m = decode_item(raw, d)
+                if not k['flags'] & FLAG_SIMPLE:
+                    kept.append(k)
+            new = [decode_item(x, d)[0] for x in nkids]
+            room = max(len(new), out.get('sockets', 0) if out['flags'] & FLAG_SOCKETED else 0)
+            both = (new + kept)[:max(room, len(new))]
+            kids = [encode_item(dict(k, location=LOC_SOCKETED, equipped=0, x=i, y=0, panel=0), d)
+                    for i, k in enumerate(both)]
+        out['socketed_count'] = len(kids)
+        if out == orec and kids == o['kids']:
+            return oblob, orec
+        return encode_item(out, d) + b''.join(kids), out
+
+    @staticmethod
+    def _carry_stats(orig, new, base):
+        """One stat list of _carry: the original list with the changes between the baseline and the new build
+        (a stat added, removed, or given another value). No change: the original list itself, order included."""
+        def table(lst):
+            acc = {}
+            for s in lst or []:
+                k = (s['id'], s.get('param') or 0)
+                acc[k] = acc.get(k, 0) + (s['value'] or 0)
+            return acc
+        n, b = table(new), table(base)
+        if n == b and (new is None) == (base is None):
+            return orig
+        if new is None:
+            return None
+        out = table(orig)
+        for k in b:
+            if k not in n:
+                out.pop(k, None)
+        for k, v in n.items():
+            if k not in b or b[k] != v:
+                out[k] = v
+        return [dict(id=k[0], param=k[1] or None, value=v) for k, v in sorted(out.items())]
+
+    def _spec_model(self, it):
         have = {}
         for x in it.get('stats') or []:
             k = (x['id'], x.get('param'))

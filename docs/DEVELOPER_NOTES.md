@@ -141,6 +141,19 @@
   once (`_row_param_commit`). The add / replace picker shows the same dropdowns for the picked stat
   (`_build_param_zone`), so e.g. a chance-to-cast stat is added as 'Arrow' + level + chance, not as a
   naked param number.
+- **Lossless edit** (`mxl_creator.py`): the spec is a model and does not hold everything an item stores (item
+  id, header flags such as 0x2000 "new" / 0x8000000, worn durability, socketed jewels, personalisation, set
+  lists, place). `mxl_format_fix.parse_item` keeps each item's own bytes as the attribute `it._raw`;
+  `spec_from_item` stores them with their lossless decode and a copy of the starting spec in `spec['_orig']`;
+  `build()` -> `_carry` builds the starting spec again (baseline) and writes only what differs between the
+  baseline and the current spec over the original record (per header field, flag bit, stat key, socket
+  fillers). Nothing changed -> the original bytes. Without `_raw` (a plain dict) the old model-only path runs,
+  keeping the item id (`_item_id`). Measured by `tools/audit_game_data.py --save-dir .. --noop-edit`.
+- **Replace keeps the file order** (`mxl_stash_order.py`, installed by `mxl_format_fix.install()`): the host's
+  `edit_stash(remove=[..], insert=[..])` appends the inserted item at the end of its page's list, so every
+  replace moved the item in the file (add + delete of a stat: same size, same items, hundreds of bytes shifted -
+  harmless, order only). One remove + one insert on the same page is now written at the removed item's index;
+  all other calls go to the host function.
 - **Edit item window** (`mxl_creator_gui.py`, edit mode only): the raw 'extra' section is replaced by
   `render_edit_stats` — the item's own stat list as the game shows it, one row per (stat, param) with
   its final value (the mods' totals plus the hidden delta). Editing routes through the single variable
