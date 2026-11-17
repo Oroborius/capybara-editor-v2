@@ -817,6 +817,11 @@ def _specific_cascade(holder, menu, code, rec, win=None, it=None, e=None):
                        command=lambda: write(lambda r, cr2, d: (r.__setitem__('stats', []) or True),
                                              rc('sp.clear_set', '{name}: all magic attributes deleted',
                                                 name=_item_name(holder, it, e))))
+    try:                                   # 'Make perfect': every roll at its maximum (replaces the value sliders)
+        import mxl_perfect
+        mxl_perfect.add_menu(sp, holder, it=it, win=win, e=e, name=_item_name(holder, it, e))
+    except Exception as err:               # never keeps the menu from opening
+        _dbg('make perfect entry:', err)
     menu.add_cascade(label=rc('sp.title', 'Specific editing functions'), menu=sp)
 
 
