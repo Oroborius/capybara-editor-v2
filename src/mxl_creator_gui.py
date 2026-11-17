@@ -30,6 +30,7 @@ from mxl_creator import Creator, CreateError, MAX_ILVL, CRAFTED_AFFIXES
 from mxl_lang import T
 import mxl_d2look as D2
 import mxl_attr_picker as AP
+import mxl_attr_slots as AS
 
 QUALITY_KEYS = [('Unique', 'unique'), ('Set item', 'set'), ('Runeword', 'runeword'), ('Angelic', 'angelic'), ('Rare', 'rare'),
                 ('Crafted', 'crafted'), ('Honorific', 'tempered'), ('Magic', 'magic'), ('Superior', 'superior'), ('Normal', 'normal')]
@@ -487,6 +488,7 @@ class CreatorWindow:
                 walk(c)
         try:
             walk(self.scroll.inner)
+            self._slots_fit()
         except tk.TclError:
             pass
 
@@ -832,13 +834,13 @@ class CreatorWindow:
     def render_options(self):
         for w in self.opts.winfo_children():
             w.destroy()
-        for w in self.mods_frame.inner.winfo_children():
-            w.destroy()
+        self._clear_mods()
         self.mod_vars = {}
         self.number_rows = {}                # roll source (or 'defense') -> its number field
         self._spins = {w: rec for w, rec in self._spins.items() if w.winfo_exists()}
         spec = self.spec
         if spec is None:
+            self._slots_drop()
             self.title.configure(text=T('cr.choose', 'Choose an item in the list'))
             self._header(None)
             self.panel.show(None)
@@ -1199,13 +1201,13 @@ class CreatorWindow:
 
     def render_mods(self):
         inner = self.mods_frame.inner
-        for w in inner.winfo_children():
-            w.destroy()
+        self._clear_mods()
         unr = self.unrestricted.get()          # the spec flag itself is set in render_options / current_blob
         mods = [m for m in self.cr.mods(self.spec) if m.variable]
         raw_extra = [x for x in self.spec.get('extra') or [] if self.cr._visible(x)]
         table = self.edit_item is not None and (unr or raw_extra)
         if not mods and not raw_extra and not unr and not table:
+            self._slots_drop()
             ttk.Label(inner, text=T('cr.no_variable', 'No variable values: everything on this item is fixed.')).grid(row=0, column=0, sticky='w')
             return
         r = 0
@@ -1222,12 +1224,12 @@ class CreatorWindow:
                                      lines='; '.join(lines))), wraplength=self._wrap_w(), justify='left').grid(row=r, column=0, columnspan=2, sticky='w')
             r += 1
         elif unr:
-            note = (T('cr.edit_note', 'Unrestricted: the item\'s own stat list is below - click a stat to select '
-                      'it, add, replace or delete rows; a value the format cannot store is capped.')
+            note = (T('cr.slots.note_edit', 'Unrestricted: the item\'s own stat list is below as attribute slots; '
+                      'a value the format cannot store is capped.')
                     if table else
-                    T('cr.unrestricted_note', 'Unrestricted: the values below can go anywhere the save format '
-                      'holds (a value the format cannot store is warned about, never written). Raw stats to add, '
-                      'edit or delete by stat id are at the bottom.'))
+                    T('cr.slots.note', 'Unrestricted: the values below can go anywhere the save format holds (a '
+                      'value the format cannot store is warned about, never written). Any other attribute goes '
+                      'into the slots under them.'))
             ttk.Label(inner, text=note, wraplength=self._wrap_w(), justify='left').grid(
                 row=r, column=0, columnspan=2, sticky='w')
             r += 1
@@ -1249,13 +1251,12 @@ class CreatorWindow:
                 self.value_format(m), range_w, field_w)
             r += 1
         if unr or table:
-            if table:
-                r = self.render_edit_stats(inner, r)      # the item's own stats as the game shows them
-            else:
-                r = self._raw_stats(inner, r, 'extra', T('cr.raw.stats', "Raw stats (the item's own list)"))
+            # the attribute slots: an edited item's own stats as the game shows them (table), else the raw
+            # stats added to the created item; a runeword's own list is a section of the same slot list
+            r = self._slots_place(inner, r, table)
             r = self._orange_text(inner, r)               # unique orange text (display + hidden effect)
-            if self.spec.get('quality') == 'runeword':
-                r = self._raw_stats(inner, r, 'extra_rw', T('cr.raw.rw', "Raw stats (the runeword's list)"))
+        else:
+            self._slots_drop()
 
     def _spin_commit(self, spin, setter):
         """Commits a spinbox / entry on Return, focus out and the arrows (keeping the keyboard focus).
@@ -1289,6 +1290,9 @@ class CreatorWindow:
             w = self.top.focus_get()
         except (KeyError, tk.TclError):
             return
+        if self._slots_alive() and self.slots._ed is not None and \
+                getattr(_e, 'widget', None) not in (self.slots.cv, self.slots.ed):
+            self.slots._ed_done('keep')        # a number still open in a slot's value box: taken first
         rec = self._spins.get(w) if w is not None else None
         if rec is None:
             return
@@ -1346,12 +1350,22 @@ class CreatorWindow:
             except tk.TclError:
                 pass
 
-    def _stat_popup(self, anchor, on_pick, typed=None, current=None):
+    def _popup_closed(self, top):
+        """A picker popup of the slot list went away: the keyboard is back in the list (or its value box)."""
+        def back(e):
+            if e.widget is top and self._slots_alive() and self.slots._ed is None:
+                self._slots_focus()
+        top.bind('<Destroy>', back, add='+')
+
+    def _stat_popup(self, anchor, on_pick, typed=None, current=None, parent=None, title=None):
         """The categorised stat picker (categories | stats, Recent, Find over all categories) under `anchor`.
         Enter / Tab / double-click pick the highlighted (= closest) stat and close it: on_pick(stat id)."""
         self._close_popup()
-        top = self._popup = AP.popup(anchor, self.data, on_pick, anchor=anchor, choices=self.cr.stat_choices(),
-                                     title=T('cr.pick.stat', 'Stat - type to search, Enter takes the first match'))
+        top = self._popup = AP.popup(parent or anchor, self.data, on_pick, anchor=anchor,
+                                     choices=self.cr.stat_choices(),
+                                     title=title or T('cr.pick.stat', 'Stat - type to search, Enter takes the first match'))
+        if parent is not None:
+            self._popup_closed(top)
         if typed:
             top.picker.focus_filter(typed)
         elif current is not None:
@@ -1359,12 +1373,15 @@ class CreatorWindow:
             top.picker.focus_filter()
         return top
 
-    def _name_popup(self, anchor, names, on_pick, typed=None, current=None, title=None, numbers=False):
+    def _name_popup(self, anchor, names, on_pick, typed=None, current=None, title=None, numbers=False,
+                    parent=None):
         """A searchable name list (skills, states, texts) under `anchor`: on_pick(name). numbers: a typed
         number is offered as '#N' (the raw value of a param)."""
         self._close_popup()
-        top = self._popup = AP.popup_choices(anchor, names, on_pick, anchor=anchor, current=current, title=title,
-                                             numbers=numbers)
+        top = self._popup = AP.popup_choices(parent or anchor, names, on_pick, anchor=anchor, current=current,
+                                             title=title, numbers=numbers)
+        if parent is not None:
+            self._popup_closed(top)
         if typed:
             top.picker.var.set(typed)
             top.picker.entry.icursor('end')
@@ -1387,264 +1404,375 @@ class CreatorWindow:
         f = self._pick_field(parent, var.get(), opener, chars, clip)
         return f
 
-    def _stat_add_row(self, parent, r, on_add, on_replace=None):
-        """The add row of a stat list. Line 1: the stat (pick field -> categorised picker; Enter / Tab there
-        fill in the closest stat's full name, load its skill / param / value controls and move to the value -
-        nothing is added yet). Line 2: its param, if it has one. Line 3: the value, '+ Add stat' (Enter in
-        the value field does the same) and, with on_replace, 'Replace selected'. on_add / on_replace(sid, param, value)."""
-        d = self.data
-        labels = self._stat_labels()
-        choices = self.cr.stat_choices()
-        last = self.cr.__dict__.get('_last_pick_sid')
-        pick = {'sid': last if last in labels else (choices[0][0] if choices else 0)}
-        ep = {}
-        box = ttk.Frame(parent)
-        box.grid(row=r, column=0, columnspan=2, sticky='we', pady=(4, 2))
-        line1 = ttk.Frame(box)
-        line1.grid(row=0, column=0, sticky='w')
-        ttk.Label(line1, text=T('cr.edit.add_stat', 'Add stat:')).grid(row=0, column=0, sticky='w')
-        line2 = ttk.Frame(box)
-        line2.grid(row=1, column=0, sticky='w', pady=(2, 0))
-        pf = ttk.Frame(box)                              # the param's own line (empty for most stats)
-        pf.grid(row=1, column=0, sticky='w')
-        line2.grid(row=2, column=0, sticky='w', pady=(2, 0))
-        ttk.Label(line2, text=T('cr.edit.value', 'value')).grid(row=0, column=1, sticky='w', padx=(0, 2))
-        rng = self.cr.stat_bounds(pick['sid']) or (0, 0)
-        vvar = tk.StringVar(value=str(max(rng[0], min(rng[1], 1))))
-        sv = ttk.Spinbox(line2, from_=rng[0], to=rng[1], textvariable=vvar, width=10)
-        sv.grid(row=0, column=2, sticky='w')
-        self.scroll.no_wheel(sv)
-        rl = ttk.Label(line2, text='')
-        rl.grid(row=0, column=3, sticky='w', padx=(4, 0))
+    # --------------------------------------------------------------- the attribute slots (mxl_attr_slots)
+    # Hero Editor's "Magic Attributes": a numbered slot list instead of rows + an add row. The widget is the one
+    # of the Item stats tab; here its owner calls change the spec (nothing is written until Create / Replace).
+    # Lists: 'extra' / 'extra_rw' = the spec's raw entries themselves (row['e']); 'edit' = an edited item's own
+    # list, one slot per (stat, param) with its final value (row['key']; see route_target / set_extra_delta).
+    def _clear_mods(self):
+        """Empties the values pane; the slot list's frame is only taken off the grid (it keeps its selection,
+        scroll position and focus over the many re-renders of the pane)."""
+        box = getattr(self, '_slots_box', None)
+        for w in self.mods_frame.inner.winfo_children():
+            if w is box:
+                w.grid_forget()
+            else:
+                w.destroy()
+        self._slots_on = False
 
-        def value():
-            rng2 = self.cr.stat_bounds(pick['sid']) or (0, 0)
+    def _slots_alive(self):
+        s = getattr(self, 'slots', None)
+        return s is not None and s.alive()
+
+    def _slots_drop(self):
+        """The slot list is not part of this render (restricted mode, no item): its frame goes."""
+        box, self._slots_box, self.slots = getattr(self, '_slots_box', None), None, None
+        self._slots_on = False
+        if box is not None:
             try:
-                return max(rng2[0], min(rng2[1], int(vvar.get())))
-            except (ValueError, tk.TclError):
-                return max(rng2[0], min(rng2[1], 1))
+                box.destroy()
+            except tk.TclError:
+                pass
 
-        def load(focus=False):
-            sid = pick['sid']
-            field.show(labels.get(sid, f'(stat #{sid})'))
-            pb = (d.isc[sid]['param'] or 0) if 0 <= sid < len(d.isc) else 0
-            rng2 = self.cr.stat_bounds(sid) or (0, 0)
-            self._edit_pick_param_zone(pf, pick, ep)
-            sv.configure(from_=rng2[0], to=rng2[1])
-            rl.configure(text=f'[{rng2[0]}-{rng2[1]}]' if rng2[0] >= 0 else f'[{rng2[0]} to {rng2[1]}]')
-            vvar.set(str(value() or max(rng2[0], min(rng2[1], 1))))
-            if focus:
-                self.set_status(T('cr.raw.statinfo', 'stat #{sid}, {pb} param bits, save range {lo} to {hi}',
-                                  sid=sid, pb=pb, lo=rng2[0], hi=rng2[1]))
-                try:
-                    sv.focus_force()
-                    sv.selection_range(0, 'end')
-                    sv.icursor('end')
-                except tk.TclError:
-                    pass
-
-        def picked(sid):
-            pick['sid'] = self.cr._last_pick_sid = sid
-            load(True)
-
-        field = self._pick_field(line1, '', None, 30)
-        field.open = lambda typed=None: self._stat_popup(field, picked, typed, pick['sid'])
-        field.grid(row=0, column=1, sticky='w', padx=(4, 0))
-        load()
-
-        def chosen():
-            """(sid, param, value) of the row, or None when a skill pick was refused (the status says why)."""
-            sid = pick['sid']
-            param, why = self._edit_picked_param(pick, ep)
-            if why is not None:
-                self._skill_status(why, str(ep.get('name') and ep['name'].get() or ''), sid)
-                return None
-            return sid, param, value()
-
-        def add(*_a):
-            c = chosen()
-            if c is not None:
-                on_add(*c)
-                f = getattr(self, '_add_field', None)      # the list was rebuilt: on to the next stat
-                try:
-                    if f is not None and f.winfo_exists():
-                        f.focus_set()
-                except tk.TclError:
-                    pass
-            return 'break'
-
-        def replace(*_a):
-            c = chosen()
-            if c is not None:
-                on_replace(*c)
-
-        sv.bind('<Return>', add)
-        sv.bind('<KP_Enter>', add)
-        line3 = ttk.Frame(line2)                         # the buttons: on the value's line
-        line3.grid(row=0, column=4, sticky='w', padx=(6, 0))
-        D2.button(line3, T('cr.edit.add', '+ Add stat'), add, 10).pack(side='left')
-        if on_replace is not None:
-            D2.button(line3, T('cr.edit.replace', 'Replace selected'), replace, 15).pack(side='left', padx=(4, 0))
-        self._add_field = field
-        field.pick, field.value_var, field.value_box, field.add, field.replace, field.ep = \
-            picked, vvar, sv, add, replace, ep            # (driven directly by the headless tests)
+    def _slots_place(self, parent, r, table):
+        """Puts the slot list at grid row r of the values pane (creating it the first time) and fills it.
+        table: an edited item - the slots are the item's own stats (final values), not the raw extra rows."""
+        pal, m = AP.palette(), AP.metrics(parent)
+        if not self._slots_alive() or getattr(self, '_slots_box', None) is None:
+            box = self._slots_box = tk.Frame(parent, bg=pal['bg'])
+            AP.exempt(box)
+            box.columnconfigure(0, weight=1)
+            tk.Label(box, text=T('cr.slots.title', "Magic Attributes (the item's own stat list)"), font=m['bold'],
+                     bg=pal['bg'], fg=pal['fg_hi'], anchor='w').grid(row=0, column=0, sticky='we')
+            lf = tk.Frame(box, bg=pal['bg'])
+            lf.grid(row=1, column=0, sticky='we')
+            try:
+                pane_h = self.scroll.canvas.winfo_height()
+            except (AttributeError, tk.TclError):
+                pane_h = 0
+            shown = max(7, min(12, pane_h // m['row'] - 5)) if pane_h > 50 else 10
+            self.slots = AS.AttrSlots(lf, self.data, self, click_opens=True, rows_shown=shown, chars=30,
+                                      wheel_pass=True)
+            hint = self._slots_hint = tk.Label(
+                box, font=m['font'], bg=pal['bg'], fg=pal['dim'], anchor='w', justify='left',
+                text=T('cr.slots.hint', 'Click an empty slot to add an attribute, a name to change it, a number to '
+                       'edit it; x or Delete clears the slot. Shown in the order you added them - the game saves '
+                       "an item's stats sorted by stat id."))
+            hint.grid(row=2, column=0, sticky='we')
+            self._slots_fit()
+            self._slots_spec = None
+        self._slots_box.grid(row=r, column=0, columnspan=2, sticky='w', pady=(6, 2))
+        self._slots_on, self._slots_table = True, bool(table)
+        fresh = self._slots_spec is not self.spec
+        if fresh:                                        # another item: no order, selection or scroll kept
+            self._slots_spec = self.spec
+            self._edit_order = []
+            self.slots._close_editor()
+            self.slots.sel = None
+            try:
+                self.slots.cv.yview_moveto(0)
+            except tk.TclError:
+                pass
+        self._slots_sync()
+        if self.slots.sel is None or self.slots.row() is None or self.slots.row()['kind'] != 'slot':
+            own = 'edit' if table else 'extra'
+            self.slots.sel = next((n for n, x in enumerate(self.slots.rows)
+                                   if x['kind'] == 'slot' and x['list'] == own), self.slots.first_slot())
+            self.slots.draw()
         return r + 1
 
-    def _raw_stat_commit(self, e, var, sid, value=True):
-        """Commits one raw stat entry (value or param), clamped by the save format's bounds."""
-        cr = self.cr
-        rng = cr.stat_bounds(sid)
+    def _slots_fit(self):
+        """The slot list is as wide as the pane it is in - not as wide as the pane's widest row, which a narrow
+        window scrolls sideways: every column of the list stays in sight."""
+        if not self._slots_alive():
+            return
+        w = self._wrap_w()
         try:
-            v = int(var.get())
-        except (tk.TclError, ValueError):
-            v = None
-        if v is None:
-            v = 0 if value else 0
-        if rng:
-            clamped = max(rng[0], min(rng[1], v))
-            if clamped != v:
-                self.set_status(T('cr.raw.clamped', 'raw stat #{sid}: {v} cannot be stored, {lo} to {hi}',
-                                  sid=sid, v=v, lo=rng[0], hi=rng[1]))
-            v = clamped
-            var.set(v)
-        if value:
+            self._slots_hint.configure(wraplength=w)
+            self.slots.cv.configure(width=max(self.slots.m['ch'] * 30, w - self.slots.sb.winfo_reqwidth() - 4))
+        except tk.TclError:
+            pass
+
+    def _edit_keys(self):
+        """([(stat id, param)] of an edited item's own stats in display order, {key: final value}): what its
+        mods give plus the delta rows, without the deleted ones and without those that end at 0 (they are not
+        written - unless the item itself carried the 0). Display order: as loaded, then as the user added them
+        (a replaced attribute keeps its slot); the save format itself sorts a stat list by stat id."""
+        spec, cr = self.spec, self.cr
+        made = self._edit_made()
+        extra = {(e['id'], e.get('param')): e['value'] for e in spec.get('extra') or []}
+        drop = spec.get('_drop') or set()
+        keep0 = spec.get('_keep_zero') or set()
+        vals, keys = {}, []
+        for k in list(made) + [k for k in extra if k not in made]:
+            if k in drop or k in vals:
+                continue
+            v = made.get(k, 0) + extra.get(k, 0)
+            rng = cr.stat_bounds(k[0])
+            v = max(rng[0], min(rng[1], v)) if rng else v
+            if not v and k not in keep0:
+                continue
+            vals[k] = v
+            keys.append(k)
+        order = [k for k in getattr(self, '_edit_order', []) if k in vals]
+        order += [k for k in keys if k not in order]
+        self._edit_order = order
+        return order, vals
+
+    def _slots_sync(self):
+        """The slot list's rows from the spec (called by every refresh: the list follows the number rows, Min /
+        Random / Max and its own changes alike)."""
+        if not getattr(self, '_slots_on', False) or not self._slots_alive() or self.spec is None:
+            return
+        d, spec = self.data, self.spec
+        rows = []
+        rw = spec.get('quality') == 'runeword'
+        if rw:
+            ents = spec.setdefault('extra_rw', [])
+            rows += AS.section_rows(d, 'extra_rw', [AS.slot_row(d, 'extra_rw', i, e, e=e) for i, e in enumerate(ents)],
+                                    T('cr.raw.rw', "Raw stats (the runeword's list)"), 3)
+        if self._slots_table:
+            keys, vals = self._edit_keys()
+            own = [AS.slot_row(d, 'edit', i, dict(id=k[0], param=k[1], value=vals[k]), key=k)
+                   for i, k in enumerate(keys)]
+            rows += AS.section_rows(d, 'edit', own, T('cr.item_stats', "Item stats (the item's own list)") if rw else None)
+        else:
+            ents = spec.setdefault('extra', [])
+            own = [AS.slot_row(d, 'extra', i, e, e=e) for i, e in enumerate(ents)]
+            rows += AS.section_rows(d, 'extra', own, T('cr.raw.stats', "Raw stats (the item's own list)") if rw else None)
+        self.slots.set_rows(rows)
+
+    def _slot_find(self, lst, e=None, key=None):
+        """Row index of a used slot by what it stands for (the rows are rebuilt on every change)."""
+        for n, x in enumerate(self.slots.rows):
+            if x['kind'] == 'slot' and x['s'] is not None and x['list'] == lst:
+                if (e is not None and x.get('e') is e) or (key is not None and x.get('key') == key):
+                    return n
+        return None
+
+    def _default_param(self, sid, taken=()):
+        """The param a freshly picked stat starts with: its first skill (cast level 1) / class / name whose
+        (stat, param) is not in `taken`, None for a stat without a named param."""
+        d = self.data
+        kind = param_kind(sid)
+        if not kind:
+            return None
+        first = None
+        for nm, _v in list(param_choices(d, sid))[:600]:
+            p, _why = encode_skill_param(d, sid, nm, 1 if kind == 'skill' else None)
+            if p is None:
+                continue
+            p = p or None                                # value 0 is stored as "no param"
+            if first is None:
+                first = (p,)
+            if (sid, p) not in taken:
+                return p
+        return first[0] if first else None
+
+    def slot_say(self, text, error=False):
+        self.set_status(text, error=error)
+
+    def slot_selected(self, n):
+        r = self.slots.row(n)
+        if r is None:
+            return
+        if r['s'] is not None:
+            self.set_status(AS.row_info_text(self.data, r['s']))
+        else:
+            self.set_status(T('cr.slots.empty', 'Empty slot {n}: click it (or press Enter) and choose the attribute.',
+                              n=r['n']))
+
+    def slot_pick(self, n, text=None):
+        """The attribute chooser under slot n: fills the empty slot / replaces the slot's attribute."""
+        r = self.slots.row(n)
+        if r is None or r['kind'] != 'slot':
+            return
+        used = r['s'] is not None
+        title = (T('cr.slots.replace', 'Slot {n}: replace attribute - type to search, Enter takes the first match', n=r['n'])
+                 if used else
+                 T('cr.slots.add', 'Slot {n}: add attribute - type to search, Enter takes the first match', n=r['n']))
+        self._stat_popup(self.slots.anchor(n), lambda sid, r=r: self._slot_picked(r, sid), text,
+                         r['s']['id'] if used else None, parent=self.slots.cv, title=title)
+
+    def _slot_picked(self, r, sid):
+        d, cr, spec = self.data, self.cr, self.spec
+        rng = cr.stat_bounds(sid)
+        if rng is None:
+            self.set_status(T('cr.slots.no_bits', 'stat #{sid}: the save format has no storage for it', sid=sid),
+                            error=True)
+            return
+        lst, used = r['list'], r['s'] is not None
+        if used and r['s']['id'] == sid:
+            self._slots_focus()
+            return
+
+        def clamp(v):
+            return max(rng[0], min(rng[1], v))
+        e = key = None
+        if lst == 'edit':
+            keys, vals = self._edit_keys()
+            old = r.get('key')
+            key = (sid, self._default_param(sid, set(keys)))
+            if key in vals:                              # this very attribute is on the item: go there
+                n = self._slot_find('edit', key=key)
+                self.slots.select(n)
+                self.set_status(T('cr.slots.have', 'This attribute is on the item already (slot {n}).',
+                                  n=self.slots.row(n)['n'] if n is not None else '?'), error=True)
+                self._slots_focus()
+                return
+            made = self._edit_made()
+            if used:
+                val = clamp(vals.get(old, 0)) or clamp(1)
+                self._edit_cancel_key(old)
+                (spec.get('_keep_zero') or set()).discard(old)
+                self._edit_order = [key if k == old else k for k in self._edit_order]
+            else:
+                val = clamp(1)
+            self.set_extra_delta(key, val - made.get(key, 0))
+            self._take_over(key)
+        else:
+            entries = spec.setdefault(lst, [])
+            if used:
+                e = r['e']
+                e['id'], e['param'] = sid, self._default_param(sid)
+                e['value'] = clamp(e.get('value') or 1)
+            else:
+                e = dict(id=sid, param=self._default_param(sid), value=clamp(1))
+                entries.append(e)
+            self._take_over((sid, e.get('param')))
+        self.refresh()
+        n = self._slot_find(lst, e=e, key=key)
+        if n is None:
+            self._slots_focus()
+            return
+        self.slots.select(n)
+        if param_kind(sid):
+            self.slot_names(n)                           # its skill / class / name first, then the value
+        else:
+            self._slot_edit_value(n)
+
+    def _slots_focus(self):
+        if self._slots_alive():
+            try:
+                self.slots.cv.focus_force()
+            except tk.TclError:
+                pass
+
+    def _slot_edit_value(self, n):
+        self.slots.sel = n
+        self.slots.edit_cell('value')
+        try:
+            self.slots.ed.focus_force()
+        except tk.TclError:
+            pass
+
+    def slot_names(self, n):
+        """The searchable name list (skills, classes, states...) under the slot's name cell."""
+        r = self.slots.row(n)
+        if r is None or 'name' not in self.slots.fields(r):
+            return
+        sid = r['s']['id']
+        names = [nm for nm, _v in param_choices(self.data, sid)]
+        self._name_popup(self.slots.anchor(n, 'name'), names, lambda name, r=r: self._slot_named(r, name), None,
+                         r['name'], T('cr.slots.param', 'Slot {n}: {what}', n=r['n'], what=param_title(sid).lower()),
+                         numbers=True, parent=self.slots.cv)
+
+    def _slot_named(self, r, name):
+        new = self._slot_set_param(r, name=name)
+        if new is None:
+            self._slots_focus()
+            return
+        n = self._slot_find(r['list'], e=r.get('e'), key=new)
+        if n is not None:
+            self.slots.select(n)
+            self._slot_edit_value(n)
+
+    def _slot_set_param(self, r, name=None, level=None, raw=None):
+        """Changes a slot's param (name, cast level or raw number). Returns the slot's (stat, param) key, or
+        None when it was refused (the status line says why)."""
+        d, spec = self.data, self.spec
+        if r is None or r['s'] is None:
+            return None
+        sid, oldp = r['s']['id'], r['s'].get('param') or None
+        if raw is not None:
+            bits = min(AS.param_bits(d, sid), 32)
+            if not 0 <= raw < (1 << bits):
+                self.set_status(T('cr.slots.param_range', 'param out of range (0..{m})', m=(1 << bits) - 1), error=True)
+                return None
+            newp = raw or None
+        else:
+            nm = name if name is not None else r['name']
+            lv = None
+            if r['pk'] == 'skill':
+                lv = level if level is not None else (int(r['level']) if r['level'] != '' else 1)
+            newp, why = encode_skill_param(d, sid, nm, lv)
+            if newp is None:
+                self._skill_status(why, nm, sid)
+                return None
+            newp = newp or None                          # value 0 is stored as "no param", like the game's rows
+        new = (sid, newp)
+        if newp == oldp:
+            return new
+        if r['list'] == 'edit':
+            old = r['key']
+            if new in self._edit_keys()[1]:
+                self.set_status(T('cr.slots.have_param', 'Another slot holds this attribute with that very {what}.',
+                                  what=param_title(sid).lower() if param_kind(sid) else 'param'), error=True)
+                return None
+            self._edit_order = [new if k == old else k for k in self._edit_order]
+            (spec.get('_keep_zero') or set()).discard(old)
+            self._edit_set_param(old, newp)              # (re-renders the pane and the preview)
+        else:
+            r['e']['param'] = newp
+            self._take_over(new)
+            self.refresh()
+        return new
+
+    def slot_param(self, n, level=None, raw=None):
+        return self._slot_set_param(self.slots.row(n), level=level, raw=raw) is not None
+
+    def slot_value(self, n, v, how):
+        """A number typed into a slot's value cell: into the spec at once (capped to what the format stores)."""
+        r = self.slots.row(n)
+        if r is None or r['s'] is None:
+            return
+        sid = r['s']['id']
+        rng = self.cr.stat_bounds(sid)
+        note = None
+        if rng and not rng[0] <= v <= rng[1]:
+            note = T('cr.raw.clamped', 'raw stat #{sid}: {v} cannot be stored, {lo} to {hi}', sid=sid, v=v,
+                     lo=rng[0], hi=rng[1])
+            v = max(rng[0], min(rng[1], v))
+        if r['list'] == 'edit':
+            if self.route_target(r['key'], v) == 'roll':
+                self.render_mods()                       # the value went into a number row above: show it there
+        else:
+            e = r['e']
             e['value'] = v
             self._take_over((sid, e.get('param')))
             drop = self.spec.get('_drop')
             if drop is not None:
                 drop.discard((sid, e.get('param')))
-        else:
-            e['param'] = v if v else None
-            self._take_over((sid, e.get('param')))
         self.refresh()
+        if note:
+            self.set_status(note, error=True)
 
-    def _raw_stats(self, parent, r, key, title):
-        """The unrestricted raw stat rows of spec[key] (['extra'] = the item's own list, ['extra_rw'] = the
-        runeword's): per row the stat (pick field: any stat the save format holds), its param and its free
-        value, with a delete button; under them the add row (_stat_add_row). Same (stat, param) entries add up
-        when the item is written, like the game's own stat lists."""
-        spec, d, cr = self.spec, self.data, self.cr
-        entries = spec.setdefault(key, [])
-        ttk.Label(parent, text=title, font=('Segoe UI', 10, 'bold')).grid(
-            row=r, column=0, columnspan=2, sticky='w', pady=(8, 0))
-        r += 1
-        labels = self._stat_labels()
-        try:                                 # a narrow pane (800x600): shorter fields, the row stays inside it
-            narrow = 50 < self.scroll.canvas.winfo_width() < 480
-        except (AttributeError, tk.TclError):
-            narrow = False
-        w_stat, w_name, w_num = (13, 11, 5) if narrow else (24, 20, 8)
-        for e in entries:
-            e_local = e
-            sid = e_local['id']
-            box = ttk.Frame(parent)
-            box.grid(row=r, column=0, columnspan=2, sticky='we', pady=1)
-
-            def id_picked(new, e=e_local):
-                e['id'] = new
-                pbits = (d.isc[new]['param'] or 0) if 0 <= new < len(d.isc) else 0
-                if not pbits:
-                    e['param'] = None
-                rng = cr.stat_bounds(new)
-                e['value'] = max(rng[0], min(rng[1], e.get('value') or 1))
-                self.set_status(T('cr.raw.statinfo', 'stat #{sid}, {pb} param bits, save range {lo} to {hi}',
-                                  sid=new, pb=pbits, lo=rng[0], hi=rng[1]))
-                self.render_options()
-            shown = labels.get(sid, f'(unknown stat #{sid})')
-            if param_kind(sid) or (d.isc[sid].get('param') if sid in d.isc else 0):
-                # a stat with a param: the line the item shows on hover for THIS param, when it has one
-                p0 = e_local.get('param')
-                line = rendered_line(d, sid, p0 if p0 is not None else 0, e_local.get('value') or 0)
-                shown = line or shown
-            c = self._pick_field(box, shown, None, w_stat)
-            c.open = lambda typed=None, c=c, fn=id_picked, sid=sid: self._stat_popup(c, fn, typed, sid)
-            c.grid(row=0, column=1, sticky='w')
+    def slot_delete(self, n):
+        """The slot is cleared; the slots after it move up (their order stays)."""
+        r = self.slots.row(n)
+        if r is None or r['s'] is None:
+            return
+        self.slots._close_editor()
+        if r['list'] == 'edit':
+            self._edit_delete(r['key'])                  # (the stat's whole save group; re-renders)
+        else:
             try:
-                pbits = d.isc[sid]['param'] or 0
-            except (IndexError, KeyError, TypeError):
-                pbits = 0
-            kind = param_kind(sid)
-            if kind:                                    # the param is picked by NAME (see mxl_statparams)
-                parts = decode_param(d, sid, e_local.get('param'))
-                names = [n for n, _v in param_choices(d, sid)]
-                short = param_short(d, sid)
-                nm = tk.StringVar(value=(parts or ('',))[0] or (names[0] if names else ''))
-                lv = None
-                if kind == 'skill':
-                    lv = tk.IntVar(value=(parts or ('', 1))[1] if parts and parts[1] is not None else 1)
-
-                def commit_param(_e=None, nm=nm, lv=lv, e=e_local):
-                    try:
-                        level = int(lv.get()) if lv is not None else None
-                    except (ValueError, tk.TclError):
-                        level = 1
-                    newp, why = encode_skill_param(d, e['id'], nm.get(), level)
-                    if newp is None:
-                        self._skill_status(why, nm.get(), e['id'])
-                        return
-                    newp = newp or None                 # value 0 is stored as "no param", like the game's rows
-                    e['param'] = newp
-                    self._take_over((e['id'], newp))
-                    self.refresh()
-                if short:                               # a handful of names: a plain dropdown
-                    cb = ttk.Combobox(box, values=names, textvariable=nm,
-                                      width=w_name if narrow else max(14, min(34, max(len(n) for n in names) + 1)))
-                    self.scroll.no_wheel(cb)
-                    bind_typeahead(cb, names)
-                    cb.bind('<<ComboboxSelected>>', commit_param)
-                    cb.bind('<Return>', commit_param)   # a typed '#N' (raw value) is taken too
-                else:                                   # thousands of skills: the searchable list
-                    cb = self._name_field(box, names, nm, commit_param, w_name, param_title(sid), numbers=True)
-                cb.grid(row=0, column=2, sticky='w', padx=(4, 2))
-                if lv is not None:
-                    sl = ttk.Spinbox(box, from_=1, to=63, textvariable=lv, width=4)
-                    sl.grid(row=0, column=3, sticky='w', padx=(2, 2))
-                    self.scroll.no_wheel(sl)
-                    self._spin_commit(sl, commit_param)
-            elif sid == STATE_STAT and pbits:
-                # the state stat (98): param = state id - the states the skills set, named after the
-                # skills that set them (the states table carries no names)
-                snames = state_names_sorted(d)
-                cur = next((n for n, v in snames if v == e_local.get('param')), None)
-                nm = tk.StringVar(value=cur or (snames[0][0] if snames else ''))
-
-                def commit_state(_e=None, nm=nm, e=e_local, snames=snames):
-                    v = next((v for n, v in snames if n == nm.get()), None)
-                    if v is None:
-                        return
-                    e['param'] = v
-                    self._take_over((e['id'], v))
-                    self.refresh()
-                cb = self._name_field(box, [n for n, _v in snames], nm, commit_state, 20, T('cr.pick.state', 'State'))
-                cb.grid(row=0, column=2, sticky='w', padx=(4, 2))
-            elif pbits:
-                pv = tk.IntVar(value=max(0, e.get('param') or 0))
-                sp = ttk.Spinbox(box, from_=0, to=(1 << pbits) - 1, textvariable=pv, width=w_num)
-                sp.grid(row=0, column=2, sticky='w', padx=(4, 2))
-                self.scroll.no_wheel(sp)
-                self._spin_commit(sp, lambda pv=pv, e=e_local, sid=sid: self._raw_stat_commit(e, pv, sid, value=False))
-            rng = cr.stat_bounds(sid) or (0, 0)
-            vc = 4 if kind == 'skill' else 3          # (col 0: the row's delete button) skill rows keep a slot for the cast level
-            vv = tk.IntVar(value=max(rng[0], min(rng[1], e.get('value') or 0)))
-            sv = ttk.Spinbox(box, from_=rng[0], to=rng[1], textvariable=vv, width=w_num)
-            sv.grid(row=0, column=vc, sticky='w', padx=(4, 2))
-            self.scroll.no_wheel(sv)
-            self._spin_commit(sv, lambda vv=vv, e=e_local, sid=sid: self._raw_stat_commit(e, vv, sid))
-
-            def remove(e=e_local):
-                try:
-                    entries.remove(e)
-                except ValueError:
-                    pass
-                self.render_options()
-            D2.button(box, 'x', remove, 2).grid(row=0, column=0, padx=(0, 4))
-            r += 1
-
-        def add(sid, param, v, entries=entries):
-            entries.append(dict(id=sid, param=param, value=v))
-            self._take_over((sid, param))
-            self.render_options()
-        return self._stat_add_row(parent, r, add)
+                self.spec.setdefault(r['list'], []).remove(r['e'])
+            except ValueError:
+                pass
+            self.refresh()
+        self.set_status(T('cr.slots.cleared', 'slot {n} cleared: {label}', n=r['n'], label=r['label']))
+        self._slots_focus()
 
     # --------------------------------------------------------------- unique orange text
     def _orange_text(self, parent, r):
@@ -1696,7 +1824,7 @@ class CreatorWindow:
         # selected entry is written into the item's stat list next to the text, where it shows up
         # as its own editable row.
         ttk.Label(box, text=T('cr.orange.effect', 'effect')).grid(row=2, column=0, sticky='w')
-        eff = tk.Listbox(box, selectmode='extended', height=4, exportselection=False,
+        eff = tk.Listbox(box, selectmode='extended', height=3, exportselection=False,
                          activestyle='none')
         eff.grid(row=2, column=1, sticky='we', padx=(4, 2))
         eff.configure(width=36)
@@ -1704,8 +1832,10 @@ class CreatorWindow:
         rng = cr.stat_bounds(texts[0]['display']['id']) or (0, 1)
         vv = tk.IntVar(value=texts[0]['display']['value'])
         ttk.Label(box, text=T('cr.orange.value', 'value')).grid(row=3, column=0, sticky='w')
-        sv = ttk.Spinbox(box, from_=min(0, rng[0]), to=max(rng[1], 1), textvariable=vv, width=10)
-        sv.grid(row=3, column=1, sticky='w', padx=(4, 2))
+        last = ttk.Frame(box)                          # the value and the Add button: one compact line
+        last.grid(row=3, column=1, sticky='w', padx=(4, 2), pady=(1, 0))
+        sv = ttk.Spinbox(last, from_=min(0, rng[0]), to=max(rng[1], 1), textvariable=vv, width=8)
+        sv.pack(side='left')
         self.scroll.no_wheel(sv)
 
         def sync(_e=None):
@@ -1760,9 +1890,8 @@ class CreatorWindow:
                             + (T('cr.orange.effects', ' + {n} effect stat(s)', n=n_fx) if n_fx else ''))
             self.render_options()
         sync()
-        D2.button(parent, T('cr.orange.add', '+ Add orange text'), add, 8).grid(
-            row=r + 1, column=0, columnspan=2, sticky='w', pady=(4, 2))
-        return r + 2
+        D2.button(last, T('cr.orange.add', '+ Add orange text'), add, 8).pack(side='left', padx=(6, 0))
+        return r + 1
 
     # ----------------------------------------------- the item's own stats (edit mode)
     def _edit_made(self):
@@ -1833,37 +1962,6 @@ class CreatorWindow:
             self.set_status(T('cr.raw.bad_level', 'the cast level must be 0 to 63'), error=True)
         else:
             self.set_status(T('cr.raw.unknown_skill', 'unknown skill: {name}', name=name), error=True)
-
-    def _edit_row_label(self, key, val):
-        d = self.data
-        sid, param = key
-        try:
-            hidden = stat_hidden(sid, d, val)
-        except Exception:
-            hidden = False
-        txt = ''
-        if not hidden:
-            try:
-                if param is None and param_kind(sid) in ('class', 'named'):
-                    param = 0                    # value 0 is stored as "no param": still a value with a name
-                txt = stat_text(d, sid, param, value=val,
-                                desc=(d.isc[sid]['desc'] if 0 <= sid < len(d.isc) else None))
-            except Exception:
-                txt = ''
-        if not txt:
-            import mxl_statnames_ext
-            txt = mxl_statnames_ext.fallback_label(sid)
-        if not txt:
-            txt = f'(stat #{sid})'
-        if param_kind(sid):
-            parts = decode_param(d, sid, param)     # the skill's name is usually already in the game text
-            if param_kind(sid) == 'named' and rendered_line(d, sid, param, val):
-                parts = None                        # the hover line names the value in its own words
-            if parts and (not txt or str(parts[0]).lower() not in txt.lower()):
-                txt += f'  [{parts[0]}]'
-        elif param is not None:
-            txt += f' - param {param}'
-        return txt
 
     def _edit_clamp(self, sid, v):
         """A value within what the save format holds for one stat (ItemStatCost bits / add)."""
@@ -1940,159 +2038,6 @@ class CreatorWindow:
         self.render_mods()
         self.refresh()
 
-    def render_edit_stats(self, parent, r):
-        """The item's own stat list as the game shows it (not deltas): one row per (stat, param) with its
-        final value (the mods' total plus its delta). Editing routes through a mod roll when one mod owns
-        the stat alone, else through the raw delta rows that are hidden here. A click selects a row for
-        'Replace selected'; every skill-stat row has a skill dropdown (+ cast level), the chance box and a
-        delete button."""
-        d, cr = self.data, self.cr
-        made = self._edit_made()
-        extra_keys = {(e['id'], e.get('param')) for e in self.spec.get('extra') or []}
-        drop = self.spec.get('_drop') or set()
-        keys = list(dict.fromkeys(list(made) + [k for k in extra_keys if k not in made]))
-        keys = [k for k in keys if k not in drop]      # attributes the user deleted stay off the table
-        ttk.Label(parent, text=T('cr.item_stats', 'Item stats (the item\'s own list)'), font=('Segoe UI', 10, 'bold')
-                  ).grid(row=r, column=0, columnspan=2, sticky='w', pady=(8, 0))
-        r += 1
-        self._edit_rows = {}
-        if not keys:
-            ttk.Label(parent, text=T('cr.item_stats.none', '(no stat stored)')).grid(
-                row=r, column=0, sticky='w')
-            r += 1
-        # one table for the rows: [x] | attribute | value | skill / param | level. The delete button is the
-        # FIRST, fixed-width column, so all of them line up and none depends on the row's width; a long
-        # attribute text is cut with '..' to what the pane has left
-        tbl = ttk.Frame(parent)
-        tbl.grid(row=r, column=0, columnspan=2, sticky='w')
-        fit = self._row_text_fitter(tbl)
-        for k in keys:
-            sid, param = k
-            e = self._edit_extra(k)
-            val = made.get(k, 0) + (e['value'] if e else 0)
-            rng = cr.stat_bounds(sid)
-            cur = max(rng[0], min(rng[1], val)) if rng else val
-            kind = param_kind(sid)
-            lab = ttk.Label(tbl, text='', cursor='hand2')
-            parts = decode_param(d, sid, param) if kind else None
-
-            def mark_key(k=k):
-                e2 = self._edit_extra(k)
-                self._edit_sel = k
-                lbl = ('* ' if True else '') + self._edit_row_label(k, made.get(k, 0) + (e2['value'] if e2 else 0))
-                for kk, lb in self._edit_rows.items():
-                    if self._edit_rows[kk] is lab:
-                        lb.configure(text=fit(lbl))
-                    else:
-                        e3 = self._edit_extra(kk)
-                        t3 = self._edit_row_label(kk, made.get(kk, 0) + (e3['value'] if e3 else 0))
-                        if lb.cget('text').startswith('* '):
-                            lb.configure(text=fit(t3))
-                self.set_status(T('cr.edit.selected', 'Selected: {label}',
-                                  label=self._edit_row_label(k, made.get(k, 0) + (e2['value'] if e2 else 0))))
-
-            def lab0(kk):
-                e2 = self._edit_extra(kk)
-                return self._edit_row_label(kk, made.get(kk, 0) + (e2['value'] if e2 else 0))
-
-            lab.configure(text=fit(('* ' if self._edit_sel == k else '') + lab0(k)))
-            lab.grid(row=r, column=1, sticky='we', pady=1)
-            lab.bind('<Button-1>', lambda _e, fn=mark_key: fn())
-            self._edit_rows[k] = lab
-            vvar = tk.IntVar(value=cur)
-
-            def commit_value(k=k, var=vvar, rng=rng):
-                if rng:
-                    self._int(var, rng[0], rng[1])
-                    self.route_target(k, var.get())
-                self.refresh()
-
-            sv = ttk.Spinbox(tbl, from_=rng[0], to=rng[1], textvariable=vvar, width=10)
-            self.scroll.no_wheel(sv)
-            sv.grid(row=r, column=2, sticky='w', pady=1)
-            self._spin_commit(sv, commit_value)
-            if kind:
-                names = [n for n, _v in param_choices(d, sid)]
-                nm = tk.StringVar(value=(parts or ('',))[0] or (names[0] if names else ''))
-                cb = None
-                if param_short(d, sid):                 # a handful of names: a plain dropdown
-                    cb = ttk.Combobox(tbl, values=names, textvariable=nm,
-                                      width=max(14, min(34, max(len(n) for n in names) + 1)))
-                    cb.grid(row=r, column=3, sticky='w', padx=(4, 2), pady=1)
-                    self.scroll.no_wheel(cb)
-                    bind_typeahead(cb, names)
-                lv = None
-                lc = 3
-                if kind == 'skill':
-                    ttk.Label(tbl, text=T('cr.edit.level', 'lvl'), width=4).grid(row=r, column=4, sticky='e')
-                    lv = tk.IntVar(value=(parts or ('', 1))[1] if parts and parts[1] is not None else 1)
-                    sl = ttk.Spinbox(tbl, from_=1, to=63, textvariable=lv, width=4)
-                    sl.grid(row=r, column=4, sticky='w', padx=(2, 0))
-                    lc = 4
-
-                    def commit_param(_e=None, nm=nm, lv=lv, k=k):
-                        try:
-                            level = int(lv.get())
-                        except (ValueError, tk.TclError):
-                            level = 1
-                        newp, why = encode_skill_param(d, k[0], nm.get(), level)
-                        if newp is None:
-                            self._skill_status(why, nm.get(), k[0])
-                            return
-                        self._edit_set_param(k, newp)
-                else:
-                    def commit_param(_e=None, nm=nm, lv=None, k=k):
-                        newp, why = encode_skill_param(d, k[0], nm.get(), None)
-                        if newp is None:
-                            self._skill_status(why, nm.get(), k[0])
-                            return
-                        self._edit_set_param(k, newp)
-                if cb is not None:
-                    cb.bind('<<ComboboxSelected>>', commit_param)
-                    cb.bind('<Return>', commit_param)
-                else:                                   # thousands of skills: the searchable list
-                    self._name_field(tbl, names, nm, commit_param, 20, param_title(sid), numbers=True).grid(
-                        row=r, column=3, sticky='w', padx=(4, 2), pady=1)
-                if lv is not None:
-                    self._spin_commit(sl, commit_param)
-                bcol = lc + 1
-            else:
-                bcol = 2
-            b = D2.button(tbl, 'x', (lambda k=k: self._edit_delete(k)), 2)
-            b.grid(row=r, column=0, padx=(0, 4), pady=1)
-            r += 1
-        r = self._edit_build_pick(parent, r)
-        return r
-
-    def _row_text_fitter(self, widget):
-        """fit(text): the text cut with '..' to the width a stat row's label has in the options pane (the pane's
-        width minus the row's delete button, value box and param fields), so a row never grows past the pane."""
-        import tkinter.font as tkfont
-        try:
-            font = tkfont.nametofont(str(ttk.Style().lookup('TLabel', 'font') or 'TkDefaultFont'))
-        except tk.TclError:
-            font = tkfont.nametofont('TkDefaultFont')
-        try:
-            pane = self.scroll.canvas.winfo_width()
-        except (AttributeError, tk.TclError):
-            pane = 0
-        ch = max(6, font.measure('0'))
-        room = max(ch * 22, (pane if pane > 50 else ch * 90) - ch * 52)
-
-        def fit(text):
-            text = str(text)
-            if font.measure(text) <= room:
-                return text
-            lo, hi = 0, len(text)
-            while lo < hi:
-                mid = (lo + hi + 1) // 2
-                if font.measure(text[:mid] + '..') <= room:
-                    lo = mid
-                else:
-                    hi = mid - 1
-            return text[:lo].rstrip() + '..'
-        return fit
-
     def _edit_delete(self, key):
         """The attribute leaves the item. The save format writes a stat group's members with their lead
         (the min / max pairs 17+18, 54+55+56...): deleting one alone would put it back as a 0, so the
@@ -2117,108 +2062,6 @@ class CreatorWindow:
             self._edit_sel = None
         self.render_mods()
         self.refresh()
-
-    def _edit_pick_param_zone(self, pf, pick, ep):
-        """The param widgets of the picked stat in an add row: a searchable skill list (+ cast level), a
-        state list, a class dropdown, or a plain param box. Rebuilt on every pick; ep: the row's own state."""
-        d = self.data
-        for w in pf.winfo_children():
-            w.destroy()
-        ep.clear()
-        sid = pick['sid']
-        kind = param_kind(sid)
-        pbits = (d.isc[sid]['param'] or 0) if 0 <= sid < len(d.isc) else 0
-        if kind in ('skill', 'skill_only'):
-            names = [n for n, _k in param_choices(d, sid)]
-            ttk.Label(pf, text=T('cr.edit.skill', 'skill')).grid(row=0, column=0)
-            nm = ep['name'] = tk.StringVar(value=names[0] if names else '')
-            self._name_field(pf, names, nm, None, 20, T('cr.pick.skill', 'Skill'), numbers=True).grid(
-                row=0, column=1, padx=(4, 6))
-            if kind == 'skill':
-                ttk.Label(pf, text=T('cr.edit.level', 'level')).grid(row=0, column=2)
-                lv = ep['level'] = tk.IntVar(value=1)
-                sl = ttk.Spinbox(pf, from_=1, to=63, textvariable=lv, width=4)
-                sl.grid(row=0, column=3, padx=(2, 6))
-                self.scroll.no_wheel(sl)
-        elif kind in ('class', 'named'):                # state, monster, orb, element / attribute...: by name
-            names = [n for n, _v in param_choices(d, sid)]
-            ttk.Label(pf, text=param_title(sid).lower()).grid(row=0, column=0)
-            nm = ep['name'] = tk.StringVar(value=names[0] if names else '#0')
-            if param_short(d, sid):                     # a handful of names: a plain dropdown ('#N' can be typed)
-                cb = ttk.Combobox(pf, state='readonly' if kind == 'class' else 'normal', values=names,
-                                  textvariable=nm, width=max(14, min(34, max(len(n) for n in names) + 1)))
-                cb.grid(row=0, column=1, padx=(4, 6))
-                self.scroll.no_wheel(cb)
-                bind_typeahead(cb, names)
-            else:
-                self._name_field(pf, names, nm, None, 24, param_title(sid), numbers=True).grid(
-                    row=0, column=1, padx=(4, 6))
-        elif sid == STATE_STAT and pbits:
-            # the state stat (98): param = state id, named after the skills that set it
-            snames = ep['state_names'] = state_names_sorted(d)
-            ttk.Label(pf, text=T('cr.edit.state', 'state')).grid(row=0, column=0)
-            nm = ep['name'] = tk.StringVar(value=snames[0][0] if snames else '')
-            self._name_field(pf, [n for n, _v in snames], nm, None, 20, T('cr.pick.state', 'State')).grid(
-                row=0, column=1, padx=(4, 6))
-        elif pbits:
-            ttk.Label(pf, text=T('cr.edit.param', 'param')).grid(row=0, column=0)
-            pv = ep['param'] = tk.IntVar(value=0)
-            sp = ttk.Spinbox(pf, from_=0, to=(1 << pbits) - 1, textvariable=pv, width=8)
-            sp.grid(row=0, column=1, padx=(4, 6))
-            self.scroll.no_wheel(sp)
-
-    def _edit_picked_param(self, pick, ep):
-        """(param, why) of the picked stat's param widgets: (param, None) on success, else (None, reason)
-        (see encode_skill_param; a plain param box only clamps itself, so reason is always None there)."""
-        p = ep
-        sid = pick['sid']
-        kind = param_kind(sid)
-        if kind:
-            name = str(p.get('name') and p['name'].get() or '')
-            try:
-                lvl = int(p['level'].get()) if kind == 'skill' else None
-            except (KeyError, AttributeError, ValueError, tk.TclError):
-                lvl = 1
-            newp, why = encode_skill_param(self.data, sid, name, lvl)
-            if why is None and kind in ('class', 'named'):
-                newp = newp or None                  # value 0 is stored as "no param"
-            return newp, why
-        if sid == STATE_STAT and 'state_names' in p:
-            name = str(p.get('name') and p['name'].get() or '')
-            v = next((v for n, v in p['state_names'] if n == name), None)
-            return (v, None) if v is not None else (None, 'unknown')
-        try:
-            return (int(p['param'].get()) if 'param' in p else None), None
-        except (AttributeError, ValueError, tk.TclError):
-            return None, None
-
-    def _edit_build_pick(self, parent, r):
-        """The add / replace row of the item-stats table (see _stat_add_row): '+ Add stat' appends the picked
-        stat, 'Replace selected' turns the clicked row's stat into it."""
-        def add(sid, param, v):
-            key = (sid, param)
-            self.set_extra_delta(key, v - self._edit_made().get(key, 0))
-            self._take_over(key)
-            self._edit_sel = key
-            self.render_mods()
-            self.refresh()
-
-        def replace(sid, param, _v):
-            if not getattr(self, '_edit_sel', None):
-                self.set_status(T('cr.edit.no_sel', 'Click a stat row first: the picked stat replaces it.'))
-                return
-            made = self._edit_made()
-            old = self._edit_sel
-            e = self._edit_extra(old)
-            val = self._edit_clamp(sid, made.get(old, 0) + (e['value'] if e else 0))
-            self._edit_cancel_key(old)
-            key = (sid, param)
-            self.set_extra_delta(key, val - made.get(key, 0))
-            self._take_over(key)
-            self._edit_sel = key
-            self.render_mods()
-            self.refresh()
-        return self._stat_add_row(parent, r, add, replace)
 
     # ------------------------------------------------------------------ changes
     def _int(self, var, lo, hi):
@@ -2428,6 +2271,7 @@ class CreatorWindow:
             self.btn_ok.state(['disabled'])
             self._header(None)
             return None
+        self._slots_sync()
         self.panel.show(it)
         self._header(it)
         self.show_orb(it['code'])
