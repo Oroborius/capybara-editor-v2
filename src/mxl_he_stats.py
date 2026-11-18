@@ -599,12 +599,22 @@ class ItemStatsWindow:
         mxl_undo.record(self.app, 'replace', **kw)
 
     def external_change(self):
-        """The item may have been written by someone else (an undo of the main window): read it again."""
+        """The item may have been written by someone else (an undo of the main window): read it again - only when
+        its bytes really changed (a Delete or an undo of another item leaves the tab, and its typed values, alone)."""
         if self.entry is not None:
             cur = getattr(self.chwin, 'current', None)    # the main window's panel: tied to one read of the file
             if cur is not None and not cur():
                 self.chwin.reload()
+            old = self.entry
             self.entry = self._refind_entry() or self.entry
+            if bytes(self.entry.blob) == bytes(old.blob):
+                return                            # the item itself is the same
+        else:
+            try:
+                if self._locate()[1] == self._disk:
+                    return
+            except (EditError, FormatError, OSError):
+                pass
         self.pending = {}
         self.load_rows()
         self.draw()

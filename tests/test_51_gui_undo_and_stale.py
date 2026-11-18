@@ -269,8 +269,8 @@ def make_perfect_then_undo():
 
 @T.test
 def undo_is_refused_after_the_file_changed():
-    """Make perfect, then another writer puts the original file back with the item changed (here: the file of
-    before): Ctrl+Z must not write anything over it."""
+    """Make perfect, then another writer changes the file (another item / a stat-screen value): Ctrl+Z must not
+    write anything over it - the file stays exactly as the other writer left it."""
     import mxl_undo
     m0 = T.mark()
     tgt = Target(perfectable, 'item with a roll below its maximum', bring=True)
@@ -278,14 +278,51 @@ def undo_is_refused_after_the_file_changed():
     T.pump(6)
     written = T.read(tgt.path)
     T.check(written != tgt.raw0, 'Make perfect wrote nothing')
-    other = bytearray(tgt.raw0)
+    other = third_state(tgt)
+    T.check(other not in (written, tgt.raw0), 'the outside change is not a third state')
     with open(tgt.path, 'wb') as f:          # the other writer (no editor code)
-        f.write(bytes(other))
+        f.write(other)
     msg = mxl_undo.undo(G.app)
     T.pump(6)
     T.check(T.read(tgt.path) == bytes(other), f'the undo wrote over a file changed since ({msg})')
     T.check(msg and 'not undone' in msg, f'undo message: {msg!r}')
     no_traceback(m0)
+
+
+def third_state(tgt):
+    """The file as another writer would leave it after the action: on the stash the item itself changed again (a
+    stash undo works per item: a change to ANOTHER item does not stop it), on the character one stat point more /
+    less (a character undo needs the whole file as written). Neither the bytes of before nor those of after."""
+    import mxl_save
+    import mxl_creator as C
+    app = G.app
+    raw = T.read(tgt.path)
+    if TARGET == 'stash':
+        items = mxl_save.parse_stash(tgt.path, app.data)
+        blobs = mxl_save.stash_blobs(raw, items)
+        cur = next(x for x in items if (x['page'], x['x'], x['y']) == tgt.pick)
+        blob = bytes(mxl_save.item_blob(raw, cur))
+        rec, size = C.decode_item(blob, app.data)
+        s0 = rec['stats'][0]
+        rec['stats'][0] = dict(s0, value=s0['value'] - 1 if s0['value'] > 0 else s0['value'] + 1)
+        here = [x['_offset'] for x in items if x['page'] == cur['page']]
+        blobs[cur['page']][here.index(cur['_offset'])] = C.encode_item(rec, app.data) + blob[size:]
+        return mxl_save.build_stash(raw[:8], blobs)
+    import mxl_char
+    ch = mxl_char.Character(tgt.path, app.data)
+    v = ch.field('stat_points')
+    ch.set_field('stat_points', v + 1 if v + 1 <= ch.stat_field('stat_points').max else v - 1)
+    return bytes(ch.build())
+
+
+def other_value(sid, *avoid):
+    import mxl_he_stats as H
+    lo, hi = H.value_range(G.app.data, sid)
+    base = avoid[0]
+    for d in (2, -2, 3, -3, 1, -1, 4, -4):
+        if lo <= base + d <= hi and base + d not in avoid:
+            return base + d
+    T.skip('no value to type')
 
 
 # ------------------------------------------------------------------ stash: out-of-date view
@@ -382,11 +419,102 @@ def item_stats_tab_refuses_an_item_changed_on_disk():
     outside = mxl_save.build_stash(raw[:8], blobs)
     with open(app.path, 'wb') as f:
         f.write(outside)
-    set_value(w, i, v + (1 if v + 1 <= 100 else -1))
+    shown = w.rec['stats'][i]['value']
+    set_value(w, i, other_value(w.rec['stats'][i]['id'], shown, v))
     T.pump(6)
     T.check(T.read(app.path) == outside, 'the tab wrote over an item changed on disk')
     T.check('changed on disk' in str(w.bar['text']), f'tab status: {w.bar["text"]!r}')
     T.eq(w.rec['stats'][i]['value'], v, 'the tab shows the value on disk now')
+    no_traceback(m0)
+
+
+
+@T.test
+def item_stats_edit_goes_to_the_moved_item():
+    """Another writer adds an item before the tab's item (its offset moves, its bytes stay): before the window
+    re-reads, a value edit and a slot clear in the tab reach that item - or are refused - and never its
+    neighbour; the only other change is the outside one."""
+    if TARGET != 'stash':
+        T.skip('stash grid: one variant is enough')
+    import mxl_save
+    m0 = T.mark()
+    app = G.app
+    tgt = Target(stats_item, 'magic / rare / unique item with a plain stat')
+    w = tgt.tab()
+    i, _v = editable(w, tgt)
+    raw = T.read(app.path)
+    items = mxl_save.parse_stash(app.path, app.data)
+    blobs = mxl_save.stash_blobs(raw, items)
+    first = min(blobs)
+    donor = next((x for x in items if x['page'] == first and (x['page'], x['x'], x['y']) != tgt.pick), None)
+    spot = mxl_save.free_spot(items, mxl_save.blob_item(bytes(mxl_save.item_blob(raw, donor)), app.data), app.data,
+                              [first]) if donor else None
+    if spot is None or tgt.pick[0] < first:
+        T.skip('no place for an outside item before the tab\'s item')
+    from mxl_format import write_bits
+    b = bytearray(mxl_save.item_blob(raw, donor))
+    probe = mxl_save.blob_item(bytes(b), app.data)
+    write_bits(b, 16 + probe['_pos_bit'], 4, spot[1])
+    write_bits(b, 16 + probe['_pos_bit'] + 4, 4, spot[2])
+    blobs[first].insert(0, bytes(b))                 # first in the file: every later offset moves
+    with open(app.path, 'wb') as f:
+        f.write(mxl_save.build_stash(raw[:8], blobs))
+    before = {(x['page'], x['x'], x['y']): bytes(mxl_save.item_blob(T.read(app.path), x))
+              for x in mxl_save.parse_stash(app.path, app.data)}
+
+    def others_unchanged(what):
+        now_raw = T.read(app.path)
+        now = {(x['page'], x['x'], x['y']): bytes(mxl_save.item_blob(now_raw, x))
+               for x in mxl_save.parse_stash(app.path, app.data)}
+        T.eq(sorted(now), sorted(before), f'{what}: places of the items')
+        for k in before:
+            if k != tgt.pick:
+                T.check(now.get(k) == before[k], f'{what}: the item at {k} changed')
+        return now
+    shown = w.rec['stats'][i]['value']
+    typed = other_value(w.rec['stats'][i]['id'], shown)
+    set_value(w, i, typed)
+    T.pump(6)
+    now = others_unchanged('value edit')
+    print('  value edit on the moved item:', 'written' if now[tgt.pick] != before[tgt.pick] else 'refused')
+    if now[tgt.pick] != before[tgt.pick]:
+        T.eq(T.rec_of(now[tgt.pick])['stats'][i]['value'], typed, 'the value written into the item')
+    else:
+        T.check('not written' in str(w.bar['text']), f'nothing written and no refusal: {w.bar["text"]!r}')
+    before = {k: v for k, v in now.items()}
+    w.select(w._find_slot('stats', 0))
+    w.delete_selected()
+    T.pump(6)
+    others_unchanged('slot clear')
+    no_traceback(m0)
+
+
+@T.test
+def typed_values_survive_a_delete_elsewhere():
+    """A value typed but not saved (Down arrow) stays pending when another stash item is deleted (the main
+    window's refresh after a Delete / an undo does not reset the tab unless its own item changed)."""
+    import mxl_undo
+    m0 = T.mark()
+    tgt = Target(stats_item, 'magic / rare / unique item with a plain stat')
+    w = tgt.tab()
+    i, v = editable(w, tgt)
+    w.select(w._find_slot('stats', i))
+    w.edit_cell('value')
+    w.ed_var.set(str(v))
+    w._ed_done('down')
+    T.pump()
+    pending = dict(w.pending)
+    T.check(pending, 'the typed value is not pending')
+    app = G.app
+    victim = next((x for x in app.items if TARGET != 'stash' or (x['page'], x['x'], x['y']) != tgt.pick), None)
+    if victim is None:
+        T.skip('no other stash item')
+    mxl_undo.delete_item(app, victim)
+    T.pump(10)
+    T.eq(w.pending, pending, 'typed values after a Delete of another item')
+    mxl_undo.undo(app)
+    T.pump(10)
+    T.eq(w.pending, pending, 'typed values after the undo of that Delete')
     no_traceback(m0)
 
 
