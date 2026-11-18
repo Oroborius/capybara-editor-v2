@@ -508,6 +508,15 @@ def _gui_main(g):
     os.dup2(fd1, 1)
     sys.path.insert(0, APP)
     sys.argv = [os.path.join(APP, 'capybara_editor.py')]
+    if os.environ.get('CAPY_XFT', '').strip() not in ('', '0'):
+        # the text the users see: the launcher loads the Xft build of Tk (antialiased fonts, other metrics) before
+        # tkinter, but this harness imports tkinter first, so without this every GUI test runs on X core fonts
+        import ctypes
+        lib = os.path.join(sys.base_prefix, 'lib', 'xft', 'libtcl9tk9.0.so')
+        if not os.path.isfile(lib):
+            sys.stderr.write(f'CAPY_XFT=1 but the application folder has no Xft Tk ({lib}): build it without MXL_NO_XFT\n')
+            os._exit(2)
+        ctypes.CDLL(lib, mode=ctypes.RTLD_GLOBAL)
     import tkinter
     state = {'ran': False}
 

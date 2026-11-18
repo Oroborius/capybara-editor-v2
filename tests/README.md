@@ -100,6 +100,7 @@ and stays open - mark the test `@T.test(xfail='what is wrong')` with a comment d
 | `test_42_gui_tooltips.py` | gui | floating tooltips (Stats page, Skills tree, Hotkeys; one reused `mxl_floattip` window each) with a real pointer (`xdotool`, skipped without it): a stationary hover maps the tip once and it stays, small moves keep it, it is never under the pointer and steps aside when the pointer jumps onto it, crossing the labels of one hotkey cell keeps it, a `<Leave>` with the pointer still on the widget keeps it, leaving hides it; window type `tooltip` on X11 (`CAPY_VPTR_FIFO=<fifo>`: pointer through a Wayland virtual pointer, for a headless sway run) |
 | `test_43_gui_quality_pick.py` | gui | right-click "Change item quality" entries that ask first (rare / crafted / tempered names, which set / unique): the pick window opens over the editor (child of the main window, not of the menu), first entry selected, Escape closes it without a write, Enter twice makes the stash item rare; the same window on the Character tab |
 | `test_44_gui_move_page.py` | gui | right-click "Move to page... > Page N": a cell taken on the target page sends the item to that page's first free place (was a raw "overlaps" error + ERROR log line), a free cell keeps the position, the item's own page is greyed out |
+| `test_45_gui_hotkey_icons.py` | gui | Hotkeys page in both looks: every cell holding a skill shows an icon, a skill of another class (oskill from an item, e.g. the Assassin's Blink on the sample Necromancer) included; skipped without the game art |
 
 `--quick` runs the `engine` files only.
 
@@ -133,6 +134,10 @@ T.main(globals())
   prefix', under='Cascade prefix')`); message boxes and the simple dialogs are stubbed (`T.G.boxes`,
   `T.G.answers['int'] = 2`, `['askyesno'] = False`, `['file'] = path`). After every GUI test the harness fails it
   when the application printed a traceback, logged an `ERROR` line in `capybara.log` or tried to show an error box.
+- `CAPY_XFT=1`: GUI tests draw text with the Xft build of Tk, as the launcher does for users (`lib/xft/` in the
+  application folder, i.e. an AppDir built without `MXL_NO_XFT`); without it the harness imports tkinter first and
+  every GUI test runs on X core fonts (narrower text). `test_40_gui_creator_layout` fails at 800x600 with it
+  (docs/review/gui.md, finding 8).
 - Menu entries are found by their English text (the copied settings are switched to English).
 - One Tk application per process: a GUI file is one process (per variant).
 

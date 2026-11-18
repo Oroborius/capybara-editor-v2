@@ -188,7 +188,7 @@ def _paste(app, it, clip):
     app._capy_clip = None
     app.backup_made(app.path, bak)
     _selected(app, it['page'], it['x'], it['y'])
-    _status(app, rc('pasted', '{name} pasted (the previous item is replaced)', name=clip[1]))
+    _status(app, rc('pasted_over', '{name} pasted (the previous item is replaced)', name=clip[1]))
 
 
 def _paste_empty(app, ev, clip):
@@ -299,9 +299,9 @@ def _cluster_quantity_menu(menu, cur, set_fn):
 
 def _cluster_quantity_ask(menu, cur, sign, set_fn):
     from tkinter import simpledialog
-    root = menu.winfo_toplevel()
+    root = _owner(menu)
     v = simpledialog.askinteger(rc('q.title2', 'Quantity'),
-                                rc('q.ask', 'Add how many (now {n}, 1 to {m})?' if sign > 0 else
+                                rc('q.ask_add' if sign > 0 else 'q.ask_remove', 'Add how many (now {n}, 1 to {m})?' if sign > 0 else
                                    'Remove how many (now {n}, 1 to {m})?', n=cur, m=CLUSTER_QUANTITY_MAX),
                                 parent=root, initialvalue=max(1, CLUSTER_QUANTITY_MAX - cur) if sign > 0 else cur,
                                 minvalue=1, maxvalue=CLUSTER_QUANTITY_MAX)
@@ -313,9 +313,9 @@ def _cluster_quantity_ask(menu, cur, sign, set_fn):
 def _quantity_ask(menu, data, code, cur, sign, set_fn):
     from tkinter import simpledialog
     base = data.base(code)
-    root = menu.winfo_toplevel()
+    root = _owner(menu)
     v = simpledialog.askinteger(rc('q.title2', 'Quantity'),
-                                rc('q.ask', 'Add how many (now {n}, 1 to {m})?' if sign > 0 else
+                                rc('q.ask_add' if sign > 0 else 'q.ask_remove', 'Add how many (now {n}, 1 to {m})?' if sign > 0 else
                                    'Remove how many (now {n}, 1 to {m})?', n=cur, m=base.stack_max),
                                 parent=root, initialvalue=max(1, base.stack_max - cur) if sign > 0 else cur,
                                 minvalue=1, maxvalue=base.stack_max)
@@ -438,7 +438,7 @@ def _char_menu(win, cv, ev):
         _fill_sockets_entry(win, menu, None, win=win, e=e)
         _add_hero_editor_menu(win, menu, win=win, e=e)
         menu.add_command(label=rc('to_stash', 'To stash'), command=win.to_stash)
-        menu.add_command(label=rc('delete', 'Delete'), command=win.delete)
+        menu.add_command(label=rc('delete_short', 'Delete'), command=win.delete)
         menu.add_command(label=rc('export', 'Export item...'), command=lambda: _export_char(win, e))
     else:
         if clip is not None and cv is win.inv:
@@ -562,13 +562,13 @@ def _char_duplicate(win, e):
         blob = win.ch.stash_blob(e)
         spot = win.ch.free_inventory_spot(MC.blob_item(blob, win.data))
         if spot is None:
-            win.set_status(rc('err.nofree', 'no free place in the inventory'), True)
+            win.set_status(rc('err.nofree_inv', 'no free place in the inventory'), True)
             return
         win.ch.place(blob, ('inv',) + spot, False)        # the copy goes to the character's inventory
     except (CharError, FormatError, OSError) as err:
         win.set_status(str(err), True)
         return
-    win.save(rc('duplicated', '{name} duplicated', name=clean_name(win, e)))
+    win.save(rc('duplicated_char', '{name} duplicated', name=clean_name(win, e)))
 
 
 def _char_paste(win, ev, clip):
@@ -719,14 +719,21 @@ def _quality_ok(cr, code, q):
     return False
 
 
+def _owner(menu):
+    """The window a dialog opened from a menu entry belongs to: a tk.Menu is a toplevel of its own, so
+    menu.winfo_toplevel() was the (unposted) menu itself - dialogs were made its children / transients."""
+    top = menu.winfo_toplevel()
+    return menu._root() if isinstance(top, tk.Menu) else top
+
+
 def _ask_pick(menu, title, options, on_pick):
     """Small modal listbox over [(value, label)]; Enter / double-click / OK picks."""
-    root = menu.winfo_toplevel()
-    if isinstance(root, tk.Menu):            # a menu is a toplevel of its own: the dialog belongs to the editor
-        root = menu._root()
+    root = _owner(menu)
     top = tk.Toplevel(root)
     top.title(title)
     top.transient(root)
+    bar = tk.Frame(top)                      # packed first: the buttons get the bottom row, under the list
+    bar.pack(side='bottom', fill='x')
     # 'dotbox' (Tk knows dotbox / none / underline): 'dotselect' raised a TclError here, so every rare /
     # crafted / tempered quality change and every "Which set / unique item?" choice did nothing
     lb = tk.Listbox(top, width=64, height=min(18, max(5, len(options))), activestyle='dotbox',
@@ -745,8 +752,6 @@ def _ask_pick(menu, title, options, on_pick):
             on_pick(options[sel[0]][0])
     lb.bind('<Double-Button-1>', ok)
     lb.bind('<Return>', ok)
-    bar = tk.Frame(top)
-    bar.pack(fill='x')
     tk.Button(bar, text=rc('ok', 'OK'), width=10, command=ok).pack(side='left', padx=4, pady=2)
     tk.Button(bar, text=rc('cancel', 'Cancel'), width=10, command=top.destroy).pack(side='right', padx=4, pady=2)
     top.bind('<Escape>', lambda _e: top.destroy())
@@ -791,10 +796,20 @@ def _apply_quality(holder, menu, it, win, q):
         return
     elif q == 'superior' and len(cr.superior_choices(code)) > 1:
         ch = cr.superior_choices(code)
-        _ask_pick(menu, rc('quality.sup', 'Superior bonus'), [(i, rc('quality.supn', 'Bonus #{n}', n=i + 1)) for i in ch],
+        _ask_pick(menu, rc('quality.sup', 'Superior bonus'), [(i, _sup_label(holder, i)) for i in ch],
                   lambda v: _apply_quality_picked(holder, it, win, q, v))
         return
     _apply_quality_picked(holder, it, win, q, pick, pick2)
+
+
+def _sup_label(holder, i):
+    """A superior bonus as the Creator's Superior box shows it ("[3] Enhanced Defense 5-15"); it was only
+    "Bonus #4", which said nothing about the bonus."""
+    try:
+        import mxl_creator_gui
+        return mxl_creator_gui.CreatorWindow.sup_label(types.SimpleNamespace(data=holder.data), i)
+    except Exception:
+        return rc('quality.supn', 'Bonus #{n}', n=i + 1)
 
 
 def _apply_quality_picked(holder, it, win, q, pick=None, pick2=None):
@@ -963,7 +978,7 @@ def _item_name(holder, it, e):
 
 def _ask_value(menu, title, prompt, cur, lo, hi, on_ok):
     from tkinter import simpledialog
-    v = simpledialog.askinteger(title, prompt, parent=menu.winfo_toplevel(),
+    v = simpledialog.askinteger(title, prompt, parent=_owner(menu),
                                 initialvalue=max(lo, min(hi, cur)), minvalue=lo, maxvalue=hi)
     if v is None:
         return
@@ -974,14 +989,14 @@ def _ask_personalize(menu, on_ok):
     from tkinter import simpledialog, messagebox
     s = simpledialog.askstring(rc('sp.pers2', 'Personalize'),
                                rc('sp.pers_ask', 'Name to engrave on the item (2 to 15 ASCII characters):'),
-                               parent=menu.winfo_toplevel())
+                               parent=_owner(menu))
     if not s:
         return
     s = s.strip()
     if not 2 <= len(s) <= 15 or any(not 32 <= ord(c) <= 126 for c in s):
         messagebox.showerror(rc('sp.pers2', 'Personalize'),
                              rc('sp.pers_bad', 'Use 2 to 15 letters / numbers (ASCII).'),
-                             parent=menu.winfo_toplevel())
+                             parent=_owner(menu))
         return
     on_ok(s)
 
@@ -1588,5 +1603,5 @@ def _char_paste_over(win, e, clip):
         win.reload()
         win.set_status(str(err), True)
         return
-    if win.save(rc('pasted', '{name} pasted (the previous item is replaced)', name=clip[1])):
+    if win.save(rc('pasted_over', '{name} pasted (the previous item is replaced)', name=clip[1])):
         win.app._capy_clip = None

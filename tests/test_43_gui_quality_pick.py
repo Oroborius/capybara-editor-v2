@@ -129,4 +129,48 @@ def character_tab_item_opens_the_pick_window():
     T.select_tab('Stash')
 
 
+@T.test
+def buttons_under_the_list():
+    """OK / Cancel sat beside the list, at its top right (the bar was packed after the list)."""
+    key, m = stash_unique()
+    T.invoke(m, 'rare', under='Change item quality')
+    T.settle(0.3)
+    wins = pick_windows()
+    T.eq(len(wins), 1, 'pick windows open')
+    for w in wins:
+        lb = listbox(w)
+        buttons = [b for f in w.winfo_children() if isinstance(f, tk.Frame) for b in f.winfo_children()
+                   if isinstance(b, tk.Button)]
+        T.eq(len(buttons), 2, 'buttons of the pick window')
+        for b in buttons:
+            T.check(b.winfo_rooty() >= lb.winfo_rooty() + lb.winfo_height() - 2,
+                    f'button {b.cget("text")!r} at y {b.winfo_rooty()} is not under the list (list ends at '
+                    f'{lb.winfo_rooty() + lb.winfo_height()})')
+        w.destroy()
+    T.pump()
+
+
+@T.test
+def superior_bonus_choices_say_what_they_give():
+    """The superior pick listed "Bonus #1", "Bonus #2"...: now the bonus and its range, like the Creator."""
+    import re
+    for it in sorted(G.app.items, key=lambda i: (i['page'], i['y'], i['x'])):
+        m = T.stash_menu(it['page'], it['x'], it['y'])
+        if any(lab == 'superior...' and st != 'disabled' for _d, lab, st, _m, _i in T.menu_entries(m)):
+            break
+    else:
+        T.skip('no stash item offers "superior..." with several bonuses')
+    T.invoke(m, 'superior', under='Change item quality')
+    T.settle(0.3)
+    wins = pick_windows()
+    T.eq(len(wins), 1, 'pick windows open after "superior..."')
+    for w in wins:
+        rows = list(listbox(w).get(0, 'end'))
+        T.check(len(rows) >= 2, f'superior choices {rows}')
+        T.eq([r for r in rows if re.match(r'Bonus #\d+$', r)], [], 'choices that only give a number')
+        T.eq([r for r in rows if not re.search(r'\d+-\d+', r)], [], 'choices without a range')
+        w.destroy()
+    T.pump()
+
+
 T.main(globals())

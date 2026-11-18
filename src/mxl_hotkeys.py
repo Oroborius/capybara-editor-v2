@@ -361,25 +361,33 @@ class HotkeysPage:
         self._redraw()
 
     # ------------------------------------------------------------------ drawing
-    def _shared_icon(self, sid):
+    def _shared_icon(self, sid, sheet='shared'):
         """Icon of a skill outside the class trees (oskills, Attack, Town Portal): its skilldesc cel in the
-        game's icons-shared.dc6 (the Skills page's loader covers the class trees only)."""
+        game's icons-shared.dc6 (the Skills page's loader covers the class trees only). sheet: another class's
+        icon file (icons-<class code>.dc6) for a skill of a class the character is not (an oskill such as an
+        Assassin's Blink on a Necromancer had no icon at all)."""
         import settings
         import paths
         import mxl_d2look_art
         import mxl_d2ui_dc6 as DC6
         data = self.win.data
         if self._shared is None:
+            self._shared = {}
+        if sheet not in self._shared:
             gd = settings.get('game_dir')
             if not gd or not os.path.isdir(gd):
-                self._shared = ()
+                self._shared[sheet] = ()
             else:
                 art = mxl_d2look_art.get_art(gd, 'classic_sigma', os.path.join(paths.USER_DIR, 'ui_art'))
-                self._shared = (DC6.dc6_frames(art.read('data\\global\\themes\\classic_sigma\\game\\skills\\'
-                                                        'icons-shared.dc6')), art.pal())
-        if not self._shared:
+                try:
+                    self._shared[sheet] = (DC6.dc6_frames(art.read('data\\global\\themes\\classic_sigma\\game\\'
+                                                                   'skills\\icons-' + sheet + '.dc6')), art.pal())
+                except Exception as e:
+                    print('hotkeys: no icon sheet', sheet, e)
+                    self._shared[sheet] = ()
+        if not self._shared[sheet]:
             return None
-        cels, pal = self._shared
+        cels, pal = self._shared[sheet]
         srows, sd_rows = data._rows('skills'), data._rows('skilldesc')
         sd = struct.unpack_from('<H', srows[sid], 404)[0]
         if not (sid == ATTACK or 0 < sd < len(sd_rows)):
@@ -404,6 +412,11 @@ class HotkeysPage:
                     if big is not None:
                         from PIL import Image, ImageTk
                         img = ImageTk.PhotoImage(big.resize((ICON, ICON), Image.LANCZOS), master=self.frame)
+                    elif tree is None or tree.cls != cls:      # another class's skill (an oskill from an item)
+                        rows = self.win.data._rows('playerclass')
+                        code = rows[cls][:4].decode('latin1').strip().lower() if cls < len(rows) else ''
+                        if code and sid < len(self.win.data._rows('skills')):
+                            img = self._shared_icon(sid, code)
                 elif sid < len(self.win.data._rows('skills')):
                     img = self._shared_icon(sid)
             except Exception as e:
