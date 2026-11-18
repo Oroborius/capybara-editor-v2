@@ -27,7 +27,7 @@ def drag_and_drop_between_stash_and_character():
 
 @T.test
 def game_art_panels_and_fonts_look_right():
-    T.skip('appearance is not asserted: no reference screenshots are compared (Tk under Xvfb has no Xft fonts, the '
+    T.skip('appearance is not asserted: no reference screenshots are compared (the fonts depend on the host, the '
            'art comes from the user\'s game folder); 30_gui_smoke only checks that both looks build without errors')
 
 
