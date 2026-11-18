@@ -68,6 +68,7 @@ def check_panel(inv, what):
     worn = inv.ch.equipped(True)
     for b in WEAPONS:                    # what the mercenary wears there is what the box gives
         ev = T.panel_ev(('slot', b))
+        T.eq(inv.doll_slot(ev.x, ev.y), b, f'{what}: mercenary weapon box {b}: slot under the pointer')
         e, merc = inv.entry_at(inv.doll, ev.x, ev.y)
         T.check(e is worn.get(b), f'{what}: mercenary weapon box {b}: entry {e and e.it["code"]} vs worn {worn.get(b) and worn[b].it["code"]}')
     if inv.d2:
