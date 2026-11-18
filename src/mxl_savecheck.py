@@ -272,12 +272,47 @@ def _edit_error():
         return RuntimeError
 
 
+RETRY_DELAYS = (0.15, 0.4, 0.8)      # PermissionError (Windows: antivirus / OneDrive / the game holding the file)
+
+
+def _write(host, path, content, verify, backup):
+    """The collector's write. It removes its temp file (<path>.tmp) when the write or the verification fails, but
+    not when the backup or the final rename fails (disk full, the file locked by another program on Windows):
+    then the old file is still in place and the temp file is removed here.
+    A PermissionError (a short lock by a virus scanner or a sync client on Windows) is tried again a few times
+    (about 1.4 s in all): every try is the whole safe write again, and the old file is untouched until the
+    final rename succeeds."""
+    tries = 0
+    while True:
+        try:
+            return host(path, content, verify, backup)
+        except PermissionError as e:
+            _remove_tmp(path)
+            if tries >= len(RETRY_DELAYS):
+                raise
+            _log().warning('savecheck: %s locked (%s), trying again', os.path.basename(str(path)), e)
+            time.sleep(RETRY_DELAYS[tries])
+            tries += 1
+        except BaseException:
+            _remove_tmp(path)
+            raise
+
+
+def _remove_tmp(path):
+    tmp = str(path) + '.tmp'
+    try:
+        if os.path.isfile(tmp):
+            os.remove(tmp)
+    except OSError:
+        pass
+
+
 def _guard(host):
     @functools.wraps(host)
     def commit_file(path, content, verify, backup=True):
         m = mode()
         if m == 'off' or kind_of(path) is None:
-            return host(path, content, verify, backup)
+            return _write(host, path, content, verify, backup)
         log = _log()
         name = os.path.basename(str(path))
         if TEST_HOOK is not None:
@@ -286,7 +321,7 @@ def _guard(host):
             r = examine(path, content)
         except Exception as e:                       # a bug here must never cost the user a save
             log.exception('savecheck: the check itself failed for %s (%s) - written without it', name, e)
-            return host(path, content, verify, backup)
+            return _write(host, path, content, verify, backup)
         if r.problems:
             why = '; '.join(r.problems)
             soft = None
@@ -311,7 +346,7 @@ def _guard(host):
                 _warn_user(T('sc.warned', '{file} was written although the independent check does not accept it:\n'
                              '{why}\n\nThe previous file is kept as {backup}.', file=name, why=why,
                              backup=os.path.basename(kept) if kept else '-'))
-        bak = host(path, content, verify, backup)
+        bak = _write(host, path, content, verify, backup)
         try:
             _accepted(path, content, r)
             log.info('savecheck: %s: %s [%.0f ms]', name, r.summary, r.ms)
