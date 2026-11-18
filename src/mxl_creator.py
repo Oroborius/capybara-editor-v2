@@ -1766,9 +1766,54 @@ class Creator:
         except Exception:
             orig = None
         if orig is not None:
+            if spec['quality'] != 'runeword':
+                # the socketed items the spec cannot name (jewels...): kept by their place in the original list,
+                # so that each one can be taken out (remove_filler / clear_fillers); a runeword keeps its children
+                spec['_kept'] = [i for i, raw in enumerate(orig['kids'])
+                                 if not decode_item(raw, self.data)[0]['flags'] & FLAG_SIMPLE]
             orig['spec'] = copy.deepcopy(spec)
             spec['_orig'] = orig
         return spec
+
+    # ---- socket fillers of an edited item
+    def fillers(self, spec):
+        """The filled sockets of a spec, in the order build() writes them: dicts with kind 'pick' (a gem / rune /
+        other simple socketable of spec['socketed'], slot = its index there) or 'item' (an original socketed item
+        with a stat list of its own, a jewel..., index = its place in the item as read), code and name."""
+        d = self.data
+        out = []
+        for k, c in enumerate(spec.get('socketed') or []):
+            if c:
+                out.append(dict(kind='pick', slot=k, code=c, name=d.base(c).name if c in d.bases else c.strip()))
+        o = spec.get('_orig')
+        if spec.get('_kept') and o:
+            for i in spec['_kept']:
+                rec = decode_item(o['kids'][i], d)[0]
+                c = rec['code']
+                name = d.base(c).name if c in d.bases else c.strip()
+                q = rec.get('quality')
+                if q not in (None, 'normal'):
+                    name = '%s (%s)' % (name, T('cr.quality.' + q, q.capitalize()))
+                out.append(dict(kind='item', index=i, code=c, name=name))
+        return out
+
+    def remove_filler(self, spec, n):
+        """Takes filler n of fillers(spec) out of its socket (the socket stays, empty)."""
+        f = self.fillers(spec)[n]
+        if f['kind'] == 'pick':
+            s = list(spec.get('socketed') or [])
+            del s[f['slot']]
+            spec['socketed'] = s
+        else:
+            spec['_kept'] = [i for i in spec['_kept'] if i != f['index']]
+
+    def clear_fillers(self, spec):
+        """Empties every socket of a spec (not a runeword's: its runes are the runeword)."""
+        if spec.get('quality') == 'runeword':
+            return
+        spec['socketed'] = []
+        if '_kept' in spec:
+            spec['_kept'] = []
 
     def _original(self, it):
         """What _carry needs of the item as read, or None when its bytes are not known (an item that did not come
@@ -1847,21 +1892,29 @@ class Creator:
             out[k] = self._carry_stats(orec.get(k), rec.get(k), brec.get(k))
             if out[k] is None:
                 del out[k]
-        if nkids == bkids:
+        odec = [decode_item(raw, d)[0] for raw in o['kids']]
+        fixed = [i for i, k in enumerate(odec) if not k['flags'] & FLAG_SIMPLE]   # jewels...: not in the spec
+        keep = fixed if spec.get('_kept') is None else [i for i in fixed if i in spec['_kept']]
+        if nkids == bkids and keep == fixed:
             kids = list(o['kids'])
         else:
-            # the socket fillers were changed: the new ones, and the original socketed items the spec cannot
-            # name (jewels and other items with a stat list of their own) stay in the item
-            kept = []
-            for raw in o['kids']:
-                k, _m = decode_item(raw, d)
-                if not k['flags'] & FLAG_SIMPLE:
-                    kept.append(k)
-            new = [decode_item(x, d)[0] for x in nkids]
-            room = max(len(new), out.get('sockets', 0) if out['flags'] & FLAG_SOCKETED else 0)
-            both = (new + kept)[:max(room, len(new))]
-            kids = [encode_item(dict(k, location=LOC_SOCKETED, equipped=0, x=i, y=0, panel=0), d)
-                    for i, k in enumerate(both)]
+            if nkids == bkids:
+                # only socketed items the spec cannot name were taken out: the others stay as they were, in order
+                both = [i for i in range(len(odec)) if i not in fixed or i in keep]
+            else:
+                # the socket fillers were changed: the new ones, and the original socketed items the spec cannot
+                # name (jewels and other items with a stat list of their own) that were not taken out
+                new = [decode_item(x, d)[0] for x in nkids]
+                room = max(len(new), out.get('sockets', 0) if out['flags'] & FLAG_SOCKETED else 0)
+                both = (new + keep)[:max(room, len(new))]
+            kids = []
+            for x, k in enumerate(both):
+                if isinstance(k, int):                    # an original child: its own bytes when its place holds
+                    if odec[k].get('x') == x and odec[k].get('location') == LOC_SOCKETED:
+                        kids.append(o['kids'][k])
+                        continue
+                    k = odec[k]
+                kids.append(encode_item(dict(k, location=LOC_SOCKETED, equipped=0, x=x, y=0, panel=0), d))
         out['socketed_count'] = len(kids)
         if out == orec and kids == o['kids']:
             return oblob, orec

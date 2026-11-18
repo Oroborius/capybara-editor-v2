@@ -814,7 +814,13 @@ class CreatorWindow:
         if q != 'runeword':
             spec['sockets'] = ms if spec.get('max_sockets') else min(spec.get('sockets') or 0, ms)
             spec['sockets'] = max(spec['sockets'], cr.innate_sockets(spec))   # the innate's sockets (Angelic...)
-            spec['socketed'] = spec.get('socketed', [])[:spec['sockets']]
+            kept = spec.get('_kept')
+            if kept:                                     # an edited item's jewels...: they take sockets too
+                picks = [c for c in spec.get('socketed', []) if c][:spec['sockets']]
+                spec['_kept'] = kept[:max(0, spec['sockets'] - len(picks))]
+                spec['socketed'] = picks[:spec['sockets'] - len(spec['_kept'])]
+            else:
+                spec['socketed'] = spec.get('socketed', [])[:spec['sockets']]
         b = self.data.base(code)
         if b.stack_max is not None and not spec.get('quantity'):
             spec['quantity'] = b.stack_max
@@ -869,19 +875,32 @@ class CreatorWindow:
             r += 1
             return r - 1
 
-        def combo(label, values, current, on_change, width=40, stretch=True, search=True):
-            """Read-only combobox; on_change(index in values). Each call keeps its own list (no shared variable)."""
+        def combo(label, values, current, on_change, width=40, stretch=True, search=True, tail=None):
+            """Read-only combobox; on_change(index in values). Each call keeps its own list (no shared variable).
+            tail(frame): widgets right of the field (the field then sits in a frame of its own, left)."""
             rr = row(label)
             values = list(values)
             var = tk.StringVar(value=current)
+            host = f
+            if tail is not None:
+                host = ttk.Frame(f)
+                host.grid(row=rr, column=1, sticky='w', pady=2)
             if search and len(values) > LONG_LIST:       # affixes, socket fillers...: type to search
-                c = self._name_field(f, values, var, lambda: on_change(values.index(var.get()))
+                c = self._name_field(host, values, var, lambda: on_change(values.index(var.get()))
                                      if var.get() in values else None, 12 if stretch else min(width, 24),
                                      label.strip(), clip=stretch)
-                c.grid(row=rr, column=1, sticky='we' if stretch else 'w', pady=2)
+                if tail is not None:
+                    c.pack(side='left')
+                    tail(host)
+                else:
+                    c.grid(row=rr, column=1, sticky='we' if stretch else 'w', pady=2)
                 return c, rr
-            c = ttk.Combobox(f, state='readonly', values=values, textvariable=var, width=width)
-            c.grid(row=rr, column=1, sticky='we' if stretch else 'w', pady=2)
+            c = ttk.Combobox(host, state='readonly', values=values, textvariable=var, width=width)
+            if tail is not None:
+                c.pack(side='left')
+                tail(host)
+            else:
+                c.grid(row=rr, column=1, sticky='we' if stretch else 'w', pady=2)
             self.scroll.no_wheel(c)
 
             def picked(_e, var=var, values=values, on_change=on_change):
@@ -926,14 +945,31 @@ class CreatorWindow:
             mv = tk.BooleanVar(value=bool(spec.get('max_sockets')))
             ttk.Checkbutton(box, text=T('cr.max_sockets', 'Max sockets ({n})', n=ms), variable=mv,
                             command=lambda mv=mv: self.set_max_sockets(mv.get())).pack(side='left', padx=(10, 0))
+            filled = cr.fillers(spec)
+            if filled:
+                ttk.Button(box, text=T('cr.sockets_clear', 'Empty sockets'),
+                           command=self.clear_fillers).pack(side='left', padx=(10, 0))
             fill = cr.sockets_fillers()
             EMPTY = empty_label()
-            vals = [EMPTY] + [clean(n) for _, n in fill]
-            for k in range(spec['sockets']):
+            kept = [x for x in filled if x['kind'] == 'item']
+            n_pick = max(0, spec['sockets'] - len(kept))
+            for k in range(n_pick):
                 cur = spec['socketed'][k] if k < len(spec['socketed']) else None
-                curl = next((clean(n) for c_, n in fill if c_ == cur), EMPTY)
+                opts = list(fill)
+                if cur and all(c_ != cur for c_, _n in fill):      # a socketed item outside the list (Mystic Orb...)
+                    opts.append((cur, d.base(cur).name if cur in d.bases else cur.strip()))
+                vals = [EMPTY] + [clean(n) for _, n in opts]
+                curl = next((clean(n) for c_, n in opts if c_ == cur), EMPTY)
+                n = next((j for j, x in enumerate(filled) if x['kind'] == 'pick' and x['slot'] == k), None)
                 combo(T('cr.socket_n', '  Socket {n}', n=k + 1), vals, curl,
-                      lambda i, k=k, fill=fill: self.set_socket(k, None if i == 0 else fill[i - 1][0]), 30, False)
+                      lambda i, k=k, opts=opts: self.set_socket(k, None if i == 0 else opts[i - 1][0]), 30, False,
+                      tail=None if n is None else (lambda host, n=n: self._filler_x(host, n)))
+            for k, x in enumerate(kept):
+                rr = row(T('cr.socket_n', '  Socket {n}', n=n_pick + k + 1))
+                host = ttk.Frame(f)
+                host.grid(row=rr, column=1, sticky='w', pady=2)
+                ttk.Label(host, text=clean(x['name'])).pack(side='left')
+                self._filler_x(host, filled.index(x))
         n_img = cr.image_count(code)
         if n_img > 1:
             spin(T('cr.picture', 'Picture'), 1, n_img, (spec.get('image') or 0) + 1, lambda v: self.set_field('image', v - 1))
@@ -2116,6 +2152,26 @@ class CreatorWindow:
         s[k] = code
         self.spec['socketed'] = s
         self.refresh()
+
+    def _filler_x(self, host, n):
+        """The x button that takes socket filler n (Creator.fillers) out of its socket, right of its field."""
+        ttk.Button(host, text='x', width=2, command=lambda n=n: self.remove_filler(n)).pack(side='left', padx=(4, 0))
+
+    def filler_rows(self):
+        """The filled sockets of the item being made / edited (Creator.fillers)."""
+        return self.cr.fillers(self.spec) if self.spec is not None else []
+
+    def remove_filler(self, n):
+        if self.spec is None:
+            return
+        self.cr.remove_filler(self.spec, n)
+        self.render_options()
+
+    def clear_fillers(self):
+        if self.spec is None:
+            return
+        self.cr.clear_fillers(self.spec)
+        self.render_options()
 
     def set_rare_name(self, n, i):
         rn = list(self.spec['rare_names'])
