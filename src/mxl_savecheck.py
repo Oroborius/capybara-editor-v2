@@ -195,13 +195,14 @@ def _examine(path, content, old):
     old_obj = None
     if old is not None:
         _remember(path, old)
-        cached = _state['parsed'].get(key)
-        if cached is not None and cached[0] == old:
-            old_obj = cached[1]
+        cached = _parsed_get(old, r.kind)
+        if cached is not None:                  # the OLD side only: the new bytes are always checked above
+            old_obj, r.old_problems = cached
         elif old == content:
             old_obj, r.old_problems = r.obj, list(r.problems)
         else:
             old_obj, r.old_problems = check_bytes(old, r.kind, tb)
+            _parsed_put(old, r.kind, old_obj, r.old_problems)
     size = f'{len(content)} bytes' if old is None or len(old) == len(content) else f'{len(old)}->{len(content)} bytes'
     if r.obj is None:
         r.summary = f'not readable by the independent check; {size}'
@@ -224,16 +225,32 @@ def _examine(path, content, old):
     return r
 
 
+PARSED_KEEP = 8
+
+
+def _parsed_get(data, kind):
+    """(obj, problems) of an earlier check of exactly these bytes (keyed by their hash, compared byte for byte),
+    or None. Used for the OLD side of a write (the file on the disk, for the diff and the "already fails" rule):
+    after a write it is the bytes just checked as new, after an undo / restore bytes checked earlier."""
+    e = _state['parsed'].get((_digest(data), kind))
+    if e is None or e[0] != data:
+        return None
+    return e[1], list(e[2])
+
+
+def _parsed_put(data, kind, obj, problems):
+    p = _state['parsed']
+    k = (_digest(data), kind)
+    p.pop(k, None)
+    p[k] = (bytes(data), obj, list(problems))
+    while len(p) > PARSED_KEEP:
+        p.pop(next(iter(p)))
+
+
 def _accepted(path, content, r):
     """After a successful write: the parsed new file is the next write's old side."""
-    key = os.path.abspath(path)
-    p = _state['parsed']
-    if r.obj is not None and not r.problems:
-        p[key] = (bytes(content), r.obj)
-        while len(p) > 8:
-            p.pop(next(iter(p)))
-    else:
-        p.pop(key, None)
+    if r.obj is not None:
+        _parsed_put(bytes(content), r.kind, r.obj, r.problems)
     _remember(path, bytes(content))
 
 

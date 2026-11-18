@@ -186,8 +186,16 @@ def _undo_char(app, op):
     return T('undo.char', 'Undo: {name} restored to its previous bytes', name=name)
 
 
+def _refresh_item_stats_later(app):
+    try:
+        app.root.after_idle(_refresh_item_stats)
+    except Exception:
+        _refresh_item_stats()
+
+
 def _refresh_char(app, path):
     """The views of the character file after an undo wrote it."""
+    _refresh_item_stats_later(app)
     inv = getattr(app, 'inventory', None)
     if inv is not None:
         try:
@@ -213,8 +221,20 @@ def _ins(spot, blob, index, page):
     return (spot[0], spot[1], spot[2], blob)
 
 
+def _refresh_item_stats():
+    """The Item stats tab shows the values of an item an undo may just have written: read again."""
+    try:
+        import mxl_tabs
+        w = mxl_tabs.built_owner('Item stats')
+        if w is not None and hasattr(w, 'external_change'):
+            w.external_change()
+    except Exception as e:
+        print('undo: item stats tab not refreshed:', e)
+
+
 def _refresh(app, sel_key=None):
     """The grid refresh after an undo (same fast path as the creator's writes)."""
+    _refresh_item_stats_later(app)
     try:
         from mxl_creator_gui import _reload_main
         _reload_main(app, sel_key)

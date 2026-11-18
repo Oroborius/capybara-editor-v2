@@ -29,6 +29,7 @@ The engine is the one of the former flat table:
 
 Everything goes through the collector's own safe writers (verification, backups), never direct file writes.
 """
+import functools
 import os
 
 import tkinter as tk
@@ -64,6 +65,29 @@ def needs_reencode(data, sid):
         return True
 
 
+def _one_step(fn):
+    """One user action of the tab (a value written, a slot picked / cleared, a param changed: each may write the
+    item twice) is ONE undo step of the main window's Ctrl+Z (mxl_undo): the item's bytes before the outermost call
+    and after it."""
+    @functools.wraps(fn)
+    def wrapper(self, *a, **kw):
+        if getattr(self, '_step', None) is not None:
+            return fn(self, *a, **kw)
+        try:
+            self._step = self._undo_before()
+        except Exception:
+            self._step = {}
+        try:
+            return fn(self, *a, **kw)
+        finally:
+            step, self._step = self._step, None
+            try:
+                self._undo_after(step)
+            except Exception as e:
+                print('item stats: undo not recorded:', e)
+    return wrapper
+
+
 class ItemStatsWindow:
     """The Magic Attributes list + attribute picker of one item: a tab of the main window (a Toplevel when the
     tabs are not installed). it: an item of the stash grid; chwin + entry: an item of the character window."""
@@ -74,6 +98,8 @@ class ItemStatsWindow:
         self.it = dict(it if it is not None else entry.it)
         self.cr = None
         self._bak = None
+        self._disk = None                     # the stash item's bytes the rows were read from (None: not known)
+        self._step = None                     # the undo snapshot of the action running (_one_step)
         self.pal = pal = AP.palette()
         self.m = m = AP.metrics(app.root)
         self.lists = []                       # [(stat_list, [stored entries])]
@@ -171,8 +197,18 @@ class ItemStatsWindow:
         if self.entry is not None:
             blob = self.entry.blob
         else:
-            buf = open(self.app.path, 'rb').read()
-            blob = mxl_save.item_blob(buf, self.it)
+            # the item standing at its place in the file NOW (its offset moves when the game or another window
+            # wrote the stash; an offset of an older read can hold a neighbour of the same size)
+            try:
+                cur, blob = self._locate()
+            except (EditError, FormatError, OSError) as e:
+                self._disk = None             # writes are refused until it is found again
+                if getattr(self, 'rec', None) is None:
+                    raise
+                self._say(he('err.save', 'not written: {err}', err=str(e)), error=True)
+                return
+            self.it['_offset'] = cur['_offset']
+            self._disk = blob
         self.rec, self.kids = decode_blob(blob, self.app.data)
         self.pending = {}
         self._build_rows()
@@ -304,6 +340,7 @@ class ItemStatsWindow:
         self.picker.focus_filter(text)
         return 'break'
 
+    @_one_step
     def picked(self, sid):
         """A stat was picked: it replaces the selected slot's stat (the value is kept when the new stat can
         store it) or fills the selected empty slot; then the skill list / the value box opens for it."""
@@ -413,6 +450,7 @@ class ItemStatsWindow:
                 self.sel = n
                 self.edit_cell('value')
 
+    @_one_step
     def _set_param(self, n, name=None, level=None, raw=None):
         """Changes the param of row n (skill / class name, cast level, or the raw number) and rewrites the
         item at once. False: refused (the status bar says why), nothing written."""
@@ -463,6 +501,7 @@ class ItemStatsWindow:
         self.delete_row(r['list'], r['i'])
         return 'break'
 
+    @_one_step
     def delete_row(self, stat_list, row):
         if not self._flush_pending():
             return
@@ -484,6 +523,102 @@ class ItemStatsWindow:
             self.load_rows()
         self.focus_list()
 
+    def _locate(self):
+        """(item, its bytes) of the stash item this tab edits, from ONE read of the file: the item standing at its
+        place (page, x, y) with its code. EditError when there is none."""
+        import mxl_stash_order as SO
+        buf = bytes(mxl_save.read_file(self.app.path))
+        items = SO.cached_parse_stash(self.app.path, self.app.data, buf)
+        key = (self.it.get('page'), self.it.get('x'), self.it.get('y'), self.it.get('code'))
+        cur = next((i for i in items if (i['page'], i['x'], i['y'], i['code']) == key), None)
+        if cur is None:
+            raise EditError(T('inv.err.item_gone', 'the item is no longer where it was: select it again'))
+        return cur, bytes(mxl_save.item_blob(buf, cur))
+
+    def _same_on_disk(self):
+        """Before a write of a stash item: the file must still hold exactly the bytes the rows were read from (the
+        values shown, the offset apply_edits / edit_stash are given). Otherwise nothing is written: the rows are
+        read again and the user is told to do it again. True: go on (self.it['_offset'] is the item's offset now)."""
+        if self.entry is not None:
+            return True
+        try:
+            cur, blob = self._locate()
+        except (EditError, FormatError, OSError) as e:
+            self._disk = None
+            self._say(he('err.save', 'not written: {err}', err=str(e)), error=True)
+            return False
+        if self._disk is None or blob != self._disk:
+            self.pending = {}
+            self.load_rows()
+            try:
+                self.app.load(self.app.path, keep_selection=True)
+            except Exception:
+                pass
+            self._say(he('err.stale', 'not written: the item changed on disk since it was shown (the game, another '
+                                      'window or an undo wrote the stash). Its values have been read again - do it '
+                                      'again.'), error=True)
+            return False
+        self.it['_offset'] = cur['_offset']
+        return True
+
+    def _undo_before(self):
+        """What the undo step needs from before the action: the stash item's bytes and index in its page's list,
+        or the character file's bytes."""
+        if self.entry is not None:
+            path = self.chwin.ch.path
+            with open(path, 'rb') as f:
+                return dict(char=path, before=f.read())
+        import mxl_stash_order as SO
+        cur, blob = self._locate()
+        at = SO.page_index(self.app.path, self.app.data, cur['_offset'])
+        return dict(blob=blob, page=cur['page'], x=cur['x'], y=cur['y'],
+                    index=at[1] if at is not None and at[0] == cur['page'] else None)
+
+    def _undo_after(self, step):
+        if not step:
+            return
+        import mxl_rc_menu as RC
+        if 'char' in step:
+            RC._record_char_write(self.chwin, step['char'], step['before'], self._name())
+            return
+        buf = bytes(mxl_save.read_file(self.app.path))
+        import mxl_stash_order as SO
+        items = SO.cached_parse_stash(self.app.path, self.app.data, buf)
+        spot = (step['page'], step['x'], step['y'])
+        cur = next((i for i in items if (i['page'], i['x'], i['y']) == spot), None)
+        if cur is None:
+            return
+        after = bytes(mxl_save.item_blob(buf, cur))
+        if after == step['blob']:
+            return                            # nothing written (refused, or the same bytes)
+        import mxl_undo
+        kw = dict(blob=step['blob'], after=after, page=spot[0], x=spot[1], y=spot[2], old_page=spot[0],
+                  old_x=spot[1], old_y=spot[2], name=self._name())
+        if step.get('index') is not None:
+            kw['index'] = step['index']
+        mxl_undo.record(self.app, 'replace', **kw)
+
+    def external_change(self):
+        """The item may have been written by someone else (an undo of the main window): read it again - only when
+        its bytes really changed (a Delete or an undo of another item leaves the tab, and its typed values, alone)."""
+        if self.entry is not None:
+            cur = getattr(self.chwin, 'current', None)    # the main window's panel: tied to one read of the file
+            if cur is not None and not cur():
+                self.chwin.reload()
+            old = self.entry
+            self.entry = self._refind_entry() or self.entry
+            if bytes(self.entry.blob) == bytes(old.blob):
+                return                            # the item itself is the same
+        else:
+            try:
+                if self._locate()[1] == self._disk:
+                    return
+            except (EditError, FormatError, OSError):
+                pass
+        self.pending = {}
+        self.load_rows()
+        self.draw()
+
     def _flush_pending(self):
         """Typed values not written yet are written first (their own in-place path), so a following rewrite of
         the item cannot lose them. False: the write was refused - the caller stops."""
@@ -492,6 +627,7 @@ class ItemStatsWindow:
         return self.save() is not False
 
     # ------------------------------------------------------------ writes
+    @_one_step
     def save(self, *args):
         """Changed values of kept rows. A stash item: in place through apply_edits (one write). A character
         item: one re-encode of the item's bytes + the character's own save. Added / cleared slots were written
@@ -531,6 +667,8 @@ class ItemStatsWindow:
         if self.entry is None:
             # stash item: plain values in place (the collector's set_stat keeps linked stats together); a stat
             # with a parameter, or one that in-place editor refuses, through the lossless re-encode of the item
+            if not self._same_on_disk():
+                return False
             data = self.app.data
             lossless = [t for t in typed if needs_reencode(data, t[2]['id'])]
             edits = [dict(offset=self.it['_offset'], code=self.it['code'], kind='stat', stat_list=stat_list,
@@ -577,12 +715,15 @@ class ItemStatsWindow:
         self.load_rows()
         return False
 
+    @_one_step
     def _write(self):
         """Stash item: re-encodes its bytes (a slot was added, replaced or cleared) and replaces it at its own
         place through edit_stash (verification, backup; socketed items follow). False: refused, nothing
         written."""
         if self.entry is not None:
             return self._write_char()
+        if not self._same_on_disk():
+            return False
         page, x, y = self.it.get('page', 0), self.it.get('x', 0), self.it.get('y', 0)
         try:
             blb = build_blob(self.rec, self.kids, self.app.data)
@@ -597,6 +738,7 @@ class ItemStatsWindow:
             return False
         return True
 
+    @_one_step
     def _write_char(self):
         """Character item: re-encodes the item's bytes in the character's entry and saves the character
         through the character window (its own verification, backup and status line).
@@ -686,6 +828,15 @@ def open_item_stats(app):
     if it is None or not app.path:
         from tkinter import messagebox
         messagebox.showinfo(he('title', 'Item stats'), T('cr.select_first', 'Select an item of the stash first.'))
+        return None
+    try:                                      # the selection of an out-of-date view is refused (as Copy / Delete)
+        import mxl_stash_order
+        mxl_stash_order.item_now(app.path, app.data, it, app)
+    except (EditError, FormatError, OSError) as e:
+        try:
+            app.status.configure(text=str(e))
+        except Exception:
+            pass
         return None
     return ItemStatsWindow(app, it=it)
 

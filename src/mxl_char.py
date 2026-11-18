@@ -667,6 +667,12 @@ class Character:
         f, raw = self._field_raw(key)
         key, sid, shift, label = f
         fd = self.stat_field(key)
+        # the value as read from the file (before any set_field of this object): typing its whole number back after
+        # another value gives its stored fraction back too (F8: the 1/256 points were dropped)
+        # (kept per read / written file content: a save - also mxl_free's - makes the written values the "as read")
+        if self.__dict__.get('_field_first_of') is not self.raw:
+            self._field_first, self._field_first_of = {}, self.raw
+        first = self._field_first.setdefault(sid, raw)
         if isinstance(value, bool) or not isinstance(value, (int, float)) or value != value or abs(value) > 1e15:
             raise CharError(T('ch.err.field_number', '{label}: a number is expected', label=fd.label))
         if isinstance(value, float) and not shift:
@@ -677,6 +683,8 @@ class Character:
             new = int(round(value * (1 << shift)))
         elif shift and value == raw >> shift:
             new = raw
+        elif shift and value == first >> shift:
+            new = first
         else:
             new = value << shift if value >= 0 else -1
         if not fd.min << shift <= new <= fd.raw_max:

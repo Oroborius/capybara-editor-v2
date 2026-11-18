@@ -147,21 +147,30 @@ def _selected(app, page, x, y):
     _reload_main(app, (page, x, y))
 
 
+def _now(app, it):
+    """(buf, items, blob) of a stash item as the file holds it now; EditError when the window is out of date for
+    it (mxl_stash_order.item_now: an offset of an older read can hold a neighbour of the same size)."""
+    import mxl_stash_order
+    buf, items, _cur, blob = mxl_stash_order.item_now(app.path, app.data, it, app)
+    return buf, items, blob
+
+
 def _copy(app, it):
     try:
-        app._capy_clip = (item_blob(read_file(app.path), it), app.full_name(it))
+        app._capy_clip = (_now(app, it)[2], app.full_name(it))
         _status(app, rc('copied', '{name} copied (right-click an empty cell to paste it)',
                         name=app.full_name(it)))
     except (EditError, FormatError, OSError) as e:
         _status(app, str(e), True)
+        return False
+    return True
 
 
 def _duplicate(app, it):
     try:
-        buf = read_file(app.path)
-        blob = item_blob(buf, it)
+        _buf, items, blob = _now(app, it)
         pages = [it['page']] + [p for p in range(STASH_PAGES) if p != it['page']]
-        spot = free_spot(parse_stash(app.path, app.data), blob_item(blob, app.data), app.data, pages)
+        spot = free_spot(items, blob_item(blob, app.data), app.data, pages)
         if spot is None:
             _status(app, rc('err.nofree', 'no free place in the stash'), True)
             return
@@ -1033,7 +1042,7 @@ def _ask_personalize(menu, on_ok):
 def _export_stash(app, it):
     from tkinter import filedialog
     try:
-        blob = item_blob(read_file(app.path), it)
+        blob = _now(app, it)[2]
     except (EditError, FormatError, OSError) as e:
         _status(app, str(e), True)
         return
@@ -1151,7 +1160,8 @@ def _add_hero_editor_menu(holder, menu, it=None, win=None, e=None):
 
 def _cut(app, it):
     """Hero Editor's cut: the item goes to the clipboard (paste it anywhere afterwards) and is removed."""
-    _copy(app, it)
+    if not _copy(app, it):                 # not copied (an out-of-date view...): nothing is removed either
+        return
     from mxl_creator_gui import delete_selected
     delete_selected(app)
 
@@ -1458,7 +1468,7 @@ def _add_magic_to_buffer(holder, it, win=None, e=None):
     app = getattr(holder, 'app', holder)
     data = holder.data
     try:
-        blob = win.ch.stash_blob(e) if win is not None else item_blob(read_file(holder.path), it)
+        blob = win.ch.stash_blob(e) if win is not None else _now(holder, it)[2]
         rec, _n = decode_item(blob, data)
     except (EditError, FormatError, OSError, CreateError, AttributeError, ValueError) as err:
         _say(holder, win, str(err), True)
