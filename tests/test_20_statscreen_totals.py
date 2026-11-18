@@ -198,4 +198,79 @@ def weapon_damage_of_the_sample_characters():
     T.eq(checked, present, 'every sample folder checked (both XBone samples hold a crossbow in slot 4 of set I)')
 
 
+class _Win:
+    """What StatScreen.derived / game_value read of the character window: the character, its totals, the data."""
+    def __init__(self, E, ch, tot):
+        self.st_sim, self.data, self._tot, self.class_names = ch, E.data, tot, []
+
+    def st_totals(self):
+        return self._tot
+
+    def st_cls(self):
+        return self.st_sim.cls
+
+    def st_value(self, key):
+        return 0
+
+
+def _page(E, ch, tot):
+    import mxl_statscreen as SS
+    page = object.__new__(SS.StatScreen)          # no canvas: only the value code of the pages
+    page.win = _Win(E, ch, tot)
+    return page
+
+
+def _check_pages_agree(E, page, what):
+    """The Attack Rating row and the Weapon Damage min / max of the game's page 2 show page 1's numbers."""
+    import mxl_statscreen as SS
+    rows = {(el['type'], el['stat']): el for el in SS.screen_table(E.data) if el['page'] == 1}
+    ar_row, pct_row = rows.get((SS.T_STAT, 19)), rows.get((SS.T_STAT, 119))
+    if ar_row is None or pct_row is None:
+        T.skip('the game table has no Attack Rating row on page 2')
+    ar, flat, pct = page.attack_rating()
+    T.eq(page.derived('attack_rating_1')[0], str(ar), f'{what}: page 1 attack rating box 1')
+    T.eq(page.derived('attack_rating_2')[0], str(ar), f'{what}: page 1 attack rating box 2')
+    T.eq(page.game_value(ar_row)[0], page.derived('attack_rating_1')[0], f'{what}: page 2 attack rating = page 1')
+    T.eq(page.game_value(pct_row)[0], f'{pct}%', f'{what}: page 2 attack rating % = the % inside page 1')
+    dmg = page.derived('damage_1')[0]
+    lo, hi = (page.game_value(rows[(SS.T_LABEL, s)])[0] for s in SS.WEAPON_DAMAGE_ROWS)
+    T.eq(f'{lo}-{hi}', dmg, f'{what}: page 2 weapon damage = page 1')
+    return ar, flat, pct
+
+
+@T.test
+def totals_page_attack_rating_equals_page_one():
+    """Page 2 "Attack Rating" row (stat 19 | stat 119 % in the game's table): the total attack rating that page 1's
+    boxes show, then the items' attack rating %; not the items' flat stat 19 alone (user screenshot: 0 beside
+    53338). Both XBone samples, and a level-1 character holding a weapon."""
+    E = T.engine()
+    import mxl_char
+    import mxl_statscreen as SS
+    checked = 0
+    for which in (1, 2):
+        try:
+            folder = T.fresh_saves(which)
+        except T.Skip:
+            continue
+        ch = mxl_char.Character(sorted(glob.glob(os.path.join(folder, '*.d2s')))[0], E.data)
+        tot = SS.char_totals(ch, E.data)
+        T.eq(tot['error'], None, f'sample {which}: totals')
+        T.eq(SS.active_weapon(ch, E.data) is not None, True, f'sample {which}: holds a weapon')
+        ar, flat, _pct = _check_pages_agree(E, _page(E, ch, tot), f'sample {which}')
+        T.eq(ar > flat, True, f'sample {which}: the row shows more than the items\' flat attack rating')
+        checked += 1
+    name, cls, st, dx, code, _dmg, ar1 = LEVEL1[5]
+    try:
+        E.data.base(code)
+    except Exception:
+        T.skip(f'no weapon {code!r} in the game tables')
+    ch = _Char({4: {'code': code, 'quality': 'normal'}})
+    ch.cls, ch.level, ch.stats = cls, 1, [(0, None, st), (2, None, dx)]
+    page = _page(E, ch, _no_totals())
+    page.attr_total = lambda sid: {0: st, 2: dx}.get(sid, 0)
+    T.eq(_check_pages_agree(E, page, name)[0], ar1, f'{name}: attack rating of the screenshot')
+    if not checked:
+        T.skip('no sample character')
+
+
 T.main(globals())

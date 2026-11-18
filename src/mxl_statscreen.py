@@ -493,6 +493,12 @@ def attack_rating(data, cls, tot, dexterity, level=1):
     """Attack rating as the stat screen shows it: (5 x dexterity - 35 + the class's ToHitFactor (charstats) + the
     items' flat attack rating) x (100 + the items' attack rating %) / 100. Base part checked on the seven level-1
     screenshots (dexterity 20 / 25 / 35 -> 75 / 100 / 150)."""
+    return attack_rating_parts(data, cls, tot, dexterity, level)[0]
+
+
+def attack_rating_parts(data, cls, tot, dexterity, level=1):
+    """(attack rating, the items' flat attack rating (stat 19), the items' attack rating % (stat 119)): the one
+    computation behind page 1's two Attack Rating boxes and the Attack Rating row of the game's page 2."""
     tohit = 10
     try:
         r = data._rows('charstats')[cls]
@@ -502,7 +508,7 @@ def attack_rating(data, cls, tot, dexterity, level=1):
         pass
     flat = item_sum(tot, data, 19, level)
     pct = item_sum(tot, data, 119, level)
-    return (5 * dexterity - 35 + tohit + flat) * (100 + pct) // 100
+    return (5 * dexterity - 35 + tohit + flat) * (100 + pct) // 100, flat, pct
 
 
 def class_factors(data, cls):
@@ -524,6 +530,7 @@ SS_FONTS = {0: 'font8', 1: 'font16', 2: 'font30', 3: 'font42', 4: 'fontformal10'
 SS_NONE = 5382                        # string index the table uses for "no text"
 T_LABEL, T_STAT, T_RESIST, T_CLASS_SKILLS, T_REGEN, T_STAT_BONUS, T_AVOID = 1, 2, 4, 18, 21, 23, 25
 WEAPON_DAMAGE_ROWS = (21, 22)          # label rows '-' of page 2 that stand for the weapon's min / max damage
+AR_ROW = (19, 119)                    # page 2 "Attack Rating": total attack rating | the items' attack rating %
 SS_VALUES = (T_STAT, T_RESIST, T_CLASS_SKILLS, T_REGEN, T_STAT_BONUS, T_AVOID)
 F_PERCENT, F_BASE = 256, 1
 A_RIGHT, A_CENTER, A_LEFT = 0, 1, 2
@@ -1151,13 +1158,19 @@ class StatScreen:
             return f"{dmg['min']}-{dmg['max']}", self.damage_tip(dmg) + '\n' + T(
                 'ss.tip.dmg_skill', 'Normal attack: the bonuses of the skill on this mouse button are not included.')
         if key.startswith('attack_rating'):
-            sim = win.st_sim
-            return str(attack_rating(win.data, sim.cls, tot, self.attr_total(2), sim.level)), T(
-                'ss.tip.ar', 'Attack rating: 5 x dexterity - 35 + class bonus, + items {flat}, then {pct:+d} % from '
-                'items.', flat=item_sum(tot, win.data, 19, sim.level),
-                pct=item_sum(tot, win.data, 119, sim.level)) + '\n' + T(
-                'ss.tip.ar_skill', 'Not included: skills and buffs.')
+            ar, flat, pct = self.attack_rating()
+            return str(ar), self.ar_tip(flat, pct)
         return None, T('ss.tip.game', 'computed by the game')
+
+    def attack_rating(self):
+        """(attack rating, items' flat, items' %) of page 1 and of the Attack Rating row of the game's page 2."""
+        win = self.win
+        sim = win.st_sim
+        return attack_rating_parts(win.data, sim.cls, win.st_totals(), self.attr_total(2), sim.level)
+
+    def ar_tip(self, flat, pct):
+        return T('ss.tip.ar', 'Attack rating: 5 x dexterity - 35 + class bonus, + items {flat}, then {pct:+d} % from '
+                 'items.', flat=flat, pct=pct) + '\n' + T('ss.tip.ar_skill', 'Not included: skills and buffs.')
 
     def weapon_damage(self):
         win = self.win
@@ -1183,6 +1196,12 @@ class StatScreen:
             if dmg is None:
                 return None, tot['error'] or T('ss.tip.game', 'computed by the game'), None
             return str(dmg['min' if sid == 21 else 'max']), self.damage_tip(dmg), None
+        if kind == T_STAT and sid in AR_ROW and not flags & F_BASE:
+            # the Attack Rating row: total attack rating (as page 1's boxes) | the items' attack rating %
+            if tot['error']:
+                return None, tot['error'], None
+            ar, flat, pct = self.attack_rating()
+            return (str(ar) if sid == 19 else f'{pct}%'), self.ar_tip(flat, pct), None
         suffix = '%' if flags & F_PERCENT else ''
         name = str((data.isc.get(sid) or {}).get('desc') or sid)
         if name.startswith('FLYING'):
