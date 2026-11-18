@@ -699,8 +699,10 @@ class SkillTree:
         # what the numbers leave out, said exactly (the levels of the character's other skills ARE counted)
         if tip.used_stats:
             notes.append(T('sk.tip_stats', 'Uses the saved character stats: bonuses from items and charms are not included.'))
-        if 'synergy' in tip.assumed or 'mastery' in tip.assumed:
+        if 'synergy' in tip.assumed:
             notes.append(T('sk.tip_items', 'Not included: bonuses that items give to this skill.'))
+        if 'mastery' in tip.assumed:                   # "+x% to Fire Spell Damage" ...: how the game adds it
+            notes.append(T('sk.tip_mastery', 'Not included: spell damage bonuses (masteries) from items and skills.'))
         if tip.assumed & {'aura', 'state', 'place'}:
             notes.append(T('sk.tip_rest', 'For a character at rest in town: no buff, aura or charge active.'))
         if notes:
