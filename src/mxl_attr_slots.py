@@ -225,9 +225,8 @@ class AttrSlots:
         cv.bind('<Left>', lambda _e: self._walk_cells(-1))
         cv.bind('<Control-s>', lambda _e: self._call('slot_save'))
         cv.bind('<Key>', self._key)
-        cv.bind('<MouseWheel>', lambda e: self._wheel(-1 if e.delta > 0 else 1))
-        cv.bind('<Button-4>', lambda _e: self._wheel(-1))
-        cv.bind('<Button-5>', lambda _e: self._wheel(1))
+        import mxl_scroll                 # whole notches under Tk 8.6 and 9, touchpad deltas added up
+        mxl_scroll.bind_wheel(cv, lambda n, _e: self._wheel(n))
         cv.bind('<FocusIn>', lambda _e: self.draw())
         cv.bind('<FocusOut>', lambda _e: self.draw())
         ed.bind('<Return>', lambda _e: self._ed_done('save'))

@@ -77,6 +77,7 @@ and stays open - mark the test `@T.test(xfail='what is wrong')` with a comment d
 | `test_17_statparse.py` | engine | tooltip-line parser round trip |
 | `test_18_stash_order.py` | engine | `mxl_stash_order`: replaced and re-inserted items keep their index; remove + insert-at-index gives the same file |
 | `test_19_not_covered.py` | engine | the known gaps, as skipped tests with their reason |
+| `test_21_wheel_notches.py` | engine | `mxl_scroll` wheel helper: Tk 8.6 deltas of 120 / 240 and Button-4/5, Windows touchpad part-deltas adding up to one notch, Tk 9 side buttons ignored, `<TouchpadScroll>` packed deltas, Shift = sideways |
 | `test_30_gui_smoke.py` | gui | start in `MXL_THEME=d2` / `he` at 1280x720 and 800x600, every tab and page, status bar, toolbar overflow |
 | `test_31_gui_stash_menu.py` | gui | right-click actions on stash items, undo (delete, create, replace, fill sockets) |
 | `test_32_gui_creator.py` | gui | Creator tab: lists, search, create, Item Editor, honorific, create on the character |
@@ -92,6 +93,7 @@ and stays open - mark the test `@T.test(xfail='what is wrong')` with a comment d
 | `test_38_gui_fill_sockets_undo_char.py` | gui | Ctrl+Z after "Fill sockets with ..." on character and mercenary items (panel and Character tab): the file byte-identical again, pending page edits kept, the undo refused after a newer write |
 | `test_39_gui_merc_weapon_set.py` | gui | no weapon-set switch on the mercenary view (one weapon set: slots 4 / 5) in every look - base-game panel (tabs painted out), Sigma panel, plain panel, Character tab - and the character keeps his set; base-game panel: the I / II tab rectangles, gold marker and clicks match the tabs measured in the art |
 | `test_40_gui_creator_layout.py` | gui | Creator and Item Editor at 800x600 (both looks, UI scale 1.25) and 1280x720: every control of every item type inside its column, no horizontal scrollbar; long combobox lists open wide; goes idle (CAPY_BIG=1 on a 2560x1440 X screen: every variant at that size) |
+| `test_41_gui_wheel.py` | gui | stat screen arrows walk one page at a time (book: 1-2, 2-3, 3-4, 4-5; was 1-2, 3-4, 4-5); one notch moves the totals list once and never the page as well; a burst of 30 real wheel clicks (`xdotool`, skipped without it) drawn without lag; the page scrolls at the list's end; the wheel never changes a dropdown of a page or the Creator's copies spinbox; Creator value box one step per notch (d2 at UI scale 1.25 and 800x600) |
 
 `--quick` runs the `engine` files only.
 
