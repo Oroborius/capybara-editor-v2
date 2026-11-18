@@ -67,14 +67,16 @@ def _fade_mask(pw, ph, f):
 
 def _match_light(patch, src, rect, ring=4):
     """patch scaled to the mean brightness of the stone just around rect (x, y, w, h) of src."""
-    from PIL import ImageStat
+    # no PIL.ImageStat: the Windows exe's PIL has no such module
+    def total(im):
+        return sum(i * n for i, n in enumerate(im.histogram()))
     x, y, w, h = rect
     g = src.convert('L')
     out = g.crop((max(0, x - ring), max(0, y - ring), x + w + ring, y + h + ring))
-    s_out, s_in = ImageStat.Stat(out), ImageStat.Stat(g.crop((x, y, x + w, y + h)))
     n_out, n_in = out.width * out.height, w * h
-    around = (s_out.sum[0] - s_in.sum[0]) / max(1, n_out - n_in)
-    have = ImageStat.Stat(patch.convert('L')).mean[0]
+    around = (total(out) - total(g.crop((x, y, x + w, y + h)))) / max(1, n_out - n_in)
+    pl = patch.convert('L')
+    have = total(pl) / max(1, pl.width * pl.height)
     if have <= 0:
         return patch
     f = around / have
