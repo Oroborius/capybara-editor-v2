@@ -217,21 +217,16 @@ def corrupted_writes_are_refused_with_warm_caches():
     T.check(T.read(path) == raw, 'the file changed (savecheck)')
     T.check(not os.path.exists(path + '.tmp'), 'temp file left')
 
-    def dropped(path_, content):                               # a valid stash with one item less: only the
+    def dropped(path_, content):                               # a valid stash with two items less: only the
         if not str(path_).endswith('.stash'):                   # writer's own verification (count) can see it
             return content
-        items = mxl_save.parse_stash(path_, E.data)
-        blobs = mxl_save.stash_blobs(content, SC_items(content))
+        probe = os.path.join(T.tmp(), 'probe.stash')
+        with open(probe, 'wb') as f:
+            f.write(content)
+        blobs = mxl_save.stash_blobs(content, mxl_save.parse_stash(probe, E.data))
         p = max(blobs, key=lambda q: len(blobs[q]))
         blobs[p] = blobs[p][:-2]
-        _ = items
         return mxl_save.build_stash(content[:8], blobs)
-
-    def SC_items(content):
-        tmp = os.path.join(T.tmp(), 'probe.stash')
-        with open(tmp, 'wb') as f:
-            f.write(content)
-        return mxl_save.parse_stash(tmp, E.data)
     SC.TEST_HOOK = dropped
     try:
         try:
