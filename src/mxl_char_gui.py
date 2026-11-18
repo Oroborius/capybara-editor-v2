@@ -464,6 +464,7 @@ class CharacterWindow(StatEditMixin):
     # ---- mouse
     def on_press(self, ev):
         cv = ev.widget
+        self.sync_file()                  # the item is picked from the file as it is now (see save)
         e, slot = self.entry_at(cv, ev)
         self.selected = e
         self.sel_slot = slot
@@ -532,19 +533,34 @@ class CharacterWindow(StatEditMixin):
         self.reload(keep=False)
         self._follow_later()
 
+    def changed_on_disk(self):
+        """True when the character file is no longer the one this window read (written by someone else)."""
+        try:
+            with open(self.ch.path, 'rb') as f:
+                return f.read() != bytes(self.ch.raw)
+        except OSError:
+            return False
+
     def sync_file(self):
         """The character file was written by someone else (an item action of the Stash tab's panel, an undo, the
         game): when it differs from what this window holds it is read again, pending edits kept (see reload) -
-        so they are neither lost nor saved over the newer file. True when it was read again."""
-        try:
-            with open(self.ch.path, 'rb') as f:
-                same = f.read() == bytes(self.ch.raw)
-        except OSError:
-            return False
-        if same or self.drag is not None:
+        so they are neither lost nor saved over the newer file. True when it was read again. Called before
+        SAVE and whenever an item is picked (click, right-click, shortcut), so an item action works on the file
+        as it is; save() refuses what slips through."""
+        if self.drag is not None or not self.changed_on_disk():
             return False
         self.reload()
         return True
+
+    def current_entry(self, e, merc):
+        """The entry of self.ch standing for e, an entry of an earlier read (same list, place and bytes), or
+        None when the item is no longer there as it was."""
+        lst = self.ch.entries(merc)
+        if any(x is e for x in lst):
+            return e
+        key = ('location', 'equipped', 'x', 'y', 'panel')
+        return next((x for x in lst if bytes(x.blob) == bytes(e.blob)
+                     and all(x.it.get(k) == e.it.get(k) for k in key)), None)
 
     def _follow_later(self):
         """Nothing pending any more: when another character was picked in the main window meanwhile (the tab
@@ -563,8 +579,18 @@ class CharacterWindow(StatEditMixin):
 
     def save(self, msg):
         """Writes the character as it is in memory (an item action: the pages' pending edits are not part of
-        it and stay pending; save_progress applies them first)."""
+        it and stay pending; save_progress applies them first).
+
+        The file must still be the one self.ch was read from: Character.save writes over a file changed on disk
+        (mxl_free), and an item action that changed this window's older copy would put that copy back over the
+        other writer's change (the Stash tab's panel, an undo, the game). Then nothing is written, the file is
+        read again (pending edits kept) and False is returned: the action is to be done again."""
         app = self.app
+        if self.changed_on_disk():
+            self.reload()
+            self.set_status(T('ch.err.changed_on_disk', 'The character file changed on disk since this item was '
+                              'picked: nothing written, the file has been read again - do it again.'), True)
+            return False
         try:
             bak = self.ch.save(backup=app.needs_backup(self.ch.path))
         except (CharError, EditError) as e:      # EditError: the safe writer or the save check refused
@@ -682,7 +708,11 @@ class CharacterWindow(StatEditMixin):
         where = ('slot', e.it['equipped']) if e.it['location'] == MC.LOC_EQUIPPED else ('inv', e.it['x'], e.it['y'])
 
         def write(blob):
-            self.ch.remove(e, merc)
+            self.sync_file()                  # the file may have been written while the editor was open
+            cur = self.current_entry(e, merc)
+            if cur is None:
+                raise CharError(T('inv.err.item_gone', 'the item is no longer where it was: select it again'))
+            self.ch.remove(cur, merc)
             try:
                 self.ch.place(blob, where, merc)
             except CharError:
@@ -705,6 +735,7 @@ class CharacterWindow(StatEditMixin):
         slot = self.sel_slot
 
         def write(blob):
+            self.sync_file()                  # the file may have been written while the creator was open
             if slot is not None and self.ch.equipped(merc).get(slot) is None:
                 where = ('slot', slot)
             else:
@@ -730,6 +761,7 @@ class CharacterWindow(StatEditMixin):
     # ---- mouse extras: double-click opens the item editor / creates in an empty spot
     def on_double(self, ev):
         cv = ev.widget
+        self.sync_file()
         e, slot = self.entry_at(cv, ev)
         self.selected, self.sel_slot = e, slot
         self.redraw()
@@ -760,6 +792,10 @@ class CharacterWindow(StatEditMixin):
             except Exception:
                 continue
             if e is not None:
+                if self.sync_file():          # read again: the item under the pointer in the file as it is
+                    e, _slot = self.entry_at(cv, type('E', (), {'widget': cv, 'x': x, 'y': y})())
+                    if e is None:
+                        return
                 self.delete_instant(e)
                 return
 

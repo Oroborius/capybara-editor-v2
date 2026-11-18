@@ -386,10 +386,23 @@ def install_panel(inv):
     root.bind('<Delete>', on_delete, add='+')
 
 
+def _sync(win):
+    """The Character tab reads its file again when someone else wrote it (pending page edits kept), so the item
+    picked here is the one in the file as it is (CharacterWindow.sync_file; the panel's adapter refuses a stale
+    read by itself)."""
+    fn = getattr(win, 'sync_file', None)
+    if fn is not None:
+        try:
+            fn()
+        except Exception as e:
+            _dbg('sync before the item action failed:', e)
+
+
 def _char_menu(win, cv, ev):
     menu = tk.Menu(cv, tearoff=0)
     from mxl_char_gui import CharacterWindow
     import mxl_he_stats
+    _sync(win)
     e, slot = win.entry_at(cv, ev)
     _dbg('char menu:', e.it['code'] if e is not None else 'empty spot')
     clip = getattr(win.app, '_capy_clip', None)
@@ -551,8 +564,8 @@ def _char_paste(win, ev, clip):
     except (CharError, FormatError, OSError) as err:
         win.set_status(str(err), True)
         return
-    win.app._capy_clip = None
-    win.save(rc('pasted', '{name} pasted', name=clip[1]))
+    if win.save(rc('pasted', '{name} pasted', name=clip[1])):
+        win.app._capy_clip = None
 
 
 def _char_paste_slot(win, slot, clip):
@@ -1470,6 +1483,7 @@ def _char_hot(win, what):
     if ev is None:
         _dbg('char hot', what, '- pointer not over a character canvas, ignored')
         return
+    _sync(win)
     try:
         e, slot = win.entry_at(ev.widget, ev)
     except Exception:
