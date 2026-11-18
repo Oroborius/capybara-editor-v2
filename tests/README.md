@@ -80,6 +80,7 @@ and stays open - mark the test `@T.test(xfail='what is wrong')` with a comment d
 | `test_32_gui_creator.py` | gui | Creator tab: lists, search, create, Item Editor, honorific, create on the character |
 | `test_33_gui_char_menu.py` | gui | right-click actions on character items: Stash-tab panel and Character tab |
 | `test_34_gui_item_stats.py` | gui | Item stats tab on a stash item and on character items |
+| `test_37_gui_merc_view.py` | gui | light look: the base-game character screen shows no ring frames on the mercenary view |
 | `test_35_launch.py` | launch | `AppRun` started as a user does, closes itself (`MXL_EXIT_AFTER`) |
 
 `--quick` runs the `engine` files only.
