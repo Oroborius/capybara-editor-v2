@@ -17,7 +17,7 @@ from mxl_creator import decode_item, encode_item, CreateError
 from mxl_lang import T
 
 MAGIC = 0xAA55AA55
-QUEST_OFF, WP_OFF, NPC_OFF = 0x14F, 0x279, 0x2C9
+QUEST_OFF, WP_OFF, NPC_OFF, STATS_OFF = 0x14F, 0x279, 0x2C9, 0x2FD
 QUEST_DATA = QUEST_OFF + 10           # 'Woo!' + version u32 + size u16
 WP_DATA = WP_OFF + 8                   # 'WS' + 6 bytes
 DIFFICULTIES = ('Normal', 'Nightmare', 'Hell')
@@ -219,7 +219,10 @@ def class_skills(data, cls):
 
 
 def class_skill_count(data, cls):
-    return len(class_skills(data, cls))
+    cache = data.__dict__.setdefault('_capy_class_skill_n', {})
+    if cls not in cache:
+        cache[cls] = len(class_skills(data, cls))
+    return cache[cls]
 
 
 def _skill_tab_names():
@@ -467,7 +470,9 @@ class Character:
         self.version = struct.unpack_from('<I', b, 4)[0]
         if b[QUEST_OFF:QUEST_OFF + 4] != b'Woo!' or b[WP_OFF:WP_OFF + 2] != b'WS':
             raise FormatError(T('ch.err.layout', 'unexpected character file layout'))
-        gf = b.find(b'gf', NPC_OFF)
+        # the stats start right after the 52-byte NPC section; searching for 'gf' is only the fallback for an
+        # unexpected layout (the NPC bits may hold the bytes 67 66 themselves)
+        gf = STATS_OFF if b[STATS_OFF:STATS_OFF + 2] == b'gf' else b.find(b'gf', NPC_OFF)
         if gf < 0:
             raise FormatError(T('ch.err.no_stats', "stats ('gf') not found"))
         self.head = bytearray(b[:gf])
@@ -487,7 +492,11 @@ class Character:
         p = gf + 2 + (br.pos + 7) // 8
         if b[p:p + 2] != b'if':
             raise FormatError(T('ch.err.no_skills', "skills ('if') not found after the stats"))
-        jm = b.find(b'JM', p)
+        # one byte per class skill: skill levels 74, 77 side by side spell 'JM' (the item list's marker), so the
+        # section's end is its length; the search is only the fallback when that length does not fit the file
+        jm = p + 2 + class_skill_count(d, b[0x28]) if b[0x28] < 7 else -1
+        if b[jm:jm + 2] != b'JM':
+            jm = b.find(b'JM', p)
         self.skills = b[p:jm]
         count = struct.unpack_from('<H', b, jm + 2)[0]
         items, q = read_item_list(b, jm + 4, count, d)
@@ -830,8 +839,28 @@ class Character:
         except (EditError, OSError) as e:
             self.head[0x14:0x24] = old_name
             raise CharError(str(e))
-        for fn in mates:
-            os.replace(os.path.join(folder, fn), os.path.join(folder, new_name + os.path.splitext(fn)[1]))
+        moved = []
+        try:
+            for fn in mates:
+                target = os.path.join(folder, new_name + os.path.splitext(fn)[1])
+                os.replace(os.path.join(folder, fn), target)
+                moved.append((os.path.join(folder, fn), target))
+        except OSError as e:
+            # a companion could not be moved (locked by another program): everything goes back under the old
+            # name - else the stash stays with the old .d2s while the new one has none (an "empty" stash in game)
+            # and this object would write the new name into the old file
+            for src, target in reversed(moved):
+                try:
+                    os.replace(target, src)
+                except OSError:
+                    pass
+            if not (os.path.exists(dst) and os.path.samefile(old_path, dst)):
+                try:
+                    os.remove(dst)
+                except OSError:
+                    pass
+            self.head[0x14:0x24] = old_name
+            raise CharError(T('ch.err.rename_files', 'rename refused, nothing changed: {error}', error=e))
         if os.path.exists(old_path) and not (os.path.exists(dst) and os.path.samefile(old_path, dst)):
             os.remove(old_path)
         self.path = dst
@@ -935,13 +964,17 @@ class Character:
         kind, n = r
         log = self.__dict__.setdefault('reward_log', {})
         log[kind] = log.get(kind, 0) + sign * n
+        widths = _csv(self.data)
+
+        def fit(sid, v, lo=0):                  # within what the file can hold: a reward on a value already at
+            return max(lo, min((1 << widths[sid][1]) - 1, v))   # the maximum is not a refused save
         if kind == 'skill':
-            self.set_stat(5, max(0, self.stat(5) + sign * n))
+            self.set_stat(5, fit(5, self.stat(5) + sign * n))
         elif kind == 'stats':
-            self.set_stat(4, max(0, self.stat(4) + sign * n))
+            self.set_stat(4, fit(4, self.stat(4) + sign * n))
         else:                                   # life: stats 6 / 7 are stored as 1/256 points
             for sid in (7, 6):
-                self.set_stat(sid, max(1 << 8, self.stat(sid) + sign * (n << 8)))
+                self.set_stat(sid, fit(sid, self.stat(sid) + sign * (n << 8), 1 << 8))
 
     def waypoint(self, diff, n):
         return bool(self.head[WP_DATA + 24 * diff + 2 + n // 8] >> (n % 8) & 1)
@@ -1103,20 +1136,34 @@ def blob_item(blob, data):
 
 
 def copy_character(path, new_name, data):
-    """Copies a character (save, map, key and stash files) under a new name. Returns the new .d2s path."""
-    from mxl_save import check_game_closed
+    """Copies a character (save, map, key and stash files) under a new name. Returns the new .d2s path.
+    The game's name rule applies (check_name); nothing is written when any file of the new name exists already
+    (a companion left by a deleted character would have been overwritten, and a refused copy removes every file
+    of its name). The .d2s goes through the safe writer (temp file, verification), the companions are copied."""
+    from mxl_save import check_game_closed, commit_file, load_character, EditError
     check_game_closed()
-    if not (2 <= len(new_name) <= 15) or not all(c.isalpha() or c in '-_' for c in new_name):
-        raise CharError(T('ch.err.name', 'name: 2 to 15 letters (- and _ allowed)'))
+    check_name(new_name)
     folder = os.path.dirname(path)
     dst = os.path.join(folder, new_name + '.d2s')
-    if os.path.exists(dst):
+    if any(os.path.splitext(fn)[0].lower() == new_name.lower() or fn.lower().startswith(new_name.lower() + '.')
+           for fn in os.listdir(folder)):
         raise CharError(T('ch.err.exists', '{name} already exists', name=new_name))
     c = Character(path, data)
-    c.head[0x14:0x24] = new_name.encode('latin1').ljust(16, b'\0')
+    c.head[0x14:0x24] = new_name.encode('ascii').ljust(16, b'\0')
     content = c.build()
-    with open(dst, 'wb') as f:
-        f.write(content)
+
+    def verify(tmp):
+        try:
+            back = Character(tmp, data)
+            load_character(tmp, data)
+        except Exception as e:
+            raise EditError(T('ch.err.verify', 'check after writing failed: {error}', error=e))
+        if back.name != new_name or back.build() != content:
+            raise EditError(T('ch.err.verify_name', 'check after writing failed: name'))
+    try:
+        commit_file(dst, content, verify, False)
+    except EditError as e:
+        raise CharError(str(e))
     for fn in companion_files(path):
         shutil.copy2(os.path.join(folder, fn), os.path.join(folder, new_name + os.path.splitext(fn)[1]))
     return dst

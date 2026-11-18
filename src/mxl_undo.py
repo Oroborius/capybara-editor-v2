@@ -16,7 +16,7 @@ usual backup policy and an instant grid refresh. The buffer holds the last 50 ac
 import os
 
 from mxl_save import (edit_stash, parse_stash, free_spot, item_blob, blob_item, EditError,
-                      STASH_PAGES)
+                      STASH_PAGES, placement_error)
 from mxl_lang import T
 
 MAX_UNDO = 50
@@ -79,11 +79,13 @@ def undo(app):
         if op['kind'] == 'delete':
             spot = (op['page'], op['x'], op['y'])
             index = op.get('index')
-            if any((i['page'], i['x'], i['y']) == spot for i in items):
-                new = blob_item(op['blob'], app.data)
-                spot = free_spot(items, new, app.data, (op['page'],) + tuple(
+            new = blob_item(op['blob'], app.data)
+            new['page'] = spot[0]
+            if placement_error(items, new, spot[0], spot[1], spot[2], app.data):   # the place is taken (also
+                spot = free_spot(items, new, app.data, (op['page'],) + tuple(         # partly, by a bigger item)
                     p for p in range(STASH_PAGES) if p != op['page']))
                 if spot is None:
+                    stack.append(op)
                     return T('undo.nospace', 'Undo: no free place for {name} any more',
                              name=op.get('name') or 'item')
             bak = edit_stash(app.path, app.data, insert=[_ins(spot, op['blob'], index, op['page'])],
@@ -115,6 +117,7 @@ def undo(app):
                 new = blob_item(op['blob'], app.data)
                 old_spot = free_spot([i for i in items if i is not cur], new, app.data, (op['old_page'],))
                 if old_spot is None:
+                    stack.append(op)
                     return T('undo.nospace', 'Undo: no free place for {name} any more',
                              name=op.get('name') or 'item')
             bak = edit_stash(app.path, app.data,
@@ -127,8 +130,10 @@ def undo(app):
                      name=op.get('name') or 'item')
         stack.append(op)                       # unknown kind: put it back
     except (EditError, OSError) as e:
-        return T('undo.err', 'Undo failed: {err}', err=e)
+        stack.append(op)                       # nothing was written: the step stays undoable (it was lost before,
+        return T('undo.err', 'Undo failed: {err}', err=e)       # and with it the only copy of a deleted item)
     except Exception:
+        stack.append(op)
         return None
     return None
 
@@ -213,6 +218,11 @@ def install(App):
 
     def _build(self):
         o_build(self)
+        try:
+            import mxl_stash_order
+            mxl_stash_order.watch_view(self)     # removals are checked against what this window shows
+        except Exception as e:
+            print('stale-view check disabled:', e)
         try:
             self._undo = []
             _install_delete(self)
