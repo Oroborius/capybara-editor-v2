@@ -170,6 +170,11 @@ def install():
     except Exception:
         pass
     try:
+        import mxl_dmg_text               # tooltip damage lines with min > max ("145 to 132", "Adds 120-0")
+        mxl_dmg_text.install()
+    except Exception:
+        pass
+    try:
         import mxl_stash_order            # a replaced stash item keeps its place in the file (no-op edit = same file)
         mxl_stash_order.install()
     except Exception:

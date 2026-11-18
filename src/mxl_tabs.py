@@ -25,6 +25,19 @@ from tkinter import ttk
 _state = {'nb': None, 'pages': {}}
 
 
+def tab_label(key):
+    """Shown text of a tab: the three fixed tabs in the chosen language (the registry key stays English: code
+    and tests find the tabs by it), any other tab (an item's name) as it is."""
+    from mxl_lang import T
+    if key == 'Stash':
+        return T('tab.stash', 'Stash')
+    if key == 'Character':
+        return T('tab.character', 'Character')
+    if key == 'Creator':
+        return T('tab.creator', 'Creator')
+    return key
+
+
 def install(App):
     o_build = App._build
 
@@ -137,13 +150,14 @@ class TabPage(tk.Frame):
         self._fixed_name = fixed_name         # auto-loaded tabs keep Stash / Character / Creator
         self._on_close = None
         self.built = False
-        nb.add(self, text=name)
+        nb.add(self, text=tab_label(name))
         _state['pages'][name] = self
 
     def placeholder(self):
         """A short hint shown in an empty tab (removed again when the window builds into it)."""
-        ttk.Label(self, text='  ' + self._key + ': empty - use the matching button in the toolbar above.  ',
-                  padding=24).pack(expand=True)
+        from mxl_lang import T
+        ttk.Label(self, text='  ' + T('tab.empty', '{name}: empty - use the matching button in the toolbar above.',
+                                      name=tab_label(self._key)) + '  ', padding=24).pack(expand=True)
 
     def clear(self):
         """Removes everything built into the page (a hint or a previous window's widgets)."""
@@ -230,7 +244,7 @@ class TabPage(tk.Frame):
             self.built = False
             self._name = self._key
             try:
-                self.master.tab(self, text=self._key)
+                self.master.tab(self, text=tab_label(self._key))
             except tk.TclError:
                 pass
             self.placeholder()

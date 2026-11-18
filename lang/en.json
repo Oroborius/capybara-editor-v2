@@ -596,5 +596,9 @@
   "cr.raw.rw": "Raw stats (the runeword's list)",
   "cr.raw.add": "+ Add stat",
   "cr.raw.clamped": "raw stat #{sid}: {v} cannot be stored, {lo} to {hi}",
-  "cr.warn.unrestricted": "unrestricted: a value is outside the game's own ranges, kept as it is"
+  "cr.warn.unrestricted": "unrestricted: a value is outside the game's own ranges, kept as it is",
+  "tab.stash": "Stash",
+  "tab.character": "Character",
+  "tab.creator": "Creator",
+  "tab.empty": "{name}: empty - use the matching button in the toolbar above."
 }

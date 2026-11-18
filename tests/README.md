@@ -109,6 +109,10 @@ and stays open - mark the test `@T.test(xfail='what is wrong')` with a comment d
 | `test_47_gui_quantity_remove.py` | gui | right-click Quantity → Remove...: greyed out at quantity 0 (item without a quantity stat; it raised 0 to 1) and 1; removing more than there is stops at 1; the add / remove rule |
 | `test_48_gui_language_switch.py` | gui | More » Language at run time: the editor's own texts (toolbar, Character page tabs, Creator labels) change to French at once and come back to exactly the same texts in English |
 | `test_49_gui_creator_title.py` | gui | Creator title: "name - base" only when the base is not already part of the name (no "Belt (Angelic) - Belt (Angelic)"), and at 800x600 a long title wraps inside the middle column instead of being cut |
+| `test_55_tooltip_damage.py` | engine | item tooltip damage lines never show min above max: every runeword and crafted base (min and max rolls, seeded) built by the creator; Anak "145 to 146" + "+70 to Minimum Damage" / "+45 to Maximum Damage", Aether "+120 to Minimum Magic Damage"; every other tooltip (both sample stashes, all uniques / sets) identical to the collector's own; the created Anak written to a stash copy reads back and passes mxlsave |
+| `test_56_gui_status_attr.py` | gui | status bar "Strength … Dexterity …" equals the Stats page totals (not the collector's stored + flat items), and follows a changed character file |
+| `test_57_gui_tab_language.py` | gui | main tabs Stash / Character / Creator in French and Vietnamese after a live language switch and back; a tab emptied while French is chosen gets its French name |
+| `test_58_gui_creator_damage_preview.py` | gui | Creator → Runeword → Anak: the preview shows the corrected damage lines |
 
 `--quick` runs the `engine` files only.
 

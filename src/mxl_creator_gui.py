@@ -2979,6 +2979,7 @@ def run():
     remove_library(mxl_gui)
     install(mxl_gui.App)
     import mxl_counters; mxl_counters.install(mxl_gui.App)   # Character page "Counters": signets, stat 88
+    import mxl_status_attr; mxl_status_attr.install(mxl_gui.App)   # status bar Str / Dex = the Stats page's
     mxl_char_gui.install(mxl_gui.App)
     import mxl_hotkeys                     # Character page "Hotkeys": skill hotkeys and mouse-button skills
     mxl_hotkeys.install(mxl_gui.App)

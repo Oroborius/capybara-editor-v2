@@ -585,5 +585,7 @@
   "cr.raw.rw": "Stat thô (danh sách runeword)",
   "cr.raw.add": "+ Thêm stat",
   "cr.raw.clamped": "stat thô #{sid}: {v} không thể lưu, {lo} đến {hi}",
-  "cr.warn.unrestricted": "không giới hạn: một giá trị nằm ngoài khoảng của trò chơi, giữ nguyên"
+  "cr.warn.unrestricted": "không giới hạn: một giá trị nằm ngoài khoảng của trò chơi, giữ nguyên",
+  "tab.stash": "Rương",
+  "tab.character": "Nhân vật"
 }

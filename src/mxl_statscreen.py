@@ -451,6 +451,13 @@ def item_sum(tot, data, sid, level, param=None, src=None):
     return v
 
 
+def attribute_total(ch, data, tot, sid):
+    """An attribute (0 strength, 1 energy, 2 dexterity, 3 vitality) as the stat screen totals it: (stored + the
+    items' sum, per-level stats included) raised by the items' "+x %". The Stats page and the status bar use this."""
+    parts = sum(item_sum(tot, data, sid, ch.level, None, src) for src in SOURCES)
+    return (char_stat(ch, sid) + parts) * (100 + total_of(tot, PCT_OF[sid])) // 100
+
+
 def char_stat(ch, sid, param=None):
     """A stat stored in the character's own stat list (life / mana / stamina in whole points)."""
     v = sum(s[2] for s in ch.stats if s[0] == sid and (param is None or s[1] == param))
@@ -1228,9 +1235,7 @@ class StatScreen:
 
     def attr_total(self, sid):
         """An attribute as the game totals it: (stored + items) raised by the items' "+x %"."""
-        own, parts = self._split(sid)
-        pct = total_of(self.win.st_totals(), PCT_OF[sid])
-        return (own + sum(parts.values())) * (100 + pct) // 100
+        return attribute_total(self.win.st_sim, self.win.data, self.win.st_totals(), sid)
 
     def derived(self, key):
         """(text or None, tooltip) of a value of page 1 the game computes."""

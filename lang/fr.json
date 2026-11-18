@@ -584,5 +584,7 @@
   "cr.raw.rw": "Stats brutes (liste du runeword)",
   "cr.raw.add": "+ Ajouter une stat",
   "cr.raw.clamped": "stat brute #{sid} : {v} impossible à stocker, {lo} à {hi}",
-  "cr.warn.unrestricted": "sans limites : une valeur est en dehors des plages du jeu, gardée telle quelle"
+  "cr.warn.unrestricted": "sans limites : une valeur est en dehors des plages du jeu, gardée telle quelle",
+  "tab.stash": "Coffre",
+  "tab.character": "Personnage"
 }
