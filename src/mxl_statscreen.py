@@ -423,6 +423,88 @@ def char_stat(ch, sid, param=None):
     return v >> 8 if sid in FIXED else v
 
 
+UNARMED = (1, 2)                      # damage without a weapon (the base game's rule; not seen on a screenshot)
+
+
+def active_weapon(ch, data):
+    """(slot, item, base) of the weapon in the hands of the active weapon set (right hand first), None unarmed.
+    A quiver or shield has no base damage and does not count."""
+    try:
+        active2 = struct.unpack_from('<I', ch.head, 0x10)[0] == 1
+        eq = ch.equipped()
+    except Exception:
+        return None
+    for slot in ((11, 12) if active2 else (4, 5)):
+        e = eq.get(slot)
+        if e is None:
+            continue
+        try:
+            b = data.base(e.it['code'])
+        except Exception:
+            continue
+        d = getattr(b, 'damage', None) or {}
+        if any(d.get('one_hand') or ()) or any(d.get('two_hand') or ()):
+            return slot, e.it, b
+    return None
+
+
+def weapon_damage(ch, data, tot, strength, dexterity):
+    """Physical damage of a normal attack with the active weapon, the way the game's stat screen shows it:
+    weapon damage = base x (100 + the weapon's own enhanced damage, sockets included) / 100 + the +min / +max
+    damage of every equipped item; then x (100 + "Weapon Physical Damage" % + the strength / dexterity bonus of the
+    weapon type (weapons table, % per 100 points) + the items' per-point bonuses (stats 299 / 300)) / 100.
+    Which pair: the minimum from the one-hand damage when the weapon has one, the maximum from the two-hand damage
+    of a two-handed weapon (matches the seven level-1 screenshots, among them a Claymore shown 5-8).
+    {'min', 'max', 'base': (lo, hi), 'ed': (min %, max %), 'flat': (lo, hi), 'pct', 'name'} or None (no totals)."""
+    if tot.get('error'):
+        return None
+    w = active_weapon(ch, data)
+    if w is None:
+        (blo, bhi), ed, pair, bonus, name = UNARMED, (0, 0), (21, 22), (0, 0), None
+    else:
+        _slot, it, b = w
+        import mxl_tooltip
+        d = b.damage
+        oh, th = tuple(d.get('one_hand') or (0, 0)), tuple(d.get('two_hand') or (0, 0))
+        min2 = not any(oh)
+        max2 = min2 or (bool(b.two_handed) and any(th))
+        blo, bhi = (th if min2 else oh)[0], (th if max2 else oh)[1]
+        pair = (23 if min2 else 21, 24 if max2 else 22)
+        emin = emax = 0
+        for s in mxl_tooltip.all_stats(it, data):
+            if isinstance(s.get('value'), int):
+                emin += s['value'] if s.get('id') == 18 else 0
+                emax += s['value'] if s.get('id') == 17 else 0
+        ed = (emin, emax)
+        bonus = tuple(getattr(b, 'dmg_bonus', None) or (0, 0))
+        name = b.name
+    flat = (total_of(tot, pair[0]), total_of(tot, pair[1]))
+    lo = blo * (100 + ed[0]) // 100 + flat[0]
+    hi = bhi * (100 + ed[1]) // 100 + flat[1]
+    pct = (total_of(tot, 25) + bonus[0] * strength // 100 + bonus[1] * dexterity // 100
+           + (total_of(tot, 299) * strength >> 8) + (total_of(tot, 300) * dexterity >> 8))
+    lo, hi = max(lo * (100 + pct) // 100, 1), hi * (100 + pct) // 100
+    if hi <= lo:
+        hi = lo + 1
+    return {'min': lo, 'max': hi, 'base': (blo, bhi), 'ed': ed, 'flat': flat, 'pct': pct, 'name': name}
+
+
+def attack_rating(data, cls, tot, dexterity, level=1):
+    """Attack rating as the stat screen shows it: (5 x dexterity - 35 + the class's ToHitFactor (charstats) + the
+    items' flat attack rating) x (100 + the items' attack rating %) / 100. Base part checked on the seven level-1
+    screenshots (dexterity 20 / 25 / 35 -> 75 / 100 / 150)."""
+    tohit = 10
+    try:
+        r = data._rows('charstats')[cls]
+        if len(r) == 196:
+            tohit = struct.unpack_from('<i', r, 0x3C)[0]
+    except Exception:
+        pass
+    flat = item_sum(tot, data, 19, level)
+    pct = item_sum(tot, data, 119, level)
+    return (5 * dexterity - 35 + tohit + flat) * (100 + pct) // 100
+
+
 def class_factors(data, cls):
     """(life per vitality, mana per energy, stamina per vitality) of the class in quarter points
     (charstats, the base game's record layout); None when the table does not look like it."""
@@ -441,6 +523,7 @@ SS_FONTS = {0: 'font8', 1: 'font16', 2: 'font30', 3: 'font42', 4: 'fontformal10'
             13: 'fontingamechat'}
 SS_NONE = 5382                        # string index the table uses for "no text"
 T_LABEL, T_STAT, T_RESIST, T_CLASS_SKILLS, T_REGEN, T_STAT_BONUS, T_AVOID = 1, 2, 4, 18, 21, 23, 25
+WEAPON_DAMAGE_ROWS = (21, 22)          # label rows '-' of page 2 that stand for the weapon's min / max damage
 SS_VALUES = (T_STAT, T_RESIST, T_CLASS_SKILLS, T_REGEN, T_STAT_BONUS, T_AVOID)
 F_PERCENT, F_BASE = 256, 1
 A_RIGHT, A_CENTER, A_LEFT = 0, 1, 2
@@ -1061,7 +1144,30 @@ class StatScreen:
                 'ss.tip.defense', 'Defense of the worn armour {armour} + other flat defense: equipped {equip}, '
                 'charms {charms}, set bonuses {sets}.', armour=armour, **parts) + '\n' + T(
                 'ss.tip.defense2', 'Not included: dexterity, the total "Bonus to Defense" %, skills.')
+        if key.startswith('damage'):
+            dmg = self.weapon_damage()
+            if dmg is None:
+                return None, T('ss.tip.game', 'computed by the game')
+            return f"{dmg['min']}-{dmg['max']}", self.damage_tip(dmg) + '\n' + T(
+                'ss.tip.dmg_skill', 'Normal attack: the bonuses of the skill on this mouse button are not included.')
+        if key.startswith('attack_rating'):
+            sim = win.st_sim
+            return str(attack_rating(win.data, sim.cls, tot, self.attr_total(2), sim.level)), T(
+                'ss.tip.ar', 'Attack rating: 5 x dexterity - 35 + class bonus, + items {flat}, then {pct:+d} % from '
+                'items.', flat=item_sum(tot, win.data, 19, sim.level),
+                pct=item_sum(tot, win.data, 119, sim.level)) + '\n' + T(
+                'ss.tip.ar_skill', 'Not included: skills and buffs.')
         return None, T('ss.tip.game', 'computed by the game')
+
+    def weapon_damage(self):
+        win = self.win
+        return weapon_damage(win.st_sim, win.data, win.st_totals(), self.attr_total(0), self.attr_total(2))
+
+    def damage_tip(self, dmg):
+        return T('ss.tip.dmg', '{weapon}: base {lo}-{hi}, enhanced damage +{ed} %, +{flo} / +{fhi} damage from the '
+                 'equipped items, then {pct:+d} % (weapon physical damage, strength / dexterity bonus).',
+                 weapon=dmg['name'] or T('ss.unarmed', 'Unarmed'), lo=dmg['base'][0], hi=dmg['base'][1],
+                 ed=dmg['ed'][1], flo=dmg['flat'][0], fhi=dmg['flat'][1], pct=dmg['pct'])
 
     # ------------------------------------------------------------------ the game's list pages (statscreen table)
     BASE_KEYS = {0: 'strength', 1: 'energy', 2: 'dexterity', 3: 'vitality', 7: 'life_max', 9: 'mana_max',
@@ -1072,6 +1178,11 @@ class StatScreen:
         win = self.win
         sim, tot, data = win.st_sim, win.st_totals(), win.data
         sid, kind, flags = el['stat'], el['type'], el['flags']
+        if kind == T_LABEL and sid in WEAPON_DAMAGE_ROWS:
+            dmg = self.weapon_damage()
+            if dmg is None:
+                return None, tot['error'] or T('ss.tip.game', 'computed by the game'), None
+            return str(dmg['min' if sid == 21 else 'max']), self.damage_tip(dmg), None
         suffix = '%' if flags & F_PERCENT else ''
         name = str((data.isc.get(sid) or {}).get('desc') or sid)
         if name.startswith('FLYING'):
@@ -1110,12 +1221,16 @@ class StatScreen:
                 extra += (', ' if extra else '') + T('ss.tip.pct', 'then {pct:+d} % from items', pct=pct)
         elif kind == T_STAT_BONUS:
             isc = data.isc.get(sid) or {}
-            base = isc.get('op_base')
-            if not items or base not in (0, 2):
+            base = {299: 0, 300: 2}.get(sid, isc.get('op_base'))
+            w = active_weapon(sim, data) if sid in (299, 300) else None
+            per100 = (getattr(w[2], 'dmg_bonus', None) or (0, 0))[sid - 299] if w else 0
+            if (not items and not per100) or base not in (0, 2):
                 return None, T('ss.tip.class_rule', '{name} computed by the game from the class and the attribute.',
                                name=name), None
-            v = items * self.attr_total(base) >> int(isc.get('op_param') or 0)
-            extra = T('ss.tip.per_point', 'items give {items}/256 % per point', items=items)
+            attr = self.attr_total(base)
+            v = (items * attr >> int(isc.get('op_param') or 0)) + per100 * attr // 100
+            extra = T('ss.tip.per_point2', 'weapon {per100} % per 100 points, items {items}/256 % per point, '
+                      'x {attr}', per100=per100, items=items, attr=attr)
         tip = name + ': ' + self._where(own, parts) + (' (' + extra + ')' if extra else '')
         tip += '\n' + T('ss.tip.rest4', 'Not included: skills, buffs and the caps of the game.')
         return f'{v}{suffix}', tip, None
@@ -1150,7 +1265,11 @@ class StatScreen:
         from PIL import ImageDraw
         for el in self.table.get(n, ()):
             kind = el['type']
-            if kind == T_LABEL:
+            if kind == T_LABEL and el['stat'] in WEAPON_DAMAGE_ROWS:
+                text, _tip, _key = self.game_value(el)       # the weapon's min / max in place of the '-'
+                box = self._ss_draw(out, el, text or el['text'] or '-')
+                reg.append(('gval', el['n'], box))
+            elif kind == T_LABEL:
                 if el['text']:
                     box = self._ss_draw(out, el, el['text'])
                     if el['tip']:
@@ -1378,7 +1497,7 @@ class StatScreen:
             except Exception:
                 return el['tip']
         if kind == 'info':
-            if key in P1_DERIVED and not key.startswith(('damage', 'attack')) and key not in ('block', 'grit'):
+            if key in P1_DERIVED and key not in ('block', 'grit'):
                 return self.derived(key)[1]
             if key.startswith('skill_'):
                 sim = win.st_sim

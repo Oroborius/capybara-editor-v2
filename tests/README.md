@@ -77,6 +77,7 @@ and stays open - mark the test `@T.test(xfail='what is wrong')` with a comment d
 | `test_17_statparse.py` | engine | tooltip-line parser round trip |
 | `test_18_stash_order.py` | engine | `mxl_stash_order`: replaced and re-inserted items keep their index; remove + insert-at-index gives the same file |
 | `test_19_not_covered.py` | engine | the known gaps, as skipped tests with their reason |
+| `test_20_statscreen_totals.py` | engine | stat screen sums: set bonuses of a worn set (sets table, by pieces); weapon damage and attack rating of the active weapon set against the seven level-1 screenshots and the host's item tooltip (quiver / inactive set II ignored) |
 | `test_21_perf_caches.py` | engine | the start-up speed-ups give the old results: `mxl_explode` = the collector's explode on real archive streams (and cut-off ones), DC6 `to_rgba` / brightness = the per-pixel loops; `mxl_diskcache` keys change with a table file (mtime, size, new file) and the language; missing-art markers spare the archives and go with a new game version |
 | `test_21_wheel_notches.py` | engine | `mxl_scroll` wheel helper: Tk 8.6 deltas of 120 / 240 and Button-4/5, Windows touchpad part-deltas adding up to one notch, Tk 9 side buttons ignored, `<TouchpadScroll>` packed deltas, Shift = sideways, nested handlers share one count |
 | `test_30_gui_smoke.py` | gui | start in `MXL_THEME=d2` / `he` at 1280x720 and 800x600, every tab and page, status bar, toolbar overflow |
