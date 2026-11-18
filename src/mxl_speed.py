@@ -18,11 +18,14 @@ Every cache of scaled icons (the stash's, the equipment panel's, the Character p
 and emptied when the window's cell size changes: each resize that changes it read and composed every visible
 icon again from its PNG files (~half of the icon time of a resize). The layers are kept here under the key those
 caches use without the cell size (code, icon name, image, ethereal, sockets, socketed icons, background), at most
-ICON_KEEP of them (least recently used dropped); every call gets its own copies of the images."""
+ICON_KEEP of them (least recently used dropped); every call gets its own copies of the images. Emptied when the
+icons are extracted again (mxl_gfx.extract_icons: game data rebuilt or repaired) and when another game-data
+object is used."""
 import sys
+import weakref
 from collections import OrderedDict
 
-_state = {'orig': None, 'icon_orig': None}
+_state = {'orig': None, 'icon_orig': None, 'data': None}
 ICON_KEEP = 400
 _layers = OrderedDict()
 
@@ -76,9 +79,16 @@ def free_spot(items, it, data, pages=range(0, 10)):
 def icon_layers(it, data, bg, folder='data/items'):
     orig = _state['icon_orig']
     try:
+        ref = _state['data']
+        if ref is None or ref() is not data:          # other game data: nothing remembered applies
+            _layers.clear()
+            _state['data'] = weakref.ref(data)
+    except TypeError:
+        return orig(it, data, bg, folder)
+    try:
         from mxl_gfx import icon_name
         key = (it['code'], icon_name(it, data), it.get('image'), it.get('ethereal'), it.get('sockets'),
-               tuple(icon_name(s, data) for s in it.get('socketed', [])), bg, folder, id(data))
+               tuple(icon_name(s, data) for s in it.get('socketed', [])), bg, folder)
         hash(key)
     except Exception:
         return orig(it, data, bg, folder)
@@ -95,6 +105,18 @@ def icon_layers(it, data, bg, folder='data/items'):
     if got is None:
         return None
     return {k: (im.copy() if im is not None else None) for k, im in got.items()}
+
+
+def _extract_wrapper(cur):
+    def extract_icons(*a, **k):
+        _layers.clear()
+        try:
+            return cur(*a, **k)
+        finally:
+            _layers.clear()
+    extract_icons._capy_fast = True
+    extract_icons.original = cur
+    return extract_icons
 
 
 def _rebind(mod_name, name, cur, new):
@@ -117,6 +139,11 @@ def install():
             icon_layers.original = cur
             mxl_gfx.icon_layers = icon_layers
             _rebind('mxl_gfx', 'icon_layers', cur, icon_layers)
+        ex = getattr(mxl_gfx, 'extract_icons', None)
+        if ex is not None and not getattr(ex, '_capy_fast', False):
+            new = _extract_wrapper(ex)
+            mxl_gfx.extract_icons = new
+            _rebind('mxl_gfx', 'extract_icons', ex, new)
     except Exception as e:
         print('mxl_speed: icon layers not cached:', e)
     import mxl_save
