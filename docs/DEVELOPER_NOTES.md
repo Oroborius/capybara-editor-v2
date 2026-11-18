@@ -543,6 +543,9 @@ longer in the stash).
 - `mxl_inv_gui.py`: the equipment and inventory panel of the main window (drag & drop with the stash).
 - `mxl_statparse.py`: reads tooltip lines back into item stats (uses the collector's tooltip text as the reference).
 - `mxl_format_fix.py`: the reader fix above.
+- `mxl_dmg_text.py` (installed by `mxl_format_fix.install()`): item tooltip damage lines with min above max
+  (weapon line max = min + 1; "Adds X-Y" with min > max or a 0 side as the stats' own lines). docs/review/gui.md 9.
+- `mxl_status_attr.py`: status bar Strength / Dexterity = the stat screen's totals (`mxl_statscreen.attribute_total`).
 - `mxl_import.py`: the character page import (page reader, item rebuilder, new character, Import button).
 - `mxl_d2look.py`, `mxl_d2look_art.py`, `mxl_d2ui_dc6.py`: the game-art look (switched off since 2026-11-10,
   see 'The plain Hero-Editor grids, D2 panels off').

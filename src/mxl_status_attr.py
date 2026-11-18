@@ -8,8 +8,8 @@ they are in `app.char` (the collector's red "Required ..." lines read them); onl
 stat screen's totals (`mxl_statscreen.attribute_total`: active weapon set, charms, set bonuses, per-level, %) of
 the character file as it is on disk (pending edits of the Character tab show after SAVE, like every other number
 of the status bar). The totals are cached per file (path, size, mtime): reading the save and summing its items
-takes ~20-60 ms, and show_status runs on every stash redraw. When the file cannot be read, the collector's own
-text stays.
+takes 5-7 ms (about 50 ms on the very first call), and show_status runs on every stash redraw. When the file
+cannot be read, the collector's own text stays.
 """
 import os
 
