@@ -1119,6 +1119,8 @@ class Character:
             bak = commit_file(self.path, content, verify, backup)
         except EditError as e:
             raise CharError(str(e))
+        except OSError as e:
+            raise write_error(self.path, e)
         self.raw = content
         self.parse(content)
         return bak
@@ -1198,6 +1200,34 @@ def install_reader_fix():
             pass
 
 
+def write_error(path, err):
+    """CharError for an OSError of the safe writer (Windows: the file is read-only or held open by another program,
+    disk full...): the callers show CharError in a box, an OSError would only reach the log. The writer's temporary
+    file (<file>.tmp, left behind when the final rename fails) is removed."""
+    tmp = f'{path}.tmp'
+    try:
+        if os.path.isfile(tmp):
+            os.remove(tmp)
+    except OSError:
+        pass
+    return CharError(T('ch.err.write', '{file} could not be written: {error}', file=os.path.basename(str(path)),
+                       error=err))
+
+
+def rollback_note(path, err):
+    """Logged with its traceback (call it in the `except` of the failed roll-back) and returned as the text to add
+    to the error box: a transfer between two files wrote the first one, the second failed, and putting the first one
+    back failed too."""
+    try:
+        import mxl_log
+        mxl_log.log.exception('roll-back of %s FAILED', path)
+    except Exception:
+        pass
+    return T('ch.err.rollback', '\n\nPutting {file} back as it was failed too ({error}): the item may now be in '
+             'both files. Check them; the backups ("Compare with backup...") hold the previous files.',
+             file=os.path.basename(str(path)), error=err)
+
+
 def blob_item(blob, data):
     from mxl_save import blob_item as _bi
     return _bi(blob, data)
@@ -1210,9 +1240,12 @@ def copy_character(path, new_name, data):
     of its name). The .d2s goes through the safe writer (temp file, verification), the companions are copied."""
     from mxl_save import check_game_closed, commit_file, load_character, EditError
     check_game_closed()
-    check_name(new_name)
+    check_name(new_name)            # the game's rule (A-Z only: any other letter is refused by the game / latin1)
     folder = os.path.dirname(path)
     dst = os.path.join(folder, new_name + '.d2s')
+    # any file of the new name, compared without case (Windows / Wine: XBone.key is xbone.key): a leftover
+    # <new name>.stash of a deleted character is never overwritten nor taken over, and a copy refused by the
+    # save check (which removes every file of its name) never removes a file it did not make
     if any(os.path.splitext(fn)[0].lower() == new_name.lower() or fn.lower().startswith(new_name.lower() + '.')
            for fn in os.listdir(folder)):
         raise CharError(T('ch.err.exists', '{name} already exists', name=new_name))
@@ -1232,6 +1265,8 @@ def copy_character(path, new_name, data):
         commit_file(dst, content, verify, False)
     except EditError as e:
         raise CharError(str(e))
+    except OSError as e:
+        raise write_error(dst, e)
     for fn in companion_files(path):
         shutil.copy2(os.path.join(folder, fn), os.path.join(folder, new_name + os.path.splitext(fn)[1]))
     return dst

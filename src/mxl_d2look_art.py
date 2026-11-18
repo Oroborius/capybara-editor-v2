@@ -95,6 +95,26 @@ def warm(game_dir, cache_root, theme=None):
 
 _ARCHIVES = {}
 _ARCHIVES_LOCK = threading.Lock()
+_BROKEN = set()             # archives that exist but could not be opened: "absent" markers are not to be trusted
+
+
+def _write_atomic(path, data):
+    """Writes a cache file through a temporary file of this process AND thread (the art warm-up thread and the main
+    thread can build the same picture at once; with one shared temporary name they wrote into each other's file).
+    When the final rename fails but another writer put the file in place meanwhile (Windows refuses to replace a
+    file another thread or process has open), that file is used. The temporary file never stays behind."""
+    tmp = f'{path}.{os.getpid()}.{threading.get_ident()}.tmp'
+    try:
+        with open(tmp, 'wb') as fh:
+            fh.write(data)
+        os.replace(tmp, path)
+    except OSError:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        if not os.path.isfile(path):
+            raise
 
 
 def _archive(path):
@@ -115,6 +135,7 @@ def _archive(path):
             m = MPQ(path)
         except Exception:
             m = None
+            _BROKEN.add(key[0])
         _ARCHIVES[key] = m
         return m
 
@@ -198,16 +219,13 @@ class Art:
                 clean = False
                 continue
             if data:
-                tmp = f'{p}.{os.getpid()}.tmp'
                 try:
-                    with open(tmp, 'wb') as fh:
-                        fh.write(data)
-                    os.replace(tmp, p)
+                    _write_atomic(p, data)
                 except OSError:
                     pass
                 return data
             clean = False                                # found but empty: not "absent"
-        if clean and opened:
+        if clean and opened and not _BROKEN:            # an archive that failed to open may hold it
             try:
                 open(absent, 'wb').close()
             except OSError:
@@ -248,10 +266,7 @@ class Art:
         if not os.path.exists(path):
             w, h, rgba = build()
             rgba = self._bright(rgba)
-            tmp = f'{path}.{os.getpid()}.tmp'
-            with open(tmp, 'wb') as fh:
-                fh.write(DC6.png(w, h, rgba))
-            os.replace(tmp, path)
+            _write_atomic(path, DC6.png(w, h, rgba))
         return path
 
     def _bright(self, rgba):

@@ -131,7 +131,15 @@ class Tables:
             t = self.text(struct.unpack_from('<H', self.sd[di], 8)[0])
             if t:
                 return t
-        return self.data.skill_names.get(sid) or f'skill #{sid}'
+        return self.data.skill_names.get(sid) or self._hidden_name(sid) or f'skill #{sid}'
+
+    def _hidden_name(self, sid):
+        """The derived '... (hidden #id)' name of a skill without a name string (mxl_statnames), None if none."""
+        try:
+            import mxl_statnames
+            return mxl_statnames.hidden_skill_name(self.data, sid)
+        except Exception:
+            return None
 
     def desc_index(self, sid):
         di = struct.unpack_from('<H', self.sk[sid], 0x194)[0]
