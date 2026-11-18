@@ -762,7 +762,7 @@ class StatScreen:
         cv.bind('<ButtonRelease-1>', self.on_release)
         cv.bind('<ButtonPress-3>', self.on_right)
         cv.bind('<Motion>', self.on_motion)
-        cv.bind('<Leave>', lambda e: self._show_tip(None))
+        cv.bind('<Leave>', lambda e: self._leave_tip())
         import mxl_scroll
         mxl_scroll.bind_wheel(cv, self.on_wheel)
         cv.bind('<Prior>', lambda e: self.turn(-1))
@@ -1509,12 +1509,19 @@ class StatScreen:
         return None
 
     def _show_tip(self, text):
-        if text != self._tip:
-            self._tip = text
+        self._tip = text
         try:
-            self.win._sk_tip(text or '')
+            self.win._sk_tip(text or '', self.cv)      # same text: the tip only follows the pointer
         except Exception:
             pass
+
+    def _leave_tip(self):
+        """<Leave>: the tip goes a moment later unless the pointer is still on the screen (mxl_floattip)."""
+        try:
+            self.win._sk_tip_leave(self.cv)
+        except Exception:
+            pass
+        self._tip = None
 
     def on_motion(self, ev):
         kind, key, _box = self._at(ev)

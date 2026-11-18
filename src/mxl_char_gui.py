@@ -907,27 +907,29 @@ class CharacterWindow(StatEditMixin):
         except Exception:
             return None
 
-    def _sk_tip(self, text):
-        """The game's floating tooltip: gold text on dark stone with a gold frame, at the pointer."""
+    def _sk_tip(self, text, owner=None):
+        """The game's floating tooltip: gold text on dark stone with a gold frame, beside the pointer.
+        One window, reused (mxl_floattip: no flicker under XWayland compositors); '' hides it at once."""
+        import mxl_floattip
+        tip = getattr(self, '_sk_tipper', None)
         if not text:
-            if getattr(self, '_sk_tip_win', None) is not None:
-                try:
-                    self._sk_tip_win.destroy()
-                except tk.TclError:
-                    pass
-                self._sk_tip_win = None
+            if tip is not None:
+                tip.hide()
             return
-        if getattr(self, '_sk_tip_win', None) is None:
-            w = tk.Toplevel(self.top, bg=SK_EDGE, bd=1, relief='solid')
-            w.overrideredirect(True)
-            w.attributes('-topmost', True)
-            tk.Label(w, text=text, font=HE_FONT, bg=SK_BG, fg=HE_GOLD, justify='left',
+        if tip is None or not tip.exists():
+            tip = self._sk_tipper = mxl_floattip.FloatTip(self.top, gap=(18, 14, 14), bg=SK_EDGE, bd=1, relief='solid')
+            tk.Label(tip.window(), text=text, font=HE_FONT, bg=SK_BG, fg=HE_GOLD, justify='left',
                      padx=10, pady=6).pack()
-            self._sk_tip_win = w
-        x, y = self.top.winfo_pointerxy()
-        self._sk_tip_win.geometry(f'+{x + 18}+{y + 14}')
-        for c in self._sk_tip_win.winfo_children():
-            c.configure(text=text)
+        for c in tip.window().winfo_children():
+            if c.cget('text') != text:
+                c.configure(text=text)
+        tip.show(owner)
+
+    def _sk_tip_leave(self, widget):
+        """<Leave> of a widget with a tooltip: hidden a moment later if the pointer really left it."""
+        tip = getattr(self, '_sk_tipper', None)
+        if tip is not None:
+            tip.leave(widget)
 
     def _zero_skills(self):
         for var in self.sk_vars.values():
