@@ -154,12 +154,16 @@ def buttons_under_the_list():
 def superior_bonus_choices_say_what_they_give():
     """The superior pick listed "Bonus #1", "Bonus #2"...: now the bonus and its range, like the Creator."""
     import re
-    for it in sorted(G.app.items, key=lambda i: (i['page'], i['y'], i['x'])):
-        m = T.stash_menu(it['page'], it['x'], it['y'])
-        if any(lab == 'superior...' and st != 'disabled' for _d, lab, st, _m, _i in T.menu_entries(m)):
-            break
-    else:
-        T.skip('no stash item offers "superior..." with several bonuses')
+    def offers(m):
+        return any(lab == 'superior...' and st != 'disabled' for _d, lab, st, _m, _i in T.menu_entries(m))
+    menus = (T.stash_menu(it['page'], it['x'], it['y'])
+             for it in sorted(G.app.items, key=lambda i: (i['page'], i['y'], i['x'])))
+    inv = G.app.inventory                    # then the worn items of the Stash tab's character panel
+    slots = (T.panel_menu(('slot', n)) for n in sorted(inv.ch.equipped(False))
+             if any(inv.slot_of(b) == n for b in inv.visible_boxes()))
+    m = next((m for m in (*menus, *slots) if offers(m)), None)
+    if m is None:
+        T.skip('no stash or worn item offers "superior..." with several bonuses')
     T.invoke(m, 'superior', under='Change item quality')
     T.settle(0.3)
     wins = pick_windows()
