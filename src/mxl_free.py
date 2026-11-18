@@ -114,7 +114,10 @@ def _free_character_save():
             # the backup keeps what was there
             _log(log, 'character file changed on disk since it was read - written anyway (mxl_free): %s',
                  self.path)
-        bak = commit_file(self.path, content, verify, backup)
+        try:
+            bak = commit_file(self.path, content, verify, backup)
+        except OSError as e:          # read-only / held open / disk full: a CharError the windows show in a box
+            raise mxl_char.write_error(self.path, e)
         self.raw = content
         self.parse(content)
         return bak

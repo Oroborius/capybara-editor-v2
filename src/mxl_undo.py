@@ -25,7 +25,7 @@ MAX_UNDO = 50
 def record(app, kind, **kw):
     """Record an undoable action on the app's buffer (best effort: the undo must never break the
     action it records). A 'delete' op keeps the item's exact bytes; a 'replace' op is recorded after
-    the write with the previous bytes already in kw['blob']."""
+    the write with the previous bytes already in kw['blob']. True when the action was recorded."""
     try:
         stack = getattr(app, '_undo', None)
         if stack is None:
@@ -52,12 +52,20 @@ def record(app, kind, **kw):
             pass
         stack.append(op)
         del stack[:-MAX_UNDO]
+        return True
+    except Exception as e:
+        # nothing was appended (the append is the last step that can fail): the stack stays as it was - popping
+        # here threw away the PREVIOUS action's undo
+        _log_error('undo: action not recorded (%s: %s)', type(e).__name__, e)
+        return False
+
+
+def _log_error(msg, *args):
+    try:
+        import mxl_log
+        mxl_log.log.error(msg, *args)
     except Exception:
-        try:
-            if getattr(app, '_undo', None):
-                app._undo.pop()
-        except (IndexError, AttributeError):
-            pass
+        pass
 
 
 def can_undo(app):
@@ -128,8 +136,13 @@ def undo(app):
         stack.append(op)                       # unknown kind: put it back
     except (EditError, OSError) as e:
         return T('undo.err', 'Undo failed: {err}', err=e)
-    except Exception:
-        return None
+    except Exception as e:                     # a stash the reader refuses (FormatError...), a bug: said, not
+        try:                                   # shown as "Nothing to undo"
+            import mxl_log
+            mxl_log.log.exception('undo failed')
+        except Exception:
+            pass
+        return T('undo.err', 'Undo failed: {err}', err=e)
     return None
 
 
@@ -271,17 +284,20 @@ def delete_item(app, it):
         name = app.full_name(it)
     except Exception:
         name = 'item'
+    recorded = False
     try:
-        record(app, 'delete', item=it, page=it['page'], x=it['x'], y=it['y'], name=name)
+        recorded = record(app, 'delete', item=it, page=it['page'], x=it['x'], y=it['y'], name=name)
         bak = edit_stash(app.path, app.data, remove=[it['_offset']],
                          backup=app.needs_backup(app.path))
     except Exception as e:
+        if recorded:                           # only this delete's own record (never an older action's)
+            try:
+                app._undo.pop()
+            except (IndexError, AttributeError):
+                pass
+        _log_error('delete of %s failed: %s: %s', name, type(e).__name__, e)
         try:
-            app._undo.pop()
-        except (IndexError, AttributeError):
-            pass
-        try:
-            app.status.configure(text=T('undo.err', 'Undo failed: {err}', err=e))
+            app.status.configure(text=T('undo.del_err', 'Delete failed: {err}', err=e))
         except Exception:
             pass
         return
@@ -289,7 +305,7 @@ def delete_item(app, it):
     _refresh(app)
     try:
         app.status.configure(text=T('cr.deleted', '{name} deleted', name=name)
-                             + T('undo.hint', ' - Ctrl+Z puts it back'))
+                             + (T('undo.hint', ' - Ctrl+Z puts it back') if recorded else ''))
     except Exception:
         pass
 

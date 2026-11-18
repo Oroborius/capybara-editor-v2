@@ -175,8 +175,9 @@ def draw_text(cv, x, y, text, k=1.0, font='font16', color=GOLD_TXT, anchor='cent
         if all(ord(c) in glyphs for c in text):
             p = a.text(text, font, color)
             from PIL import Image
-            im = Image.open(p)
-            img = photo(p, (max(1, round(im.width * k)), max(1, round(im.height * k))), tag='main')
+            with Image.open(p) as im:                    # only its size: the file is closed at once (Windows)
+                iw, ih = im.size
+            img = photo(p, (max(1, round(iw * k)), max(1, round(ih * k))), tag='main')
             return cv.create_image(x, y, image=img, anchor=anchor, tags=tags)
     except Exception:
         pass

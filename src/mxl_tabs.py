@@ -82,12 +82,28 @@ def _autoload_later(app):
                     print('art warm-up failed:', e)
         finally:
             sys.setswitchinterval(old_switch)
-            try:
-                app.root.after(0, lambda: _autoload(app))
-            except RuntimeError:                     # no main loop yet (headless test): build now
-                _autoload(app)
+            done.set()
+
+    # The windows are built on the main thread only: the worker just sets an event that a timer of the main thread
+    # polls. (It called root.after() itself before: Tk 8.6 / 9 refuse a call from another thread while the main
+    # thread is not inside mainloop() - RuntimeError after a 1 s wait - and the fallback then built the Character
+    # and Creator windows on the worker thread.)
+    done = threading.Event()
+
+    def poll():
+        if done.is_set():
+            _autoload(app)
+            return
+        try:
+            app.root.after(POLL_MS, poll)
+        except tk.TclError:                          # the window is gone
+            pass
 
     threading.Thread(target=build, daemon=True).start()
+    poll()
+
+
+POLL_MS = 30
 
 
 def _autoload(app):

@@ -599,7 +599,7 @@ class CharacterWindow(StatEditMixin):
             return False
         try:
             bak = self.ch.save(backup=app.needs_backup(self.ch.path))
-        except (CharError, EditError) as e:      # EditError: the safe writer or the save check refused
+        except (CharError, EditError, OSError) as e:   # EditError: the safe writer or the save check refused
             messagebox.showerror(T('ch.title', 'Character'), str(e) + (
                 '\n\n' + T('ch.kept_pending', 'The file has been read again. The changes not yet saved are still '
                            'shown: check them and click SAVE again (RELOAD drops them).') if self.dirty() else ''),
@@ -645,8 +645,10 @@ class CharacterWindow(StatEditMixin):
                            file=os.path.basename(app.path), page=spot[0] + 1)):
             try:                       # character not written: put the stash back as it was
                 commit_file(app.path, before, lambda tmp: None, backup=False)
-            except Exception:
-                pass
+            except Exception as rb:
+                messagebox.showerror(T('ch.btn.to_stash', 'To stash'),
+                                     T('ch.err.not_saved', 'character not saved') + MC.rollback_note(app.path, rb),
+                                     parent=self.top)
             app.load(app.path, keep_selection=True)
 
     def from_stash(self):
@@ -685,11 +687,12 @@ class CharacterWindow(StatEditMixin):
             bak = edit_stash(app.path, self.data, remove=[it['_offset']], backup=app.needs_backup(app.path))
             app.backup_made(app.path, bak)
         except (EditError, FormatError, OSError) as err:
+            note = ''
             try:                       # stash not written: put the character back as it was
                 commit_file(self.ch.path, before_char, lambda tmp: None, backup=False)
-            except Exception:
-                pass
-            messagebox.showerror(T('ch.btn.from_stash', 'From stash'), str(err), parent=self.top)
+            except Exception as rb:
+                note = MC.rollback_note(self.ch.path, rb)
+            messagebox.showerror(T('ch.btn.from_stash', 'From stash'), str(err) + note, parent=self.top)
             self.reload()
         app.load(app.path, keep_selection=False)
 
