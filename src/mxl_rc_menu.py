@@ -24,7 +24,8 @@ import os
 import tkinter as tk
 import types
 
-from mxl_save import read_file, item_blob, blob_item, parse_stash, free_spot, edit_stash, EditError, STASH_PAGES
+from mxl_save import read_file, item_blob, blob_item, parse_stash, free_spot, edit_stash, EditError, STASH_PAGES, \
+    placement_error
 from mxl_format import FormatError
 from mxl_lang import T
 
@@ -118,7 +119,8 @@ def _stash_menu(app, ev):
                              command=lambda: _paste(app, it, clip))
         pages = tk.Menu(menu, tearoff=0)
         for p in range(STASH_PAGES):
-            pages.add_command(label=rc('page', 'Page {n}', n=p + 1), command=lambda p=p: _move_page(app, it, p))
+            pages.add_command(label=rc('page', 'Page {n}', n=p + 1), command=lambda p=p: _move_page(app, it, p),
+                              state='disabled' if p == it['page'] else 'normal')
         menu.add_cascade(label=rc('move', 'Move to page...'), menu=pages)
         _quantity_cascade(app, menu, it)
         _fill_sockets_entry(app, menu, it)
@@ -205,16 +207,29 @@ def _paste_empty(app, ev, clip):
 
 
 def _move_page(app, it, page):
+    """Moves the item to another stash page: to the same cell when it is free there, else to the first free
+    place of that page (it used to insist on the same cell and failed with "(x, y): overlaps ...")."""
+    if page == it['page']:
+        return
     try:
         buf = read_file(app.path)
         blob = item_blob(buf, it)
+        items = parse_stash(app.path, app.data)
+        probe = blob_item(blob, app.data)
+        x, y = it['x'], it['y']
+        if placement_error(items, probe, page, x, y, app.data) is not None:
+            spot = free_spot(items, probe, app.data, [page])
+            if spot is None:
+                _status(app, rc('err.nofree_page', 'no free place on page {page}', page=page + 1), True)
+                return
+            x, y = spot[1], spot[2]
         bak = edit_stash(app.path, app.data, remove=[it['_offset']],
-                         insert=[(page, it['x'], it['y'], blob)], backup=app.needs_backup(app.path))
+                         insert=[(page, x, y, blob)], backup=app.needs_backup(app.path))
     except (EditError, FormatError, OSError) as e:
         _status(app, str(e), True)
         return
     app.backup_made(app.path, bak)
-    _selected(app, page, it['x'], it['y'])
+    _selected(app, page, x, y)
     _status(app, rc('moved', '{name} moved to page {page}', name=app.full_name(it), page=page + 1))
 
 
