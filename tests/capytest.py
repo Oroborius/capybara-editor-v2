@@ -482,6 +482,22 @@ def mark():
     return (a, b, len(G.boxes))
 
 
+def xft_lib(appdir=None):
+    """The Xft build of Tk in the application folder (the launcher's lib/xft/), present or not."""
+    if appdir:
+        return os.path.join(appdir, 'opt', 'python', 'lib', 'xft', 'libtcl9tk9.0.so')
+    return os.path.join(sys.base_prefix, 'lib', 'xft', 'libtcl9tk9.0.so')
+
+
+def use_xft(appdir=None):
+    """GUI tests draw with the Xft fonts users get whenever the application folder has the Xft Tk (CAPY_XFT=0:
+    X core fonts; CAPY_XFT=1: Xft or the test process stops)."""
+    v = os.environ.get('CAPY_XFT', '').strip()
+    if v == '0':
+        return False
+    return bool(v) or os.path.isfile(xft_lib(appdir))
+
+
 def _gui_main(g):
     """Starts the real application in this process (the Linux launcher's main()); Tk's mainloop is wrapped so
     that the tests of the file run inside it, then the window is destroyed. One application per process.
@@ -508,11 +524,11 @@ def _gui_main(g):
     os.dup2(fd1, 1)
     sys.path.insert(0, APP)
     sys.argv = [os.path.join(APP, 'capybara_editor.py')]
-    if os.environ.get('CAPY_XFT', '').strip() not in ('', '0'):
+    if use_xft():
         # the text the users see: the launcher loads the Xft build of Tk (antialiased fonts, other metrics) before
         # tkinter, but this harness imports tkinter first, so without this every GUI test runs on X core fonts
         import ctypes
-        lib = os.path.join(sys.base_prefix, 'lib', 'xft', 'libtcl9tk9.0.so')
+        lib = xft_lib()
         if not os.path.isfile(lib):
             sys.stderr.write(f'CAPY_XFT=1 but the application folder has no Xft Tk ({lib}): build it without MXL_NO_XFT\n')
             os._exit(2)

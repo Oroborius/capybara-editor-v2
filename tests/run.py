@@ -117,6 +117,8 @@ def main():
             capytest.guard(v, k)                 # the originals are only read, but never from a real save folder
     before = {k: tree_digest(v) for k, v in fixtures[1:] if os.path.isdir(v)}
     print(f'app:     {appdir}')
+    print('fonts:   ' + ('Xft (as the users get them; CAPY_XFT=0: X core fonts)' if capytest.use_xft(appdir) else
+                         'X core fonts (no Xft Tk in the application folder, or CAPY_XFT=0)'))
     for label, k, ok in (('tables', 'CAPY_SRC_USER', capytest.user_ok()), ('saves', 'CAPY_SRC_SAVES', capytest.saves_ok()),
                          ('saves 2', 'CAPY_SRC_SAVES2', capytest.saves_ok(capytest.SRC_SAVES2))):
         print(f'{label + ":":8} {os.environ.get(k) or "-"}' + ('' if ok else '   (MISSING: the tests that need it are skipped)'))

@@ -103,6 +103,9 @@ and stays open - mark the test `@T.test(xfail='what is wrong')` with a comment d
 | `test_43_gui_quality_pick.py` | gui | right-click "Change item quality" entries that ask first (rare / crafted / tempered names, which set / unique): the pick window opens over the editor (child of the main window, not of the menu), first entry selected, Escape closes it without a write, Enter twice makes the stash item rare; the same window on the Character tab |
 | `test_44_gui_move_page.py` | gui | right-click "Move to page... > Page N": a cell taken on the target page sends the item to that page's first free place (was a raw "overlaps" error + ERROR log line), a free cell keeps the position, the item's own page is greyed out |
 | `test_45_gui_hotkey_icons.py` | gui | Hotkeys page in both looks: every cell holding a skill shows an icon, a skill of another class (oskill from an item, e.g. the Assassin's Blink on the sample Necromancer) included; skipped without the game art |
+| `test_46_gui_check_tristate.py` | gui | Waypoints / Quests in both looks: a mode / act box with part of its rows ticked shows the "partly ticked" box (filled square, not the tick); clicking it ticks every row under it (pending, nothing written before SAVE) |
+| `test_47_gui_quantity_remove.py` | gui | right-click Quantity → Remove...: greyed out at quantity 0 (item without a quantity stat; it raised 0 to 1) and 1; removing more than there is stops at 1; the add / remove rule |
+| `test_48_gui_language_switch.py` | gui | More » Language at run time: the editor's own texts (toolbar, Character page tabs, Creator labels) change to French at once and come back to exactly the same texts in English |
 
 `--quick` runs the `engine` files only.
 
