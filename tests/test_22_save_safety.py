@@ -627,4 +627,49 @@ def copy_refuses_names_the_game_refuses():
             T.check(False, f'copy to {bad!r}: {type(e).__name__}: {e}')
 
 
+# ------------------------------------------------------------------------------------------ web-page import
+def _import_empty(name, folder):
+    E = eng()
+    import mxl_import
+    page = os.path.join(T.tmp(), 'empty-page.json')
+    with open(page, 'w') as f:
+        f.write('[]')
+    cls = next(iter(mxl_import.CLASS_INDEX))
+    return mxl_import.import_character(page, os.path.join(folder, 'XBone.d2s'), folder, name, E.data, cls_name=cls,
+                                       level=1, quests=[])
+
+
+@T.test
+def import_never_overwrites_other_files():
+    """An import whose name has a file left in the folder (the stash of a deleted character)."""
+    folder = T.fresh_saves()
+    orphan = os.path.join(folder, 'Newbie.stash')
+    with open(orphan, 'wb') as f:
+        f.write(b'orphan stash')
+    try:
+        _import_empty('Newbie', folder)
+    except Exception as e:
+        _ = e
+    T.eq(T.read(orphan), b'orphan stash', 'an existing Newbie.stash is not overwritten')
+
+
+@T.test
+def imported_character_starts_empty():
+    """A character imported from a page with no items holds no item of the character it was made from: no
+    mercenary items, no stash items, no achievement counters / signets (stats 88, 185, 186), no waypoints."""
+    E = eng()
+    folder = T.fresh_saves()
+    dst, _report = _import_empty('Newbie', folder)
+    T.check(not independent(dst), f'independent parser: {independent(dst)}')
+    ch = E.MC.Character(dst, E.data)
+    T.check(not ch.merc_hired, 'a mercenary of the template')
+    T.eq(len(ch.items), 0, 'items')
+    T.eq(len(ch.merc_items or ()), 0, 'mercenary items copied from the template')
+    st = os.path.join(folder, 'Newbie.stash')
+    n = len(E.save.parse_stash(st, E.data)) if os.path.exists(st) else 0
+    T.eq(n, 0, 'stash items copied from the template')
+    T.eq(sorted({s for s, _p, _v in ch.stats if s in (88, 185, 186)}), [], 'counters / signets of the template')
+    T.eq([n for n in E.MC.ALL_WAYPOINTS if n and any(ch.waypoint(d, n) for d in range(3))], [], 'waypoints')
+
+
 T.main(globals())

@@ -807,6 +807,17 @@ def new_character(template_path, name, cls_name, data):
         ch.set_stat(cur, v << 8)
     ch.skills = ch.skills[:2] + bytes(len(ch.skills) - 2)
     ch.items = []
+    # nothing else of the template's own progress or property: its mercenary (record and worn items - they
+    # were duplicated into the new character), a corpse, an iron golem item, the achievement counters and the
+    # signets used (stats 88, 185, 186), the waypoints
+    ch.head[0xB1:0xBF] = bytes(0xBF - 0xB1)
+    ch.merc_items = None
+    ch.corpse = b'JM\0\0'
+    if bytes(ch.tail[:2]) == b'kf':
+        ch.tail = b'kf\0'
+    ch.stats = [st for st in ch.stats if st[0] not in (88, 185, 186)]
+    for k in range(3):
+        ch.set_waypoints(k, set())
     for k in range(0x38, 0x78, 4):                # skill hot keys: none
         ch.head[k:k + 4] = struct.pack('<I', 0xFFFF)
     for k in range(0x78, 0x88):                   # left / right mouse skills: attack
@@ -954,8 +965,10 @@ def import_character(page_path, template_path, save_dir, name, data, cls_name=No
              name, cls_name, level, len(items), 'none' if no_build else 'page' if from_page else 'export',
              'export' if quests is None else sorted(quests), template_path)
     check_game_closed()
+    MC.check_name(name)
     dst = os.path.join(save_dir, name + '.d2s')
-    if os.path.exists(dst):
+    if os.path.exists(dst) or os.path.exists(os.path.join(save_dir, name + '.stash')):
+        # an existing <name>.stash (left by a deleted character) would be overwritten without a backup
         raise CharError(T('im.exists', '{name} already exists in the save folder', name=name))
     ch = new_character(template_path, name, cls_name, data)
     report = []
@@ -1035,8 +1048,8 @@ def import_character(page_path, template_path, save_dir, name, data, cls_name=No
             if n != len(stash_blobs):
                 raise EditError(T('im.err.stash_count', 'stash check after writing failed: item count'))
         commit_file(stash_dst, content, verify_stash, False)
-    elif os.path.exists(stash_src):
-        shutil.copy2(stash_src, os.path.join(save_dir, name + '.stash'))
+    # no stash items: no stash file (the game makes an empty one); the template's stash is not copied - its
+    # items were duplicated into the new character
     for fn in os.listdir(tmpl_dir):
         stem, ext = os.path.splitext(fn)
         if stem == tmpl and (ext.lower() in ('.key', '.map') or ext.lower().startswith('.ma')):
