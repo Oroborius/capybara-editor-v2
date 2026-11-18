@@ -673,6 +673,62 @@ class AttrPicker(tk.Frame):
             self.entry.selection_range(0, 'end')
 
 
+BOTTOM = 32           # px kept free at the screen's bottom (a panel / taskbar)
+
+
+def place(w, h, sw, sh, anchor, around=None, min_w=None, min_h=None, gap=2):
+    """(x, y, w, h) of a popup that wants w x h px on a sw x sh screen. anchor: (x, y, w, h) of the field it
+    belongs to (screen px); around: the list it fills, which it must not cover where the screen has room.
+    In order (the first two only with a list): beside the list (right, then left; top at the field's row),
+    below / above the list, below the field with the height cut to the room there, flipped above the field when
+    there is more room above. The
+    size never goes under min_w x min_h unless the screen itself is smaller. Computed once, when the popup
+    opens: nothing follows <Configure> (no layout loop)."""
+    usable = max(1, sh - BOTTOM)
+    w, h = max(1, min(w, sw - 16)), max(1, min(h, usable - 8))
+    min_w, min_h = min(min_w or w, w), min(min_h or h, h)
+    ax, ay, aw, ah = anchor
+    lx, ly, lw, lh = around if around else anchor
+
+    def cx(x, ww):
+        return max(0, min(x, sw - ww))
+
+    def cy(y, hh):
+        return max(0, min(y, usable - hh))
+    right, left = sw - (lx + lw + gap), lx - gap
+    if around and (right >= min_w or left >= min_w):
+        ww = min(w, right if right >= min_w else left)
+        x = lx + lw + gap if right >= min_w else lx - gap - ww
+        return x, cy(ay, h), ww, h
+    below, above = usable - (ly + lh + gap), ly - gap
+    if around and max(below, above) >= min_h:
+        if below >= min_h:
+            hh = min(h, below)
+            return cx(ax, w), ly + lh + gap, w, hh
+        hh = min(h, above)
+        return cx(ax, w), ly - gap - hh, w, hh
+    below, above = usable - (ay + ah), ay
+    if below >= min_h or below >= above:
+        hh = max(1, min(h, below))
+        return cx(ax, w), ay + ah, w, hh
+    hh = max(1, min(h, above))
+    return cx(ax, w), ay - hh, w, hh
+
+
+def _place_top(top, anchor, w, h, min_w, min_h):
+    """Puts a popup Toplevel by place(); anchor: a widget, an mxl_attr_slots.Anchor or None (centred)."""
+    sw, sh = top.winfo_screenwidth(), top.winfo_screenheight()
+    try:
+        if anchor is None:
+            raise tk.TclError('no anchor')
+        a = (anchor.winfo_rootx(), anchor.winfo_rooty(), anchor.winfo_width(), anchor.winfo_height())
+        x, y, w, h = place(w, h, sw, sh, a, getattr(anchor, 'around', None), min_w, min_h)
+    except (tk.TclError, AttributeError, TypeError):
+        w, h = min(w, sw - 16), min(h, sh - BOTTOM - 16)
+        x, y = max(0, (sw - w) // 2), max(0, (sh - h) // 3)
+    top.geometry(f'{w}x{h}+{x}+{y}')
+
+
 def popup(parent, data, on_pick, anchor=None, choices=None, title=None):
     """The picker in a small window of its own, placed under `anchor` (a widget) and kept on the screen;
     closes on pick or Escape. Returns the Toplevel (its .picker is the AttrPicker)."""
@@ -697,15 +753,7 @@ def popup(parent, data, on_pick, anchor=None, choices=None, title=None):
 
     top.picker = AttrPicker(top, data, on_pick=done, on_cancel=done, choices=choices, title=title)
     top.picker.pack(fill='both', expand=True)
-    w, h = m['ch'] * 78, m['row'] * 22
-    sw, sh = top.winfo_screenwidth(), top.winfo_screenheight()
-    w, h = min(w, sw - 16), min(h, sh - 48)
-    try:
-        x = anchor.winfo_rootx() if anchor is not None else (sw - w) // 2
-        y = anchor.winfo_rooty() + anchor.winfo_height() if anchor is not None else (sh - h) // 3
-    except tk.TclError:
-        x, y = (sw - w) // 2, (sh - h) // 3
-    top.geometry(f'{w}x{h}+{max(0, min(x, sw - w))}+{max(0, min(y, sh - h - 32))}')
+    _place_top(top, anchor, m['ch'] * 78, m['row'] * 22, m['ch'] * 48, m['row'] * 11)
     top.protocol('WM_DELETE_WINDOW', done)
     top.picker.entry.bind('<Tab>', top.picker._pick)       # Tab completes like Enter (the caller moves on)
     top.picker.focus_filter()
@@ -741,14 +789,7 @@ def popup_choices(parent, names, on_pick, anchor=None, current=None, title=None,
     top.picker.set(names, current)
     longest = max([len(str(n)) for n in names] or [20])
     w, h = m['ch'] * max(30, min(longest + 6, 70)), m['row'] * (min(max(len(names), 6), 18) + 3)
-    sw, sh = top.winfo_screenwidth(), top.winfo_screenheight()
-    w, h = min(w, sw - 16), min(h, sh - 48)
-    try:
-        x = anchor.winfo_rootx() if anchor is not None else (sw - w) // 2
-        y = anchor.winfo_rooty() + anchor.winfo_height() if anchor is not None else (sh - h) // 3
-    except tk.TclError:
-        x, y = (sw - w) // 2, (sh - h) // 3
-    top.geometry(f'{w}x{h}+{max(0, min(x, sw - w))}+{max(0, min(y, sh - h - 32))}')
+    _place_top(top, anchor, w, h, min(w, m['ch'] * 30), min(h, m['row'] * 9))
     top.protocol('WM_DELETE_WINDOW', done)
     top.picker.entry.bind('<Tab>', top.picker._pick)
     top.picker.focus_filter()
