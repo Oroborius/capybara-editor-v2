@@ -164,12 +164,13 @@ def weapon_damage_of_the_sample_characters():
     import mxl_char
     import mxl_tooltip
     import mxl_statscreen as SS
-    checked = 0
+    checked = present = 0
     for which in (1, 2):
         try:
             folder = T.fresh_saves(which)
         except T.Skip:
             continue
+        present += 1
         ch = mxl_char.Character(sorted(glob.glob(os.path.join(folder, '*.d2s')))[0], E.data)
         w = SS.active_weapon(ch, E.data)
         if w is None or w[0] not in (4, 5):
@@ -190,9 +191,11 @@ def weapon_damage_of_the_sample_characters():
         d = SS.weapon_damage(ch, E.data, tot, strength, 0)
         T.eq((d['min'], d['max']), (lo * (100 + pct) // 100, hi * (100 + pct) // 100), f'sample {which}: damage')
         T.eq(d['ed'][1], own[17], f'sample {which}: enhanced damage of weapon + sockets')
+        T.eq((d['min'], d['max']) > (0, 0) and d['name'] is not None, True, f'sample {which}: armed, not a dash')
         checked += 1
     if not checked:
         T.skip('no sample character holds a two-handed crossbow-class weapon in the active set')
+    T.eq(checked, present, 'every sample folder checked (both XBone samples hold a crossbow in slot 4 of set I)')
 
 
 T.main(globals())

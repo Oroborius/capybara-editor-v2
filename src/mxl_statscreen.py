@@ -1224,7 +1224,7 @@ class StatScreen:
             base = {299: 0, 300: 2}.get(sid, isc.get('op_base'))
             w = active_weapon(sim, data) if sid in (299, 300) else None
             per100 = (getattr(w[2], 'dmg_bonus', None) or (0, 0))[sid - 299] if w else 0
-            if (not items and not per100) or base not in (0, 2):
+            if (not items and w is None) or base not in (0, 2):     # with a weapon: its bonus, 0 % included
                 return None, T('ss.tip.class_rule', '{name} computed by the game from the class and the attribute.',
                                name=name), None
             attr = self.attr_total(base)
