@@ -105,6 +105,10 @@ and stays open - mark the test `@T.test(xfail='what is wrong')` with a comment d
 | `test_44_gui_move_page.py` | gui | right-click "Move to page... > Page N": a cell taken on the target page sends the item to that page's first free place (was a raw "overlaps" error + ERROR log line), a free cell keeps the position, the item's own page is greyed out |
 | `test_45_gui_hotkey_icons.py` | gui | Hotkeys page in both looks: every cell holding a skill shows an icon, a skill of another class (oskill from an item, e.g. the Assassin's Blink on the sample Necromancer) included; skipped without the game art |
 | `test_44_gui_save_safety.py` | gui | two-file moves (To stash, panel and Character tab) with the character or the stash write refused by the save check: neither file changes; Delete on the stash grid after the stash was written behind the window's back deletes nothing and re-reads the stash; Paste over an item / ethereal on stash and character items, then Ctrl+Z: the file bytes are back |
+| `test_46_gui_check_tristate.py` | gui | Waypoints / Quests in both looks: a mode / act box with part of its rows ticked shows the "partly ticked" box (filled square, not the tick); clicking it ticks every row under it (pending, nothing written before SAVE) |
+| `test_47_gui_quantity_remove.py` | gui | right-click Quantity → Remove...: greyed out at quantity 0 (item without a quantity stat; it raised 0 to 1) and 1; removing more than there is stops at 1; the add / remove rule |
+| `test_48_gui_language_switch.py` | gui | More » Language at run time: the editor's own texts (toolbar, Character page tabs, Creator labels) change to French at once and come back to exactly the same texts in English |
+| `test_49_gui_creator_title.py` | gui | Creator title: "name - base" only when the base is not already part of the name (no "Belt (Angelic) - Belt (Angelic)"), and at 800x600 a long title wraps inside the middle column instead of being cut |
 
 `--quick` runs the `engine` files only.
 
@@ -138,10 +142,12 @@ T.main(globals())
   prefix', under='Cascade prefix')`); message boxes and the simple dialogs are stubbed (`T.G.boxes`,
   `T.G.answers['int'] = 2`, `['askyesno'] = False`, `['file'] = path`). After every GUI test the harness fails it
   when the application printed a traceback, logged an `ERROR` line in `capybara.log` or tried to show an error box.
-- `CAPY_XFT=1`: GUI tests draw text with the Xft build of Tk, as the launcher does for users (`lib/xft/` in the
-  application folder, i.e. an AppDir built without `MXL_NO_XFT`); without it the harness imports tkinter first and
-  every GUI test runs on X core fonts (narrower text). `test_40_gui_creator_layout` fails at 800x600 with it
-  (docs/review/gui.md, finding 8).
+- Fonts: GUI tests draw text with the Xft build of Tk, as the launcher does for users, whenever the application
+  folder has it (`opt/python/lib/xft/`: an AppDir built without `MXL_NO_XFT`, or the cached
+  `.cache/tk-xft-9.0.4/lib*.so*` copied there). `CAPY_XFT=0` runs them on X core fonts (narrower text, what an
+  `MXL_NO_XFT=1` build gives); `CAPY_XFT=1` insists on Xft (the test process stops without it). The runner prints
+  which fonts it uses. The layout tests (30, 36, 40, 41, 49) were written against the core fonts first; they pass
+  with both (docs/review/gui.md, finding 8).
 - Menu entries are found by their English text (the copied settings are switched to English).
 - One Tk application per process: a GUI file is one process (per variant).
 

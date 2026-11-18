@@ -1575,12 +1575,12 @@ THEMES = {
     False: dict(bg='#f0f0f0', fg='#000000', entry='#ffffff', entry_fg='#000000', btn='#e1e1e1', frame_fg='#000000',
                 pane='#ffffff', pane_fg='#000000', tab='#e8e8e8', tab_fg='#000000', tab_sel='#ffffff',
                 box_fill='#ffffff', box_mark='#000000', box_dark='#404040', box_mid='#808080', box_light='#d4d0c8',
-                part_fill='#d4d0c8', part_mark='#808080', lock_fill='#b8b8b8', lock_mark='#404040'),
+                part_fill='#ffffff', part_mark='#000000', lock_fill='#b8b8b8', lock_mark='#404040'),
     # the game's own screen: dark stone with gold text
     True: dict(bg='#141008', fg='#d8c27a', entry='#0b0a08', entry_fg='#e0c880', btn='#2a2008', frame_fg='#d8c27a',
                pane='#191208', pane_fg='#e0c880', tab='#2a2008', tab_fg='#d8c27a', tab_sel='#4a3a14',
                box_fill='#0b0a08', box_mark='#d8c27a', box_dark='#5a4a20', box_mid='#8a7a4a', box_light='#c8b478',
-               part_fill='#3a2c12', part_mark='#d8c27a', lock_fill='#241d10', lock_mark='#a8945a'),
+               part_fill='#0b0a08', part_mark='#d8c27a', lock_fill='#241d10', lock_mark='#a8945a'),
 }
 
 
@@ -1598,7 +1598,9 @@ def _paint_box(im, kind, t):
     im.put(t['box_light'], to=(11, 1, 12, 12))
     im.put(t['box_light'], to=(1, 11, 12, 12))
     im.put(fill, to=(2, 2, 11, 11))
-    if mark:
+    if kind == 'part':                       # partly ticked: a filled square, not a tick (it read as all ticked)
+        im.put(mark, to=(4, 4, 9, 9))
+    elif mark:
         for x, y in ((3, 5), (3, 6), (3, 7), (4, 6), (4, 7), (4, 8), (5, 7), (5, 8), (5, 9), (6, 6), (6, 7),
                      (6, 8), (7, 5), (7, 6), (7, 7), (8, 4), (8, 5), (8, 6), (9, 3), (9, 4), (9, 5)):
             im.put(mark, to=(x, y, x + 1, y + 1))

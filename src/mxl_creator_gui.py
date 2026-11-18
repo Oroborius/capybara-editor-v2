@@ -168,6 +168,15 @@ def clean(name):
     return ' '.join(part.strip() for part in txt.split('\n') if part.strip())
 
 
+def title_text(name, base):
+    """Creator / Item Editor title: "name - base", only the name when it already says the base (a plain item's
+    name is its base: "Belt (Angelic) - Belt (Angelic)" before)."""
+    words = set(name.casefold().split())
+    if not base or all(x in words for x in base.casefold().split()):
+        return name
+    return f'{name} - {base}'
+
+
 STRETCH_CHARS = 12          # what a combobox that fills its column asks for (it gets the column's width)
 
 
@@ -450,7 +459,11 @@ class CreatorWindow:
 
         mid = self._mid = ttk.Frame(self.paned, padding=3)
         self.paned.add(mid, weight=4)
-        self.title = ttk.Label(mid, text='', font=('Segoe UI', 12, 'bold'))
+        self.title = ttk.Label(mid, text='', font=('Segoe UI', 12, 'bold'), justify='left')
+        # wrapped at the column's width: a long name takes two lines instead of being cut (and never makes the
+        # column ask for more room)
+        self.title.bind('<Configure>', lambda e: self._title_wrap(), add='+')
+        mid.bind('<Configure>', lambda e: self._title_wrap(), add='+')
         self.header = None
         if D2.CREATOR_ART and D2.active():                # D2 look: the game's stone, fonts and gear frame
             try:
@@ -470,6 +483,9 @@ class CreatorWindow:
         outer = ttk.Frame(bottom)
         outer.pack(fill='x', pady=(2, 0))
         row = ttk.Frame(outer)                           # copies / stash page
+        rowc, rowp = ttk.Frame(row), ttk.Frame(row)      # (side by side, or one above the other: too narrow)
+        rowc.grid(row=0, column=0, sticky='w')
+        rowp.grid(row=0, column=1, sticky='w')
         rowb = ttk.Frame(outer)                          # unrestricted / destination
         rowr = ttk.Frame(outer)                          # Close, Create
         # one line when the column is wide enough, else the buttons go under, else every group on its own line
@@ -477,17 +493,19 @@ class CreatorWindow:
         def fold(_e=None, st=[None], flips=[]):
             try:
                 W = outer.winfo_width()
-                a, b, c = row.winfo_reqwidth(), rowb.winfo_reqwidth(), rowr.winfo_reqwidth()
+                a = rowc.winfo_reqwidth() + rowp.winfo_reqwidth()       # side by side: not what row asks now
+                b, c = rowb.winfo_reqwidth(), rowr.winfo_reqwidth()
             except tk.TclError:
                 return
-            lines = 1 if (W <= 1 or a + b + c + 8 <= W) else (2 if a + b <= W else 3)
+            def need(W):
+                return 1 if (W <= 1 or a + b + c + 8 <= W) else (2 if a + b <= W else (3 if a <= W else 4))
+            lines = need(W)
             # Folding changes the width this column asks for, and the paned window answers by moving its
             # separators - which can unfold the row again: at 1280x720 the two layouts alternated for ever
             # (100 % CPU). So unfolding needs clearly more room than folding, and after a few switches within
             # a second the row stays as it is.
             if st[0] is not None and lines < st[0] and W > 1:
-                slack = 48
-                lines = 1 if a + b + c + 8 + slack <= W else (min(st[0], 2) if a + b + slack <= W else st[0])
+                lines = min(st[0], need(W - 48))
             if lines != st[0] and st[0] is not None:
                 import time
                 now = time.monotonic()
@@ -498,6 +516,8 @@ class CreatorWindow:
                     flips.append(now)
             if lines != st[0]:
                 st[0] = lines
+                rowp.grid(row=1 if lines == 4 else 0, column=0 if lines == 4 else 1, sticky='w')
+                lines = min(lines, 3)
                 for i in range(3):
                     outer.columnconfigure(i, weight=0)
                 outer.columnconfigure(1 if lines < 3 else 0, weight=1)
@@ -508,7 +528,7 @@ class CreatorWindow:
                 if lines == 2:
                     rowr.grid(row=1, column=0, columnspan=3, sticky='e')
         fold()
-        for w in (outer, row, rowb):
+        for w in (outer, rowc, rowp, rowb):
             w.bind('<Configure>', fold)
         self.btn_ok = D2.button(rowr, T('cr.btn.replace', 'Replace item') if self.edit_item else
                                 (T('cr.btn.create', 'Create') if self.target else T('cr.btn.create_stash', 'Create in stash')),
@@ -519,14 +539,14 @@ class CreatorWindow:
         self.copies = tk.IntVar(value=1)
         self._copies_widgets = []
         if self.edit_item is None and self.target is None:
-            ttk.Label(row, text=T('cr.copies', 'copies')).pack(side='left', padx=(2, 2))
-            self.copies_spin = ttk.Spinbox(row, from_=1, to=100, textvariable=self.copies, width=4)
+            ttk.Label(rowc, text=T('cr.copies', 'copies')).pack(side='left', padx=(2, 2))
+            self.copies_spin = ttk.Spinbox(rowc, from_=1, to=100, textvariable=self.copies, width=4)
             self.copies_spin.pack(side='left')
             self._copies_widgets = [self.copies_spin]
-        ttk.Label(row, text=T('cr.stash_page', 'Stash page')).pack(side='left', padx=(4, 0))
+        ttk.Label(rowp, text=T('cr.stash_page', 'Stash page')).pack(side='left', padx=(4, 0))
         self.page_current, self.page_first = T('cr.page.current', 'Current page'), T('cr.page.first_free', 'First free')
         self.page = tk.StringVar(value=self.page_current)
-        ttk.Combobox(row, state='readonly', width=14, textvariable=self.page,
+        ttk.Combobox(rowp, state='readonly', width=14, textvariable=self.page,
                      values=[self.page_current, self.page_first] + [str(i + 1) for i in range(STASH_PAGES)]).pack(side='left', padx=4)
         if settings.get('capy_unrestricted') is None:          # first start: unrestricted on (this build's point)
             settings.put('capy_unrestricted', True)
@@ -551,10 +571,14 @@ class CreatorWindow:
         self.opts.columnconfigure(1, weight=1)
         bar = ttk.Frame(body)
         bar.grid(row=1, column=0, sticky='we', pady=(2, 0))
-        ttk.Label(bar, text=T('cr.variable_values', 'Variable values'), font=('Segoe UI', 10, 'bold')).pack(side='left')
-        # at the left, right after the heading: in sight when the column is narrower than its widest row
+        self._vv_head = ttk.Label(bar, text=T('cr.variable_values', 'Variable values'), font=('Segoe UI', 10, 'bold'))
+        self._vv_head.grid(row=0, column=0, sticky='w')
+        # at the left, right after the heading (under it when the column is too narrow: _fit_opts)
+        self._vv_btns = ttk.Frame(bar)
+        self._vv_btns.grid(row=0, column=1, sticky='w')
+        self._vv_under = False
         for t, how in ((T('cr.btn.min', 'Min'), 'min'), (T('cr.btn.random', 'Random'), 'random'), (T('cr.btn.max', 'Max'), 'max')):
-            D2.button(bar, t, lambda h=how: self.reroll(h), 6).pack(side='left', padx=(4, 0))
+            D2.button(self._vv_btns, t, lambda h=how: self.reroll(h), 6).pack(side='left', padx=(4, 0))
 
         class _Mods:
             pass
@@ -628,9 +652,80 @@ class CreatorWindow:
         try:
             walk(self.scroll.inner)
             self._slots_fit()
+            self._fit_opts()
         except tk.TclError:
             pass
         self.scroll.refit(fresh=False)                   # re-fitted content may need the scrollbar no more
+
+    def _title_wrap(self):
+        try:
+            w = max(120, self._mid.winfo_width() - 10)
+            if int(str(self.title.cget('wraplength')) or 0) != w:
+                self.title.configure(wraplength=w)
+        except (tk.TclError, ValueError, AttributeError):
+            pass
+
+    def _fit_opts(self):
+        """The options grid at the column's width: a row whose label and field do not fit side by side gets its
+        field on a line of its own under the label (a small window, big fonts: 800x600 with the Xft fonts users
+        get), and the Min / Random / Max buttons go under their heading. Decided from the column's width and
+        the widgets' requested widths only - neither depends on this layout (the column's scroll area asks for
+        a fixed width; its content is a canvas window) - so a second call changes nothing: no layout loop."""
+        try:
+            W = self.scroll.canvas.winfo_width()
+        except (tk.TclError, AttributeError):
+            return
+        if W <= 50:                                      # not on screen yet: side by side (fitted on <Configure>)
+            W = 1 << 20
+        try:
+            under = self._vv_head.winfo_reqwidth() + self._vv_btns.winfo_reqwidth() + 4 > W
+            if under != self._vv_under:
+                self._vv_under = under
+                self._vv_btns.grid(row=1 if under else 0, column=0 if under else 1, sticky='w',
+                                   padx=(8, 0) if under else 0)
+        except (tk.TclError, AttributeError):
+            pass
+
+        def pad(info):
+            p = info.get('padx', 0)
+            p = p if isinstance(p, (tuple, list)) else str(p).split()
+            return sum(int(float(x)) for x in p) if isinstance(p, (tuple, list)) else int(float(p or 0))
+        rows = {}                                        # logical row -> [label or None, [fields]]
+        for c in self.opts.grid_slaves():
+            info = getattr(c, '_cr_grid', None)
+            if info is None:                             # as render_options put it (logical row numbers)
+                info = c._cr_grid = {k: v for k, v in c.grid_info().items() if k != 'in'}
+                c._cr_stacked = None
+            ent = rows.setdefault(int(info['row']), [None, []])
+            if int(info['column']) == 0 and int(info.get('columnspan', 1)) == 1:
+                ent[0] = c
+            else:
+                ent[1].append(c)
+        if not rows:
+            return
+        need = {r: sum(f.winfo_reqwidth() + pad(f._cr_grid) for f in fs) for r, (_l, fs) in rows.items()}
+        labw = {r: (l.winfo_reqwidth() + pad(l._cr_grid)) if l is not None else 0 for r, (l, _f) in rows.items()}
+        stacked = set()
+        for _ in range(3):                               # the label column is as wide as its widest label
+            col0 = max([labw[r] for r in rows if r not in stacked and rows[r][1]] or [0])
+            now = {r for r, (l, fs) in rows.items() if l is not None and fs and col0 + need[r] > W}
+            if now == stacked:
+                break
+            stacked = now
+        for r, (l, fs) in rows.items():
+            st = r in stacked
+            for c in ([l] if l is not None else []) + fs:
+                if c._cr_stacked is st:
+                    continue
+                c._cr_stacked = st
+                info = dict(c._cr_grid)
+                info['row'] = 2 * r
+                if st and c is l:
+                    info['columnspan'] = 2
+                elif st:                                 # indented under its label when there is room
+                    info.update(row=2 * r + 1, column=0, columnspan=2,
+                                padx=(12, 0) if need[r] - pad(c._cr_grid) + 12 <= W else 0)
+                c.grid(**info)
 
     def _resashed(self, e):
         """The window changed width: the columns keep their shares (until a separator is dragged by hand)."""
@@ -987,7 +1082,7 @@ class CreatorWindow:
         cr, d, q, code = self.cr, self.data, spec['quality'], spec['code']
         spec['unrestricted'] = bool(self.unrestricted.get())     # free values: used by mods() / validate() / build()
         b = d.base(code)
-        self.title.configure(text=f"{clean(cr.describe(spec))} - {clean(b.name)}")
+        self.title.configure(text=title_text(clean(cr.describe(spec)), clean(b.name)))
         f = self.opts
         r = 0
         NONE = none_label()
@@ -1007,13 +1102,13 @@ class CreatorWindow:
             host = f
             if tail is not None:
                 host = ttk.Frame(f)
-                host.grid(row=rr, column=1, sticky='w', pady=2)
+                host.grid(row=rr, column=1, sticky='we' if stretch else 'w', pady=2)
             if search and len(values) > LONG_LIST:       # affixes, socket fillers...: type to search
                 c = self._name_field(host, values, var, lambda: on_change(values.index(var.get()))
                                      if var.get() in values else None, 12 if stretch else min(width, 24),
                                      label.strip(), clip=stretch)
                 if tail is not None:
-                    c.pack(side='left')
+                    c.pack(side='left', fill='x' if stretch else None, expand=stretch)
                     tail(host)
                 else:
                     c.grid(row=rr, column=1, sticky='we' if stretch else 'w', pady=2)
@@ -1021,11 +1116,11 @@ class CreatorWindow:
             # stretched: it asks for little and takes the column's width (40 characters asked for made the column
             # wider than an 800x600 window had room for); its list opens as wide as its longest entry
             c = ttk.Combobox(host, state='readonly', values=values, textvariable=var,
-                             width=STRETCH_CHARS if stretch and tail is None else width)
+                             width=STRETCH_CHARS if stretch else width)
             if stretch:
                 wide_popdown(c)
             if tail is not None:
-                c.pack(side='left')
+                c.pack(side='left', fill='x' if stretch else None, expand=stretch)
                 tail(host)
             else:
                 c.grid(row=rr, column=1, sticky='we' if stretch else 'w', pady=2)
@@ -1097,7 +1192,7 @@ class CreatorWindow:
                 curl = next((clean(n) for c_, n in opts if c_ == cur), EMPTY)
                 n = next((j for j, x in enumerate(filled) if x['kind'] == 'pick' and x['slot'] == k), None)
                 combo(T('cr.socket_n', '  Socket {n}', n=k + 1), vals, curl,
-                      lambda i, k=k, opts=opts: self.set_socket(k, None if i == 0 else opts[i - 1][0]), 30, False,
+                      lambda i, k=k, opts=opts: self.set_socket(k, None if i == 0 else opts[i - 1][0]),
                       tail=None if n is None else (lambda host, n=n: self._filler_x(host, n)))
             for k, x in enumerate(kept):
                 rr = row(T('cr.socket_n', '  Socket {n}', n=n_pick + k + 1))
@@ -1143,7 +1238,7 @@ class CreatorWindow:
                 lst = names[kind]
                 vals = [clean(t) for _, t in lst]
                 cur = next((clean(t) for i, t in lst if i == rn[n]), vals[0] if vals else '')
-                combo(lab, vals, cur, lambda i, n=n, lst=lst: self.set_rare_name(n, lst[i][0]), 30, False)
+                combo(lab, vals, cur, lambda i, n=n, lst=lst: self.set_rare_name(n, lst[i][0]))
             for kind, key, lab in ((('magicprefix', 'rare_prefixes', T('cr.prefix', 'Prefix')), ('magicsuffix', 'rare_suffixes', T('cr.suffix', 'Suffix')))
                                    if q != 'tempered' else ()):
                 ch = cr.affix_choices(kind, code, spec['ilvl'], rare=True)
@@ -1172,7 +1267,8 @@ class CreatorWindow:
             box.grid(row=rr, column=1, sticky='we', pady=2)
             box.columnconfigure(0, weight=1)
             var = tk.StringVar(value=cur)
-            c = ttk.Combobox(box, state='readonly', values=vals, textvariable=var, width=STRETCH_CHARS)
+            # (asks for less than the other boxes: the button beside it has to fit too - it takes the rest)
+            c = ttk.Combobox(box, state='readonly', values=vals, textvariable=var, width=STRETCH_CHARS - 4)
             c.grid(row=0, column=0, sticky='we')
             wide_popdown(c)
             self.scroll.no_wheel(c)
@@ -1199,6 +1295,7 @@ class CreatorWindow:
             else:
                 rr = row(T('cr.base_defense', 'Base defense'))
                 ttk.Label(f, text=T('cr.def_fixed', '{v} (fixed: Enhanced Defense)', v=lo)).grid(row=rr, column=1, sticky='w')
+        self._fit_opts()
         self.render_mods()
         self.refresh()
 
@@ -1387,7 +1484,8 @@ class CreatorWindow:
         table = self.edit_item is not None and (unr or raw_extra)
         if not mods and not raw_extra and not unr and not table:
             self._slots_drop()
-            ttk.Label(inner, text=T('cr.no_variable', 'No variable values: everything on this item is fixed.')).grid(row=0, column=0, sticky='w')
+            ttk.Label(inner, text=T('cr.no_variable', 'No variable values: everything on this item is fixed.'),
+                      wraplength=self._wrap_w(), justify='left').grid(row=0, column=0, sticky='w')
             return
         r = 0
         if raw_extra and not unr and not table:
@@ -1621,8 +1719,9 @@ class CreatorWindow:
             box = self._slots_box = tk.Frame(parent, bg=pal['bg'])
             AP.exempt(box)
             box.columnconfigure(0, weight=1)
-            tk.Label(box, text=T('cr.slots.title', "Magic Attributes (the item's own stat list)"), font=m['bold'],
-                     bg=pal['bg'], fg=pal['fg_hi'], anchor='w').grid(row=0, column=0, sticky='we')
+            self._slots_title = tk.Label(box, text=T('cr.slots.title', "Magic Attributes (the item's own stat list)"),
+                                         font=m['bold'], bg=pal['bg'], fg=pal['fg_hi'], anchor='w', justify='left')
+            self._slots_title.grid(row=0, column=0, sticky='we')
             lf = tk.Frame(box, bg=pal['bg'])
             lf.grid(row=1, column=0, sticky='we')
             try:
@@ -1630,7 +1729,7 @@ class CreatorWindow:
             except (AttributeError, tk.TclError):
                 pane_h = 0
             shown = max(7, min(12, pane_h // m['row'] - 5)) if pane_h > 50 else 10
-            self.slots = AS.AttrSlots(lf, self.data, self, click_opens=True, rows_shown=shown, chars=30,
+            self.slots = AS.AttrSlots(lf, self.data, self, click_opens=True, rows_shown=shown, chars=20,
                                       wheel_pass=True)
             hint = self._slots_hint = tk.Label(
                 box, font=m['font'], bg=pal['bg'], fg=pal['dim'], anchor='w', justify='left',
@@ -1668,7 +1767,8 @@ class CreatorWindow:
         w = self._wrap_w()
         try:
             self._slots_hint.configure(wraplength=w)
-            self.slots.cv.configure(width=max(self.slots.m['ch'] * 30, w - self.slots.sb.winfo_reqwidth() - 4))
+            self._slots_title.configure(wraplength=w)
+            self.slots.cv.configure(width=max(self.slots.m['ch'] * 20, w - self.slots.sb.winfo_reqwidth() - 4))
         except tk.TclError:
             pass
 
@@ -1964,8 +2064,8 @@ class CreatorWindow:
         texts = cr.orange_texts()
         if not texts:
             return r
-        ttk.Label(parent, text=T('cr.orange.title', 'Unique orange text (display + hidden)'),
-                  font=('Segoe UI', 10, 'bold')).grid(row=r, column=0, columnspan=2, sticky='w', pady=(8, 0))
+        ttk.Label(parent, text=T('cr.orange.title', 'Unique orange text (display + hidden)'), justify='left',
+                  wraplength=self._wrap_w(), font=('Segoe UI', 10, 'bold')).grid(row=r, column=0, columnspan=2, sticky='w', pady=(8, 0))
         r += 1
         labels = [t['label'] for t in texts]
         st = {'i': 0}
@@ -1990,14 +2090,16 @@ class CreatorWindow:
 
         box = ttk.Frame(parent)
         box.grid(row=r, column=0, columnspan=2, sticky='we', pady=1)
+        box.columnconfigure(1, weight=1)                 # the fields take the column's width, asking for little
         ttk.Label(box, text=T('cr.orange.display', 'display')).grid(row=0, column=0, sticky='w')
         dvar, hvar = tk.StringVar(value=labels[0]), tk.StringVar()
         hid = {'choices': []}
-        cb = self._name_field(box, labels, dvar, lambda: sync(), 34, T('cr.orange.title', 'Unique orange text (display + hidden)'))
-        cb.grid(row=0, column=1, sticky='w', padx=(4, 2))
+        cb = self._name_field(box, labels, dvar, lambda: sync(), 16, T('cr.orange.title', 'Unique orange text (display + hidden)'),
+                              clip=True)
+        cb.grid(row=0, column=1, sticky='we', padx=(4, 2))
         ttk.Label(box, text=T('cr.orange.hidden', 'hidden')).grid(row=1, column=0, sticky='w')
-        hb = self._name_field(box, lambda: hid['choices'], hvar, None, 34, T('cr.orange.hidden', 'hidden'))
-        hb.grid(row=1, column=1, sticky='w', padx=(4, 2))
+        hb = self._name_field(box, lambda: hid['choices'], hvar, None, 16, T('cr.orange.hidden', 'hidden'), clip=True)
+        hb.grid(row=1, column=1, sticky='we', padx=(4, 2))
         # the paired effects: the other attributes the game's own source row writes with this text
         # (the counter / oskill grant / companion block that make it true). Multi-select; every
         # selected entry is written into the item's stat list next to the text, where it shows up
@@ -2006,7 +2108,7 @@ class CreatorWindow:
         eff = tk.Listbox(box, selectmode='extended', height=3, exportselection=False,
                          activestyle='none')
         eff.grid(row=2, column=1, sticky='we', padx=(4, 2))
-        eff.configure(width=36)
+        eff.configure(width=16)
         self.scroll.no_wheel(eff)
         rng = cr.stat_bounds(texts[0]['display']['id']) or (0, 1)
         vv = tk.IntVar(value=texts[0]['display']['value'])
@@ -2069,7 +2171,9 @@ class CreatorWindow:
                             + (T('cr.orange.effects', ' + {n} effect stat(s)', n=n_fx) if n_fx else ''))
             self.render_options()
         sync()
-        D2.button(last, T('cr.orange.add', '+ Add orange text'), add, 8).pack(side='left', padx=(6, 0))
+        # under the value: beside it the row was wider than the column at 800x600 (Xft fonts, scale 1.25)
+        D2.button(box, T('cr.orange.add', '+ Add orange text'), add, 8).grid(row=4, column=1, sticky='w', padx=(4, 2),
+                                                                             pady=(2, 0))
         return r + 1
 
     # ----------------------------------------------- the item's own stats (edit mode)
@@ -2898,6 +3002,7 @@ def run():
     mxl_d2_theme.install_toggle(mxl_gui.App)
     import mxl_toolbar                     # the top bar at every width: what does not fit goes into "More"
     mxl_toolbar.install(mxl_gui.App)
+    import mxl_lang; mxl_lang.install(mxl_gui.App)   # live language switch: the editor's own texts follow
     import mxl_app_icon
     mxl_app_icon.install(mxl_gui.App)
     mxl_splash.install(mxl_gui.App)       # last: outermost, closes the splash once everything is built

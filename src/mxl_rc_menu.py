@@ -281,7 +281,8 @@ def _quantity_menu(menu, data, code, cur, set_fn):
                   command=lambda: set_fn(base.stack_max))
     q.add_command(label=rc('q.min', 'Min (1)'), command=lambda: set_fn(1))
     q.add_command(label=rc('q.add', 'Add...'), command=lambda: _quantity_ask(menu, data, code, cur, +1, set_fn))
-    q.add_command(label=rc('q.remove', 'Remove...'), command=lambda: _quantity_ask(menu, data, code, cur, -1, set_fn))
+    q.add_command(label=rc('q.remove', 'Remove...'), command=lambda: _quantity_ask(menu, data, code, cur, -1, set_fn),
+                  state='normal' if cur > 1 else 'disabled')        # nothing to remove: the least quantity is 1
     menu.add_cascade(label=rc('q.title', 'Quantity (now {n})', n=cur), menu=q)
 
 
@@ -295,7 +296,8 @@ def _cluster_quantity_menu(menu, cur, set_fn):
     q.add_command(label=rc('q.add', 'Add...'),
                   command=lambda: _cluster_quantity_ask(menu, cur, +1, set_fn))
     q.add_command(label=rc('q.remove', 'Remove...'),
-                  command=lambda: _cluster_quantity_ask(menu, cur, -1, set_fn))
+                  command=lambda: _cluster_quantity_ask(menu, cur, -1, set_fn),
+                  state='normal' if cur > 1 else 'disabled')        # quantity 0 / 1: "Remove" raised 0 to 1
     menu.add_cascade(label=rc('q.title', 'Quantity (now {n})', n=cur), menu=q)
 
 
@@ -304,12 +306,14 @@ def _cluster_quantity_ask(menu, cur, sign, set_fn):
     root = _owner(menu)
     v = simpledialog.askinteger(rc('q.title2', 'Quantity'),
                                 rc('q.ask_add' if sign > 0 else 'q.ask_remove', 'Add how many (now {n}, 1 to {m})?' if sign > 0 else
-                                   'Remove how many (now {n}, 1 to {m})?', n=cur, m=CLUSTER_QUANTITY_MAX),
-                                parent=root, initialvalue=max(1, CLUSTER_QUANTITY_MAX - cur) if sign > 0 else cur,
-                                minvalue=1, maxvalue=CLUSTER_QUANTITY_MAX)
+                                   'Remove how many (now {n}, 1 to {m})?', n=cur, m=_most(cur, sign, CLUSTER_QUANTITY_MAX)),
+                                parent=root, initialvalue=_most(cur, sign, CLUSTER_QUANTITY_MAX),
+                                minvalue=1, maxvalue=_most(cur, sign, CLUSTER_QUANTITY_MAX))
     if v is None:
         return
-    set_fn(max(1, min(CLUSTER_QUANTITY_MAX, cur + sign * v)))
+    new = _quantity_after(cur, sign, v, CLUSTER_QUANTITY_MAX)
+    if new != cur:
+        set_fn(new)
 
 
 def _quantity_ask(menu, data, code, cur, sign, set_fn):
@@ -318,12 +322,26 @@ def _quantity_ask(menu, data, code, cur, sign, set_fn):
     root = _owner(menu)
     v = simpledialog.askinteger(rc('q.title2', 'Quantity'),
                                 rc('q.ask_add' if sign > 0 else 'q.ask_remove', 'Add how many (now {n}, 1 to {m})?' if sign > 0 else
-                                   'Remove how many (now {n}, 1 to {m})?', n=cur, m=base.stack_max),
-                                parent=root, initialvalue=max(1, base.stack_max - cur) if sign > 0 else cur,
-                                minvalue=1, maxvalue=base.stack_max)
+                                   'Remove how many (now {n}, 1 to {m})?', n=cur, m=_most(cur, sign, base.stack_max)),
+                                parent=root, initialvalue=_most(cur, sign, base.stack_max),
+                                minvalue=1, maxvalue=_most(cur, sign, base.stack_max))
     if v is None:
         return
-    set_fn(max(1, min(base.stack_max, cur + sign * v)))
+    new = _quantity_after(cur, sign, v, base.stack_max)
+    if new != cur:
+        set_fn(new)
+
+
+def _most(cur, sign, top):
+    """The most that Add... (up to the cap) / Remove... (down to 1) can take: what the dialog offers."""
+    return max(1, top - cur) if sign > 0 else max(1, cur - 1)
+
+
+def _quantity_after(cur, sign, v, top):
+    """Quantity after adding / removing v: within 1..top, and Remove never raises it (quantity 0 of an item
+    without the stat stays 0 - it went to 1), Add never lowers it."""
+    new = max(1, min(top, cur + sign * v))
+    return min(new, cur) if sign < 0 else max(new, cur)
 
 
 def _set_quantity(app, it, newq):

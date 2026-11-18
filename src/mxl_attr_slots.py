@@ -279,13 +279,15 @@ class AttrSlots:
         """Column edges in pixels, from the list's width and the font: x (clear the slot) | number | text |
         value | level | name. The x column is the first one and has a fixed width: every x lines up."""
         ch = self.m['ch']
-        w = max(self.cv.winfo_width(), ch * 30)
+        w = max(self.cv.winfo_width(), ch * 24)    # (the Creator at 800x600 and UI scale 1.25: ~27 characters)
         x_del = int(ch * 2.2)
         x_num = x_del + int(ch * 3.2)
         w_val, w_lvl = ch * 7, int(ch * 4.5)
         w_name = int(max(ch * 11, min(ch * 24, w * 0.24)))
         if w < ch * 52:                           # a narrow list (the creator at 800x600): the text keeps more
             w_val, w_lvl, w_name = ch * 6, ch * 4, ch * 9
+            if w < ch * 30:                       # narrower still: the columns right of the text give way
+                w_val, w_lvl, w_name = ch * 5, ch * 3, ch * 6
         x_name = w - w_name
         x_lvl = x_name - w_lvl
         x_val = x_lvl - w_val
@@ -328,11 +330,16 @@ class AttrSlots:
         hd.delete('all')
         ty = rh // 2
         hd.create_text(c['num'], ty, text='#', anchor='e', font=fb, fill=pal['fg'])
-        hd.create_text(c['text'], ty, text=he('col.attr', 'Attribute'), anchor='w', font=fb, fill=pal['fg'])
-        hd.create_text(c['lvl'] - 3, ty, text=he('col.value', 'Value'), anchor='e', font=fb, fill=pal['fg'])
+        val_h = he('col.value', 'Value')
+        hd.create_text(c['text'], ty, text=self._elide(he('col.attr', 'Attribute'),
+                                                      c['lvl'] - 3 - fb.measure(val_h) - c['text'] - 4, fb),
+                       anchor='w', font=fb, fill=pal['fg'])
+        hd.create_text(c['lvl'] - 3, ty, text=val_h, anchor='e', font=fb, fill=pal['fg'])
         hd.create_text(c['name'] - 3, ty, text=he('col.level', 'Lvl'), anchor='e', font=fb, fill=pal['fg'])
-        hd.create_text(c['name'] + 3, ty, text=he('col.param', 'Skill / param'), anchor='w', font=fb,
-                       fill=pal['fg'])
+        par = he('col.param', 'Skill / param')
+        if fb.measure(par) > c['w'] - c['name'] - 6:          # a narrow list: the short heading, else cut with ..
+            par = self._elide(he('col.param_short', 'Param'), c['w'] - c['name'] - 6, fb)
+        hd.create_text(c['name'] + 3, ty, text=par, anchor='w', font=fb, fill=pal['fg'])
         text_w = c['val'] - c['text'] - ch
         for n, r in enumerate(self.rows):
             y = n * rh
