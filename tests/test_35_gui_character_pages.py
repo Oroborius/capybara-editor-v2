@@ -1136,6 +1136,71 @@ def file_changed_behind_the_editor_is_not_overwritten():
     T.check(not cw.dirty(), 'still unsaved changes after SAVE')
 
 
+def other_writer(c):
+    """Someone else (as the game on save & exit) changes the stash gold of the file; nothing tells the editor.
+    -> the expected delta of that change."""
+    import mxl_char
+    other = mxl_char.Character(c.path, G.app.data)
+    gold = other.field('gold_stash')
+    theirs = gold - 4321 if gold >= 4321 else gold + 4321
+    other.set_field('gold_stash', theirs)
+    other.save(backup=False)
+    T.check(T.read(c.path) != c.before['raw'], 'the other writer did not change the file')
+    return {'stats': {(15, 0): (gold or None, theirs or None)}}
+
+
+@T.test
+def item_action_on_the_tab_after_a_change_on_disk():
+    """The file changes behind the editor, then an item is deleted from the Character tab's own Inventory page
+    (right-click menu): the action used to change the tab's older copy and Character.save (mxl_free) wrote that
+    copy over the file - the other writer's change was gone. Now the tab reads the file again when the item is
+    picked: the item goes, the other change stays, the pending page edits stay pending and SAVE writes them."""
+    cw = start('stats')
+    c = Ctx()
+    exp, shown = edit_all(cw)
+    where, k = inventory_item()
+    show(cw, 'inventory')
+    cw.merc.set(False)
+    cw.on_view()
+    theirs = other_writer(c)
+    T.invoke(T.chartab_menu(where), 'Delete')
+    T.pump(8)
+    no_boxes('delete after the change on disk')
+    c.after('delete after the change on disk', theirs, gone=[k])
+    still(shown, 'after the item action')
+    T.check(cw.dirty(), 'the Character tab lost its unsaved state')
+    stone(cw, 'save_progress')
+    no_boxes('SAVE')
+    c.after('SAVE after the item action', merge(exp, theirs), gone=[k])
+
+
+@T.test
+def item_action_refused_when_the_file_changes_after_the_pick():
+    """The menu is opened (item picked from the file as it was), THEN the file changes on disk, then Delete is
+    chosen: the tab's copy is out of date, so nothing is written - the other writer's file stays as it is, the
+    tab reads it again, says so, and keeps the pending page edits."""
+    cw = start('stats')
+    c = Ctx()
+    exp, shown = edit_all(cw)
+    where, k = inventory_item()
+    show(cw, 'inventory')
+    cw.merc.set(False)
+    cw.on_view()
+    m = T.chartab_menu(where)
+    theirs = other_writer(c)
+    written = T.read(c.path)
+    T.invoke(m, 'Delete')
+    T.pump(8)
+    T.check(T.read(c.path) == written, 'the item action wrote its out-of-date copy over the changed file')
+    c.after('refused item action', theirs, views=False)
+    T.check(bytes(cw.ch.raw) == written, 'the Character tab did not read the changed file again')
+    T.check('#e06060' in str(cw.status.cget('foreground')), f'no error shown: {cw.status.cget("text")!r}')
+    still(shown, 'after the refused item action')
+    stone(cw, 'save_progress')
+    no_boxes('SAVE')
+    c.after('SAVE after the refused item action', merge(exp, theirs))
+
+
 @T.test
 def stash_tab_write_then_save_without_pending_edits():
     """Nothing pending: after an item action of the panel the Character tab simply shows the new file, and its

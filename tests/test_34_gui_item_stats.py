@@ -527,4 +527,31 @@ def param_stat_value_typed_with_a_plain_value():
     T.eq(it.w.pending, {}, 'pending values after the write')
 
 
+@T.test
+def value_edit_after_the_file_changed_on_disk():
+    """Character tab: the Item stats tab is open on a worn item, then someone else (as the game) changes the
+    character file. The value edit must go onto the item of the file as it is now, and the other writer's change
+    must stay (it used to be refused once, and the next edit then wrote the file WITHOUT the edit, reporting it
+    written: the tab's entry belonged to the older read)."""
+    if TARGET != 'tab':
+        T.skip('the Character tab only (the panel refuses an out-of-date pick by itself)')
+    import mxl_char
+    it = Item()
+    before = it.stats()
+    i, new = it.editable_slot()
+    sid = before[i][0]
+    other = mxl_char.Character(it.path, G.app.data)
+    gold = other.field('gold_stash')
+    theirs = gold - 4321 if gold >= 4321 else gold + 4321
+    other.set_field('gold_stash', theirs)
+    other.save(backup=False)
+    it.set_value(i, new)
+    T.pump()
+    ch = mxl_char.Character(it.path, G.app.data)
+    T.eq(ch.field('gold_stash'), theirs, 'the other writer\'s change (stash gold)')
+    after = it.stats()
+    T.eq(sorted(after), sorted(before[:i] + [(sid, None, new)] + before[i + 1:]), f'stats on disk after setting stat {sid} to {new}')
+    T.check(bytes(T.chartab().ch.raw) == T.read(it.path), 'the Character tab does not hold the file on disk')
+
+
 T.main(globals())

@@ -361,4 +361,62 @@ def mercenary_item_make_ethereal_or_perfect():
     view(False)
 
 
+def hot(what, where, merc=False):
+    """A shortcut (Ctrl+V ...) with the mouse pointer over a place: the pointer lookup is replaced by the event."""
+    import mxl_rc_menu
+    view(merc)
+    e = T.chartab_ev(where) if HOLDER == 'tab' else T.panel_ev(where)
+    win = T.chartab() if HOLDER == 'tab' else G.app.inventory.as_win()
+    saved = mxl_rc_menu._canvas_at_pointer
+    mxl_rc_menu._canvas_at_pointer = lambda canvases: e
+    try:
+        mxl_rc_menu._char_hot(win, what)
+    finally:
+        mxl_rc_menu._canvas_at_pointer = saved
+    T.pump(4)
+
+
+@T.test
+def mercenary_paste_onto_an_empty_slot():
+    """Cut a mercenary item, then paste it back onto his now EMPTY slot: by the right-click menu, then (cut again)
+    by Ctrl+V with the pointer over the empty slot. Both used to do nothing (the menu had no Paste entry on an
+    empty slot, Ctrl+V said "paste onto an inventory cell or an occupied slot")."""
+    import mxl_char
+    ch = mxl_char.Character(G.app.character_file(), G.app.data)
+    if not ch.merc_hired or not ch.entries(True):
+        T.skip('the sample character has no mercenary items')
+    where = first(lambda e, rec, b: e.it['location'] == SLOT, 'mercenary item', merc=True)
+    k = key_of(where, merc=True)
+    c = Ctx()
+    for how in ('menu', 'Ctrl+V'):
+        T.invoke(menu(where, merc=True), 'Cut')
+        c.after(gone=[k], what=f'cut of the mercenary item ({how})')
+        T.check(G.app._capy_clip is not None, 'nothing in the clipboard after Cut')
+        if how == 'menu':
+            labels = T.menu_labels(menu(where, merc=True))
+            T.check(any(lab.startswith('Paste here') for lab in labels), f'no Paste entry on the empty slot: {labels}')
+            if any(lab.startswith('Paste here') for lab in labels):
+                T.invoke(menu(where, merc=True), 'Paste here')
+        else:
+            hot('paste', where, merc=True)
+        now = c.after(what=f'paste onto the empty mercenary slot ({how})')
+        T.check(k in now, f'{how}: nothing in the mercenary slot after the paste')
+        if k in now:
+            T.eq(now[k][1], c.snap[k][1], f'{how}: bytes of the item after cut + paste at its own slot')
+    view(False)
+
+
+@T.test
+def character_paste_onto_an_empty_slot():
+    """The same on the character: an equipped item cut and pasted back onto its empty slot with Ctrl+V."""
+    where = first(lambda e, rec, b: e.it['location'] == SLOT and e.it['equipped'] in (1, 3, 8, 9, 10), 'helm / armor / belt / boots / gloves')
+    k = key_of(where)
+    c = Ctx()
+    T.invoke(menu(where), 'Cut')
+    c.after(gone=[k], what='cut of an equipped item')
+    hot('paste', where)
+    now = c.after(what='Ctrl+V onto the empty slot')
+    T.check(k in now and now[k][1] == c.snap[k][1], 'the item is not back in its slot as it was')
+
+
 T.main(globals())

@@ -86,6 +86,7 @@ and stays open - mark the test `@T.test(xfail='what is wrong')` with a comment d
 | `test_35_launch.py` | launch | `AppRun` started as a user does, closes itself (`MXL_EXIT_AFTER`) |
 | `test_36_gui_character_layout.py` | gui | Character tab pages in both looks at 1280x720, 800x600 and UI scales 1.25 / 1.5: open, go idle (no layout loop), image buttons follow the scale; status-bar count |
 | `test_36_gui_fill_sockets_char.py` | gui | "Fill sockets with ..." on character and mercenary items, from the Stash-tab panel and the Character tab |
+| `test_37_gui_merc_view.py` | gui | light look: the base-game character screen shows no ring frames on the mercenary view |
 
 `--quick` runs the `engine` files only.
 
