@@ -145,10 +145,14 @@ def section_rows(data, stat_list, entries, title=None, spare=None):
 
 
 class Anchor:
-    """A screen rectangle with the three widget calls the picker popups place themselves by."""
+    """A screen rectangle with the widget calls the picker popups place themselves by; around: the screen
+    rectangle (x, y, w, h) of the list the popup must not cover (mxl_attr_picker.place)."""
 
-    def __init__(self, x, y, h):
-        self.x, self.y, self.h = x, y, h
+    def __init__(self, x, y, h, w=1, around=None):
+        self.x, self.y, self.h, self.w, self.around = x, y, h, w, around
+
+    def winfo_width(self):
+        return self.w
 
     def winfo_rootx(self):
         return self.x
@@ -382,11 +386,24 @@ class AttrSlots:
         return x0 + 1, n * rh, x1 - x0 - 1, rh
 
     def anchor(self, n=None, field='text'):
-        """Where a popup for slot n belongs on the screen: right under the slot's cell."""
+        """Where a popup for slot n belongs on the screen: the slot's cell, and the list around it (header +
+        rows), which the popup keeps clear of where the screen has room."""
         n = self.sel if n is None else n
-        x, y, _w, h = self._cell_box(n or 0, field)
+        x, y, w, h = self._cell_box(n or 0, field)
         try:
-            return Anchor(self.cv.winfo_rootx() + x, self.cv.winfo_rooty() + int(y - self.cv.canvasy(0)), h)
+            cv, hd = self.cv, self.hdr
+            top = min(cv.winfo_rooty(), hd.winfo_rooty()) if hd.winfo_ismapped() else cv.winfo_rooty()
+            left, right, bot = cv.winfo_rootx(), cv.winfo_rootx() + cv.winfo_width(), cv.winfo_rooty() + cv.winfo_height()
+            p = cv.master                                 # only the part shown (a scrolled pane cuts it) counts
+            while p is not None:
+                px, py = p.winfo_rootx(), p.winfo_rooty()
+                left, right = max(left, px), min(right, px + p.winfo_width())
+                top, bot = max(top, py), min(bot, py + p.winfo_height())
+                if p is cv.winfo_toplevel():
+                    break
+                p = p.master
+            around = (left, top, max(1, right - left), max(1, bot - top))
+            return Anchor(cv.winfo_rootx() + x, cv.winfo_rooty() + int(y - cv.canvasy(0)), h, max(1, w), around)
         except tk.TclError:
             return None
 
