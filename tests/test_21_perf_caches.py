@@ -7,7 +7,11 @@
 - mxl_diskcache: the key changes when a table file changes (size or mtime), when a file is added, with the
   language; a stored value comes back only under its own key.
 - the art cache's "not in any archive" markers: a second lookup of a missing member opens no archive; a new
-  game version (another stamp) removes them with the rest of the raw cache."""
+  game version (another stamp) removes them with the rest of the raw cache.
+- mxl_speed.free_spot: the same place as the collector's free_spot (sample stash, a stash filled up item by
+  item, random page lists, the item itself in the list), much faster on a full stash.
+- mxl_speed.icon_layers: the same layer images as mxl_gfx.icon_layers, a fresh copy per call; mxl_d2look._source
+  (decoded panel art kept between cell sizes): the same pixels as a fresh decode, bounded in size."""
 import json
 import os
 import random
@@ -186,6 +190,119 @@ def missing_art_is_remembered_until_the_game_changes():
     T.check(not os.path.exists(raw) or not any(n.endswith('.none') for n in os.listdir(raw)),
             'the markers survived a new game version')
     shutil.rmtree(root, ignore_errors=True)
+
+
+
+@T.test(needs=('user', 'saves'))
+def fast_free_spot_same_answer():
+    import glob
+    import mxl_speed as FS
+    E = T.engine()
+    save, data = E.save, E.data
+    orig = getattr(save.free_spot, 'original', save.free_spot)
+    FS._state['orig'] = orig
+    stash = sorted(glob.glob(os.path.join(os.environ['MXL_SAVE_DIR'], '*.stash')))
+    if not stash:
+        T.skip('no .stash in the sample')
+    path = stash[0]
+    raw = T.read(path)
+    items = save.parse_stash(path, data)
+    probes = []
+    seen = set()
+    for it in items:                                  # one probe per item size
+        size = data.base(it['code']).size
+        if size not in seen:
+            seen.add(size)
+            probes.append(save.blob_item(save.item_blob(raw, it), data))
+    rnd = random.Random(7)
+    page_lists = [range(0, 10), [3, 1, 0], [9], [12, -1, 2], (p for p in (4, 5)), [], [0, 0]]
+    n = 0
+    placed = list(items)
+    for step in range(60):                            # fill the stash: every answer must stay the same
+        for probe in probes:
+            for pages in page_lists + [rnd.sample(range(10), 4)]:
+                pl = list(pages)
+                want = orig(placed, probe, data, pl)
+                got = FS.free_spot(placed, probe, data, pl)
+                n += 1
+                if want != got:
+                    T.eq(got, want, f'free spot of {probe["code"]!r} on pages {pl} with {len(placed)} items')
+                    return
+        own = placed[rnd.randrange(len(placed))]      # the item itself is ignored by both
+        T.eq(FS.free_spot(placed, own, data), orig(placed, own, data), 'free spot of an item of the list')
+        small = probes[step % len(probes)]
+        spot = orig(placed, small, data, rnd.sample(range(10), 10))
+        if spot is None:
+            break
+        new = dict(small)
+        new['page'], new['x'], new['y'] = spot
+        placed.append(new)
+    print(f'  {n} searches compared, {len(placed)} items at the end')
+    big = list(placed)                                # speed on the filled list
+    t0 = time.perf_counter()
+    for probe in probes[:3]:
+        orig(big, probe, data)
+    t1 = time.perf_counter()
+    for probe in probes[:3]:
+        FS.free_spot(big, probe, data)
+    t2 = time.perf_counter()
+    print(f'  {len(big)} items: collector {1000 * (t1 - t0):.0f} ms, fast {1000 * (t2 - t1):.0f} ms')
+    T.check(t2 - t1 <= max(0.05, (t1 - t0)), 'the fast free_spot is not faster')
+
+
+
+@T.test(needs=('user', 'saves'))
+def icon_layers_cache_same_images():
+    import glob
+    import mxl_gfx
+    import mxl_speed as FS
+    from paths import ICONS_DIR
+    E = T.engine()
+    orig = getattr(mxl_gfx.icon_layers, 'original', mxl_gfx.icon_layers)
+    FS._state['icon_orig'] = orig
+    FS._layers.clear()
+    path = sorted(glob.glob(os.path.join(os.environ['MXL_SAVE_DIR'], '*.stash')))[0]
+    items = E.save.parse_stash(path, E.data)
+    n = 0
+    for it in items[:120]:
+        for bg in ('#000000', '#3a1010'):
+            want = orig(it, E.data, bg, ICONS_DIR)
+            for _ in range(2):                            # computed, then from the cache
+                got = FS.icon_layers(it, E.data, bg, ICONS_DIR)
+                if want is None or got is None:
+                    T.eq(got is None, want is None, f'icon layers of {it["code"]!r}')
+                    continue
+                T.eq(sorted(got), sorted(want), f'layer numbers of {it["code"]!r}')
+                for k, im in want.items():
+                    g = got.get(k)
+                    if im is None or g is None:
+                        T.eq(g is None, im is None, f'layer {k} of {it["code"]!r}')
+                        continue
+                    T.check((g.mode, g.size, g.tobytes()) == (im.mode, im.size, im.tobytes()),
+                            f'layer {k} of {it["code"]!r} differs from mxl_gfx.icon_layers')
+                    n += 1
+                if got.get(1) is not None:
+                    got[1].paste((255, 0, 255, 255), (0, 0, 4, 4))   # a caller's change stays its own
+    T.check(n > 100, f'only {n} layers compared')
+    T.check(len(FS._layers) <= FS.ICON_KEEP, 'the icon cache is over its bound')
+
+
+@T.test
+def decoded_panel_art_same_pixels():
+    import glob
+    from PIL import Image
+    T.engine()
+    import mxl_d2look as D
+    pngs = sorted(glob.glob(os.path.join(T.SRC_USER, 'ui_art', '*', '*.png')))[:40]
+    if not pngs:
+        T.skip('no ui_art PNG in the fixture')
+    D._sources.clear()
+    for p in pngs + pngs[:5]:
+        a = D._source(p)
+        b = Image.open(p).convert('RGBA')
+        T.check((a.mode, a.size, a.tobytes()) == (b.mode, b.size, b.tobytes()), f'{os.path.basename(p)}: other pixels')
+    total = sum(x.width * x.height * 4 for x in D._sources.values())
+    T.check(total <= D._SOURCES_MAX or len(D._sources) == 1, f'{total} bytes kept (bound {D._SOURCES_MAX})')
 
 
 T.main(globals())

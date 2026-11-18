@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import sys
+import threading
 
 VERSION = 1
 
@@ -109,12 +110,16 @@ def save(name, k, value):
     p = path(name)
     if not p:
         return False
+    tmp = f'{p}.{os.getpid()}.{threading.get_ident()}.tmp'
     try:
         os.makedirs(os.path.dirname(p), exist_ok=True)
-        tmp = f'{p}.{os.getpid()}.tmp'
         with open(tmp, 'w', encoding='utf-8') as f:
             json.dump({'key': k, 'value': value}, f, separators=(',', ':'))
-        os.replace(tmp, p)
+        os.replace(tmp, p)              # (Windows: refused while another editor reads the file - no cache this time)
         return True
     except (OSError, TypeError, ValueError):
+        try:                            # a half-written or unplaced temporary file never stays in the folder
+            os.remove(tmp)
+        except OSError:
+            pass
         return False

@@ -105,7 +105,7 @@ class _Equipped:
 class _Char:
     """Just what weapon_damage / active_weapon read: the head (active weapon set) and the equipped items."""
     def __init__(self, items, set2=False):
-        self.head = bytearray(0x80)
+        self.head = bytearray(0x150)
         self.head[0x10] = 1 if set2 else 0
         self._eq = {slot: _Equipped(it) for slot, it in items.items()}
 
@@ -271,6 +271,157 @@ def totals_page_attack_rating_equals_page_one():
     T.eq(_check_pages_agree(E, page, name)[0], ar1, f'{name}: attack rating of the screenshot')
     if not checked:
         T.skip('no sample character')
+
+
+# ---- game-data review (docs/review/game-data.md): per-level stats, 442, poison units, resistances, table caps
+def _totals(stats):
+    """A totals dict as char_totals makes it, every stat from one equipped item: {stat id: value}."""
+    tot = {'stats': {}, 'by': {'equip': {}, 'charms': {}, 'sets': {}}, 'n': {}, 'error': None}
+    for sid, v in stats.items():
+        tot['stats'][(sid, None)] = {'id': sid, 'param': None, 'value': v}
+        tot['by']['equip'][(sid, None)] = v
+        tot['n'][sid] = 1
+    return tot
+
+
+def _isc_op(E, sid):
+    """(op, op param, op base, op stats) of a stat, read straight from the itemstatcost record (offset 84)."""
+    import struct
+    r = E.data._rows('itemstatcost')[sid]
+    return r[84], r[85], struct.unpack_from('<H', r, 86)[0], [t for t in struct.unpack_from('<3H', r, 88) if t != 0xFFFF]
+
+
+@T.test
+def per_level_stats_come_from_the_game_table():
+    """218 "+max damage per level" (op 4, level >> 5 -> 22 / 24 / 160) and 203 "Weapon Physical Damage per level"
+    (-> 25) were not counted in the damage; the per-level map is now read from itemstatcost."""
+    E = T.engine()
+    import mxl_statscreen as SS
+    T.eq(_isc_op(E, 218), (4, 5, 12, [22, 24, 160]), 'itemstatcost 218')
+    T.eq(_isc_op(E, 203), (2, 5, 12, [25]), 'itemstatcost 203')
+    m = SS.per_level_map(E.data)
+    T.eq(m.get(218), ((22, 24, 160), 5), '218 in the map')
+    for pl, target in SS.PER_LEVEL.items():
+        T.eq(target in m.get(pl, ((), 0))[0], True, f'per-level stat {pl} -> {target} still there')
+    tot = _totals({218: 64, 22: 7})
+    T.eq(SS.item_sum(tot, E.data, 22, 80), 7 + (64 * 80 >> 5), 'item_sum of max damage at level 80')
+    T.eq(SS.item_sum(tot, E.data, 24, 80), 64 * 80 >> 5, 'two-hand max damage gets it too')
+
+
+def _dagger(E):
+    """A one-handed weapon whose type has a dexterity bonus and no strength bonus (the Druid's dagger class)."""
+    for code, b in sorted(E.data.bases.items()):
+        d = getattr(b, 'damage', None) or {}
+        if any(d.get('one_hand') or ()) and not any(d.get('two_hand') or ()) and not any(d.get('throw') or ()) \
+                and tuple(b.dmg_bonus or (0, 0)) == (0, 11):
+            return code, b
+    T.skip('no one-handed weapon with a 0 / 11 damage bonus')
+
+
+@T.test
+def weapon_damage_counts_per_level_and_strength_bonus_items():
+    """Weapon damage with every item stat that feeds it, numbers written out by hand:
+    max damage 218 = 64 at level 80 -> +160; W. physical damage 25 = 10 + 203 = 32 at level 80 (+80) -> 90 %;
+    442 = 256 with strength 300 -> +300 %; 300 = 128 with dexterity 500 -> +250 %; the dagger's 11 % per 100
+    dexterity -> +55 %. Total +695 %."""
+    E = T.engine()
+    import mxl_statscreen as SS
+    T.eq(_isc_op(E, 442), (2, 8, 0, [25]), 'itemstatcost 442: (value x strength) >> 8 into stat 25')
+    T.eq(_isc_op(E, 300), (2, 8, 2, [25]), 'itemstatcost 300: (value x dexterity) >> 8 into stat 25')
+    code, b = _dagger(E)
+    blo, bhi = b.damage['one_hand']
+    ch = _Char({4: {'code': code, 'quality': 'normal'}})
+    tot = _totals({218: 64, 25: 10, 203: 32, 442: 256, 300: 128})
+    d = SS.weapon_damage(ch, E.data, tot, 300, 500, level=80)
+    T.eq(d['pct'], 695, 'damage %')
+    T.eq(d['flat'], (0, 160), '+min / +max')
+    T.eq((d['min'], d['max']), (blo * 795 // 100, (bhi + 160) * 795 // 100), 'damage')
+    T.eq(d['wpd'], 90, 'weapon physical damage with the per-level part')
+    ch.level = 80                                  # the default level is the character's
+    T.eq(SS.weapon_damage(ch, E.data, tot, 300, 500)['flat'], (0, 160), 'level from the character')
+
+
+def _row(E, page, kind, stat):
+    import mxl_statscreen as SS
+    for el in SS.screen_table(E.data):
+        if el['page'] == page and el['type'] == kind and el['stat'] == stat and not el['flags'] & SS.F_BASE:
+            return el
+    T.skip(f'no row for stat {stat} on page {page + 1}')
+
+
+@T.test
+def page_two_strength_bonus_row_counts_442():
+    """Page 2 "Str. Damage Bonus" (stat 299 in the table): 442 "Additional Strength Damage Bonus" counts like 299."""
+    E = T.engine()
+    import mxl_statscreen as SS
+    code, _b = _dagger(E)
+    ch = _Char({4: {'code': code, 'quality': 'normal'}})
+    ch.cls, ch.level, ch.stats = 5, 81, []
+    page = _page(E, ch, _totals({442: 64}))
+    page.attr_total = lambda sid: {0: 400, 2: 843}.get(sid, 0)
+    T.eq(page.game_value(_row(E, 1, SS.T_STAT_BONUS, 299))[0], f'{64 * 400 >> 8}%', 'Str. Damage Bonus')
+    T.eq(page.game_value(_row(E, 1, SS.T_STAT_BONUS, 300))[0], f'{11 * 843 // 100}%', 'Dex. Damage Bonus (dagger)')
+
+
+@T.test
+def poison_damage_is_shown_in_points_not_256ths():
+    """Page 2 poison row: 768-1280 (raw 256ths of a point per frame, the user's screenshot) is shown the way the item
+    tooltip states poison: raw x frames / 256, lengths of the poison items averaged (two items 100 + 150 frames ->
+    125): 768 x 125 / 256 = 375, 1280 x 125 / 256 = 625."""
+    E = T.engine()
+    import mxl_statscreen as SS
+    tot = _totals({57: 768, 58: 1280, 59: 250})
+    tot['n'][59] = 2
+    T.eq(SS.poison_damage(tot), (375, 625, 125, (768, 1280)), 'poison_damage')
+    ch = _Char({})
+    ch.cls, ch.level, ch.stats = 5, 81, []
+    page = _page(E, ch, tot)
+    T.eq(page.game_value(_row(E, 1, SS.T_STAT, 57))[0], '375', 'page 2 min poison')
+    T.eq(page.game_value(_row(E, 1, SS.T_STAT, 58))[0], '625', 'page 2 max poison')
+    T.eq(SS.poison_damage(_totals({})), None, 'no poison')
+
+
+@T.test
+def resistances_get_the_difficulty_penalty_and_the_cap():
+    """Page 1 resistances: sum + the penalty of the difficulty the save was last in (header 0xA8, 0x80 bit;
+    difficultylevels.bin first field: 0 / -30 / -70 in Sigma), capped at 75 + maximum resist (at most 95).
+    Before: the raw sum (110 % / 120 % on the user's screenshot)."""
+    E = T.engine()
+    import struct
+    import mxl_statscreen as SS
+    pens = [struct.unpack_from('<i', r, 0)[0] for r in E.data._rows('difficultylevels')]
+    T.eq(pens, [0, -30, -70], 'difficultylevels.bin resistance penalties')
+    ch = _Char({})
+    ch.cls, ch.level, ch.stats = 5, 81, []
+    T.eq(SS.difficulty_of(ch), None, 'no difficulty byte set')
+    ch.head[0xA8 + 2] = 0x80
+    T.eq(SS.difficulty_of(ch), 2, 'Hell')
+    page = _page(E, ch, _totals({39: 110, 43: 120, 40: 5, 41: 50, 45: 300, 46: 30}))
+    T.eq(page.derived('fire_res')[0], '40%', 'fire 110 - 70')
+    T.eq(page.derived('cold_res')[0], '50%', 'cold 120 - 70')
+    T.eq(page.derived('light_res')[0], '-20%', 'lightning 50 - 70')
+    T.eq(page.derived('poison_res')[0], '95%', 'poison 300 - 70 capped at 75 + 30 -> 95')
+    ch.head[0xA8 + 2] = 0
+    ch.head[0xA8] = 0x80
+    T.eq(page.derived('fire_res')[0], '80%', 'Normal: 110 capped at 75 + 5')
+    T.eq(page.derived('cold_res')[0], '75%', 'Normal: 120 capped at 75')
+
+
+@T.test
+def table_caps_are_applied():
+    """Rows of the game's table with a cap (absorb %: 40) do not show more than the cap."""
+    E = T.engine()
+    import mxl_statscreen as SS
+    rows = [el for el in SS.screen_table(E.data) if el['cap'] and el['type'] == SS.T_STAT]
+    if not rows:
+        T.skip('no row with a cap')
+    el = rows[0]
+    ch = _Char({})
+    ch.cls, ch.level, ch.stats = 5, 81, []
+    page = _page(E, ch, _totals({el['stat']: el['cap'] + 15}))
+    T.eq(page.game_value(el)[0], f"{el['cap']}%", 'capped')
+    page = _page(E, ch, _totals({el['stat']: el['cap'] - 1}))
+    T.eq(page.game_value(el)[0], f"{el['cap'] - 1}%", 'below the cap')
 
 
 T.main(globals())

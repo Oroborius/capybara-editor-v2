@@ -102,6 +102,12 @@ def skill_name(data, sid):
         return T('hk.attack', 'Attack')
     nm = data.skill_names.get(sid) or ''
     if not nm or 'OLAR BUFFALO' in nm.upper():
+        try:                                      # a hidden helper skill: the name derived from what it does
+            import mxl_statnames
+            nm = mxl_statnames.hidden_skill_name(data, sid) or ''
+        except Exception:
+            nm = ''
+    if not nm:
         nm = T('skill.unknown', 'skill #{id}', id=sid)
     return nm
 

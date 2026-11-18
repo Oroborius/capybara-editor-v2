@@ -19,14 +19,19 @@ sys.path.insert(0, HERE)
 def find_save_dir():
     home = os.path.expanduser('~')
     prefixes = [os.environ.get('WINEPREFIX'), os.path.join(home, '.wine')]
+    # (glob.escape: a home or prefix folder with [ ] in its name is a pattern otherwise and matches nothing)
     for pat in ('Games/*', '.local/share/bottles/bottles/*', '.var/app/com.usebottles.bottles/data/bottles/bottles/*',
                 '.local/share/lutris/runners/wine/prefixes/*', '.steam/steam/steamapps/compatdata/*/pfx',
-                '.local/share/Steam/steamapps/compatdata/*/pfx'):
-        prefixes += sorted(glob.glob(os.path.join(home, pat)))
+                '.local/share/Steam/steamapps/compatdata/*/pfx',
+                # (looked at after the ones above, so a folder found there before still wins)
+                '.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/compatdata/*/pfx',   # Flatpak Steam
+                'Games/Heroic/Prefixes/default/*', '.PlayOnLinux/wineprefix/*'):
+        prefixes += sorted(glob.glob(os.path.join(glob.escape(home), pat)))
     for p in prefixes:
         if not p:
             continue
-        found = sorted(glob.glob(os.path.join(p, 'drive_c', 'users', '*', 'AppData', 'Roaming', 'MedianXL', 'save')))
+        found = sorted(glob.glob(os.path.join(glob.escape(p), 'drive_c', 'users', '*', 'AppData', 'Roaming',
+                                              'MedianXL', 'save')))
         found = [f for f in found if os.path.isdir(f)]
         if found:
             return found[0]

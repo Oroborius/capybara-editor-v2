@@ -8,6 +8,7 @@
 Every write goes through the collector's safe writers (game closed, verification, .bak backup). When an item
 crosses between two files and the second write fails, the first file is put back as it was."""
 import os
+import threading
 import tkinter as tk
 from tkinter import ttk, messagebox
 
@@ -112,7 +113,7 @@ def d2_panel_without(path, boxes, wset=False):
                 patch.paste(piece.transpose(Image.FLIP_LEFT_RIGHT) if i % 2 else piece, (px, 0))
             patch = _match_light(patch, src, (x, y, w, h))
             im.paste(patch, (x, y), _fade_mask(w, h, D2_COVER_WSET_FADE))
-        tmp = f'{out}.{os.getpid()}.tmp'
+        tmp = f'{out}.{os.getpid()}.{threading.get_ident()}.tmp'
         im.save(tmp, 'PNG')
         os.replace(tmp, out)
         return out
@@ -1006,11 +1007,12 @@ class MainInventory:
             self.ch.remove(e, src_merc)
             bak_c = self._save_char()
         except ERRORS as err:
+            note = ''
             try:                                          # character not written: stash back as it was
                 commit_file(path, before, lambda tmp: None, backup=False)
-            except Exception:
-                pass
-            self._error(T('ch.btn.to_stash', 'To stash'), err)
+            except Exception as rb:
+                note = MC.rollback_note(path, rb)
+            self._error(T('ch.btn.to_stash', 'To stash'), f'{err}{note}')
             return
         self.selected = None
         self._done(T('inv.moved_stash', '{item} moved to {file}, page {page} ({x}, {y})', item=name, file=os.path.basename(path),
@@ -1051,11 +1053,12 @@ class MainInventory:
             bak_s = edit_stash(src, self.data, remove=[cur['_offset']], backup=app.needs_backup(src))
             app.backup_made(src, bak_s)
         except ERRORS as err:
+            note = ''
             try:                                          # stash not written: character back as it was
                 commit_file(self.ch.path, before_char, lambda tmp: None, backup=False)
-            except Exception:
-                pass
-            self._error(T('inv.to_char', 'To character'), err)
+            except Exception as rb:
+                note = MC.rollback_note(self.ch.path, rb)
+            self._error(T('inv.to_char', 'To character'), f'{err}{note}')
             return
         app.selected = None
         self._done(T('inv.moved_char', '{item} moved to the {dest} of {name}', item=name, dest=self._dest(where, merc),

@@ -62,6 +62,8 @@ _state = {'checked': False, 'art': None, 'error': None, 'off': False,
           'char_checked': False, 'char_art': None, 'char_error': None, 'char_off': False}
 _photos = {}
 _tags = {}
+_sources = {}               # (path, size, mtime) -> decoded RGBA image: a resize scales the same PNGs again
+_SOURCES_MAX = 12 * 2 ** 20   # bytes of decoded pixels kept (the two big panels are ~1.4 MB each)
 
 
 # ---------------------------------------------------------------------------------------------- availability
@@ -152,13 +154,34 @@ def photo(path, size=None, crop=None, tag=None):
     if tag and key not in _photos:
         _tags[key] = tag
     if key not in _photos:
-        im = Image.open(path).convert('RGBA')
+        im = _source(path)
         if crop:
             im = im.crop(crop)
         if size and (im.width, im.height) != tuple(size):
             im = im.resize((max(1, int(size[0])), max(1, int(size[1]))), Image.LANCZOS)
         _photos[key] = ImageTk.PhotoImage(im)
     return _photos[key]
+
+
+def _source(path):
+    """The PNG decoded to RGBA, remembered (least recently used dropped beyond _SOURCES_MAX bytes): photo() is
+    called for the same panel art at every cell size, and decoding the big panels was a quarter of its time.
+    The image is only read from (crop / resize / PhotoImage make new ones)."""
+    from PIL import Image
+    try:
+        st = os.stat(path)
+        key = (path, st.st_size, st.st_mtime_ns)
+    except (OSError, TypeError, ValueError):
+        return Image.open(path).convert('RGBA')
+    im = _sources.pop(key, None)
+    if im is None:
+        im = Image.open(path).convert('RGBA')
+    _sources[key] = im                                   # most recent last
+    total = sum(x.width * x.height * 4 for x in _sources.values())
+    while total > _SOURCES_MAX and len(_sources) > 1:
+        old = _sources.pop(next(iter(_sources)))
+        total -= old.width * old.height * 4
+    return im
 
 
 def gear_photo(index, k):
@@ -175,8 +198,9 @@ def draw_text(cv, x, y, text, k=1.0, font='font16', color=GOLD_TXT, anchor='cent
         if all(ord(c) in glyphs for c in text):
             p = a.text(text, font, color)
             from PIL import Image
-            im = Image.open(p)
-            img = photo(p, (max(1, round(im.width * k)), max(1, round(im.height * k))), tag='main')
+            with Image.open(p) as im:                    # only its size: the file is closed at once (Windows)
+                iw, ih = im.size
+            img = photo(p, (max(1, round(iw * k)), max(1, round(ih * k))), tag='main')
             return cv.create_image(x, y, image=img, anchor=anchor, tags=tags)
     except Exception:
         pass

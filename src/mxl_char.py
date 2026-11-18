@@ -1085,6 +1085,8 @@ class Character:
             bak = commit_file(self.path, content, verify, backup)
         except EditError as e:
             raise CharError(str(e))
+        except OSError as e:
+            raise write_error(self.path, e)
         self.raw = content
         self.parse(content)
         return bak
@@ -1097,6 +1099,34 @@ class Character:
         struct.pack_into('<I', self.head, off, value)
 
 
+def write_error(path, err):
+    """CharError for an OSError of the safe writer (Windows: the file is read-only or held open by another program,
+    disk full...): the callers show CharError in a box, an OSError would only reach the log. The writer's temporary
+    file (<file>.tmp, left behind when the final rename fails) is removed."""
+    tmp = f'{path}.tmp'
+    try:
+        if os.path.isfile(tmp):
+            os.remove(tmp)
+    except OSError:
+        pass
+    return CharError(T('ch.err.write', '{file} could not be written: {error}', file=os.path.basename(str(path)),
+                       error=err))
+
+
+def rollback_note(path, err):
+    """Logged with its traceback (call it in the `except` of the failed roll-back) and returned as the text to add
+    to the error box: a transfer between two files wrote the first one, the second failed, and putting the first one
+    back failed too."""
+    try:
+        import mxl_log
+        mxl_log.log.exception('roll-back of %s FAILED', path)
+    except Exception:
+        pass
+    return T('ch.err.rollback', '\n\nPutting {file} back as it was failed too ({error}): the item may now be in '
+             'both files. Check them; the backups ("Compare with backup...") hold the previous files.',
+             file=os.path.basename(str(path)), error=err)
+
+
 def blob_item(blob, data):
     from mxl_save import blob_item as _bi
     return _bi(blob, data)
@@ -1106,11 +1136,14 @@ def copy_character(path, new_name, data):
     """Copies a character (save, map, key and stash files) under a new name. Returns the new .d2s path."""
     from mxl_save import check_game_closed
     check_game_closed()
-    if not (2 <= len(new_name) <= 15) or not all(c.isalpha() or c in '-_' for c in new_name):
-        raise CharError(T('ch.err.name', 'name: 2 to 15 letters (- and _ allowed)'))
+    check_name(new_name)            # the game's rule (A-Z only: any other letter is refused by the game / latin1)
     folder = os.path.dirname(path)
     dst = os.path.join(folder, new_name + '.d2s')
-    if os.path.exists(dst):
+    # every file the copy makes, compared without case (the game runs on Windows / Wine: XBone.key is xbone.key),
+    # so a leftover <new name>.stash of a deleted character is never overwritten nor taken over
+    taken = {fn.lower() for fn in os.listdir(folder)}
+    wanted = [new_name + '.d2s'] + [new_name + os.path.splitext(fn)[1] for fn in companion_files(path)]
+    if any(w.lower() in taken for w in wanted):
         raise CharError(T('ch.err.exists', '{name} already exists', name=new_name))
     c = Character(path, data)
     c.head[0x14:0x24] = new_name.encode('latin1').ljust(16, b'\0')
