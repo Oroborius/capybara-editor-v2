@@ -300,4 +300,23 @@ def unknown_things_stay_raw():
                 f'skill {sid}: a grey line because of {word} expected, got {tip.reasons}')
 
 
+@T.test
+def hidden_skills_have_a_derived_name_not_a_number():
+    """Skills without a name string (helper skills the formulas refer to, e.g. skill('...'.syn2) of Way of the
+    Spider) show the derived '... (hidden #id)' name of mxl_statnames, not 'skill #2045' (skill tooltips, skill
+    tree, hotkeys)."""
+    E = T.engine()
+    sd = SD()
+    import mxl_hotkeys
+    t = sd.tables(E.data)
+    unnamed = [k for k in range(len(t.sk)) if not E.data.skill_names.get(k) and t.desc_index(k) is None][:40]
+    if not unnamed:
+        T.skip('every skill has a name')
+    for k in unnamed:
+        nm = t.name(k)
+        T.eq(nm.startswith('skill #'), False, f'skill {k}: {nm!r}')
+        T.eq(f'#{k})' in nm, True, f'skill {k}: marked hidden ({nm!r})')
+        T.eq(mxl_hotkeys.skill_name(E.data, k), nm, f'skill {k}: hotkeys name')
+
+
 T.main(globals())

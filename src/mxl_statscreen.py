@@ -283,9 +283,10 @@ def char_totals(ch, data):
       no set item of Median XL Sigma has one) and the partial (2 to 5 pieces) and full bonuses of the game's sets
       table.
     {'stats': {(id, param): stat dict, value summed over the sources}, 'by': {source: {(id, param): value}},
-     'defense': defense of the armour pieces, 'items' / 'charms' / 'set_pieces': counts, 'error': str or None}."""
-    out = {'stats': {}, 'by': {k: {} for k in SOURCES}, 'defense': 0, 'items': 0, 'charms': 0, 'set_pieces': 0,
-           'set_skipped': 0, 'error': None}
+     'n': {stat id: number of item stats summed}, 'defense': defense of the armour pieces,
+     'items' / 'charms' / 'set_pieces': counts, 'error': str or None}."""
+    out = {'stats': {}, 'by': {k: {} for k in SOURCES}, 'n': {}, 'defense': 0, 'items': 0, 'charms': 0,
+           'set_pieces': 0, 'set_skipped': 0, 'error': None}
 
     def add(src, s, scale=1):
         sid, val = s.get('id'), s.get('value')
@@ -293,6 +294,8 @@ def char_totals(ch, data):
             return
         k = (sid, s.get('param'))
         out['by'][src][k] = out['by'][src].get(k, 0) + val * scale
+        if scale == 1:
+            out['n'][sid] = out['n'].get(sid, 0) + 1
         if k in out['stats']:
             out['stats'][k]['value'] += val * scale
         elif scale == 1:
@@ -406,14 +409,45 @@ def total_of(tot, sid, param=None, src=None):
     return sum(v for (i, p), v in tot['by'][src].items() if i == sid and (param is None or p == param))
 
 
+ISC_OP = 84                           # itemstatcost record: op, op param, op base (u16), op stat 1-3 (u16)
+LEVEL_STAT = 12
+
+
+def per_level_map(data):
+    """{per-level stat: (target stats, shift)} read from the game's itemstatcost table: every stat whose op is 2 or 4
+    (value x op base >> op param added to the op stats) with the character level (stat 12) as op base - e.g. 218
+    "+max damage per level" feeds 22, 24 and 160. PER_LEVEL (one target each) when the table cannot be read."""
+    hit = getattr(data, '_mxl_per_level', None)
+    if hit is not None:
+        return hit
+    out = {}
+    try:
+        for sid, r in enumerate(data._rows('itemstatcost')):
+            if len(r) < ISC_OP + 10 or r[ISC_OP] not in (2, 4):
+                continue
+            base = struct.unpack_from('<H', r, ISC_OP + 2)[0]
+            targets = tuple(t for t in struct.unpack_from('<3H', r, ISC_OP + 4) if t != 0xFFFF)
+            if base == LEVEL_STAT and targets:
+                out[sid] = (targets, r[ISC_OP + 1])
+    except Exception:
+        out = {}
+    if not out:
+        out = {pl: ((t,), int((data.isc.get(pl) or {}).get('op_param') or 0)) for pl, t in PER_LEVEL.items()}
+    try:
+        data._mxl_per_level = out
+    except Exception:
+        pass
+    return out
+
+
 def item_sum(tot, data, sid, level, param=None, src=None):
     """total_of + the "per character level" stats that feed this stat, at this level."""
     v = total_of(tot, sid, param, src)
-    for pl, target in PER_LEVEL.items():
-        if target == sid:
+    for pl, (targets, shift) in per_level_map(data).items():
+        if sid in targets:
             raw = total_of(tot, pl, None, src)
             if raw:
-                v += raw * level >> int((data.isc.get(pl) or {}).get('op_param') or 0)
+                v += raw * level >> shift
     return v
 
 
@@ -448,11 +482,19 @@ def active_weapon(ch, data):
     return None
 
 
-def weapon_damage(ch, data, tot, strength, dexterity):
+# the items' per-point damage bonuses: (value x attribute) >> 8 % added to "Weapon Physical Damage" (stat 25) - op 2,
+# op param 8, op base strength (0) or dexterity (2) in the game's itemstatcost table
+STR_BONUS = (299, 442)                # "Current Strength Damage Bonus", "Additional Strength Damage Bonus"
+DEX_BONUS = (300,)                    # "Additional Dexterity Damage Bonus"
+
+
+def weapon_damage(ch, data, tot, strength, dexterity, level=None):
     """Physical damage of a normal attack with the active weapon, the way the game's stat screen shows it:
     weapon damage = base x (100 + the weapon's own enhanced damage, sockets included) / 100 + the +min / +max
-    damage of every equipped item; then x (100 + "Weapon Physical Damage" % + the strength / dexterity bonus of the
-    weapon type (weapons table, % per 100 points) + the items' per-point bonuses (stats 299 / 300)) / 100.
+    damage of every equipped item (with the "per character level" ones: 218 max damage per level); then x (100 +
+    "Weapon Physical Damage" % (with 203, per level) + the strength / dexterity bonus of the weapon type (weapons
+    table, % per 100 points) + the items' per-point bonuses (stats 299 / 442 strength, 300 dexterity)) / 100.
+    level: the character level for the per-level stats (default: ch.level).
     Which pair: the minimum from the one-hand damage when the weapon has one, the maximum from the two-hand damage
     of a two-handed weapon (matches the seven level-1 screenshots, among them a Claymore shown 5-8).
     {'min', 'max', 'base': (lo, hi), 'ed': (min %, max %), 'flat': (lo, hi), 'pct', 'name'} or None (no totals)."""
@@ -478,15 +520,19 @@ def weapon_damage(ch, data, tot, strength, dexterity):
         ed = (emin, emax)
         bonus = tuple(getattr(b, 'dmg_bonus', None) or (0, 0))
         name = b.name
-    flat = (total_of(tot, pair[0]), total_of(tot, pair[1]))
+    if level is None:
+        level = getattr(ch, 'level', 1) or 1
+    flat = (item_sum(tot, data, pair[0], level), item_sum(tot, data, pair[1], level))
     lo = blo * (100 + ed[0]) // 100 + flat[0]
     hi = bhi * (100 + ed[1]) // 100 + flat[1]
-    pct = (total_of(tot, 25) + bonus[0] * strength // 100 + bonus[1] * dexterity // 100
-           + (total_of(tot, 299) * strength >> 8) + (total_of(tot, 300) * dexterity >> 8))
+    wpd = item_sum(tot, data, 25, level)
+    pct = (wpd + bonus[0] * strength // 100 + bonus[1] * dexterity // 100
+           + (sum(total_of(tot, s) for s in STR_BONUS) * strength >> 8)
+           + (sum(total_of(tot, s) for s in DEX_BONUS) * dexterity >> 8))
     lo, hi = max(lo * (100 + pct) // 100, 1), hi * (100 + pct) // 100
     if hi <= lo:
         hi = lo + 1
-    return {'min': lo, 'max': hi, 'base': (blo, bhi), 'ed': ed, 'flat': flat, 'pct': pct, 'name': name}
+    return {'min': lo, 'max': hi, 'base': (blo, bhi), 'ed': ed, 'flat': flat, 'pct': pct, 'wpd': wpd, 'name': name}
 
 
 def attack_rating(data, cls, tot, dexterity, level=1):
@@ -509,6 +555,58 @@ def attack_rating_parts(data, cls, tot, dexterity, level=1):
     flat = item_sum(tot, data, 19, level)
     pct = item_sum(tot, data, 119, level)
     return (5 * dexterity - 35 + tohit + flat) * (100 + pct) // 100, flat, pct
+
+
+MAX_RES = {39: 40, 41: 42, 43: 44, 45: 46}     # resistance -> its "maximum resist" stat
+RES_CAP, RES_HARD_CAP = 75, 95                  # the engine's resistance cap and the cap of cap + maximum resist
+
+
+def difficulty_of(ch):
+    """The difficulty the character was last in (save header 0xA8: one byte per difficulty, 0x80 = last in this
+    one), None when no byte says so."""
+    try:
+        for k in range(3):
+            if ch.head[0xA8 + k] & 0x80:
+                return k
+    except Exception:
+        pass
+    return None
+
+
+def resist_penalty(data, diff):
+    """The difficulty's resistance penalty (first field of the difficultylevels table: 0 / -30 / -70 in Sigma)."""
+    if diff is None:
+        return 0
+    try:
+        r = data._rows('difficultylevels')[diff]
+        return struct.unpack_from('<i', r, 0)[0] if len(r) >= 4 else 0
+    except Exception:
+        return 0
+
+
+def resistance(data, ch, sid, total, maxres):
+    """(shown value, penalty, cap) of an elemental resistance as the game's page 1 shows it: the sum of the
+    character and the items + the penalty of the difficulty the character was last in, capped at 75 + the items'
+    "maximum resist" (at most 95)."""
+    pen = resist_penalty(data, difficulty_of(ch))
+    cap = min(RES_CAP + maxres, RES_HARD_CAP)
+    return min(total + pen, cap), pen, cap
+
+
+POISON = (57, 58, 59)                # min / max poison damage (256ths of a point per frame), length in frames
+FPS = 25
+
+
+def poison_damage(tot):
+    """(min, max, frames, (raw min, raw max)) of the items' poison damage the way the item tooltip states it ("Adds
+    min-max poison damage over n seconds": raw x frames / 256), with the lengths of several items averaged (the
+    engine's poison count, stat 326); None without poison damage."""
+    lo, hi, length = (total_of(tot, s) for s in POISON)
+    if not (lo or hi):
+        return None
+    n = max((tot.get('n') or {}).get(59, 0), 1)
+    frames = length // n
+    return lo * frames // 256, hi * frames // 256, frames, (lo, hi)
 
 
 def class_factors(data, cls):
@@ -1142,8 +1240,20 @@ class StatScreen:
             return None, tot['error']
         rest = T('ss.tip.rest3', 'Not included: skills, buffs, difficulty penalty and caps of the game.')
         if key in RES_IDS:
-            own, parts = self._split(RES_IDS[key])
-            return f'{own + sum(parts.values())}%', self._where(own, parts) + '\n' + rest
+            sid = RES_IDS[key]
+            own, parts = self._split(sid)
+            total = own + sum(parts.values())
+            if sid not in MAX_RES:
+                return f'{total}%', self._where(own, parts) + '\n' + rest
+            mo, mparts = self._split(MAX_RES[sid])
+            shown, pen, cap = resistance(win.data, win.st_sim, sid, total, mo + sum(mparts.values()))
+            diff = difficulty_of(win.st_sim)
+            return f'{shown}%', self._where(own, parts) + '\n' + T(
+                'ss.tip.res_cap', 'Sum {total} %, {pen:+d} % in {diff}, capped at {cap} % (75 + maximum resist, '
+                'at most 95).', total=total, pen=pen, cap=cap,
+                diff=T('ch.diff.%d' % diff, ('Normal', 'Nightmare', 'Hell')[diff]) if diff is not None
+                else T('ss.tip.no_diff', 'no difficulty marked in the save')) + '\n' + T(
+                'ss.tip.rest5', 'Not included: skills, buffs and quest rewards.')
         if key == 'defense':
             own, parts = self._split(31)
             armour = tot['defense']
@@ -1156,7 +1266,9 @@ class StatScreen:
             if dmg is None:
                 return None, T('ss.tip.game', 'computed by the game')
             return f"{dmg['min']}-{dmg['max']}", self.damage_tip(dmg) + '\n' + T(
-                'ss.tip.dmg_skill', 'Normal attack: the bonuses of the skill on this mouse button are not included.')
+                'ss.tip.dmg_skill', 'Normal attack: the bonuses of the skill on this mouse button are not included.'
+            ) + '\n' + T('ss.tip.dmg_forms', 'Not included either: shapeshift forms, auras and passive skills (they can '
+                          'add a lot of "Weapon Physical Damage", e.g. Ferocity in Wereowl Form).')
         if key.startswith('attack_rating'):
             ar, flat, pct = self.attack_rating()
             return str(ar), self.ar_tip(flat, pct)
@@ -1174,7 +1286,8 @@ class StatScreen:
 
     def weapon_damage(self):
         win = self.win
-        return weapon_damage(win.st_sim, win.data, win.st_totals(), self.attr_total(0), self.attr_total(2))
+        sim = win.st_sim
+        return weapon_damage(sim, win.data, win.st_totals(), self.attr_total(0), self.attr_total(2), sim.level)
 
     def damage_tip(self, dmg):
         return T('ss.tip.dmg', '{weapon}: base {lo}-{hi}, enhanced damage +{ed} %, +{flo} / +{fhi} damage from the '
@@ -1202,6 +1315,18 @@ class StatScreen:
                 return None, tot['error'], None
             ar, flat, pct = self.attack_rating()
             return (str(ar) if sid == 19 else f'{pct}%'), self.ar_tip(flat, pct), None
+        if kind == T_STAT and sid in POISON[:2] and not flags & F_BASE:
+            if tot['error']:
+                return None, tot['error'], None
+            p = poison_damage(tot)
+            if p is None:
+                return '0', T('ss.tip.poison0', 'No poison damage on the items.'), None
+            return str(p[0 if sid == 57 else 1]), T(
+                'ss.tip.poison', 'Poison damage of the items: {lo}-{hi} over {sec} seconds (raw {rlo}-{rhi} / 256 per '
+                'frame x {frames} frames, the lengths of {n} items averaged).', lo=p[0], hi=p[1],
+                sec=f'{p[2] / FPS:g}', rlo=p[3][0], rhi=p[3][1], frames=p[2],
+                n=max((tot.get('n') or {}).get(59, 0), 1)) + '\n' + T(
+                'ss.tip.rest4', 'Not included: skills, buffs and the caps of the game.'), None
         suffix = '%' if flags & F_PERCENT else ''
         name = str((data.isc.get(sid) or {}).get('desc') or sid)
         if name.startswith('FLYING'):
@@ -1243,6 +1368,8 @@ class StatScreen:
             base = {299: 0, 300: 2}.get(sid, isc.get('op_base'))
             w = active_weapon(sim, data) if sid in (299, 300) else None
             per100 = (getattr(w[2], 'dmg_bonus', None) or (0, 0))[sid - 299] if w else 0
+            if sid == 299:                     # 442 "Additional Strength Damage Bonus" feeds stat 25 the same way
+                items += sum(total_of(tot, x) for x in STR_BONUS if x != 299)
             if (not items and w is None) or base not in (0, 2):     # with a weapon: its bonus, 0 % included
                 return None, T('ss.tip.class_rule', '{name} computed by the game from the class and the attribute.',
                                name=name), None
@@ -1251,6 +1378,10 @@ class StatScreen:
             extra = T('ss.tip.per_point2', 'weapon {per100} % per 100 points, items {items}/256 % per point, '
                       'x {attr}', per100=per100, items=items, attr=attr)
         tip = name + ': ' + self._where(own, parts) + (' (' + extra + ')' if extra else '')
+        cap = el.get('cap') or 0
+        if cap and v > cap:                    # the table's own maximum (absorb %: 40)
+            tip += '\n' + T('ss.tip.cap', 'Sum {v}{s}, capped at {cap}{s} by the game\'s table.', v=v, cap=cap, s=suffix)
+            v = cap
         tip += '\n' + T('ss.tip.rest4', 'Not included: skills, buffs and the caps of the game.')
         return f'{v}{suffix}', tip, None
 
