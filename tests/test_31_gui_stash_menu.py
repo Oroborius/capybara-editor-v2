@@ -777,4 +777,68 @@ def fill_sockets_unrestricted_goes_past_the_base_limit():
         unrestricted(was)
 
 
+# Was a BUG: "Fill sockets with ..." wrote the stash without recording anything for undo: Ctrl+Z after it said
+# "Nothing to undo" (or undid the action before it). Now the fill is recorded like the creator's replace: the undo
+# puts the item's old bytes back at its old index in its page's list.
+@T.test
+def fill_sockets_then_undo_restores_the_file_bytes():
+    """Fill (sockets added to an unsocketed armor, and free sockets of a socketed one), then Ctrl+Z: the very same
+    stash file each time; two fills, two undos in a row too."""
+    import mxl_rc_menu
+    import mxl_undo
+    was = unrestricted(False)
+    try:
+        cr = mxl_rc_menu._creator(G.app)
+        jewel = seed(cr.new_spec('normal', cr.sockets_fillers()[0][0]))
+        bare, _cap = seed_plain_armor()
+        free, _cap = seed_plain_armor()
+        G.answers['int'] = 2
+        T.invoke(T.stash_menu(*free), 'Make socketed...', under='Specific editing functions')
+        T.invoke(T.stash_menu(*jewel), 'Copy')
+        G.app._undo = []
+        c = Ctx()
+        for key, what in ((bare, 'fill of an unsocketed armor'), (free, 'fill of 2 free sockets')):
+            T.invoke(T.stash_menu(*key), 'Fill sockets with')
+            T.check(T.read(c.path) != c.raw, f'{what}: nothing written ({T.status_text()!r})')
+            T.check(mxl_undo.can_undo(G.app), f'{what}: nothing to undo after the fill')
+            mxl_undo._do_undo(G.app)
+            T.check('Nothing to undo' not in T.status_text() and 'failed' not in T.status_text(),
+                    f'{what}: status of the undo {T.status_text()!r}')
+            same_file(c, f'{what} + undo')
+            T.check(not mxl_undo.can_undo(G.app), f'{what}: undo stack not empty after the undo')
+            verified(c.path, f'{what} + undo')
+        T.invoke(T.stash_menu(*bare), 'Fill sockets with')
+        T.invoke(T.stash_menu(*free), 'Fill sockets with')
+        mxl_undo._do_undo(G.app)
+        mxl_undo._do_undo(G.app)
+        same_file(c, 'two fills, two undos')
+        verified(c.path, 'two fills, two undos')
+    finally:
+        unrestricted(was)
+
+
+@T.test
+def undo_of_a_fill_when_the_item_changed_since():
+    """Fill, then the item is changed by an action that is not recorded (Remove socketed items): the undo of the
+    fill refuses to write the old bytes over the newer item; nothing is written."""
+    import mxl_rc_menu
+    import mxl_undo
+    was = unrestricted(False)
+    try:
+        cr = mxl_rc_menu._creator(G.app)
+        jewel = seed(cr.new_spec('normal', cr.sockets_fillers()[0][0]))
+        key, _cap = seed_plain_armor()
+        T.invoke(T.stash_menu(*jewel), 'Copy')
+        G.app._undo = []
+        T.invoke(T.stash_menu(*key), 'Fill sockets with')
+        T.invoke(T.stash_menu(*key), 'Remove socketed items', under='Specific editing functions')
+        T.pump()
+        c = Ctx()
+        mxl_undo._do_undo(G.app)
+        T.check('changed' in T.status_text(), f'status of the refused undo: {T.status_text()!r}')
+        same_file(c, 'refused undo of a fill')
+    finally:
+        unrestricted(was)
+
+
 T.main(globals())

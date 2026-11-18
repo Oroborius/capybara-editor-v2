@@ -1217,21 +1217,42 @@ def _fill_sockets(holder, it, win=None, e=None):
         except (EditError, FormatError, OSError) as err:
             _status(holder, str(err), True)
             return
+        _record_fill(app, 'replace', blob=bytes(blob), after=bytes(new), page=it['page'], x=it['x'], y=it['y'],
+                     old_page=it['page'], old_x=it['x'], old_y=it['y'], name=_item_name(holder, it, None))
         holder.backup_made(holder.path, bak)
         _selected(holder, it['page'], it['x'], it['y'])
-        _status(holder, msg)
+        _status(holder, msg + T('undo.hint_any', ' - Ctrl+Z undoes it'))
     else:
         merc = win.is_merc()
         where = ('slot', e.it['equipped']) if e.it['location'] == MC.LOC_EQUIPPED \
             else ('inv', e.it['x'], e.it['y'])
+        path, before = win.ch.path, bytes(win.ch.raw)      # what is on disk: save() refuses anything else
+        name = _item_name(holder, None, e)
         try:
             _char_replace(win, e, new, where, merc)
         except Exception as err:
             win.reload()
             win.set_status(str(err), True)
             return
-        if not win.save(msg):
+        if not win.save(msg + T('undo.hint_any', ' - Ctrl+Z undoes it')):
             win.set_status(T('ch.err.not_saved', 'character not saved'), True)
+            return
+        try:
+            after = read_file(path)
+        except OSError:
+            return
+        if bytes(after) != before:
+            import mxl_undo
+            mxl_undo.record_char(app, path, before, after, name)
+
+
+def _record_fill(app, kind, **kw):
+    """The undo record of a stash fill (mxl_undo; never breaks the write it records)."""
+    try:
+        import mxl_undo
+        mxl_undo.record(app, kind, **kw)
+    except Exception as err:
+        _dbg('fill sockets: undo not recorded:', err)
 
 
 def _remove_socketed(holder, it, win=None, e=None):

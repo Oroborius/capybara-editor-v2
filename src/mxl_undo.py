@@ -5,7 +5,10 @@ right-click menu's Delete (which also stopped prompting). Every destructive acti
 is recorded in a buffer (app._undo), and Ctrl+Z - or the new Undo button - steps back through it:
 - delete: the item's exact bytes are kept, the undo puts the item back where it was;
 - create (the creator's bulk copies included): the undo removes the written copies;
-- replace (the creator's edit mode): the undo restores the previous bytes.
+- replace (the creator's edit mode, Fill sockets on a stash item): the undo restores the previous bytes;
+- char (Fill sockets on a character / mercenary item): the undo writes the character file's previous bytes,
+  only while the file is still exactly what the action wrote (a later write - the Character tab's SAVE, another
+  item action, the game - makes the undo refuse instead of putting older data over the newer file).
 
 Each undo is one stash write through the collector's own safe writer (mxl_save.edit_stash), with the
 usual backup policy and an instant grid refresh. The buffer holds the last 50 actions of this session.
@@ -64,7 +67,11 @@ def can_undo(app):
 def undo(app):
     """Undo the last recorded action. Returns a status message, or None when nothing to undo."""
     stack = getattr(app, '_undo', None)
-    if not stack or not app.path:
+    if not stack:
+        return None
+    if stack[-1]['kind'] == 'char':
+        return _undo_char(app, stack.pop())
+    if not app.path:
         return None
     op = stack.pop()
     try:
@@ -97,6 +104,10 @@ def undo(app):
         if op['kind'] == 'replace':
             new_spot = (op['page'], op['x'], op['y'])
             cur = next((i for i in items if (i['page'], i['x'], i['y']) == new_spot), None)
+            if op.get('after') is not None and (cur is None or bytes(item_blob(open(app.path, 'rb').read(), cur))
+                                                != bytes(op['after'])):
+                # the item was changed since (by an action that is not recorded): its old bytes would undo that too
+                return T('undo.changed', 'Undo: {name} changed since - not undone', name=op.get('name') or 'item')
             old_spot = (op['old_page'], op['old_x'], op['old_y'])
             free = not any((i['page'], i['x'], i['y']) == old_spot
                            for i in items if i is not cur)
@@ -120,6 +131,59 @@ def undo(app):
     except Exception:
         return None
     return None
+
+
+def record_char(app, path, before, after, name=None):
+    """Records a write of the character file (path): before / after are the file's whole bytes."""
+    record(app, 'char', path=os.path.abspath(path), before=bytes(before), after=bytes(after), name=name)
+
+
+def _undo_char(app, op):
+    """Writes the character file's bytes of before the action back - only when the file is still the one the
+    action wrote; then the panel and the Character tab read it again (the tab keeps its pending page edits on
+    top of it: CharacterWindow.sync_file)."""
+    path, name = op['path'], op.get('name') or 'item'
+    try:
+        with open(path, 'rb') as f:
+            now = f.read()
+    except OSError as e:
+        return T('undo.err', 'Undo failed: {err}', err=e)
+    if now != op['after']:
+        return T('undo.char_changed', 'Undo: the character file changed since ({name}) - not undone', name=name)
+    try:
+        from mxl_save import commit_file, load_character
+        from mxl_char import Character
+
+        def verify(tmp):
+            with open(tmp, 'rb') as f:
+                if f.read() != op['before']:
+                    raise EditError('undo: written bytes differ')
+            Character(tmp, app.data)
+            load_character(tmp, app.data)
+        bak = commit_file(path, op['before'], verify, app.needs_backup(path))
+    except Exception as e:
+        return T('undo.err', 'Undo failed: {err}', err=e)
+    app.backup_made(path, bak)
+    _refresh_char(app, path)
+    return T('undo.char', 'Undo: {name} restored to its previous bytes', name=name)
+
+
+def _refresh_char(app, path):
+    """The views of the character file after an undo wrote it."""
+    inv = getattr(app, 'inventory', None)
+    if inv is not None:
+        try:
+            inv.reload()                 # its refresh syncs a Character tab open on the same file
+        except Exception as e:
+            print('undo: character panel not refreshed:', e)
+    try:
+        import mxl_tabs
+        w = mxl_tabs.built_owner('Character')
+        if w is not None and getattr(w, 'ch', None) is not None \
+                and os.path.abspath(w.ch.path) == os.path.abspath(path):
+            w.sync_file()
+    except Exception as e:
+        print('undo: character tab not refreshed:', e)
 
 
 def _ins(spot, blob, index, page):

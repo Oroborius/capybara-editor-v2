@@ -78,7 +78,7 @@ and stays open - mark the test `@T.test(xfail='what is wrong')` with a comment d
 | `test_18_stash_order.py` | engine | `mxl_stash_order`: replaced and re-inserted items keep their index; remove + insert-at-index gives the same file |
 | `test_19_not_covered.py` | engine | the known gaps, as skipped tests with their reason |
 | `test_30_gui_smoke.py` | gui | start in `MXL_THEME=d2` / `he` at 1280x720 and 800x600, every tab and page, status bar, toolbar overflow |
-| `test_31_gui_stash_menu.py` | gui | right-click actions on stash items, undo |
+| `test_31_gui_stash_menu.py` | gui | right-click actions on stash items, undo (delete, create, replace, fill sockets) |
 | `test_32_gui_creator.py` | gui | Creator tab: lists, search, create, Item Editor, honorific, create on the character |
 | `test_33_gui_char_menu.py` | gui | right-click actions on character items: Stash-tab panel and Character tab |
 | `test_34_gui_item_stats.py` | gui | Item stats tab on a stash item and on character items |
@@ -87,6 +87,8 @@ and stays open - mark the test `@T.test(xfail='what is wrong')` with a comment d
 | `test_36_gui_character_layout.py` | gui | Character tab pages in both looks at 1280x720, 800x600 and UI scales 1.25 / 1.5: open, go idle (no layout loop), image buttons follow the scale; status-bar count |
 | `test_36_gui_fill_sockets_char.py` | gui | "Fill sockets with ..." on character and mercenary items, from the Stash-tab panel and the Character tab |
 | `test_37_gui_merc_view.py` | gui | light look: the base-game character screen shows no ring frames on the mercenary view |
+| `test_38_gui_fill_sockets_undo_char.py` | gui | Ctrl+Z after "Fill sockets with ..." on character and mercenary items (panel and Character tab): the file byte-identical again, pending page edits kept, the undo refused after a newer write |
+| `test_39_gui_merc_weapon_set.py` | gui | no weapon-set switch on the mercenary view (one weapon set: slots 4 / 5) in every look - base-game panel (tabs painted out), Sigma panel, plain panel, Character tab - and the character keeps his set |
 
 `--quick` runs the `engine` files only.
 

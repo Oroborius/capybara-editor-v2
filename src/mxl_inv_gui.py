@@ -46,15 +46,51 @@ def _sig(path):
 # hand and the helm / between the armour and the right hand, edges faded in.
 D2_COVER_SRC = {6: (134, 128), 7: (318, 128)}
 D2_COVER_MARGIN, D2_COVER_FADE = 10, 6
+# The I / II weapon-set tabs above both weapon frames, painted out the same way on the mercenary's view (he has one
+# weapon set: slots 4 / 5; set II's 11 / 12 are not his): (x, y, w, h) of the panel, stone source (x, y) in the open
+# stone between the left hand and the helm (too narrow for both tabs: laid twice, mirrored), its brightness matched
+# to the stone around the tabs. The lower edge stops at the weapon frame's top border.
+D2_COVER_WSET = ((18, 30, 120, 39), (386, 30, 124, 39))     # both tabs of a side, with room for the fade
+D2_COVER_WSET_SRC = (140, 30, 60, 39)       # the open stone beside the helm, twice side by side (mirrored)
+D2_COVER_WSET_FADE = 6
 
 
-def d2_panel_without(path, boxes):
+def _fade_mask(pw, ph, f):
+    mask = Image.new('L', (pw, ph), 0)
+    px = mask.load()
+    for i in range(pw):
+        for j in range(ph):
+            d = min(i, j, pw - 1 - i, ph - 1 - j)
+            px[i, j] = 255 if d >= f else 255 * d // f
+    return mask
+
+
+def _match_light(patch, src, rect, ring=4):
+    """patch scaled to the mean brightness of the stone just around rect (x, y, w, h) of src."""
+    from PIL import ImageStat
+    x, y, w, h = rect
+    g = src.convert('L')
+    out = g.crop((max(0, x - ring), max(0, y - ring), x + w + ring, y + h + ring))
+    s_out, s_in = ImageStat.Stat(out), ImageStat.Stat(g.crop((x, y, x + w, y + h)))
+    n_out, n_in = out.width * out.height, w * h
+    around = (s_out.sum[0] - s_in.sum[0]) / max(1, n_out - n_in)
+    have = ImageStat.Stat(patch.convert('L')).mean[0]
+    if have <= 0:
+        return patch
+    f = around / have
+    r, gg, b, a = patch.split()
+    r, gg, b = (ch.point(lambda v: min(255, round(v * f))) for ch in (r, gg, b))
+    return Image.merge('RGBA', (r, gg, b, a))
+
+
+def d2_panel_without(path, boxes, wset=False):
     """Path of a copy of the base-game character panel (cached PNG at path) with the frames of boxes (slots
-    6 / 7) painted over with stone; the panel itself when there is nothing to hide or the copy cannot be made."""
+    6 / 7) - and with wset the I / II weapon-set tabs - painted over with stone; the panel itself when there is
+    nothing to hide or the copy cannot be made."""
     boxes = sorted(b for b in boxes if b in D2_COVER_SRC)
-    if not boxes:
+    if not boxes and not wset:
         return path
-    out = f"{os.path.splitext(path)[0]}-without-{'-'.join(map(str, boxes))}.png"
+    out = f"{os.path.splitext(path)[0]}-without-{'-'.join(map(str, boxes + (['wset'] if wset else [])))}.png"
     try:
         if os.path.exists(out) and os.path.getmtime(out) >= os.path.getmtime(path):
             return out
@@ -65,13 +101,15 @@ def d2_panel_without(path, boxes):
             x, y, w, h = D2.GEAR_D2[b]
             sx, sy = D2_COVER_SRC[b]
             pw, ph = w + 2 * m, h + 2 * m
-            mask = Image.new('L', (pw, ph), 0)
-            px = mask.load()
-            for i in range(pw):
-                for j in range(ph):
-                    d = min(i, j, pw - 1 - i, ph - 1 - j)
-                    px[i, j] = 255 if d >= f else 255 * d // f
-            im.paste(src.crop((sx, sy, sx + pw, sy + ph)), (x - m, y - m), mask)
+            im.paste(src.crop((sx, sy, sx + pw, sy + ph)), (x - m, y - m), _fade_mask(pw, ph, f))
+        for x, y, w, h in (D2_COVER_WSET if wset else ()):
+            sx, sy, sw, sh = D2_COVER_WSET_SRC
+            piece = src.crop((sx, sy, sx + sw, sy + sh))
+            patch = Image.new('RGBA', (w, h))
+            for i, px in enumerate(range(0, w, sw)):
+                patch.paste(piece.transpose(Image.FLIP_LEFT_RIGHT) if i % 2 else piece, (px, 0))
+            patch = _match_light(patch, src, (x, y, w, h))
+            im.paste(patch, (x, y), _fade_mask(w, h, D2_COVER_WSET_FADE))
         tmp = f'{out}.{os.getpid()}.tmp'
         im.save(tmp, 'PNG')
         os.replace(tmp, out)
@@ -108,7 +146,8 @@ class MainInventory:
         self.icons = {}
         self._imgs = {}
         self.merc = tk.BooleanVar(value=False)
-        self.wset = tk.IntVar(value=1)
+        self.wset = tk.IntVar(value=1)          # the character's weapon set; the mercenary has set I only
+        self.wset_rbs = []                      # its radio buttons (plain panel; the game art has its own tabs)
         stash = app.canvas
         left = stash.master
         body = left.master
@@ -170,8 +209,19 @@ class MainInventory:
         self._wset_made = True
         ttk.Label(self.row_btns, text='  ' + T('ch.weapon_set', 'Weapon set')).pack(side='left')
         for n in (1, 2):
-            ttk.Radiobutton(self.row_btns, text='I' if n == 1 else 'II', value=n, variable=self.wset,
-                            command=self.redraw).pack(side='left', padx=2)
+            rb = ttk.Radiobutton(self.row_btns, text='I' if n == 1 else 'II', value=n, variable=self.wset,
+                                 command=self.redraw)
+            rb.pack(side='left', padx=2)
+            self.wset_rbs.append(rb)
+        self._wset_state()
+
+    def _wset_state(self):
+        """The I / II buttons: disabled on the mercenary view (one weapon set), the character's choice kept."""
+        for rb in self.wset_rbs:
+            try:
+                rb.state(['disabled'] if self.is_merc() else ['!disabled'])
+            except tk.TclError:
+                pass
 
     # ------------------------------------------------------------------ sizes
     def set_rows(self, n):
@@ -243,8 +293,13 @@ class MainInventory:
     def is_merc(self):
         return bool(self.merc.get()) and self.ch is not None and self.ch.merc_hired
 
+    def wset_now(self):
+        """The weapon set shown: the character's choice; always I on the mercenary view (a mercenary has one
+        weapon set - his slots are MERC_SLOTS, set II's 11 / 12 are not among them)."""
+        return 1 if self.is_merc() else self.wset.get()
+
     def slot_of(self, box):
-        return SET2.get(box, box) if self.wset.get() == 2 else box
+        return SET2.get(box, box) if self.wset_now() == 2 else box
 
     def visible_boxes(self):
         if not self.is_merc():
@@ -337,6 +392,7 @@ class MainInventory:
         c = self.cell
         ch = self.ch
         merc = self.is_merc()
+        self._wset_state()
         if ch is None:
             name = self.app.char_combo.get() if hasattr(self.app, 'char_combo') else ''
             self.title.configure(text=T('inv.title_error', 'Equipment - {name}: {error}', name=name, error=self.error)
@@ -370,7 +426,7 @@ class MainInventory:
             e = eq.get(slot)
             if e is not None:
                 self.draw_item(dv, e.it, x0, y0, x1, y1, e is self.selected, check_req=not merc)
-            elif box in (4, 5):
+            elif box in (4, 5) and not merc:
                 dv.create_text((x0 + x1) / 2, (y0 + y1) / 2, text='I' if self.wset.get() == 1 else 'II',
                                fill='#444444', font=('Segoe UI', 14))
             else:
@@ -408,8 +464,8 @@ class MainInventory:
         dv = self.doll
         dv.delete('all')
         panel = a.char_panel_d2()
-        if merc:                                  # no ring frames on the mercenary (he has no ring slots)
-            panel = d2_panel_without(panel, set(D2_COVER_SRC) - set(self.visible_boxes()))
+        if merc:                                  # no ring frames on the mercenary (he has no ring slots), no
+            panel = d2_panel_without(panel, set(D2_COVER_SRC) - set(self.visible_boxes()), wset=True)   # set II
         dv.create_image(0, 0, anchor='nw', image=D2.photo(panel, (round(D2.PANEL_W * k), round(D2.PANEL_H * k))),
                         tags=('panel',))
         eq = ch.equipped(merc) if ch is not None else {}
@@ -420,7 +476,7 @@ class MainInventory:
                 i = D2.GEAR_D2_INSET
                 self.draw_item_d2(dv, e.it, (x + i) * k, (y + i) * k, (x + w - i) * k, (y + h - i) * k,
                                   e is self.selected, check_req=not merc)
-        if 4 in self.visible_boxes() or 5 in self.visible_boxes():
+        if not merc and (4 in self.visible_boxes() or 5 in self.visible_boxes()):
             tw, th = D2.WSET_TAB_D2
             for tx, ty in D2.WSET_TABS_D2.get(self.wset.get(), ()):     # the game's own tabs, active set marked
                 dv.create_rectangle(round(tx * k) + 1, round(ty * k) + 1,
@@ -477,7 +533,7 @@ class MainInventory:
                 i = D2.GEAR_INSET
                 self.draw_item_d2(dv, e.it, (x + i) * k, (y + i) * k, (x + w - i) * k, (y + h - i) * k,
                                   e is self.selected, check_req=not merc)
-        if 4 in boxes or 5 in boxes:
+        if not merc and (4 in boxes or 5 in boxes):        # the mercenary has one weapon set: no tabs
             f = D2.WSET_TAB[0] if self.wset.get() == 1 else D2.WSET_TAB[1]
             for tx, ty in D2.WSET_TABS:
                 dv.create_image(round((tx - ox) * k), round((ty - oy) * k), anchor='nw', image=D2.gear_photo(f, k))
@@ -521,7 +577,7 @@ class MainInventory:
 
     def wset_tab_at(self, x, y):
         """Weapon set (1 / 2) of the "I" / "II" tab under (x, y) of the D2 panel, or None."""
-        if not self.d2 or not any(b in self.visible_boxes() for b in (4, 5)):
+        if not self.d2 or self.is_merc() or not any(b in self.visible_boxes() for b in (4, 5)):
             return None
         k = self.k
         if self.sigma:
