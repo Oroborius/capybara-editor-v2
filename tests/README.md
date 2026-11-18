@@ -90,7 +90,8 @@ and stays open - mark the test `@T.test(xfail='what is wrong')` with a comment d
 | `test_37_gui_socket_fillers.py` | gui | Edit item: remove one socket filler (gem, rune, jewel), "Empty sockets", jewels on runewords; no-op Replace byte-identical; stash and character files |
 | `test_38_gui_picker_place.py` | gui | stat picker popup placement at 800x600 / 1280x720 / 2560x1440: on screen, never over the slot list; typeahead + Enter picks the closest stat |
 | `test_38_gui_fill_sockets_undo_char.py` | gui | Ctrl+Z after "Fill sockets with ..." on character and mercenary items (panel and Character tab): the file byte-identical again, pending page edits kept, the undo refused after a newer write |
-| `test_39_gui_merc_weapon_set.py` | gui | no weapon-set switch on the mercenary view (one weapon set: slots 4 / 5) in every look - base-game panel (tabs painted out), Sigma panel, plain panel, Character tab - and the character keeps his set |
+| `test_39_gui_merc_weapon_set.py` | gui | no weapon-set switch on the mercenary view (one weapon set: slots 4 / 5) in every look - base-game panel (tabs painted out), Sigma panel, plain panel, Character tab - and the character keeps his set; base-game panel: the I / II tab rectangles, gold marker and clicks match the tabs measured in the art |
+| `test_40_gui_creator_layout.py` | gui | Creator and Item Editor at 800x600 (both looks, UI scale 1.25) and 1280x720: every control of every item type inside its column, no horizontal scrollbar; long combobox lists open wide; goes idle (CAPY_BIG=1 on a 2560x1440 X screen: every variant at that size) |
 
 `--quick` runs the `engine` files only.
 

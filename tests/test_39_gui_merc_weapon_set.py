@@ -140,6 +140,104 @@ def base_game_panel_tabs_painted_out():
         T.eq(list(a.crop(inner).getdata()) == list(b.crop(inner).getdata()), True, f'box {box} changed on the mercenary panel')
 
 
+def art_tabs(path):
+    """The I / II tabs of both sides measured in the base-game panel art: [(x0, x1)] of the four tabs (gold border
+    columns, inclusive) from left to right, and (y0, y1) of their top / bottom border rows."""
+    from PIL import Image
+    im = Image.open(path).convert('RGB')
+
+    def gold(x, y):
+        r, _g, b = im.getpixel((x, y))
+        return r > 100 and r - b > 25
+
+    def runs(xs):
+        out = []
+        for x in xs:
+            if out and x == out[-1][1] + 1:
+                out[-1][1] = x
+            else:
+                out.append([x, x])
+        return out
+    tabs = []
+    for lo, hi in ((10, 140), (380, 510)):                 # the stone above the left / right weapon frame
+        r = runs([x for x in range(lo, hi) if gold(x, 55)])
+        T.eq(len(r), 4, f'gold borders of the two tabs in row 55, x {lo}..{hi}: {r}')
+        if len(r) == 4:
+            tabs += [(r[0][0], r[1][1]), (r[2][0], r[3][1])]
+    x = (tabs[1][0] + tabs[1][1]) // 2 if len(tabs) > 1 else 105   # the middle of a (raised) II tab
+    ys = runs([y for y in range(20, 80) if gold(x, y)])
+    return tabs, (ys[0][0], ys[1][1]) if len(ys) >= 2 else (0, 0)
+
+
+@T.test
+def base_game_tabs_where_the_art_has_them():
+    """The light look's character screen (base-game art): the gold marker of the active weapon set is drawn on the
+    art's own I / II tab, and a click on a tab chooses that set. WSET_TABS_D2 put set I at x 38-83 (it reached
+    into the II tab, x 82-130) and the right side's I at 408-453: the marker sat 12 px off, half on the II tab,
+    and a click on the left part of an I tab did nothing."""
+    import mxl_d2look as D2
+    inv = G.app.inventory
+    if not inv.d2 or inv.sigma:
+        T.skip('the base-game character screen is not shown in this look')
+    panel_view(inv, False)
+    a = D2.char_art()
+    tabs, (y0, y1) = art_tabs(a.char_panel_d2())
+    if len(tabs) != 4:
+        return
+    T.check(y1 - y0 > 20, f'tab rows {y0}..{y1}')
+    want = {1: [tabs[0], tabs[2]], 2: [tabs[1], tabs[3]]}         # set -> its tab on the left / right side
+    tw, th = D2.WSET_TAB_D2
+    for n, rects in D2.WSET_TABS_D2.items():
+        for (tx, ty), (ax0, ax1) in zip(rects, want[n]):
+            T.check(abs(tx - ax0) <= 2 and abs(tx + tw - 1 - ax1) <= 2 and abs(ty - y0) <= 2 and abs(ty + th - 1 - y1) <= 3,
+                    f'set {n}: tab rectangle x {tx}..{tx + tw - 1}, y {ty}..{ty + th - 1}; '
+                    f'in the art x {ax0}..{ax1}, y {y0}..{y1}')
+    k = inv.k
+    gold = '#%02x%02x%02x' % D2.GOLD_TXT
+    for n in (1, 2):
+        inv.wset.set(n)
+        inv.redraw()
+        T.pump(2)
+        marks = sorted(tuple(round(c / k) for c in inv.doll.coords(i)) for i in inv.doll.find_all()
+                       if inv.doll.type(i) == 'rectangle' and inv.doll.itemcget(i, 'outline') == gold)
+        T.eq(len(marks), 2, f'set {n}: gold tab markers {marks}')
+        for (mx0, my0, mx1, my1), (ax0, ax1) in zip(marks, want[n]):
+            T.check(abs(mx0 - ax0) <= 3 and abs(mx1 - ax1) <= 3 and abs(my0 - y0) <= 3 and abs(my1 - y1) <= 3,
+                    f'set {n}: marker x {mx0}..{mx1}, y {my0}..{my1}; the tab in the art x {ax0}..{ax1}, y {y0}..{y1}')
+        if n == 2:
+            shot(inv, 'set2')
+    for n, rects in want.items():                  # clicks on the art's tabs: near both ends and in the middle
+        for ax0, ax1 in rects:
+            for x in (ax0 + 3, (ax0 + ax1) / 2, ax1 - 3):
+                inv.wset.set(3 - n)
+                inv.redraw()
+                y = (y0 + y1) / 2
+                inv.on_press(T.ev(inv.doll, x * k, y * k))
+                inv.on_release(T.ev(inv.doll, x * k, y * k))
+                T.pump(2)
+                T.eq(inv.wset.get(), n, f'click at panel ({x:.0f}, {y:.0f}) on the tab of set {n} (x {ax0}..{ax1})')
+    gap = (tabs[0][1] + tabs[1][0]) / 2                    # between the I and II tab: neither
+    T.eq(inv.wset_tab_at(gap * k, (y0 + y1) / 2 * k), None, f'click between the tabs (x {gap:.0f})')
+    inv.wset.set(1)
+    inv.redraw()
+    shot(inv, 'set1')
+
+
+def shot(inv, name):
+    import os
+    import subprocess
+    folder = os.environ.get('CAPY_SHOTS')
+    if not folder:
+        return
+    os.makedirs(folder, exist_ok=True)
+    G.root.update()
+    try:
+        subprocess.run(['import', '-window', str(inv.doll.winfo_id()), os.path.join(folder, f'wset-{T.VARIANT}-{name}.png')],
+                       timeout=30, capture_output=True)
+    except Exception:
+        pass
+
+
 @T.test
 def plain_panel():
     """The panel without game art (art missing, or failed): the I / II radio buttons."""

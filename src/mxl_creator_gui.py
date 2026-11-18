@@ -167,6 +167,38 @@ def clean(name):
     return ' '.join(part.strip() for part in txt.split('\n') if part.strip())
 
 
+STRETCH_CHARS = 12          # what a combobox that fills its column asks for (it gets the column's width)
+
+
+def wide_popdown(cb):
+    """The list of a read-only combobox opens as wide as its longest entry (at least as wide as the box, at most
+    the screen): a box narrowed to a small window's column keeps whole entries in its list."""
+    def widen():
+        try:
+            pd = cb.tk.call('ttk::combobox::PopdownWindow', str(cb))
+            if not cb.tk.call('winfo', 'ismapped', pd):
+                return
+            from tkinter import font as tkfont
+            try:
+                f = tkfont.Font(root=cb, font=cb.tk.call(f'{pd}.f.l', 'cget', '-font'))
+            except tk.TclError:
+                f = tkfont.nametofont('TkDefaultFont')
+            vals = cb.cget('values')
+            vals = cb.tk.splitlist(vals) if isinstance(vals, str) else vals
+            need = max((f.measure(str(v)) for v in vals), default=0) + f.measure('0') * 2 + 24   # + scrollbar
+            w, h = int(cb.tk.call('winfo', 'width', pd)), int(cb.tk.call('winfo', 'height', pd))
+            x, y = int(cb.tk.call('winfo', 'rootx', pd)), int(cb.tk.call('winfo', 'rooty', pd))
+            sw = cb.winfo_screenwidth()
+            need = min(need, sw)
+            if need > w:
+                x = max(0, min(x, sw - need))
+                cb.tk.call('wm', 'geometry', pd, f'{need}x{h}+{x}+{y}')
+        except (tk.TclError, ValueError):
+            pass
+    # (a timer, not an idle callback: ttk's Post runs `update idletasks` between -postcommand and placing the list)
+    cb.configure(postcommand=lambda: cb.after(1, widen))
+
+
 class ScrollFrame(ttk.Frame):
     """Vertical scroll area; the mouse wheel scrolls it anywhere over its content (comboboxes included: the wheel
     never changes their value by accident)."""
@@ -189,15 +221,21 @@ class ScrollFrame(ttk.Frame):
         self.bind('<Enter>', lambda e: self._grab(True))
         self.bind('<Leave>', lambda e: self._grab(self._inside(e)))
 
-    def _fit_width(self, _e=None):
+    def _fit_width(self, _e=None, exact=False):
         """The content is as wide as the column; when it needs more (a narrow window), it keeps its own width and
         a horizontal scrollbar appears, so nothing at the right end is out of reach."""
         try:
             cw, need = self.canvas.winfo_width(), self.inner.winfo_reqwidth()
             # hysteresis: the content's own width depends on this decision (labels are re-wrapped to the column),
             # so near the limit the bar switched on and off for ever (100 % CPU at 1280x720). Once on, it stays
-            # until the content clearly fits; and after a few switches in a row the state is kept as it is.
-            over = (need > cw - 16) if self._hsb_on else (need > cw + 2)
+            # until the content clearly fits - in the same column: when the column has grown clearly since the bar
+            # came on, or the content is new (refit) the plain rule decides (the bar stayed under content that
+            # fitted: on since the column was narrow while the window was built). After a few switches in a row
+            # the state is kept as it is (and decided once more a second later).
+            if self._hsb_on and not exact and cw < getattr(self, '_hsb_cw', 0) + 16:
+                over = need > cw - 16
+            else:
+                over = need > cw + 2
             over = over and cw > 20
             if over != self._hsb_on:
                 import time
@@ -205,11 +243,13 @@ class ScrollFrame(ttk.Frame):
                 flips = [t for t in getattr(self, '_hsb_flips', []) if now - t < 1.0]
                 if len(flips) >= 4:
                     over = self._hsb_on
+                    self._recheck()                  # held: decided once more when things have calmed down
                 else:
                     self._hsb_flips = flips + [now]
             self.canvas.itemconfigure(self.win, width=max(cw, need) if over else cw)
             if over != self._hsb_on:
                 self._hsb_on = over
+                self._hsb_cw = cw
                 if over:
                     self.hsb.pack(side='bottom', fill='x', before=self.canvas)
                 else:
@@ -218,6 +258,31 @@ class ScrollFrame(ttk.Frame):
             self.canvas.configure(scrollregion=self.canvas.bbox('all'))
         except tk.TclError:
             pass
+
+    def _recheck(self):
+        """One more _fit_width a little later (twice at most until the next refit): a held decision is not kept
+        for ever."""
+        if getattr(self, '_recheck_job', None) is None and getattr(self, '_rechecks', 0) < 2:
+            self._rechecks = getattr(self, '_rechecks', 0) + 1     # (again only after the next refit)
+
+            def run():
+                self._recheck_job = None
+                self._fit_width(exact=True)
+            self._recheck_job = self.after(1100, run)
+
+    def refit(self, fresh=True):
+        """The content was rebuilt (fresh) or re-fitted to the column: its width is checked again (the content
+        frame has the column's width set from outside, so a narrower or wider content alone sends no <Configure>:
+        the scrollbar stayed)."""
+        if fresh:
+            self._rechecks = 0
+        if getattr(self, '_refit_job', None) is None:
+            def run():
+                self._refit_job = None
+                self._fit_width(exact=True)
+            # a moment later, not at idle: the geometry managers compute the new requested width at idle too,
+            # possibly after this check (which then saw the old width, and nothing asked again)
+            self._refit_job = self.after(40, run)
 
     def _inside(self, e):
         try:
@@ -523,6 +588,7 @@ class CreatorWindow:
             self._slots_fit()
         except tk.TclError:
             pass
+        self.scroll.refit(fresh=False)                   # re-fitted content may need the scrollbar no more
 
     def _resashed(self, e):
         """The window changed width: the columns keep their shares (until a separator is dragged by hand)."""
@@ -848,6 +914,7 @@ class CreatorWindow:
     def render_options(self):
         for w in self.opts.winfo_children():
             w.destroy()
+        self.scroll.refit()
         self._clear_mods()
         self.mod_vars = {}
         self.number_rows = {}                # roll source (or 'defense') -> its number field
@@ -895,7 +962,12 @@ class CreatorWindow:
                 else:
                     c.grid(row=rr, column=1, sticky='we' if stretch else 'w', pady=2)
                 return c, rr
-            c = ttk.Combobox(host, state='readonly', values=values, textvariable=var, width=width)
+            # stretched: it asks for little and takes the column's width (40 characters asked for made the column
+            # wider than an 800x600 window had room for); its list opens as wide as its longest entry
+            c = ttk.Combobox(host, state='readonly', values=values, textvariable=var,
+                             width=STRETCH_CHARS if stretch and tail is None else width)
+            if stretch:
+                wide_popdown(c)
             if tail is not None:
                 c.pack(side='left')
                 tail(host)
@@ -1044,8 +1116,9 @@ class CreatorWindow:
             box.grid(row=rr, column=1, sticky='we', pady=2)
             box.columnconfigure(0, weight=1)
             var = tk.StringVar(value=cur)
-            c = ttk.Combobox(box, state='readonly', values=vals, textvariable=var, width=40)
+            c = ttk.Combobox(box, state='readonly', values=vals, textvariable=var, width=STRETCH_CHARS)
             c.grid(row=0, column=0, sticky='we')
+            wide_popdown(c)
             self.scroll.no_wheel(c)
 
             def corrupt_picked(_e, var=var, vals=vals, corr=corr):
@@ -1252,6 +1325,7 @@ class CreatorWindow:
 
     def render_mods(self):
         inner = self.mods_frame.inner
+        self.scroll.refit()
         self._clear_mods()
         unr = self.unrestricted.get()          # the spec flag itself is set in render_options / current_blob
         mods = [m for m in self.cr.mods(self.spec) if m.variable]

@@ -51,8 +51,10 @@ GEAR_D2_INSET = 3                 # the boxes' gold border: items are drawn insi
 CHAR_GRID = (37, 400)             # top-left of the 15 x 10 inventory grid (cells of 29 px) on the panel
 CHAR_GOLD_BTN = (40, 380)         # the gold button (base goldbtn.dc6) above the grid
 CHAR_GOLD = (66, 390)             # left end of the gold amount
-WSET_TABS_D2 = {1: ((38, 38), (408, 38)), 2: ((85, 38), (454, 38))}   # the I / II tabs in the art
-WSET_TAB_D2 = (45, 29)
+# the I / II tabs in the art (gold borders measured in the panel: I x 26-74 / 395-444, II x 82-130 / 451-500,
+# y 37-68; the same in both themes - base-game art)
+WSET_TABS_D2 = {1: ((26, 37), (395, 37)), 2: ((81, 37), (451, 37))}
+WSET_TAB_D2 = (50, 32)
 CHAR_CELL_BG = '#141414'          # the game's own inventory grid: dark cells, grey borders
 CHAR_GRID_LINE = '#646464'
 
