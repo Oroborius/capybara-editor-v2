@@ -876,6 +876,16 @@ class StatScreen:
         n = len(self.pages)
         return list(range(max(1, n - max(1, self.spread) + 1)))
 
+    def page_label(self, page):
+        """The page number under the arrows: "3 / 5"; as an open book the pages of the spread on both panels,
+        "4-5 / 5" (each panel showing only its own number, the one on the left - next to the arrows the user
+        clicks - never read 5)."""
+        n = len(self.pages)
+        if len(self.shown) > 1 and page in self.shown:
+            a, b = self.pages.index(self.shown[0]) + 1, self.pages.index(self.shown[-1]) + 1
+            return f'{a}-{b} / {n}'
+        return f'{self.pages.index(page) + 1} / {n}'
+
     def _layout(self):
         """The pages on screen from the current page: the page itself, or the pair of the book holding it."""
         i = self.pages.index(self.page) if self.page in self.pages else 0
@@ -964,7 +974,7 @@ class StatScreen:
         for which, (x, y, fr) in ARROWS.items():
             out.alpha_composite(self._frame('buttons\\stat-screen', fr + (1 if self.pressed == ('page', which) else 0)), (x, y))
             reg.append(('page', which, (x, y) + ARROW_SIZE))
-        tx.draw(out, f'{self.pages.index(page) + 1} / {len(self.pages)}', 370, 672, 'font6', GOLD, 'right')
+        tx.draw(out, self.page_label(page), 370, 672, 'font6', GOLD, 'right')
         if game:
             self._page_game(out, reg, int(page[4:]))
         else:

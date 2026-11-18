@@ -23,12 +23,14 @@ RESET = True
 VARIANTS = {
     'd2-scale1.25': {'MXL_THEME': 'd2', 'CAPY_GEOMETRY': '1280x720+0+0', 'MXL_UI_SCALE': '1.25'},
     'd2-800x600': {'MXL_THEME': 'd2', 'CAPY_GEOMETRY': '800x600+0+0'},
+    'd2-800x480': {'MXL_THEME': 'd2', 'CAPY_GEOMETRY': '800x480+0+0'},    # the page taller than the window
+    'he-scale1.25': {'MXL_THEME': 'he', 'CAPY_GEOMETRY': '1280x720+0+0', 'MXL_UI_SCALE': '1.25'},
 }
 G = T.G
 XDOTOOL = shutil.which('xdotool')
 
 
-def stats_screen():
+def char_tab():
     import mxl_char_gui
     cw = T.chartab()
     if cw is None or getattr(cw, 'ch', None) is None:
@@ -39,6 +41,11 @@ def stats_screen():
         cw.tab.set('stats')
         cw.show_tab()
     T.settle(0.3)
+    return cw
+
+
+def stats_screen():
+    cw = char_tab()
     scr = cw.statscreen
     if scr is None:
         T.skip('no stat screen (light look)')
@@ -87,9 +94,11 @@ def stat_page_numbers_count_up_to_the_last_page():
     scr.show_page('main')
     T.pump(4)
     width = scr.cv.winfo_reqwidth()
-    seen, views = set(), []
+    seen, views, labels = set(), [], []
     for _ in range(n + 2):
         views.append(numbers(scr))
+        labels.append(scr.page_label(scr.shown[0]))
+        T.eq(scr.page_label(scr.shown[-1]), labels[-1], 'page numbers of the two panels')
         seen.update(numbers(scr))
         T.eq(len(scr.shown), scr.spread, f'pages side by side on {scr.shown}')
         T.eq(scr.cv.winfo_reqwidth(), width, f'width of the stat screen on {scr.shown}')
@@ -100,6 +109,12 @@ def stat_page_numbers_count_up_to_the_last_page():
     want = list(range(1, last + 1))
     lefts = [v[0] for v in views]
     T.eq(lefts[:last + 1], want + [1], f'left page numbers, one click each ({views})')
+    if scr.spread > 1:
+        want_labels = [f'{i}-{i + scr.spread - 1} / {n}' for i in range(1, last + 1)]
+    else:
+        want_labels = [f'{i} / {n}' for i in range(1, n + 1)]
+    T.eq(labels[:last + 1], want_labels + [want_labels[0]], 'page numbers under the arrows')
+    T.check(labels[last - 1].split(' / ')[0].endswith(str(n)), f'the numbers reach {n}: {labels}')
     for a, b in zip(views, views[1:]):                       # every number on screen moves by exactly one page
         if a[0] != last:
             T.eq([y - x for x, y in zip(a, b)], [1] * scr.spread, f'turn from {a} to {b}')
@@ -205,7 +220,7 @@ def the_page_scrolls_where_the_list_cannot():
     wheel(scr.cv, 120, x, y)                       # at the top of the list already: not taken by the list
     T.eq(scr.scroll_at, 0, 'rows after a notch up at the top')
     if not cw.scroll._shown[0]:
-        return                                     # the page fits: nothing else to scroll
+        T.skip('the page fits the window: no page to scroll (the 800x480 variant has one)')
     cv = cw.scroll.canvas
     cv.yview_moveto(0)
     T.pump(2)
@@ -220,22 +235,30 @@ def the_page_scrolls_where_the_list_cannot():
 # ------------------------------------------------------------------------------------ value widgets
 @T.test
 def the_wheel_never_changes_a_dropdown_on_a_page():
-    import mxl_merc
-    cw, _scr = stats_screen()
+    """Mercenary type (both looks) and, in the light look, the class of the Stats page (a class change resets
+    the skill levels)."""
+    cw = char_tab()
+    boxes = []
+    if getattr(cw, 'class_box', None) is not None and cw.statscreen is None:
+        boxes.append(('stats', cw.class_box))
     cw.tab.set('merc')
     cw.show_tab()
     T.settle(0.3)
-    page = cw.pages['merc']
-    box = next((w for w in _walk(page) if w.winfo_class() == 'TCombobox' and str(w.cget('state')) == 'readonly'
-                and w.cget('values')), None)
-    if box is None:
-        T.skip('no dropdown on the Mercenary page')
-    before = box.get()
-    for d in (-120, -120, 120, -120):
-        wheel(box, d, 5, 5)
-    T.eq(box.get(), before, 'dropdown value after wheel notches over it')
-    T.check(not cw.dirty(), 'the Character tab reports a pending edit after wheel notches')
-    del mxl_merc
+    box = next((w for w in _walk(cw.pages['merc']) if w.winfo_class() == 'TCombobox'
+                and str(w.cget('state')) == 'readonly' and w.cget('values')), None)
+    if box is not None:
+        boxes.append(('merc', box))
+    if not boxes:
+        T.skip('no dropdown on the pages')
+    for page, box in boxes:
+        cw.tab.set(page)
+        cw.show_tab()
+        T.settle(0.2)
+        before = box.get()
+        for d in (-120, -120, 120, -120):
+            wheel(box, d, 5, 5)
+        T.eq(box.get(), before, f'dropdown value on the {page} page after wheel notches over it')
+        T.check(not cw.dirty(), f'the Character tab reports a pending edit after wheel notches ({page})')
 
 
 def _walk(w):

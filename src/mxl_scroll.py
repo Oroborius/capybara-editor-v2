@@ -8,7 +8,7 @@ import time
 import tkinter as tk
 from tkinter import ttk
 
-NO_WHEEL = ('Listbox', 'Text', 'Treeview', 'TScale', 'Scale')      # they scroll themselves
+NO_WHEEL = ('Listbox', 'Text', 'Treeview', 'TScale', 'Scale', 'TScrollbar', 'Scrollbar')  # they scroll themselves
 # their class bindings CHANGE THE VALUE on a wheel notch (Tk 8.6 and 9): over them the wheel scrolls the page and
 # never reaches the class (a notch while scrolling past a dropdown changed a class, a level, a mercenary type)
 VALUE_WHEEL = ('TCombobox', 'TSpinbox')
@@ -66,34 +66,74 @@ def wheel_notches(ev):
     return (0.0, v) if shift else (v, 0.0)
 
 
+# One count for all handlers: the notches of an event are worked out ONCE, however many bindings (the list, the
+# page around it) see the event - with a count per handler an inner handler swallowed the part-notches and the
+# outer one, given only the event that completed a notch, never got to a whole notch of its own.
+_count = {'acc': [0.0, 0.0], 't': 0.0, 'key': None, 'res': None, 'job': False}
+
+
+def _event_key(ev):
+    return tuple(getattr(ev, a, None) for a in ('serial', 'time', 'delta', 'state', 'num', 'x_root', 'y_root')) \
+        + (str(getattr(ev, 'type', '')),)
+
+
+def _forget(*_a):
+    _count['key'] = None
+    _count['job'] = False
+
+
+def event_notches(ev):
+    """(vertical, horizontal, has_v, has_h) of this event: whole notches (ints, positive = down / right) after
+    adding the part-notches of the events before; has_*: the event carried an amount on that axis. The same
+    answer for every binding of one event."""
+    key = _event_key(ev)
+    if key == _count['key'] and _count['res'] is not None:
+        return _count['res']
+    v, h = wheel_notches(ev)
+    now = time.monotonic()
+    acc = _count['acc']
+    if now - _count['t'] > _RESET_AFTER:
+        acc[0] = acc[1] = 0.0
+    _count['t'] = now
+    out = []
+    for axis, amount in ((0, v), (1, h)):
+        if not amount:
+            out.append(0)
+            continue
+        a = acc[axis]
+        if a and (a > 0) != (amount > 0):
+            a = 0.0                      # turned round: start again
+        a += amount
+        n = int(round(a, 6))             # towards 0: a part-notch stays (15 x 8/120 is 0.99999...)
+        acc[axis] = a - n
+        out.append(n)
+    res = (out[0], out[1], bool(v), bool(h))
+    _count['key'], _count['res'] = key, res
+    if not _count['job']:                # the next event is a new one even if it looks the same (synthetic ones)
+        try:
+            ev.widget.after_idle(_forget)
+            _count['job'] = True
+        except (AttributeError, tk.TclError):
+            pass
+    return res
+
+
 class WheelHandler:
     """A wheel event handler: whole notches go to on_vertical(n, ev) / on_horizontal(n, ev) (n: int, positive =
     down / right); their return value ('break' or None) is the handler's. Part-notches (touchpads) are added up
-    and a whole notch handed on once it is complete; an event that leaves only a part is swallowed ('break')
-    unless nothing would take it. Without on_horizontal a sideways event goes unhandled (None)."""
+    (event_notches) and a whole notch handed on once it is complete; an event that leaves only a part is
+    swallowed ('break') unless nothing would take it. Without on_horizontal a sideways event goes unhandled."""
 
     def __init__(self, on_vertical=None, on_horizontal=None):
         self.on_vertical = on_vertical
         self.on_horizontal = on_horizontal
-        self._acc = [0.0, 0.0]
-        self._t = 0.0
 
     def __call__(self, ev):
-        v, h = wheel_notches(ev)
-        now = time.monotonic()
-        if now - self._t > _RESET_AFTER:
-            self._acc = [0.0, 0.0]
-        self._t = now
+        nv, nh, has_v, has_h = event_notches(ev)
         out = None
-        for axis, amount, fn in ((0, v, self.on_vertical), (1, h, self.on_horizontal)):
-            if not amount or fn is None:
+        for n, has, fn in ((nv, has_v, self.on_vertical), (nh, has_h, self.on_horizontal)):
+            if not has or fn is None:
                 continue
-            acc = self._acc[axis]
-            if acc and (acc > 0) != (amount > 0):
-                acc = 0.0                # turned round: start again
-            acc += amount
-            n = int(round(acc, 6))       # towards 0: a part-notch stays (15 x 8/120 is 0.99999...)
-            self._acc[axis] = acc - n
             if n:
                 r = fn(n, ev)
                 if r is not None:
