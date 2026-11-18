@@ -13,7 +13,8 @@ Parts:
   screenshots), the game's two list pages (drawn from the statscreen table on the art's own second and third
   panel; no screenshot of them exists, see docs/statscreen-ref/notes.md), "All item attributes" (every summed
   stat, read-only) and "Saved values" (the editor's own page: what the save stores and the game screen does not
-  show). The arrow buttons walk the page list.
+  show). The arrow buttons walk the page list one page at a time (as an open book too: 1-2, 2-3, 3-4, 4-5, so
+  both page numbers count up without a gap and the last page is reached).
 """
 import copy
 import os
@@ -659,6 +660,8 @@ class StatScreen:
         self.pressed = None
         self.edit = None                  # (key, entry widget, canvas item)
         self.scroll_at = 0
+        self._list_top = None             # the highest scroll_at of the totals list (known once it was drawn)
+        self._redraw_job = None
         self._bg = {}
         self._pil = {}
         self._photo = None
@@ -677,9 +680,8 @@ class StatScreen:
         cv.bind('<ButtonPress-3>', self.on_right)
         cv.bind('<Motion>', self.on_motion)
         cv.bind('<Leave>', lambda e: self._show_tip(None))
-        cv.bind('<MouseWheel>', self.on_wheel)
-        cv.bind('<Button-4>', self.on_wheel)
-        cv.bind('<Button-5>', self.on_wheel)
+        import mxl_scroll
+        mxl_scroll.bind_wheel(cv, self.on_wheel)
         cv.bind('<Prior>', lambda e: self.turn(-1))
         cv.bind('<Next>', lambda e: self.turn(1))
 
@@ -868,26 +870,38 @@ class StatScreen:
             self.redraw()
 
     def _starts(self):
-        """Indexes of the pages a view can start at (book: every second page; the last pair ends the list)."""
+        """Indexes of the pages a view can start at: every page, but a book never runs past the last page.
+        (A book turned by pairs before: with 5 pages it showed 1-2, 3-4, 4-5 - the left page number went 1, 3, 4,
+        skipping 2 and never reaching 5.)"""
         n = len(self.pages)
-        if self.spread < 2 or n < 2:
-            return list(range(n))
-        st = list(range(0, n - 1, 2))
-        if n % 2:
-            st.append(n - 2)
-        return st
+        return list(range(max(1, n - max(1, self.spread) + 1)))
+
+    def page_label(self, page):
+        """The page number under the arrows: "3 / 5"; as an open book the pages of the spread on both panels,
+        "4-5 / 5" (each panel showing only its own number, the one on the left - next to the arrows the user
+        clicks - never read 5)."""
+        n = len(self.pages)
+        if len(self.shown) > 1 and page in self.shown:
+            a, b = self.pages.index(self.shown[0]) + 1, self.pages.index(self.shown[-1]) + 1
+            return f'{a}-{b} / {n}'
+        return f'{self.pages.index(page) + 1} / {n}'
 
     def _layout(self):
         """The pages on screen from the current page: the page itself, or the pair of the book holding it."""
         i = self.pages.index(self.page) if self.page in self.pages else 0
-        st = [x for x in self._starts() if x <= i]
-        start = st[-1] if st else 0
+        start = min(i, self._starts()[-1])
         self.shown = self.pages[start:start + self.spread]
         self.page = self.shown[0]
 
     # ------------------------------------------------------------------ drawing
     def redraw(self):
         from PIL import Image, ImageFilter, ImageTk
+        if self._redraw_job is not None:          # drawn now: a redraw still waiting would only repeat it
+            try:
+                self.cv.after_cancel(self._redraw_job)
+            except tk.TclError:
+                pass
+            self._redraw_job = None
         pw, ph = round(PANEL_W * self.k), round(PANEL_H * self.k)
         try:
             regions = []
@@ -960,7 +974,7 @@ class StatScreen:
         for which, (x, y, fr) in ARROWS.items():
             out.alpha_composite(self._frame('buttons\\stat-screen', fr + (1 if self.pressed == ('page', which) else 0)), (x, y))
             reg.append(('page', which, (x, y) + ARROW_SIZE))
-        tx.draw(out, f'{self.pages.index(page) + 1} / {len(self.pages)}', 370, 672, 'font6', GOLD, 'right')
+        tx.draw(out, self.page_label(page), 370, 672, 'font6', GOLD, 'right')
         if game:
             self._page_game(out, reg, int(page[4:]))
         else:
@@ -1201,6 +1215,7 @@ class StatScreen:
         shown = (h - 10) // LIST_PITCH
         top = max(0, len(rows) - shown)
         self.scroll_at = max(0, min(self.scroll_at, top))
+        self._list_top = top
         for i, (col, text) in enumerate(rows[self.scroll_at:self.scroll_at + shown]):
             tx.draw(out, text, x + 10, y + 5 + LIST_PITCH * i + LIST_PITCH / 2, 'font16', col, 'left')
         if top:                                    # the place in the list: a thumb on the right edge
@@ -1447,24 +1462,49 @@ class StatScreen:
                 return
             self.win.st_plus(key, 10 if ev.state & 0x1 else 1, take=True, free=bool(ev.state & 0x8))
 
-    def on_wheel(self, ev):
+    def on_wheel(self, n, _ev=None):
+        """n notches (mxl_scroll.WheelHandler; positive = down): 3 rows of the totals list each. At the list's
+        end (or on a page without the list) the notch is not taken, the page around scrolls when it can."""
         if 'totals' not in self.shown:
             return None
-        d = -1 if (getattr(ev, 'num', 0) == 4 or getattr(ev, 'delta', 0) > 0) else 1
-        self.scroll(d * 3)
+        top = self._list_top
+        if (n < 0 and self.scroll_at <= 0) or (n > 0 and top is not None and self.scroll_at >= top):
+            return None
+        self.scroll(n * 3)
         return 'break'
 
     def scroll(self, n):
+        """Moves the totals list; drawn once the pending input is handled (a redraw of the panels takes 60-100 ms:
+        a quick turn of the wheel or a touchpad swipe queued one redraw per notch and the list crawled on for
+        seconds after the hand had stopped)."""
+        top = self._list_top
         self.scroll_at = max(0, self.scroll_at + n)
-        self.redraw()
+        if top is not None:
+            self.scroll_at = min(self.scroll_at, top)
+        self.redraw_later()
+
+    def redraw_later(self):
+        if self._redraw_job is not None:
+            return
+        try:
+            self._redraw_job = self.cv.after_idle(self._redraw_now)
+        except tk.TclError:
+            self._redraw_job = None
+
+    def _redraw_now(self):
+        self._redraw_job = None
+        try:
+            if self.cv.winfo_exists():
+                self.redraw()
+        except tk.TclError:
+            pass
 
     def turn(self, step):
         if self.edit is not None and not self.commit_edit():
             return
         st = self._starts()
-        cur = self.pages.index(self.page)
-        i = max([n for n, x in enumerate(st) if x <= cur] or [0])
-        self.show_page(self.pages[st[(i + step) % len(st)]], exact=True)
+        cur = min(self.pages.index(self.page), st[-1])
+        self.show_page(self.pages[st[(st.index(cur) + step) % len(st)]], exact=True)
 
     def show_page(self, page, exact=False):
         """Shows a page (in a book: the pair holding it; exact: the pair starting with it)."""
@@ -1472,8 +1512,9 @@ class StatScreen:
             self.cancel_edit()
             self.page = page
             if exact and self.spread > 1:
-                i = self.pages.index(page)
+                i = min(self.pages.index(page), self._starts()[-1])    # always a full book
                 self.shown = self.pages[i:i + self.spread]
+                self.page = self.shown[0]
             else:
                 self._layout()
             self.redraw()

@@ -19,6 +19,7 @@ from tkinter import ttk, messagebox
 import settings
 import mxl_save
 from mxl_save import edit_stash, parse_stash, free_spot, blob_item, EditError, STASH_PAGES
+import mxl_scroll
 from mxl_format import FormatError, STAT_GROUPS
 from mxl_rules import stat_label, stat_hidden, mods_stats
 from mxl_statnames import (stat_text, param_kind, decode_param, encode_param, encode_skill_param,
@@ -294,31 +295,43 @@ class ScrollFrame(ttk.Frame):
     def _grab(self, on):
         try:
             if on:
-                self.bind_all('<MouseWheel>', self._wheel)
-                self.bind_all('<Button-4>', self._wheel)
-                self.bind_all('<Button-5>', self._wheel)
+                mxl_scroll.bind_wheel_all(self, self._wheel)
             else:
-                for ev in ('<MouseWheel>', '<Button-4>', '<Button-5>'):
-                    self.unbind_all(ev)
+                mxl_scroll.unbind_wheel_all(self)
         except tk.TclError:
             pass
 
-    def _wheel(self, e):
+    @property
+    def _wheel(self):
+        """The area's wheel handler (mxl_scroll.WheelHandler: whole notches, touchpad deltas added up)."""
+        h = self.__dict__.get('_wheel_h')
+        if h is None:
+            h = self.__dict__['_wheel_h'] = mxl_scroll.WheelHandler(self._wheel_v, self._wheel_x)
+        return h
+
+    def _wheel_v(self, n, e):
         if not self._inside(e):
             return None
-        if getattr(e, 'num', None) in (4, 5):
-            step = -1 if e.num == 4 else 1
-        else:
-            step = int(-e.delta / 120) or (-1 if e.delta > 0 else 1)
         top, bottom = self.canvas.yview()
         if top > 0 or bottom < 1:
-            self.canvas.yview_scroll(step, 'units')
+            self.canvas.yview_scroll(n, 'units')
+        return 'break'
+
+    def _wheel_x(self, n, e):
+        if not self._inside(e):
+            return None
+        if self._hsb_on:
+            self.canvas.xview_scroll(n, 'units')
         return 'break'
 
     def no_wheel(self, widget):
-        """The wheel over this widget scrolls the area instead of changing the widget's value."""
-        for ev in ('<MouseWheel>', '<Button-4>', '<Button-5>'):
-            widget.bind(ev, self._wheel)
+        """The wheel over this widget scrolls the area instead of changing the widget's value (also when the
+        widget is outside the area: the number of copies spun with the wheel)."""
+        h = self.__dict__.get('_wheel_keep')
+        if h is None:
+            h = self.__dict__['_wheel_keep'] = mxl_scroll.WheelHandler(
+                lambda n, e: self._wheel_v(n, e) or 'break', lambda n, e: self._wheel_x(n, e) or 'break')
+        mxl_scroll.bind_wheel(widget, h)
 
     def scroll_top(self):
         self.canvas.yview_moveto(0)
@@ -1309,18 +1322,17 @@ class CreatorWindow:
                 pass
             return 'break'
 
-        def wheel(e):
+        def wheel_v(n, e):
             try:
                 focused = ent.focus_get() is ent
             except (KeyError, tk.TclError):
                 focused = False
             if not focused:
-                return self.scroll._wheel(e)
-            if getattr(e, 'num', None) in (4, 5):
-                up = e.num == 4
-            else:
-                up = e.delta > 0
-            return step(1 if up else -1)
+                return self.scroll._wheel_v(n, e)
+            return step(-n)                       # one step per notch; up = more
+
+        def wheel_x(n, e):
+            return self.scroll._wheel_x(n, e)
 
         def key_ok(text):
             return text in ('', '-') or bool(re.fullmatch(r'-?\d{1,11}', text)) and (lo < 0 or text[0] != '-')
@@ -1333,8 +1345,7 @@ class CreatorWindow:
         ent.bind('<Down>', lambda e: step(-1))
         ent.bind('<Prior>', lambda e: step(10))
         ent.bind('<Next>', lambda e: step(-10))
-        for ev in ('<MouseWheel>', '<Button-4>', '<Button-5>'):
-            ent.bind(ev, wheel)
+        mxl_scroll.bind_wheel(ent, wheel_v, wheel_x)
         self._spins[ent] = [commit, None]        # a number still being typed is committed before any button runs
         ent.set_value = lambda v: (var.set(str(v)), commit())[-1]
         ent.step = step

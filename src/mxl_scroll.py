@@ -4,10 +4,166 @@ The editor's pages were laid out for one large window; in a small one pack / gri
 fit (buttons at the bottom included). Scrolled gives a page an `inner` frame to build into: while the room is
 enough, inner fills it exactly as a plain frame would (so expanding content keeps expanding); when inner asks for
 more than there is, it keeps the size it asks for and scrollbars appear on the side that is short."""
+import time
 import tkinter as tk
 from tkinter import ttk
 
-NO_WHEEL = ('Listbox', 'Text', 'Treeview', 'TCombobox', 'Spinbox', 'TSpinbox', 'TScale', 'Scale')
+NO_WHEEL = ('Listbox', 'Text', 'Treeview', 'TScale', 'Scale', 'TScrollbar', 'Scrollbar')  # they scroll themselves
+# their class bindings CHANGE THE VALUE on a wheel notch (Tk 8.6 and 9): over them the wheel scrolls the page and
+# never reaches the class (a notch while scrolling past a dropdown changed a class, a level, a mercenary type)
+VALUE_WHEEL = ('TCombobox', 'TSpinbox')
+
+# ---------------------------------------------------------------------------------------------- the mouse wheel
+# One place that turns wheel / touchpad input into whole "notches", the same under the Tk of each build:
+#  - Tk 8.6 (Windows exe): <MouseWheel> with delta = 120 per notch; precision touchpads send small deltas
+#    (8, 15 ...) many times a second. On X11, 8.6 reports the wheel as <Button-4> (up) / <Button-5> (down).
+#  - Tk 9 (Linux AppImage): on X11 every wheel click, touchpad scrolling under XWayland included, is ONE
+#    <MouseWheel> with delta +-120 (Shift held: <Shift-MouseWheel>, the horizontal wheel); <Button-4>/<Button-5>
+#    are the mouse's side buttons (back / forward) - not the wheel - and must not scroll. <TouchpadScroll> (Tk 9
+#    on Windows / macOS) carries pixel deltas, x and y packed into one number (tk::PreciseScrollDeltas).
+# Small deltas are added up, so a touchpad moves as far as the same swipe of a wheel would (it moved a whole
+# notch per tiny event before); each notch is handled exactly once.
+TK9 = float(tk.TkVersion) >= 8.7
+WHEEL_NOTCH = 120.0                      # delta of one wheel notch
+TOUCHPAD_NOTCH = 40.0                    # pixels of a touchpad swipe that count as one notch
+_RESET_AFTER = 0.6                       # seconds without input: a part-notch left over is forgotten
+
+
+def wheel_seqs():
+    """The event sequences that carry the wheel / touchpad under this Tk."""
+    return ('<MouseWheel>',) + (('<TouchpadScroll>',) if TK9 else ('<Button-4>', '<Button-5>'))
+
+
+def touchpad_deltas(d):
+    """(dx, dy) pixels of a <TouchpadScroll> event's packed %D (tk::PreciseScrollDeltas)."""
+    d = int(d)
+    low = d & 0xFFFF
+    return d >> 16, (low if low < 0x8000 else low - 0x10000)
+
+
+def wheel_notches(ev):
+    """(vertical, horizontal) amounts of one wheel event in notches, positive = down / right (the sign
+    yview_scroll / xview_scroll take); fractions for touchpads. (0, 0) for what is not a wheel."""
+    try:
+        etype = str(ev.type)
+    except Exception:
+        etype = ''
+    shift = bool(getattr(ev, 'state', 0) & 0x1) if isinstance(getattr(ev, 'state', 0), int) else False
+    if etype in ('TouchpadScroll', '39') or etype.endswith('TouchpadScroll'):
+        dx, dy = touchpad_deltas(getattr(ev, 'delta', 0) or 0)
+        return -dy / TOUCHPAD_NOTCH, -dx / TOUCHPAD_NOTCH
+    num = getattr(ev, 'num', None)
+    if num in (4, 5) and etype in ('ButtonPress', '4', 'Button'):
+        if TK9:
+            return 0.0, 0.0              # Tk 9: the side buttons of the mouse
+        v = -1.0 if num == 4 else 1.0
+    else:
+        try:
+            delta = float(getattr(ev, 'delta', 0) or 0)
+        except (TypeError, ValueError):
+            delta = 0.0
+        v = -delta / WHEEL_NOTCH
+    return (0.0, v) if shift else (v, 0.0)
+
+
+# One count for all handlers: the notches of an event are worked out ONCE, however many bindings (the list, the
+# page around it) see the event - with a count per handler an inner handler swallowed the part-notches and the
+# outer one, given only the event that completed a notch, never got to a whole notch of its own.
+_count = {'acc': [0.0, 0.0], 't': 0.0, 'key': None, 'res': None, 'job': False}
+
+
+def _event_key(ev):
+    return tuple(getattr(ev, a, None) for a in ('serial', 'time', 'delta', 'state', 'num', 'x_root', 'y_root')) \
+        + (str(getattr(ev, 'type', '')),)
+
+
+def _forget(*_a):
+    _count['key'] = None
+    _count['job'] = False
+
+
+def event_notches(ev):
+    """(vertical, horizontal, has_v, has_h) of this event: whole notches (ints, positive = down / right) after
+    adding the part-notches of the events before; has_*: the event carried an amount on that axis. The same
+    answer for every binding of one event."""
+    key = _event_key(ev)
+    if key == _count['key'] and _count['res'] is not None:
+        return _count['res']
+    v, h = wheel_notches(ev)
+    now = time.monotonic()
+    acc = _count['acc']
+    if now - _count['t'] > _RESET_AFTER:
+        acc[0] = acc[1] = 0.0
+    _count['t'] = now
+    out = []
+    for axis, amount in ((0, v), (1, h)):
+        if not amount:
+            out.append(0)
+            continue
+        a = acc[axis]
+        if a and (a > 0) != (amount > 0):
+            a = 0.0                      # turned round: start again
+        a += amount
+        n = int(round(a, 6))             # towards 0: a part-notch stays (15 x 8/120 is 0.99999...)
+        acc[axis] = a - n
+        out.append(n)
+    res = (out[0], out[1], bool(v), bool(h))
+    _count['key'], _count['res'] = key, res
+    if not _count['job']:                # the next event is a new one even if it looks the same (synthetic ones)
+        try:
+            ev.widget.after_idle(_forget)
+            _count['job'] = True
+        except (AttributeError, tk.TclError):
+            pass
+    return res
+
+
+class WheelHandler:
+    """A wheel event handler: whole notches go to on_vertical(n, ev) / on_horizontal(n, ev) (n: int, positive =
+    down / right); their return value ('break' or None) is the handler's. Part-notches (touchpads) are added up
+    (event_notches) and a whole notch handed on once it is complete; an event that leaves only a part is
+    swallowed ('break') unless nothing would take it. Without on_horizontal a sideways event goes unhandled."""
+
+    def __init__(self, on_vertical=None, on_horizontal=None):
+        self.on_vertical = on_vertical
+        self.on_horizontal = on_horizontal
+
+    def __call__(self, ev):
+        nv, nh, has_v, has_h = event_notches(ev)
+        out = None
+        for n, has, fn in ((nv, has_v, self.on_vertical), (nh, has_h, self.on_horizontal)):
+            if not has or fn is None:
+                continue
+            if n:
+                r = fn(n, ev)
+                if r is not None:
+                    out = r
+            else:
+                out = 'break'
+        return out
+
+
+def bind_wheel(widget, on_vertical=None, on_horizontal=None, add=None):
+    """Binds the wheel sequences of this Tk on the widget; returns the WheelHandler."""
+    h = on_vertical if isinstance(on_vertical, WheelHandler) else WheelHandler(on_vertical, on_horizontal)
+    for seq in wheel_seqs():
+        widget.bind(seq, h, add)
+    return h
+
+
+def bind_wheel_class(widget, tag, handler):
+    for seq in wheel_seqs():
+        widget.bind_class(tag, seq, handler)
+
+
+def bind_wheel_all(widget, handler):
+    for seq in wheel_seqs():
+        widget.bind_all(seq, handler)
+
+
+def unbind_wheel_all(widget):
+    for seq in wheel_seqs():
+        widget.unbind_all(seq)
 
 
 class Scrolled(tk.Frame):
@@ -33,10 +189,12 @@ class Scrolled(tk.Frame):
         self.inner.bind('<Configure>', self._later)
         self._wheel_id = None
         # the wheel: a binding tag of its own given to every widget inside (bind_all is taken, and dropped
-        # again, by other scroll areas of the editor)
+        # again, by other scroll areas of the editor), placed AFTER the widget's own and class bindings: a widget
+        # that scrolls something itself (a list on the stat screen) has the first say and returns 'break'
+        # when it took the notch - the page scrolled along with the list before
         self._tag = 'MxlScrolled%d' % id(self)
-        for seq in ('<MouseWheel>', '<Button-4>', '<Button-5>'):
-            self.bind_class(self._tag, seq, self._wheel)
+        self._wheel = WheelHandler(self._wheel_v, self._wheel_h)
+        bind_wheel_class(self, self._tag, self._wheel)
         self._tag_all(self)
 
     def set_bg(self, bg):
@@ -104,22 +262,37 @@ class Scrolled(tk.Frame):
             if w.winfo_class() not in NO_WHEEL:      # those scroll themselves
                 tags = w.bindtags()
                 if self._tag not in tags:
-                    w.bindtags((self._tag,) + tuple(tags))
+                    tags = list(tags)
+                    cls = w.winfo_class()
+                    at = tags.index(cls) + (cls not in VALUE_WHEEL) if cls in tags else min(1, len(tags))
+                    tags.insert(at, self._tag)
+                    w.bindtags(tuple(tags))
             for c in w.winfo_children():
                 self._tag_all(c)
         except tk.TclError:
             pass
 
-    def _wheel(self, ev):
+    @staticmethod
+    def _keep_value(ev):
+        try:
+            return 'break' if ev.widget.winfo_class() in VALUE_WHEEL else None
+        except (AttributeError, tk.TclError):
+            return None
+
+    def _wheel_v(self, n, ev=None):
         try:
             if not self._shown[0]:
-                return
-            if getattr(ev, 'num', 0) == 4:
-                d = -1
-            elif getattr(ev, 'num', 0) == 5:
-                d = 1
-            else:
-                d = -1 if ev.delta > 0 else 1
-            self.canvas.yview_scroll(d * 3, 'units')
-        except (tk.TclError, AttributeError):
+                return self._keep_value(ev)
+            self.canvas.yview_scroll(n * 3, 'units')
+        except tk.TclError:
             pass
+        return 'break'
+
+    def _wheel_h(self, n, ev=None):
+        try:
+            if not self._shown[1]:
+                return self._keep_value(ev)
+            self.canvas.xview_scroll(n * 3, 'units')
+        except tk.TclError:
+            pass
+        return 'break'
