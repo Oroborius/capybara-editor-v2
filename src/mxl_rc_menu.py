@@ -416,6 +416,9 @@ def _char_menu(win, cv, ev):
         if clip is not None and cv is win.inv:
             menu.add_command(label=rc('paste_here', 'Paste here ({name})', name=clip[1]),
                              command=lambda: _char_paste(win, ev, clip))
+        elif clip is not None and slot is not None:         # an empty equipment slot (character or mercenary)
+            menu.add_command(label=rc('paste_here', 'Paste here ({name})', name=clip[1]),
+                             command=lambda: _char_paste_slot(win, slot, clip))
         if cv is win.inv:
             menu.add_command(label=rc('import', 'Import item...'), command=lambda: _import_char(win, ev))
         menu.add_command(label=rc('create_here', 'Create here...'), command=win.create_here)
@@ -550,6 +553,20 @@ def _char_paste(win, ev, clip):
         return
     win.app._capy_clip = None
     win.save(rc('pasted', '{name} pasted', name=clip[1]))
+
+
+def _char_paste_slot(win, slot, clip):
+    """Paste onto an EMPTY equipment slot: the copied item is worn there (the mercenary's slot when the
+    mercenary is shown). Character.place applies the slot rules (body location, two hands, mercenary slots)."""
+    from mxl_char import CharError
+    merc = win.is_merc()
+    try:
+        win.ch.place(clip[0], ('slot', slot), merc)       # refuses before it changes anything
+    except (CharError, FormatError, OSError) as err:
+        win.set_status(str(err), True)
+        return
+    if win.save(rc('pasted', '{name} pasted', name=clip[1])):
+        win.app._capy_clip = None
 
 
 def clean_name(win, e):
@@ -1473,8 +1490,10 @@ def _char_hot(win, what):
             _char_paste_over(win, e, clip)
         elif ev.widget is win.inv:
             _char_paste(win, ev, clip)
+        elif slot is not None:
+            _char_paste_slot(win, slot, clip)
         else:
-            win.set_status(rc('hot.nospot', 'paste onto an inventory cell or an occupied slot'), True)
+            win.set_status(rc('hot.nospot', 'paste onto an inventory cell or an equipment slot'), True)
     elif what == 'magic_copy':
         if e is None:
             win.set_status(rc('hot.none', 'no item under the mouse cursor'), True)
