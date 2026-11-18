@@ -266,9 +266,11 @@ class CharacterWindow(StatEditMixin):
             if val:
                 self.merc_rb = b                     # enabled while a mercenary is hired (see redraw)
         ttk.Label(row, text='   ' + T('ch.weapon_set', 'Weapon set')).pack(side='left')
+        self.wset_rbs = []              # disabled on the mercenary view: he has one weapon set (see slot_of)
         for n in (1, 2):
-            ttk.Radiobutton(row, text='I' if n == 1 else 'II', value=n, variable=self.wset,
-                            command=self.redraw).pack(side='left', padx=2)
+            rb = ttk.Radiobutton(row, text='I' if n == 1 else 'II', value=n, variable=self.wset, command=self.redraw)
+            rb.pack(side='left', padx=2)
+            self.wset_rbs.append(rb)
         c = self.cell
         self.doll = tk.Canvas(left, width=int(DOLL_W * c) + 1, height=int(DOLL_H * c) + 1, bg=BG, highlightthickness=0)
         self.doll.pack(anchor='w')
@@ -311,7 +313,9 @@ class CharacterWindow(StatEditMixin):
         return bool(self.merc.get())
 
     def slot_of(self, box):
-        return SET2.get(box, box) if self.wset.get() == 2 else box
+        """The slot an equipment box stands for: set II's 11 / 12 for the weapon boxes when the character's set II
+        is chosen; never on the mercenary view (his slots are MERC_SLOTS: one weapon set)."""
+        return SET2.get(box, box) if self.wset.get() == 2 and not self.is_merc() else box
 
     def visible_boxes(self):
         return [b for b in DOLL if not self.is_merc() or b in MERC_SLOTS]
@@ -404,6 +408,8 @@ class CharacterWindow(StatEditMixin):
             self.merc.set(False)
         self.merc_rb.state(['!disabled'] if self.ch.merc_hired else ['disabled'])
         merc = self.is_merc()
+        for rb in getattr(self, 'wset_rbs', ()):
+            rb.state(['disabled'] if merc else ['!disabled'])
         eq = self.ch.equipped(merc)
         cv = self.doll
         cv.delete('all')
@@ -416,7 +422,7 @@ class CharacterWindow(StatEditMixin):
             e = eq.get(slot)
             if e is not None:
                 self.draw_item(cv, e.it, x0, y0, x1, y1, e is self.selected)
-            elif box in (4, 5):
+            elif box in (4, 5) and not merc:
                 cv.create_text((x0 + x1) / 2, (y0 + y1) / 2, text='I' if self.wset.get() == 1 else 'II',
                                fill='#444444', font=('Segoe UI', 14))
         inv = self.inv
