@@ -601,6 +601,9 @@ class ItemStatsWindow:
     def external_change(self):
         """The item may have been written by someone else (an undo of the main window): read it again."""
         if self.entry is not None:
+            cur = getattr(self.chwin, 'current', None)    # the main window's panel: tied to one read of the file
+            if cur is not None and not cur():
+                self.chwin.reload()
             self.entry = self._refind_entry() or self.entry
         self.pending = {}
         self.load_rows()

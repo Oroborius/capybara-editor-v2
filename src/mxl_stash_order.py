@@ -202,7 +202,7 @@ def stale_view(path, data, remove):
 def _refuse_stale(view):
     try:
         if view is not None:
-            view.root.after_idle(view.reload)
+            view.root.after_idle(lambda: _reload_keep_status(view))
     except Exception:
         pass
     raise mxl_save.EditError(_T('so.err.stale', 'The stash changed on disk since it was shown (the game or another '
@@ -234,6 +234,23 @@ def _view_of(path):
         if v is not None and getattr(v, 'path', None) and _same_file(v.path, path):
             return v
     return None
+
+
+def _reload_keep_status(view):
+    """The view reads the stash again; the status line keeps the refusal the caller showed (the reload writes its
+    own hint there)."""
+    try:
+        text = view.status.cget('text')
+    except Exception:
+        text = None
+    try:
+        view.reload()
+    finally:
+        if text:
+            try:
+                view.status.configure(text=text)
+            except Exception:
+                pass
 
 
 def _T(key, default, **kw):
