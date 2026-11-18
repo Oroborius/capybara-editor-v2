@@ -18,8 +18,8 @@ unique to it.
 
 **Not yet tried in the game.** The newer additions (game-art panels, compact layout, the stat screen, the skill
 tree, the Mercenary / Quests+ / Counters / Hotkeys pages, the save check, Fill sockets) pass the editor's automated
-test suite, which works on copies of sample saves in a virtual display. They have not yet been checked in the
-running game, and the Windows build has only been run under Wine, not on real Windows. Keep your backups, and
+test suite, which works on copies of sample saves in a virtual display; it checks that they work and write the
+right bytes, not how they look. They have not yet been checked in the running game, and the Windows build has only been run under Wine, not on real Windows. Keep your backups, and
 please report what you find.
 
 **Editing**
@@ -111,7 +111,8 @@ please report what you find.
 **Platforms**
 - **Native Linux AppImage** (no Wine): finds the Median XL save folder inside Wine, Lutris, Bottles and Steam
   prefixes, opens at a size that fits the screen, and does not double-scale on HiDPI Wayland
-  (`MXL_UI_SCALE=<factor>` to choose a scale). Text is antialiased.
+  (`MXL_UI_SCALE=<factor>` to choose a scale). Text is antialiased (Tk built with Xft; plain X fonts as a
+  fallback).
 - Windows build from the same source tree, also buildable on Linux.
 
 **Tests**
