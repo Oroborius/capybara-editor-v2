@@ -29,6 +29,7 @@ OPS = {0x0a: '<', 0x0b: '>', 0x0c: '<=', 0x0d: '>=', 0x0e: '==', 0x0f: '!=',
 FUNCS = {0: ('min', 2), 1: ('max', 2), 2: ('rand', 2), 3: ('skill', 2), 4: ('miss', 2), 5: ('stat', 2),
          7: ('f7', 1), 10: ('f10', 1), 11: ('f11', 3), 13: ('f13', 2)}      # 7+ : the mod's own, unknown
 MISS_FIELD = {'dpa1': 0x78, 'dpa2': 0x7c}             # missiles.bin: the damage parameters (as in the base game)
+MASTERY_STATS = (329, 330, 331, 332, 357)           # "+x% to Fire ... Physical/Magic Spell Damage"
 ARG = {1: 1, 4: 1, 5: 2, 6: 4, 7: 1, 8: 2, 9: 4}
 SIGNED = (7, 8, 9)                                   # the number ops (a byte holds -128..127)
 PREC = {'?': 1, '<': 2, '>': 2, '<=': 2, '>=': 2, '==': 2, '!=': 2, '+': 3, '-': 3, '*': 4, '/': 4, '^': 5}
@@ -358,6 +359,10 @@ class Calc:
                 return 0
             a = int(name[2])
             return self._ln(sid, b, a) if name[1] == 'l' else self._dm(sid, b, a)
+        # Masteries ("+x% to Fire / Lightning / Cold / Poison / Physical-Magic Spell Damage", stats 329-332,
+        # 357) come from items and from passives of other skills (Nightwalker, Way of the Raven, Blight ...).
+        # How the game folds them into these codes is not in the tables (the mod's own formulas write it
+        # both as x*(100+m)/100 and as x*(100+m)/100+m), and every reference tooltip has mastery 0: taken as 0.
         if name in ('enma', 'exma'):                       # elemental damage + mastery
             self.assumed.add('mastery')
             return self.elem(sid, lvl, name == 'exma')
@@ -388,6 +393,18 @@ class Calc:
             if self.code('blvl', sid, lvl) <= 0:           # only at base level 0 (Mind Spark)
                 return self._par(sid, int(name[3:]))
             raise Unsupported(f'formula code {name} above base level 0')
+        if name in ('pdmn', 'pdmx'):                       # physical damage (min / max) in 256ths with the
+            # skill's damage formula, like edns / edxs; not 0 without points: Absolution / Sentence read the two
+            # Vessels' (no points) and show "Magic Damage: 2 / 3", "Physical Damage: +2 / +3" in game
+            return self.phys(sid, max(lvl, 1), name == 'pdmx', shift=False)
+        if name == 'mnar':                                 # the summon's attack rating: 0 while the skill has
+            if self.code('blvl', sid, lvl) <= 0:           # no point (Night Hawks, Blood Skeleton, the Barbarian
+                return 0                                   # spirits ... show just the constant: "Attack Rating: 200")
+            raise Unsupported('formula code mnar above base level 0')
+        if name == 'pass':                                 # skill('Mark of ...'.pass) of the Paragon skills: 0
+            if self.blvl(sid) <= 0:                        # while the hidden skill has no level (the game shows
+                return 0                                   # "Unlockable Skill" and the upgrade text)
+            raise Unsupported('formula code pass of a skill with a level')
         if name == 'mlvl':                                 # a skill's maximum level: not in the tables
             return None                                    # (unknown; harmless where it divides 0)
         raise Unsupported(f'formula code {name}')
@@ -488,6 +505,8 @@ class Calc:
         if nm == 'stat':
             sid_, acc = args
             self.used_stats.add(sid_)
+            if sid_ in MASTERY_STATS and sid_ not in self.stats:
+                self.assumed.add('mastery')                # given by items and other skills' passives
             return int(self.stats.get(sid_, 0))
         if nm == 'miss':
             # a number of a missile: the code is one of misscalc.bin; the damage parameters are
@@ -593,6 +612,8 @@ class Composer:
             return one(A)
         if fn == 65:
             return one(f'{A}: {B}')
+        if fn == 11 and not A and not B and ca < 0 and cb < 0 and c.blvl(sid) <= 0:
+            return []                     # no text, no number: nothing in game without points (Thundergod)
         if fn == 9:                       # physical damage of the skill
             lo, hi = c.phys(sid, lvl), c.phys(sid, lvl, True)
             if not lo and not hi:

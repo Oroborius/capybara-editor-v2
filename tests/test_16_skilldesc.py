@@ -51,7 +51,13 @@ GAME_LINES = [
     (1587, 'Crystalline Barrier', ['Cold Damage: 7']),
     (1589, 'Glacial Torrent', ['Cold Damage: 2']),
     (418, 'Tempest', ['Releases 5 bolts', '+1 Bolt per 10 Skill Levels (Max 9)']),
-    (1396, 'Night Hawks', ['Max Hawks: 5', 'Damage: 19-27']),
+    (1396, 'Night Hawks', ['Max Hawks: 5', 'Damage: 19-27', 'Attack Rating: 200']),       # mnar: 0 without points
+    (377, 'Blood Skeleton', ['Attack Rating: 200']),
+    (1213, 'Guardian Spirit', ['Attack Rating: 100']),
+    (1503, 'Absolution', ['Magic Damage: 2', 'Physical Damage: +2']),       # pdmx of the two Vessels (no points)
+    (1528, 'Sentence', ['Magic Damage: 3', 'Physical Damage: +3']),
+    (1101, 'Paragon of Fate', ['Unlockable Skill', "Upgrade Paragon's Hammer with a Mark of Fate"]),   # pass: 0
+    (1102, 'Paragon of Sanctity', ['Unlockable Skill', "Upgrade Paragon's Hammer with a Mark of Sanctity"]),
     (1437, 'Terror', ['Movement Speed: -60%']),
     (1481, 'Solar Flare', ['Enemy Weapon Physical Damage and Attack Rating: -20%']),
     (392, 'Annihilation', ['Area of Effect: 2.6 yards', 'Wyrms Fire Damage: 19-28']),
@@ -140,11 +146,12 @@ GAME_ABSENT = [
     (1160, 'Cognition', 'Reach 75 Cognition'),
     (1403, 'Soulbond', 'Disabled by Soulchain'),
     (1230, 'Thundergod', 'Lightning Damage: 0'),                            # no damage at all: no line
+    (1230, 'Thundergod', '[11]'),                                           # function 11 without text or number
     (1218, 'Spirit Walk', 'SynergiesSpirit Walk'),                          # the second text of a heading
 ]
 
 # own skill at the level, nothing else learned: (skills without a grey line, grey lines) must not get worse
-COVERAGE = {0: (475, 42), 1: (471, 70), 20: (471, 70), 50: (471, 70)}
+COVERAGE = {0: (493, 14), 1: (487, 52), 20: (487, 52), 50: (487, 52)}
 
 
 def SD():
@@ -279,13 +286,16 @@ def no_exception_for_any_skill_and_level():
 
 @T.test
 def unknown_things_stay_raw():
-    """What the tables do not explain is not guessed: minion life (mnhp), the Paragon marks (pass), a skill's
-    maximum level (maxe, once it has points)."""
+    """What the tables do not explain is not guessed: minion life (mnhp), the Paragon marks once the hidden mark
+    skill has a level (pass), a summon's attack rating with points (mnar), a skill's maximum level (maxe, once it
+    has points), line function 31 (Exile)."""
     sd = SD()
     data = T.engine().data
     t = sd.tables(data)
-    for sid, lv, word in ((377, 0, 'mnhp'), (1101, 0, 'pass'), (1403, 1, 'maxe')):
-        tip = sd.tooltip(data, sid, {sid: lv} if lv else {}, 1, start_stats(t, t.field(sid, 0xc, '<I')))
+    exile = next(s for s in class_skills(t) if norm(t.name(s)) == 'exile')
+    for sid, levels, word in ((377, {}, 'mnhp'), (1101, {2049: 1}, 'pass'), (1396, {1396: 1}, 'mnar'),
+                              (1403, {1403: 1}, 'maxe'), (exile, {}, 'line function 31')):
+        tip = sd.tooltip(data, sid, levels, 1, start_stats(t, t.field(sid, 0xc, '<I')))
         T.check(tip.raw and any(word in r for r in tip.reasons),
                 f'skill {sid}: a grey line because of {word} expected, got {tip.reasons}')
 

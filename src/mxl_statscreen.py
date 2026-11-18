@@ -278,8 +278,9 @@ def char_totals(ch, data):
     """Sums of the stats of everything the character wears or carries that counts in game:
     - 'equip': the equipped items of the active weapon set, with their runeword and socketed items;
     - 'charms': the charms lying in the inventory (Median XL charms work from there);
-    - 'sets': the set bonuses: the lists the set items carry themselves (list n counts with n + 2 pieces worn)
-      and the partial (2 to 5 pieces) and full bonuses of the game's sets table.
+    - 'sets': the set bonuses: the lists the set items carry themselves (list n counts with n + 2 pieces worn;
+      no set item of Median XL Sigma has one) and the partial (2 to 5 pieces) and full bonuses of the game's sets
+      table.
     {'stats': {(id, param): stat dict, value summed over the sources}, 'by': {source: {(id, param): value}},
      'defense': defense of the armour pieces, 'items' / 'charms' / 'set_pieces': counts, 'error': str or None}."""
     out = {'stats': {}, 'by': {k: {} for k in SOURCES}, 'defense': 0, 'items': 0, 'charms': 0, 'set_pieces': 0,
@@ -365,43 +366,35 @@ def _set_of(it, data):
 def set_bonuses(data, set_id, worn):
     """([stat dicts], number of bonuses left out) of a set with `worn` pieces on: the partial bonuses for 2, 3, 4
     and 5 pieces and, with every piece, the full-set bonuses (sets table, the base game's 296-byte records).
-    Only plain properties are translated (a stat with a value, the same value on several stats, per-level,
-    class skills, min / max damage); a range is taken at its low end. Anything else is counted as left out."""
+    Each property becomes stats the way an item's own mods do (mxl_rules.mods_stats, the translator of the item
+    creator: max damage +n -> stats 22 / 24 / 160, "reanimate as" and state properties with their parameter ...);
+    a range is taken at its low end. A property that gives no stat is counted as left out."""
     out, skipped = [], 0
     try:
+        import mxl_rules
         r = data._rows('sets')[set_id]
         if len(r) != 296 or struct.unpack_from('<H', r, 0)[0] != set_id:
             return out, skipped
         size = sum(1 for s in data.set_items if s.get('set_id') == set_id)
-        for i in range(16):
-            code, par, lo, hi = struct.unpack_from('<iiii', r, 0x10 + 16 * i)
-            if code < 0 or code >= len(data.props):
-                continue
-            if worn < (2 + i // 2 if i < 8 else max(size, 2)):
-                continue
-            last, got = None, False
-            for sid, fn, val in zip(data.props[code], data.prop_funcs[code], data.prop_vals[code]):
-                param = None
-                if fn in (1, 8, 15):
-                    v = lo
-                elif fn == 16:
-                    v = hi
-                elif fn == 3 and last is not None:
-                    v = last
-                elif fn == 17:
-                    v = par
-                elif fn == 21:
-                    v, param = lo, val
-                else:
-                    continue
-                last = v
-                if sid >= 0:
-                    isc = data.isc.get(sid) or {}
-                    out.append({'id': sid, 'param': param, 'value': v, 'desc': isc.get('desc')})
-                    got = True
-            skipped += 0 if got else 1
     except Exception as e:
         print('stat screen: set bonuses:', e)
+        return out, skipped
+    for i in range(16):
+        code, par, lo, hi = struct.unpack_from('<iiii', r, 0x10 + 16 * i)
+        if code < 0 or code >= len(data.props):
+            continue
+        if worn < (2 + i // 2 if i < 8 else max(size, 2)):
+            continue
+        try:
+            got = [s for s in mxl_rules.mods_stats([(code, par, lo, hi)], data, 'min')
+                   if isinstance(s.get('value'), int) and s.get('id', -1) >= 0]
+        except Exception as e:                   # one property the translator refuses: the others still count
+            print('stat screen: set bonus', set_id, i, e)
+            got = []
+        for s in got:
+            isc = data.isc.get(s['id']) or {}
+            out.append({'id': s['id'], 'param': s.get('param'), 'value': s['value'], 'desc': isc.get('desc')})
+        skipped += 0 if got else 1
     return out, skipped
 
 
