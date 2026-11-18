@@ -1766,11 +1766,10 @@ class Creator:
         except Exception:
             orig = None
         if orig is not None:
-            if spec['quality'] != 'runeword':
-                # the socketed items the spec cannot name (jewels...): kept by their place in the original list,
-                # so that each one can be taken out (remove_filler / clear_fillers); a runeword keeps its children
-                spec['_kept'] = [i for i, raw in enumerate(orig['kids'])
-                                 if not decode_item(raw, self.data)[0]['flags'] & FLAG_SIMPLE]
+            # the socketed items the spec cannot name (jewels..., also beside a runeword's runes): kept by their
+            # place in the original list, so that each one can be taken out (remove_filler / clear_fillers)
+            spec['_kept'] = [i for i, raw in enumerate(orig['kids'])
+                             if not decode_item(raw, self.data)[0]['flags'] & FLAG_SIMPLE]
             orig['spec'] = copy.deepcopy(spec)
             spec['_orig'] = orig
         return spec
@@ -1808,10 +1807,9 @@ class Creator:
             spec['_kept'] = [i for i in spec['_kept'] if i != f['index']]
 
     def clear_fillers(self, spec):
-        """Empties every socket of a spec (not a runeword's: its runes are the runeword)."""
-        if spec.get('quality') == 'runeword':
-            return
-        spec['socketed'] = []
+        """Empties every socket of a spec; a runeword keeps its runes (they are the runeword)."""
+        if spec.get('quality') != 'runeword':
+            spec['socketed'] = []
         if '_kept' in spec:
             spec['_kept'] = []
 

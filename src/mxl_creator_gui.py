@@ -932,6 +932,13 @@ class CreatorWindow:
         if q == 'runeword':
             rr = row(T('cr.sockets', 'Sockets'))
             ttk.Label(f, text=T('cr.rw_sockets', '{n} (runes socketed automatically)', n=spec['sockets'])).grid(row=rr, column=1, sticky='w')
+            filled = cr.fillers(spec)                    # an edited runeword's jewels...: each can be taken out
+            for x in filled:
+                rr = row(T('cr.socket_n', '  Socket {n}', n=x['index'] + 1))
+                host = ttk.Frame(f)
+                host.grid(row=rr, column=1, sticky='w', pady=2)
+                ttk.Label(host, text=clean(x['name'])).pack(side='left')
+                self._filler_x(host, filled.index(x))
         elif ms:
             rr = row(T('cr.sockets', 'Sockets'))
             box = ttk.Frame(f)
