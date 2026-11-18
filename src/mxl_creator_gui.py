@@ -2851,6 +2851,8 @@ def run():
     mxl_free.install()
     import mxl_format_fix                # Sigma item layouts the collector's reader did not know (before anything reads)
     mxl_format_fix.install()
+    import mxl_speed                  # free place search in one pass over the stash (same answer, ~300x faster)
+    mxl_speed.install()
     import mxl_gui
     rename_app(mxl_gui)
     import mxl_d2_theme                   # which look: dark Diablo ('d2', default) or Hero-Editor light ('he')
