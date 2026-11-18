@@ -1143,6 +1143,16 @@ def _ask_build(root, data, cls=None, level=None, ask_class=True, ask_quests=True
     tk.Button(row, text=T('library.cancel', 'Cancel'), width=10, command=win.destroy).pack(side='left', padx=4)
     win.bind('<Return>', lambda _e: ok())
     win.bind('<Escape>', lambda _e: win.destroy())
+    try:                                     # centred over the editor, not at the screen's top left corner
+        win.update_idletasks()
+        w, h = win.winfo_reqwidth(), win.winfo_reqheight()
+        x = root.winfo_rootx() + (root.winfo_width() - w) // 2
+        y = root.winfo_rooty() + (root.winfo_height() - h) // 3
+        x = max(0, min(x, win.winfo_screenwidth() - w))
+        y = max(0, min(y, win.winfo_screenheight() - h))
+        win.geometry(f'+{x}+{y}')
+    except tk.TclError:
+        pass
     win.grab_set()
     root.wait_window(win)
     return out[0] if out else None

@@ -707,10 +707,14 @@ def _quality_ok(cr, code, q):
 def _ask_pick(menu, title, options, on_pick):
     """Small modal listbox over [(value, label)]; Enter / double-click / OK picks."""
     root = menu.winfo_toplevel()
+    if isinstance(root, tk.Menu):            # a menu is a toplevel of its own: the dialog belongs to the editor
+        root = menu._root()
     top = tk.Toplevel(root)
     top.title(title)
     top.transient(root)
-    lb = tk.Listbox(top, width=64, height=min(18, max(5, len(options))), activestyle='dotselect',
+    # 'dotbox' (Tk knows dotbox / none / underline): 'dotselect' raised a TclError here, so every rare /
+    # crafted / tempered quality change and every "Which set / unique item?" choice did nothing
+    lb = tk.Listbox(top, width=64, height=min(18, max(5, len(options))), activestyle='dotbox',
                     exportselection=False)
     for _, lab in options:
         lb.insert('end', lab)
@@ -730,6 +734,18 @@ def _ask_pick(menu, title, options, on_pick):
     bar.pack(fill='x')
     tk.Button(bar, text=rc('ok', 'OK'), width=10, command=ok).pack(side='left', padx=4, pady=2)
     tk.Button(bar, text=rc('cancel', 'Cancel'), width=10, command=top.destroy).pack(side='right', padx=4, pady=2)
+    top.bind('<Escape>', lambda _e: top.destroy())
+    if options:
+        lb.selection_set(0)                  # Enter right away picks the first entry instead of nothing
+        lb.activate(0)
+    try:                                     # centred over the editor, not at the screen's top left corner
+        top.update_idletasks()
+        w, h = top.winfo_reqwidth(), top.winfo_reqheight()
+        x = root.winfo_rootx() + (root.winfo_width() - w) // 2
+        y = root.winfo_rooty() + (root.winfo_height() - h) // 3
+        top.geometry(f'+{max(0, min(x, top.winfo_screenwidth() - w))}+{max(0, min(y, top.winfo_screenheight() - h))}')
+    except tk.TclError:
+        pass
     lb.focus_set()
 
 
