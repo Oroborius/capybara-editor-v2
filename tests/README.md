@@ -4,7 +4,7 @@ Headless tests of the editor's data paths and main GUI flows. They run the modul
 application folder, on **copies** of sample saves, on an X server of their own (`xvfb-run`).
 
 ```
-tools/run_tests.sh                 # everything (about 4 minutes)
+tools/run_tests.sh                 # everything (about 13 minutes)
 tools/run_tests.sh --quick         # data + engine tests only: no window, no X server (about 40 s)
 tools/run_tests.sh -k creator      # only tests whose id contains the text (repeatable: -k a -k b)
 tools/run_tests.sh --list          # the test ids
@@ -73,14 +73,19 @@ and stays open - mark the test `@T.test(xfail='what is wrong')` with a comment d
 | `test_14_statparams.py` | engine | `mxl_statparams` against the stat table; enumerations (415, 83), packed params |
 | `test_15_creator_engine.py` | engine | creator build at min / max into a stash, edit path, honorific, relic labels, bonus search |
 | `test_16_packaging.py` | engine | `py_compile`, `repack.py --identity`, `extract_host.py`, launcher environment, the guard itself |
+| `test_16_skilldesc.py` | engine | skill tooltips (`mxl_skilldesc`) against lines read off in-game screenshots; every skill and level renders |
 | `test_17_statparse.py` | engine | tooltip-line parser round trip |
+| `test_18_stash_order.py` | engine | `mxl_stash_order`: replaced and re-inserted items keep their index; remove + insert-at-index gives the same file |
 | `test_19_not_covered.py` | engine | the known gaps, as skipped tests with their reason |
 | `test_30_gui_smoke.py` | gui | start in `MXL_THEME=d2` / `he` at 1280x720 and 800x600, every tab and page, status bar, toolbar overflow |
 | `test_31_gui_stash_menu.py` | gui | right-click actions on stash items, undo |
 | `test_32_gui_creator.py` | gui | Creator tab: lists, search, create, Item Editor, honorific, create on the character |
 | `test_33_gui_char_menu.py` | gui | right-click actions on character items: Stash-tab panel and Character tab |
 | `test_34_gui_item_stats.py` | gui | Item stats tab on a stash item and on character items |
+| `test_35_gui_character_pages.py` | gui | editing on every Character tab page in both looks: Stats, Skills, Waypoints, Quests, Quests+, Counters, Hotkeys, Mercenary; SAVE / RELOAD, pending edits |
 | `test_35_launch.py` | launch | `AppRun` started as a user does, closes itself (`MXL_EXIT_AFTER`) |
+| `test_36_gui_character_layout.py` | gui | Character tab pages in both looks at 1280x720, 800x600 and UI scales 1.25 / 1.5: open, go idle (no layout loop), image buttons follow the scale; status-bar count |
+| `test_36_gui_fill_sockets_char.py` | gui | "Fill sockets with ..." on character and mercenary items, from the Stash-tab panel and the Character tab |
 
 `--quick` runs the `engine` files only.
 
@@ -121,5 +126,5 @@ T.main(globals())
 
 `test_19_not_covered.py` lists the gaps as skipped tests: the web-page import (needs a saved page as a fixture),
 the Windows exe actually starting (only its archive is checked), drag and drop with a real pointer, how the art
-panels and fonts look (no screenshots are compared), the "game is open" guard with a running game, editing on the
-Character tab's Skills / Waypoints / Quests pages.
+panels and fonts look (no screenshots are compared), the "game is open" guard with a running game. Editing on the
+Character tab's pages is covered by `test_35_gui_character_pages.py`.

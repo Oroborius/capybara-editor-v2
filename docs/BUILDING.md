@@ -100,8 +100,10 @@ What is in the AppImage: `opt/python/` (CPython 3.10, Pillow 10.4.0, ttkbootstra
 - **Save folder**: the first `drive_c/users/*/AppData/Roaming/MedianXL/save` found in `$WINEPREFIX`, `~/.wine`,
   `~/Games/*`, Bottles, Lutris or Steam prefixes. `MXL_SAVE_DIR=<folder>` overrides it.
 - **Game folder**: asked on first start; pick the Median XL folder inside the Wine prefix.
-- **"Game must be closed" check**: the collector reads the Windows process list; on Linux `/proc` is read for a
-  Wine `Game.exe` running from the game folder, with the same rule (unknown path: the write is refused).
+- **"Game must be closed" check**: the collector reads the Windows process list; the launcher gives it a Linux
+  reader (`/proc`, a Wine `Game.exe` running from the game folder). In this build the check does not block
+  anything: `src/mxl_free.py` turns the collector's game-closed checks into no-ops on both platforms, so writes
+  go ahead while the game is open (verification and backups stay).
 - **Fonts**: text is drawn by Xft with the host's fonts (see "Antialiased text" above). The D2 look asks for
   Palatino Linotype / Segoe UI and falls back to P052, TeX Gyre Pagella, DejaVu, Liberation or Noto.
 - **UI scale**: `MXL_UI_SCALE=<factor>` or `auto`. Under Wayland the default is 1: the launcher answers Tk's

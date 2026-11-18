@@ -36,11 +36,4 @@ def game_is_open_guard():
     T.skip('needs a running Game.exe; mxl_free removes the game-closed checks anyway (WORKLOG W8)')
 
 
-@T.test
-def character_tab_skills_waypoints_quests_editing():
-    T.skip('not written yet: the Character tab\'s Skills / Waypoints / Quests pages are only opened (30_gui_smoke), '
-           'their Save buttons are not driven; the engine setters they call are covered for the stat fields only '
-           '(13_character)')
-
-
 T.main(globals())
