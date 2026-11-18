@@ -40,6 +40,47 @@ def _sig(path):
         return (path, None, None)
 
 
+# Stone of the base-game character screen (panel pixels, see mxl_d2look.char_panel_d2) laid over the equipment
+# boxes the mercenary has no slot for: the game's hireling inventory (inventory.bin, the "Hireling" rows) has no
+# ring boxes, so a ring frame on his view could never take an item. Source: the open stone between the left
+# hand and the helm / between the armour and the right hand, edges faded in.
+D2_COVER_SRC = {6: (134, 128), 7: (318, 128)}
+D2_COVER_MARGIN, D2_COVER_FADE = 10, 6
+
+
+def d2_panel_without(path, boxes):
+    """Path of a copy of the base-game character panel (cached PNG at path) with the frames of boxes (slots
+    6 / 7) painted over with stone; the panel itself when there is nothing to hide or the copy cannot be made."""
+    boxes = sorted(b for b in boxes if b in D2_COVER_SRC)
+    if not boxes:
+        return path
+    out = f"{os.path.splitext(path)[0]}-without-{'-'.join(map(str, boxes))}.png"
+    try:
+        if os.path.exists(out) and os.path.getmtime(out) >= os.path.getmtime(path):
+            return out
+        im = Image.open(path).convert('RGBA')
+        src = im.copy()
+        m, f = D2_COVER_MARGIN, D2_COVER_FADE
+        for b in boxes:
+            x, y, w, h = D2.GEAR_D2[b]
+            sx, sy = D2_COVER_SRC[b]
+            pw, ph = w + 2 * m, h + 2 * m
+            mask = Image.new('L', (pw, ph), 0)
+            px = mask.load()
+            for i in range(pw):
+                for j in range(ph):
+                    d = min(i, j, pw - 1 - i, ph - 1 - j)
+                    px[i, j] = 255 if d >= f else 255 * d // f
+            im.paste(src.crop((sx, sy, sx + pw, sy + ph)), (x - m, y - m), mask)
+        tmp = f'{out}.{os.getpid()}.tmp'
+        im.save(tmp, 'PNG')
+        os.replace(tmp, out)
+        return out
+    except Exception as e:                        # the frames stay (inert): never a crash over looks
+        print('D2 look: mercenary panel not made:', e)
+        return path
+
+
 def _local(widget, x_root, y_root):
     """Pointer position inside widget, or None when outside."""
     try:
@@ -366,8 +407,11 @@ class MainInventory:
         a = D2.char_art()
         dv = self.doll
         dv.delete('all')
-        dv.create_image(0, 0, anchor='nw', image=D2.photo(a.char_panel_d2(),
-                                                          (round(D2.PANEL_W * k), round(D2.PANEL_H * k))))
+        panel = a.char_panel_d2()
+        if merc:                                  # no ring frames on the mercenary (he has no ring slots)
+            panel = d2_panel_without(panel, set(D2_COVER_SRC) - set(self.visible_boxes()))
+        dv.create_image(0, 0, anchor='nw', image=D2.photo(panel, (round(D2.PANEL_W * k), round(D2.PANEL_H * k))),
+                        tags=('panel',))
         eq = ch.equipped(merc) if ch is not None else {}
         for box in self.visible_boxes():
             x, y, w, h = D2.GEAR_D2[box]
