@@ -8,7 +8,11 @@ own <Map> / <Unmap> events are counted:
 - crossing from label to label inside one hotkey cell keeps it;
 - a <Leave> with the pointer still on the widget (a grab, or a compositor moving its pointer focus) keeps it;
 - leaving the widget hides it (after the short debounce);
-- on X11 the window is typed _NET_WM_WINDOW_TYPE_TOOLTIP (wlroots / Hyprland then never focus it on map).
+- on X11 the window is typed _NET_WM_WINDOW_TYPE_TOOLTIP only with MXL_TIP_TYPE=1 (default: untyped);
+- the window is exactly the size its content asks for, after a short then a long tip and the reverse, shown or
+  re-shown (user report under Hyprland: "a fixed rectangle, the text is cut off, a lighter orange bar": a re-mapped
+  window kept an old size and its frame-coloured background filled the rest); its background is the tip's own,
+  no widget in it has a highlight ring.
 CAPY_VPTR_FIFO=<fifo>: the pointer moves through a Wayland virtual pointer instead (a headless sway session:
 the compositor's own pointer focus, as on the user's desktop)."""
 import os
@@ -114,8 +118,47 @@ def gone(tip, what):
 
 
 def typed(tip, what):
+    import mxl_floattip
     if G.root.tk.call('tk', 'windowingsystem') == 'x11':
-        T.check('tooltip' in str(tip.win.wm_attributes('-type')), f'{what}: window type is not tooltip')
+        want = mxl_floattip.tip_type()
+        T.check(('tooltip' in str(tip.win.wm_attributes('-type'))) == want,
+                f'{what}: window type {tip.win.wm_attributes("-type")!r} (MXL_TIP_TYPE {"on" if want else "off"})')
+
+
+def x_size(w):
+    """The X window's own size (the wrapper of the toplevel) by xdotool, else Tk's idea of it."""
+    if XDOTOOL and G.root.tk.call('tk', 'windowingsystem') == 'x11':
+        try:
+            out = subprocess.run([XDOTOOL, 'getwindowgeometry', str(int(w.wm_frame(), 16))],
+                                 capture_output=True, text=True, timeout=5).stdout
+            geo = out.split('Geometry:')[1].split()[0]
+            a, b = geo.split('x')
+            return int(a), int(b)
+        except Exception:
+            pass
+    return w.winfo_width(), w.winfo_height()
+
+
+def fits(tip, what):
+    """Shown at exactly its content's size, own background, no highlight ring anywhere in it."""
+    T.pump(5)
+    w = tip.win
+    T.check(w is not None and mapped(tip), f'{what}: tip not shown')
+    want = tip.size()
+    T.check((w.winfo_width(), w.winfo_height()) == want,
+            f'{what}: Tk size {w.winfo_width()}x{w.winfo_height()}, content asks {want[0]}x{want[1]}')
+    T.check(x_size(w) == want, f'{what}: X window {x_size(w)}, content asks {want[0]}x{want[1]}')
+    T.check(str(w.cget('bg')).lower() == str(tip.bg).lower(), f'{what}: window bg {w.cget("bg")} != tip bg {tip.bg}')
+    T.check(int(str(w.cget('bd'))) == 0, f'{what}: window has a border')
+    todo = [w]
+    while todo:
+        c = todo.pop()
+        todo += c.winfo_children()
+        try:
+            ht = int(str(c.cget('highlightthickness')))
+        except tk.TclError:
+            continue
+        T.check(ht == 0, f'{what}: {c.winfo_class()} {c} has a highlight ring ({ht} px)')
 
 
 @T.test
@@ -139,6 +182,7 @@ def stats_page_tip_is_stable():
     if tip is None or not mapped(tip):
         raise T.Failed('hovering a stat screen value shows no tooltip')
     typed(tip, 'stats')
+    fits(tip, 'stats')
     reset_counts(tip)
     stable(tip, 'stats: stationary hover')
     wiggle(tip, scr.cv, x, y, 'stats')
@@ -169,6 +213,7 @@ def skill_tree_tip_is_stable():
     if tip is None or not mapped(tip):
         raise T.Failed('hovering a skill icon shows no tooltip')
     typed(tip, 'skills')
+    fits(tip, 'skills')
     reset_counts(tip)
     stable(tip, 'skills: stationary hover')
     wiggle(tip, tree.cv, x, y, 'skills')
@@ -192,6 +237,7 @@ def hotkey_cell_tip_survives_label_crossings():
     tip = getattr(cw, '_sk_tipper', None)
     if tip is None or not mapped(tip):
         raise T.Failed('hovering a hotkey shows no tooltip')
+    fits(tip, 'hotkey')
     reset_counts(tip)
     stable(tip, 'hotkey: stationary hover', hold=1.5)
     for name in ('head', 'name', 'icon', 'name', 'head'):          # label to label inside the one cell
@@ -212,10 +258,11 @@ def tip_steps_aside_when_the_pointer_lands_on_it():
     top.geometry('600x400+40+40')
     cv = tk.Canvas(top, width=600, height=400, bg='grey20', highlightthickness=0)
     cv.pack(fill='both', expand=True)
-    tip = mxl_floattip.FloatTip(top, bg='#4a3f26', bd=1, relief='solid')
-    tk.Label(tip.window(), text='tip\nline 2\nline 3', padx=10, pady=6).pack()
-    cv.bind('<Motion>', lambda e: tip.show(cv))
-    cv.bind('<Enter>', lambda e: tip.show(cv))
+    tip = mxl_floattip.FloatTip(top, build=lambda b: tk.Label(b, text='tip\nline 2\nline 3', padx=10, pady=6, bg='#1a1612',
+                                                               fg='#c7b377', highlightthickness=0).pack(),
+                                bg='#1a1612', edge='#4a3f26')
+    cv.bind('<Motion>', lambda e: tip.show(cv, key='one'))
+    cv.bind('<Enter>', lambda e: tip.show(cv, key='one'))
     cv.bind('<Leave>', lambda e: tip.leave(cv))
     try:
         T.settle(0.5)
@@ -231,6 +278,50 @@ def tip_steps_aside_when_the_pointer_lands_on_it():
         T.check(not under_pointer(tip), 'canvas: the tip stayed under the pointer')
         away()                                               # out of the window, onto the main window
         T.check(not mapped(tip), 'canvas: tip still shown after the pointer left the window')
+    finally:
+        tip.destroy()
+        top.destroy()
+        T.pump(3)
+
+
+@T.test
+def tip_is_sized_to_its_content():
+    """Short then long then short, while shown and after a hide: the window always takes the new content's size
+    (a fresh window per content; Hyprland kept the first size of a re-mapped one), with the stat screen's colours."""
+    import mxl_floattip
+    top = tk.Toplevel(G.root)
+    top.geometry('700x500+40+40')
+    T.settle(0.3)
+    texts = {'short': 'Strength',
+             'long': 'Life: 1234 / 1234\nReplenish life +12\nIncreases the duration of poison spells by a lot\n4\n5',
+             'wide': 'Increases the duration of poison spells'}
+    cur = {}
+    tip = mxl_floattip.FloatTip(top, build=lambda b: tk.Label(b, text=cur['t'], padx=10, pady=6, justify='left',
+                                                               bg='#1a1612', fg='#c7b377', bd=0,
+                                                               highlightthickness=0).pack(),
+                                bg='#1a1612', edge='#4a3f26')
+    if XDOTOOL:
+        move_to(top, 150, 150, 0.2)
+    try:
+        sizes = {}
+        for i, (name, hide_first) in enumerate((('short', False), ('long', False), ('short', False), ('wide', True),
+                                                 ('long', True), ('short', True), ('long', False), ('wide', False))):
+            if hide_first:
+                tip.hide()
+                T.settle(0.2)
+            cur['t'] = texts[name]
+            tip.show(top, key=name)
+            T.settle(0.3)
+            what = f'step {i} {name}{" after a hide" if hide_first else " while shown"}'
+            fits(tip, what)
+            sizes.setdefault(name, set()).add(tip.size())
+        T.check(all(len(v) == 1 for v in sizes.values()), f'same text, different sizes: {sizes}')
+        T.check(len({next(iter(v)) for v in sizes.values()}) == 3, f'the three texts got the same size: {sizes}')
+        n = tip.maps
+        tip.show(top, key='wide')                        # same content: moved only, no new window
+        tip.show(top)
+        T.settle(0.2)
+        T.check(tip.maps == n, f'the same content re-made the window ({tip.maps - n}x)')
     finally:
         tip.destroy()
         top.destroy()

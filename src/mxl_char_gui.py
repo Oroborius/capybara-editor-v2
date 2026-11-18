@@ -909,21 +909,23 @@ class CharacterWindow(StatEditMixin):
 
     def _sk_tip(self, text, owner=None):
         """The game's floating tooltip: gold text on dark stone with a gold frame, beside the pointer.
-        One window, reused (mxl_floattip: no flicker under XWayland compositors); '' hides it at once."""
+        mxl_floattip: a fresh window per text, sized to it (never re-mapped); the same text only follows the
+        pointer (no flicker under XWayland compositors); '' hides it at once."""
         import mxl_floattip
         tip = getattr(self, '_sk_tipper', None)
         if not text:
             if tip is not None:
                 tip.hide()
             return
-        if tip is None or not tip.exists():
-            tip = self._sk_tipper = mxl_floattip.FloatTip(self.top, gap=(18, 14, 14), bg=SK_EDGE, bd=1, relief='solid')
-            tk.Label(tip.window(), text=text, font=HE_FONT, bg=SK_BG, fg=HE_GOLD, justify='left',
-                     padx=10, pady=6).pack()
-        for c in tip.window().winfo_children():
-            if c.cget('text') != text:
-                c.configure(text=text)
-        tip.show(owner)
+        if tip is None:
+            tip = self._sk_tipper = mxl_floattip.FloatTip(self.top, build=self._sk_tip_build, gap=(18, 14, 14),
+                                                          bg=SK_BG, edge=SK_EDGE)
+        self._sk_tip_text = text
+        tip.show(owner, key=text)
+
+    def _sk_tip_build(self, body):
+        tk.Label(body, text=getattr(self, '_sk_tip_text', ''), font=HE_FONT, bg=SK_BG, fg=HE_GOLD, justify='left',
+                 padx=10, pady=6, bd=0, highlightthickness=0).pack()
 
     def _sk_tip_leave(self, widget):
         """<Leave> of a widget with a tooltip: hidden a moment later if the pointer really left it."""

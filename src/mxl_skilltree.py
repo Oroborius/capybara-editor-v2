@@ -729,9 +729,8 @@ class SkillTree:
     def refresh_tip(self):
         """The level under the pointer changed: the open tooltip shows the new numbers at once."""
         what = self._tip_for
-        if what is not None and self._tip_win is not None:
-            self._fill_tip(what)
-            self._place_tip()
+        if what is not None and self._tip_win is not None and self._tipper is not None:
+            self._tipper.show(self.cv, key=what, force=True)        # a fresh window at the new size
 
     def hide_tip(self):
         if self._tip_job is not None:
@@ -771,22 +770,23 @@ class SkillTree:
         try:
             import mxl_floattip
             tip = self._tipper
-            if tip is None or not tip.exists():
-                tip = self._tipper = mxl_floattip.FloatTip(self.win.top, gap=(20, 22, 14), within=self.win.top,
-                                                           alpha=0.9, bg='#000000', bd=0)
+            if tip is None:
+                tip = self._tipper = mxl_floattip.FloatTip(self.win.top, build=self._build_tip, gap=(20, 22, 14),
+                                                           within=self.win.top, alpha=0.9, bg='#000000',
+                                                           edge='#3a3020')
                 tip.on_hide = self._tip_gone
-                self._tip_label = None
-            w = tip.window()
-            self._tip_win = w
-            if not isinstance(self._tip_label, tk.Label) or not self._tip_label.winfo_exists():
-                for c in w.winfo_children():
-                    c.destroy()
-                self._tip_label = tk.Label(w, bg='#000000', bd=0, highlightthickness=1, highlightbackground='#3a3020')
-                self._tip_label.pack()
-            self._fill_tip(what)
-            tip.show(self.cv)
+            tip.show(self.cv, key=what, force=True)
+            if not tip.shown:
+                self._tip_win = None
         except tk.TclError:
             self._tip_win = None
+
+    def _build_tip(self, body):
+        """The content of a fresh tip window (mxl_floattip calls it for every new window)."""
+        self._tip_win = body
+        self._tip_label = tk.Label(body, bg='#000000', bd=0, highlightthickness=0)
+        self._tip_label.pack()
+        self._fill_tip(self._tip_for)
 
     def _wrap(self, rows, measure, limit):
         """Folds rows wider than limit at spaces (colours kept)."""
@@ -850,7 +850,7 @@ class SkillTree:
             w = self._tip_win
             for c in w.winfo_children():
                 c.destroy()
-            cv = tk.Canvas(w, bg='#000000', highlightthickness=1, highlightbackground='#3a3020',
+            cv = tk.Canvas(w, bg='#000000', highlightthickness=0, bd=0,
                            width=width + 2 * pad, height=lh * len(rows) + 2 * pad)
             cv.pack()
             self._tip_label = cv
