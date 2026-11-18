@@ -181,10 +181,10 @@ def skills_at_limits_parse_back():
             T.check(back.build() == out, f'skills {name}: rebuild differs')
 
 
-# The collector's own reader (mxl_save.load_character, host code) looks for the first 'JM' after the first 'if'
-# of the file; Character.save runs it as part of its verification, so a save with skill levels 74 and 77 side by
-# side is refused (the file is left as it was - nothing is lost). Host bug, F4 in docs/review/save-safety.md.
-@T.test(xfail='host mxl_save.load_character finds the item list by searching for b"JM": skills 74, 77 refused')
+# The collector's own reader (host mxl_save.load_character) looks for the first 'JM' after the first 'if' of the
+# file; Character.save runs it as part of its verification, so a save with skill levels 74 and 77 side by side was
+# refused (file left as it was). mxl_char.install_reader_fix hands it masked bytes: F4.
+@T.test
 def skills_74_77_can_be_saved():
     for E, p in chars():
         raw = T.read(p)
@@ -282,11 +282,13 @@ def names_with_marker_letters():
 def marker_bytes_in_fixed_sections_differential():
     """The bytes of a section marker ('gf', 'if', 'JM', 'jf', 'kf') written into the name, the NPC bits, the
     quest and waypoint bytes: mxl_char reads the same stats, skills and item counts as the independent parser
-    (mxl_char searched 'gf' from the NPC section on: F2)."""
+    (mxl_char searched 'gf' from the NPC section on: F2), and so does the collector's reader through
+    mxl_char.install_reader_fix (F5)."""
     E = eng()
     from mxlsave.d2s import D2S
     for _E, p in chars():
         raw = T.read(p)
+        ref_c = E.save.load_character(p, E.data)          # the collector's totals for the untouched file
         for marker in (b'gf', b'if', b'JM', b'jf', b'kf'):
             for off in (0x14 + 1, 0x2C9 + 4, 0x2C9 + 40, 0x2FB, 0x159 + 60, 0x281 + 10):
                 b = bytearray(raw)
@@ -305,21 +307,34 @@ def marker_bytes_in_fixed_sections_differential():
                 T.eq(bytes(ch.skills[2:]), bytes(ref.skills), f'{marker} at {off:#x}: skills')
                 T.eq(len(ch.items), len(ref.items), f'{marker} at {off:#x}: items')
                 T.check(ch.build() == b, f'{marker} at {off:#x}: rebuild differs')
+                tmpf = os.path.join(T.tmp(), 'marker.d2s')
+                with open(tmpf, 'wb') as f:
+                    f.write(b)
+                try:
+                    c = E.save.load_character(tmpf, E.data)
+                    T.eq([c[k] for k in ('strength', 'energy', 'dexterity', 'vitality')],
+                         [ref_c[k] for k in ('strength', 'energy', 'dexterity', 'vitality')],
+                         f'{marker} at {off:#x}: collector reader stats')
+                    T.eq(c['name'], ch.name, f'{marker} at {off:#x}: collector reader name')
+                except Exception as e:
+                    T.check(False, f'{marker} at {off:#x}: collector reader: {type(e).__name__}: {e}')
 
 
 # The collector's reader (host mxl_save.load_character, used for the main window's character: stats shown,
-# requirement colours) searches b'gf' from the start of the file: a name holding "gf" (Bigfoot) gives
-# made-up strength / dexterity / ... in the main window. Display only (nothing is written from it); F5.
-@T.test(xfail='host mxl_save.load_character reads the stats at the first "gf" of the file (in the name)')
+# requirement colours) searched b'gf' from the start of the file: a name holding "gf" (Bigfoot) gave made-up
+# strength / dexterity / ... in the main window. Display only; fixed by mxl_char.install_reader_fix: F5.
+@T.test
 def collector_reads_the_stats_of_a_name_with_gf():
     E = eng()
     folder = T.fresh_saves()
+    c0 = E.save.load_character(os.path.join(folder, 'XBone.d2s'), E.data)
     ch = E.MC.Character(os.path.join(folder, 'XBone.d2s'), E.data)
     dst, _bak = ch.rename('Bigfoot', backup=False)
     ch = E.MC.Character(dst, E.data)
     c = E.save.load_character(dst, E.data)
-    for key, sid in (('strength', 0), ('dexterity', 2), ('vitality', 3), ('energy', 1)):
-        T.eq(c[key], ch.stat(sid), f'collector reader: {key}')
+    for key in ('strength', 'dexterity', 'vitality', 'energy'):      # (the collector adds the items' bonuses)
+        T.eq(c[key], c0[key], f'collector reader: {key} (as read under the old name)')
+    T.eq((c['name'], c['level'], len(c['items'])), ('Bigfoot', c0['level'], len(c0['items'])), 'collector reader: name, level, items')
 
 
 # ------------------------------------------------------------------------------------------ stash + undo
@@ -670,6 +685,44 @@ def imported_character_starts_empty():
     T.eq(n, 0, 'stash items copied from the template')
     T.eq(sorted({s for s, _p, _v in ch.stats if s in (88, 185, 186)}), [], 'counters / signets of the template')
     T.eq([n for n in E.MC.ALL_WAYPOINTS if n and any(ch.waypoint(d, n) for d in range(3))], [], 'waypoints')
+
+
+@T.test
+def a_short_lock_is_tried_again():
+    """The final rename refused once with PermissionError (Windows: a virus scanner or sync client holding the
+    file for a moment): the save goes through on the next try; refused every time: the old file stays, no
+    temp file is left."""
+    E = eng()
+    folder = T.fresh_saves()
+    p = os.path.join(folder, 'XBone.d2s')
+    raw = T.read(p)
+    real = os.replace
+    calls = []
+
+    def locked(a, b, n):
+        calls.append(a)
+        if len(calls) <= n:
+            raise PermissionError(13, 'locked (test)')
+        return real(a, b)
+    for n, ok in ((1, True), (99, False)):
+        calls.clear()
+        ch = E.MC.Character(p, E.data)
+        ch.set_field('gold', 1000 + n)
+        os.replace = lambda a, b, n=n: locked(a, b, n)
+        try:
+            ch.save(backup=False)
+            saved = True
+        except Exception:
+            saved = False
+        finally:
+            os.replace = real
+        T.eq(saved, ok, f'locked {n} time(s): saved')
+        if ok:
+            T.eq(E.MC.Character(p, E.data).field('gold'), 1000 + n, 'gold written')
+            raw = T.read(p)
+        else:
+            T.check(T.read(p) == raw, 'a refused save left the file as it was')
+        T.check(not [f for f in os.listdir(folder) if f.endswith('.tmp')], 'temp file left')
 
 
 T.main(globals())

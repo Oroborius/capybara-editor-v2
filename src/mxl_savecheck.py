@@ -272,20 +272,39 @@ def _edit_error():
         return RuntimeError
 
 
+RETRY_DELAYS = (0.15, 0.4, 0.8)      # PermissionError (Windows: antivirus / OneDrive / the game holding the file)
+
+
 def _write(host, path, content, verify, backup):
     """The collector's write. It removes its temp file (<path>.tmp) when the write or the verification fails, but
     not when the backup or the final rename fails (disk full, the file locked by another program on Windows):
-    then the old file is still in place and the temp file is removed here."""
-    try:
-        return host(path, content, verify, backup)
-    except BaseException:
-        tmp = str(path) + '.tmp'
+    then the old file is still in place and the temp file is removed here.
+    A PermissionError (a short lock by a virus scanner or a sync client on Windows) is tried again a few times
+    (about 1.4 s in all): every try is the whole safe write again, and the old file is untouched until the
+    final rename succeeds."""
+    tries = 0
+    while True:
         try:
-            if os.path.isfile(tmp):
-                os.remove(tmp)
-        except OSError:
-            pass
-        raise
+            return host(path, content, verify, backup)
+        except PermissionError as e:
+            _remove_tmp(path)
+            if tries >= len(RETRY_DELAYS):
+                raise
+            _log().warning('savecheck: %s locked (%s), trying again', os.path.basename(str(path)), e)
+            time.sleep(RETRY_DELAYS[tries])
+            tries += 1
+        except BaseException:
+            _remove_tmp(path)
+            raise
+
+
+def _remove_tmp(path):
+    tmp = str(path) + '.tmp'
+    try:
+        if os.path.isfile(tmp):
+            os.remove(tmp)
+    except OSError:
+        pass
 
 
 def _guard(host):

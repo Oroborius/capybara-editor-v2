@@ -144,4 +144,93 @@ def stash_delete_from_an_out_of_date_view_deletes_nothing():
     no_traceback(m0)
 
 
+def stash_item(pred, what):
+    import mxl_creator as C
+    raw = T.read(G.app.path)
+    import mxl_save
+    for it in G.app.items:
+        try:
+            rec = T.rec_of(mxl_save.item_blob(raw, it))
+        except Exception:
+            continue
+        if not rec['flags'] & C.FLAG_SIMPLE and pred(it, rec, G.app.data.base(it['code'])):
+            return it
+    T.skip(f'no {what} in the stash')
+
+
+def undo_restores(path, raw, what):
+    import mxl_undo
+    msg = mxl_undo.undo(G.app)
+    T.pump(6)
+    T.check(T.read(path) == raw, f'{what} then Ctrl+Z: the file is not the original ({msg})')
+
+
+@T.test
+def stash_paste_over_an_item_then_undo():
+    """Paste over an item replaces it (no prompt): Ctrl+Z gives it back (there was no undo: the replaced item was
+    only in the session's first backup, if at all - F19)."""
+    if HOLDER != 'panel':
+        T.skip('stash grid: one variant is enough')
+    import mxl_save
+    m0 = T.mark()
+    app = G.app
+    raw = T.read(app.path)
+    src = stash_item(lambda it, rec, b: b.size == (1, 1), '1x1 item')
+    dst = stash_item(lambda it, rec, b: b.size == (1, 1) and it is not src
+                     and bytes(mxl_save.item_blob(raw, it)) != bytes(mxl_save.item_blob(raw, src)), 'second 1x1 item')
+    T.invoke(T.stash_menu(src['page'], src['x'], src['y']), 'Copy')
+    T.invoke(T.stash_menu(dst['page'], dst['x'], dst['y']), 'Paste (replaces it')
+    T.check(T.read(app.path) != raw, 'paste wrote nothing')
+    undo_restores(app.path, raw, 'paste over an item')
+    no_traceback(m0)
+
+
+@T.test
+def stash_specific_edit_then_undo():
+    """Quality change and ethereal on a stash item: Ctrl+Z restores the file bytes."""
+    if HOLDER != 'panel':
+        T.skip('stash grid: one variant is enough')
+    m0 = T.mark()
+    app = G.app
+    it = stash_item(lambda it, rec, b: b.kind in ('armor', 'weapons') and rec['quality'] != 'set', 'armor / weapon')
+    raw = T.read(app.path)
+    import mxl_creator as C
+    import mxl_save
+    eth = T.rec_of(mxl_save.item_blob(raw, it))['flags'] & C.FLAG_ETHEREAL
+    step = 'Remove ethereal' if eth else 'Make ethereal'
+    T.invoke(T.stash_menu(it['page'], it['x'], it['y']), step, under='Specific editing functions')
+    T.check(T.read(app.path) != raw, f'{step} wrote nothing')
+    undo_restores(app.path, raw, step)
+    no_traceback(m0)
+
+
+@T.test
+def character_specific_edit_then_undo():
+    """Make / remove ethereal on a worn item (Stash-tab panel and Character tab): Ctrl+Z restores the character
+    file bytes (character item actions other than Fill sockets had no undo - F19)."""
+    import mxl_char
+    import mxl_creator as C
+    m0 = T.mark()
+    ch = mxl_char.Character(G.app.character_file(), G.app.data)
+    where = None
+    for e in ch.entries(False):
+        if e.it['location'] != SLOT:
+            continue
+        rec = T.rec_of(e.blob)
+        b = G.app.data.base(e.it['code'])
+        if b.kind in ('armor', 'weapons') and not rec['flags'] & C.FLAG_SIMPLE and rec['quality'] != 'set':
+            where = ('slot', e.it['equipped'])
+            step = 'Remove ethereal' if rec['flags'] & C.FLAG_ETHEREAL else 'Make ethereal'
+            break
+    if where is None:
+        T.skip('no worn armor / weapon')
+    path = G.app.character_file()
+    raw = T.read(path)
+    T.invoke(menu(where), step, under='Specific editing functions')
+    T.pump(6)
+    T.check(T.read(path) != raw, f'{step} wrote nothing')
+    undo_restores(path, raw, step)
+    no_traceback(m0)
+
+
 T.main(globals())

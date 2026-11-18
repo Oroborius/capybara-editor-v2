@@ -177,12 +177,14 @@ def _duplicate(app, it):
 def _paste(app, it, clip):
     """Replaces the clicked item by the copied one (its socketed items follow)."""
     try:
+        old = bytes(item_blob(read_file(app.path), it))
         bak = edit_stash(app.path, app.data, remove=[it['_offset']],
                          insert=[(it['page'], it['x'], it['y'], clip[0])],
                          backup=app.needs_backup(app.path))
     except (EditError, FormatError, OSError) as e:
         _status(app, str(e), True)
         return
+    _record_stash_replace(app, it, old, app.full_name(it))
     app._capy_clip = None
     app.backup_made(app.path, bak)
     _selected(app, it['page'], it['x'], it['y'])
@@ -324,6 +326,7 @@ def _set_quantity(app, it, newq):
     except (EditError, FormatError, OSError, CreateError, ValueError) as e:
         _status(app, str(e), True)
         return
+    _record_stash_replace(app, it, blob, app.full_name(it))
     app.backup_made(app.path, bak)
     _selected(app, it['page'], it['x'], it['y'])
     _status(app, rc('q.set', '{name}: quantity is now {n}', name=app.full_name(it), n=int(newq)))
@@ -523,6 +526,7 @@ def _char_set_quantity(win, e, newq):
     from mxl_creator import decode_item, encode_item, CreateError
     merc = win.is_merc()
     where = ('slot', e.it['equipped']) if e.it['location'] == MC.LOC_EQUIPPED else ('inv', e.it['x'], e.it['y'])
+    path, before = win.ch.path, bytes(win.ch.raw)
     try:
         blob = win.ch.stash_blob(e)
         rec, size = decode_item(blob, win.data)
@@ -535,6 +539,8 @@ def _char_set_quantity(win, e, newq):
         return
     if not win.save(rc('q.set', '{name}: quantity is now {n}', name=clean_name(win, e), n=int(newq))):
         win.set_status(T('ch.err.not_saved', 'character not saved'), True)
+        return
+    _record_char_write(win, path, before, clean_name(win, e))
 
 
 def _char_duplicate(win, e):
@@ -631,6 +637,7 @@ def _mutate_stash(app, it, fn, msg):
     except (EditError, FormatError, OSError, CreateError, ValueError) as e:
         _status(app, str(e), True)
         return
+    _record_stash_replace(app, it, blob, _item_name(app, it, None))
     app.backup_made(app.path, bak)
     _selected(app, it['page'], it['x'], it['y'])
     _status(app, msg)
@@ -643,6 +650,7 @@ def _mutate_char(win, e, fn, msg):
     from mxl_char import CharError
     merc = win.is_merc()
     where = ('slot', e.it['equipped']) if e.it['location'] == MC.LOC_EQUIPPED else ('inv', e.it['x'], e.it['y'])
+    path, before, name = win.ch.path, bytes(win.ch.raw), _item_name(win, None, e)
     try:
         blob = win.ch.stash_blob(e)
         rec, size = decode_item(blob, win.data)
@@ -658,6 +666,8 @@ def _mutate_char(win, e, fn, msg):
         return
     if not win.save(msg):
         win.set_status(T('ch.err.not_saved', 'character not saved'), True)
+        return
+    _record_char_write(win, path, before, name)
 
 
 # ---- change item quality
@@ -1255,6 +1265,33 @@ def _record_fill(app, kind, **kw):
         _dbg('fill sockets: undo not recorded:', err)
 
 
+def _record_stash_replace(app, it, old_blob, name):
+    """Undo record of a stash item replaced in place (quantity, quality, ethereal, personalize, paste over it...):
+    Ctrl+Z puts the previous bytes back while the item is still as written. These actions had no undo, and the
+    session's one backup is taken before the first write only: a paste over the wrong item lost it."""
+    try:
+        buf = read_file(app.path)
+        cur = next((i for i in parse_stash(app.path, app.data)
+                    if (i['page'], i['x'], i['y']) == (it['page'], it['x'], it['y'])), None)
+        if cur is None:
+            return
+        _record_fill(app, 'replace', blob=bytes(old_blob), after=bytes(item_blob(buf, cur)), page=it['page'],
+                     x=it['x'], y=it['y'], old_page=it['page'], old_x=it['x'], old_y=it['y'], name=name)
+    except Exception as err:
+        _dbg('undo not recorded:', err)
+
+
+def _record_char_write(win, path, before, name):
+    """Undo record of a character item action (the character file's bytes before / after, mxl_undo 'char')."""
+    try:
+        after = read_file(path)
+        if bytes(after) != bytes(before):
+            import mxl_undo
+            mxl_undo.record_char(getattr(win, 'app', win), path, before, after, name)
+    except Exception as err:
+        _dbg('undo not recorded:', err)
+
+
 def _remove_socketed(holder, it, win=None, e=None):
     """Hero Editor's mnuRemoveSocketed: deletes the item's socketed children (its runes, gems,
     jewels) and clears the socket fields. The children's bytes live behind the record, so unlike
@@ -1551,6 +1588,7 @@ def _char_paste_over(win, e, clip):
     merc = win.is_merc()
     where = ('slot', e.it['equipped']) if e.it['location'] == MC.LOC_EQUIPPED \
         else ('inv', e.it['x'], e.it['y'])
+    path, before, name = win.ch.path, bytes(win.ch.raw), clean_name(win, e)
     try:
         _char_replace(win, e, clip[0], where, merc)
     except (CharError, FormatError, OSError) as err:
@@ -1559,3 +1597,4 @@ def _char_paste_over(win, e, clip):
         return
     if win.save(rc('pasted', '{name} pasted (the previous item is replaced)', name=clip[1])):
         win.app._capy_clip = None
+        _record_char_write(win, path, before, name)

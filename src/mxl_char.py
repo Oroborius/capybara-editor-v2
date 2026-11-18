@@ -498,6 +498,7 @@ class Character:
         if b[jm:jm + 2] != b'JM':
             jm = b.find(b'JM', p)
         self.skills = b[p:jm]
+        self.offsets = (gf, p, jm)                     # 'gf', 'if', 'JM' of the item list (collector's reader fix)
         count = struct.unpack_from('<H', b, jm + 2)[0]
         items, q = read_item_list(b, jm + 4, count, d)
         self.items = [Entry(it, b[it['_offset']:it['_offset'] + self._full_size(it)]) for it in items]
@@ -1128,6 +1129,73 @@ class Character:
 
     def set_header_u32(self, off, value):
         struct.pack_into('<I', self.head, off, value)
+
+
+# ------------------------------------------------------------------ the collector's character reader
+def _reader_bytes(raw, data):
+    """The collector's mxl_save.load_character finds its sections by searching the whole file: the stats at the
+    first b'gf' (a name like "Bigfoot" holds one: made-up attributes in the main window) and the item list at the
+    first b'JM' after the first b'if' (skill levels 74, 77 side by side spell 'JM': every save of such a
+    character was refused by the verification, which runs this reader). It only reads the signature, name (0x14),
+    class (0x28), level (0x2B), stats and items. Returns a copy of `raw` in which the other header bytes and the
+    skill levels that would mislead its searches are zeroed, or None when it reads `raw` right (or cannot be
+    helped)."""
+    ch = Character.__new__(Character)
+    ch.data, ch.path, ch.raw = data, None, raw
+    ch.parse(raw)
+    gf, if_, jm = ch.offsets
+
+    def right(b):
+        return b.find(b'gf') == gf and b.find(b'JM', b.find(b'if')) == jm
+    if right(raw):
+        return None
+    b = bytearray(raw)
+    keep = {0, 1, 2, 3, 0x28, 0x2B}
+    for i in range(gf - 1):
+        if bytes(b[i:i + 2]) in (b'gf', b'if'):
+            j = i + 1 if i + 1 not in keep else i
+            if j not in keep:
+                b[j] = 0
+    b[if_ + 2:jm] = bytes(jm - if_ - 2)
+    return bytes(b) if right(b) else None
+
+
+def install_reader_fix():
+    """Wraps mxl_save.load_character (also where a module bound it by name) with _reader_bytes. Idempotent."""
+    import sys
+    import mxl_save
+    host = mxl_save.load_character
+    if getattr(host, '_capy_reader_fix', False):
+        return
+
+    def load_character(path, data):
+        try:
+            raw = mxl_save.read_file(path)
+            fixed = _reader_bytes(raw, data)
+        except Exception:
+            fixed = None
+        if fixed is None:
+            return host(path, data)
+        name = bytes(raw[0x14:0x24]).split(b'\0')[0].decode('latin1')
+        real = mxl_save.read_file
+        mxl_save.read_file = lambda p, _real=real: fixed if p == path else _real(p)
+        try:
+            c = host(path, data)
+        finally:
+            mxl_save.read_file = real
+        try:
+            c['name'] = name
+        except Exception:
+            setattr(c, 'name', name)
+        return c
+    load_character._capy_reader_fix = True
+    load_character.__wrapped__ = host
+    for mod in list(sys.modules.values()):
+        try:
+            if mod is not None and getattr(mod, 'load_character', None) is host:
+                mod.load_character = load_character
+        except Exception:
+            pass
 
 
 def blob_item(blob, data):

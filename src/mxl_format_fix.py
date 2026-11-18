@@ -174,4 +174,9 @@ def install():
         mxl_stash_order.install()
     except Exception:
         pass
+    try:
+        import mxl_char                   # the collector's character reader finds its sections by searching
+        mxl_char.install_reader_fix()
+    except Exception:
+        pass
     mxl_format._sigma_fix = True
