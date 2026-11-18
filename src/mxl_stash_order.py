@@ -16,7 +16,14 @@ for the temp file, verification, backup and the game-closed rule).
 Insert at an index: an insert tuple may carry a fifth element, (page, x, y, blob, index) - the item's index in its
 page's item list. Undo uses it to put a deleted item back where it stood in the file (delete + undo gives the
 original bytes); page_index() tells the index of an item, last_removed the index the last one-item removal had.
-Such a call is written here too, with the same checks; an index of None (or past the end) appends."""
+Such a call is written here too, with the same checks; an index of None (or past the end) appends.
+
+Parsed stash cache (install_parse_cache): mxl_save.parse_stash reads and parses the whole file at every call, and one
+stash action called it four times or more (the action, the writer, its "stale view" / index lookups, the window's
+reload): ~85 ms each on a full stash (1340 items). The parse is a function of the file's BYTES only, so the result
+is kept per content: every call still reads the file, and a call whose bytes are exactly (byte for byte) those of
+a recent parse gets a fresh copy of that result. The writers' verification of a new file (<file>.tmp) is always
+parsed by the collector's parser itself, never served from here."""
 import os
 import sys
 
@@ -24,6 +31,8 @@ import mxl_save
 from mxl_format import write_bits
 
 _installed = False
+_cache = {'orig': None, 'entries': [], 'hits': 0, 'misses': 0}
+CACHE_KEEP = 4          # contents kept (the file now, the file just written, the shared stash, one spare)
 
 
 def _replace_in_place(path, data, off, ins, backup):
@@ -192,11 +201,39 @@ def stale_view(path, data, remove):
 
 def _refuse_stale(view):
     try:
-        view.root.after_idle(view.reload)
+        if view is not None:
+            view.root.after_idle(view.reload)
     except Exception:
         pass
     raise mxl_save.EditError(_T('so.err.stale', 'The stash changed on disk since it was shown (the game or another '
                                 'window saved it): nothing was written, it has been read again - do it again.'))
+
+
+def item_now(path, data, it, view=None):
+    """The item `it` (a parsed item a window shows, or a copy of one) as the file holds it NOW: (buf, items,
+    cur, blob) from one read of the file. Copy / Duplicate / Export and the Item stats tab read an item's bytes by
+    its offset alone: from an out-of-date view (the game or another window saved the stash since it was read)
+    that offset can hold a neighbour of the same size. Here the item at that offset must be the same item (page,
+    x, y, code), and no window showing the file may be out of date for it (stale_view); otherwise nothing is
+    returned: EditError, the window(s) read the stash again."""
+    off = it.get('_offset')
+    buf = bytes(mxl_save.read_file(path))
+    items = cached_parse_stash(path, data, buf)
+    cur = next((i for i in items if i['_offset'] == off), None)
+    if cur is None or _key(cur) != _key(it):
+        _refuse_stale(view if view is not None else _view_of(path))
+    shown = stale_view(path, data, [off])
+    if shown is not None:
+        _refuse_stale(shown)
+    return buf, items, cur, bytes(mxl_save.item_blob(buf, cur))
+
+
+def _view_of(path):
+    for ref in list(_views):
+        v = ref()
+        if v is not None and getattr(v, 'path', None) and _same_file(v.path, path):
+            return v
+    return None
 
 
 def _T(key, default, **kw):
@@ -207,12 +244,130 @@ def _T(key, default, **kw):
         return default.format(**kw) if kw else default
 
 
+# ------------------------------------------------------------------------------------- parsed stash cache
+_ATOMS = (int, str, bool, type(None), float, bytes)
+
+
+def _clone(o):
+    """A copy of a parsed item list that shares nothing mutable with the original (the items are mxl_format.Record
+    dict subclasses holding dicts and lists; the window, the writers and the menus may change what they get)."""
+    t = type(o)
+    if t in _ATOMS:
+        return o
+    if t is list:
+        return [_clone(v) for v in o]
+    if t is dict:
+        return {k: _clone(v) for k, v in o.items()}
+    if isinstance(o, dict):
+        n = t.__new__(t)
+        dict.update(n, {k: _clone(v) for k, v in dict.items(o)})   # no Record.__setitem__ check: same keys
+        d = getattr(o, '__dict__', None)
+        if d:
+            n.__dict__.update(_clone(d))
+        return n
+    if t is tuple:
+        return tuple(_clone(v) for v in o)
+    if t is bytearray:
+        return bytearray(o)
+    if t is set:
+        return {_clone(v) for v in o}
+    import copy
+    return copy.deepcopy(o)
+
+
+def _parse_bytes(orig, path, buf, data):
+    """The collector's own parse_stash on exactly these bytes (its read of the file is answered with them):
+    what is cached is what was parsed, even when the file changes again in the meantime."""
+    if orig.__closure__ is not None or 'read_file' not in orig.__code__.co_names:
+        items = orig(path, data)                 # not the collector's plain function: kept only when the file
+        if bytes(mxl_save.read_file(path)) != buf:   # still holds the bytes it was read with
+            raise _Changed(items)
+        return items
+    import types
+    g = dict(orig.__globals__)
+    g['read_file'] = lambda p, _b=buf: _b
+    fn = types.FunctionType(orig.__code__, g, orig.__name__, orig.__defaults__, orig.__closure__)
+    return fn(path, data)
+
+
+class _Changed(Exception):
+    def __init__(self, items):
+        Exception.__init__(self)
+        self.items = items
+
+
+def _lookup(buf, data, parser):
+    for e in _cache['entries']:
+        if e[1] is data and e[2] is parser and e[0] == buf:
+            _cache['entries'].remove(e)
+            _cache['entries'].append(e)          # most recently used last
+            return e[3]
+    return None
+
+
+def cached_parse_stash(path, data, buf=None):
+    """mxl_save.parse_stash with the result kept per file content (see the module doc). buf: the file's bytes
+    when the caller has just read them (the result is then the parse of exactly these bytes)."""
+    orig = _cache['orig']
+    if orig is None:                              # not installed: the collector's parser, which reads the file
+        items = mxl_save.parse_stash(path, data)
+        if buf is not None and bytes(mxl_save.read_file(path)) != bytes(buf):
+            raise mxl_save.EditError(mxl_save.tr('err.changed'))
+        return items
+    buf = bytes(mxl_save.read_file(path)) if buf is None else bytes(buf)
+    import mxl_format
+    parser = getattr(mxl_format, 'parse_item', None)         # a format fix installed later: other results
+    verify = str(path).lower().endswith('.tmp')               # a writer's verification: always parsed here
+    items = None if verify else _lookup(buf, data, parser)
+    if items is not None:
+        _cache['hits'] += 1
+        return _clone(items)
+    _cache['misses'] += 1
+    try:
+        items = _parse_bytes(orig, path, buf, data)           # an exception is raised, nothing is kept
+    except _Changed as c:
+        return c.items
+    _cache['entries'] = [e for e in _cache['entries'] if not (e[0] == buf and e[1] is data)]
+    _cache['entries'].append((buf, data, parser, _clone(items)))
+    del _cache['entries'][:-CACHE_KEEP]
+    return items
+
+
+def clear_parse_cache():
+    _cache['entries'] = []
+
+
+def install_parse_cache():
+    """Wraps mxl_save.parse_stash (also where a module bound it by name). Idempotent."""
+    host = mxl_save.parse_stash
+    if getattr(host, '_capy_cached', False):
+        return
+    _cache['orig'] = host
+
+    def parse_stash(path, data):
+        return cached_parse_stash(path, data)
+    parse_stash.__doc__ = getattr(host, '__doc__', None)
+    parse_stash.__wrapped__ = host
+    parse_stash._capy_cached = True
+    mxl_save.parse_stash = parse_stash
+    for mod in list(sys.modules.values()):
+        try:
+            if mod is not None and mod is not mxl_save and getattr(mod, 'parse_stash', None) is host:
+                mod.parse_stash = parse_stash
+        except Exception:
+            pass
+
+
 def install():
     """Safe to call more than once. Also rebinds the name in modules that imported it before."""
     global _installed
     if _installed:
         return
     _installed = True
+    try:
+        install_parse_cache()
+    except Exception as e:
+        print('stash parse cache disabled:', e)
     host = mxl_save.edit_stash
 
     def edit_stash(path, data, remove=(), insert=(), backup=True):

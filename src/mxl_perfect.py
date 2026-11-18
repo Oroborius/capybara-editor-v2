@@ -197,7 +197,7 @@ def make_perfect(holder, it=None, win=None, e=None, name=''):
     if win is None:
         app = holder
         try:
-            blob = item_blob(read_file(app.path), it)
+            blob = RC._now(app, it)[2]         # the item as the file holds it (refused from an out-of-date view)
             new, p = perfect_blob(blob, data, cr)
             if not p['changes']:
                 return False
@@ -206,11 +206,13 @@ def make_perfect(holder, it=None, win=None, e=None, name=''):
         except (EditError, FormatError, OSError, ValueError, KeyError) as err:
             RC._status(app, str(err), True)
             return False
+        RC._record_stash_replace(app, it, blob, name or RC._item_name(app, it, None))     # Ctrl+Z
         app.backup_made(app.path, bak)
         RC._selected(app, it['page'], it['x'], it['y'])
         RC._status(app, f'{name}: {_summary(p)}' if name else _summary(p))
         return True
     from mxl_char import CharError
+    path, before = win.ch.path, bytes(win.ch.raw)     # what is on disk: save() refuses anything else
     try:
         # same size, same place: the entry's own bytes are swapped (no remove -> place, whose slot rules
         # would refuse some items that are already worn, e.g. a mercenary's gloves / belt / boots)
@@ -232,4 +234,5 @@ def make_perfect(holder, it=None, win=None, e=None, name=''):
         win.set_status(T('ch.err.not_saved', 'character not saved'), True)
         win.reload()
         return False
+    RC._record_char_write(win, path, before, name or RC._item_name(win, None, e))     # Ctrl+Z
     return True
