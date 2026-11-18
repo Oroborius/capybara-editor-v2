@@ -233,4 +233,18 @@ def character_specific_edit_then_undo():
     no_traceback(m0)
 
 
+@T.test
+def main_window_uses_the_fixed_character_reader():
+    """The main window's character (App.load -> load_character, bound by name in mxl_gui) goes through
+    mxl_char.install_reader_fix (F5: made-up attributes for a name holding "gf")."""
+    if HOLDER != 'panel':
+        T.skip('one variant is enough')
+    import mxl_gui
+    import mxl_save
+    for mod in (mxl_gui, mxl_save):
+        fn = getattr(mod, 'load_character', None)
+        if fn is not None:
+            T.check(getattr(fn, '_capy_reader_fix', False), f'{mod.__name__}.load_character is not the fixed reader')
+
+
 T.main(globals())

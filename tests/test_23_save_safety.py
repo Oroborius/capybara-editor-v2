@@ -681,8 +681,11 @@ def imported_character_starts_empty():
     T.eq(len(ch.items), 0, 'items')
     T.eq(len(ch.merc_items or ()), 0, 'mercenary items copied from the template')
     st = os.path.join(folder, 'Newbie.stash')
-    n = len(E.save.parse_stash(st, E.data)) if os.path.exists(st) else 0
-    T.eq(n, 0, 'stash items copied from the template')
+    T.check(os.path.exists(st), 'no Newbie.stash')
+    if os.path.exists(st):
+        T.eq(len(E.save.parse_stash(st, E.data)), 0, 'stash items copied from the template')
+        T.eq(T.read(st)[4:8], bytes(4), 'stash opens on page 1')
+        T.check(not independent(st), f'stash: independent parser {independent(st)}')
     T.eq(sorted({s for s, _p, _v in ch.stats if s in (88, 185, 186)}), [], 'counters / signets of the template')
     T.eq([n for n in E.MC.ALL_WAYPOINTS if n and any(ch.waypoint(d, n) for d in range(3))], [], 'waypoints')
 
@@ -723,6 +726,17 @@ def a_short_lock_is_tried_again():
         else:
             T.check(T.read(p) == raw, 'a refused save left the file as it was')
         T.check(not [f for f in os.listdir(folder) if f.endswith('.tmp')], 'temp file left')
+
+
+@T.test
+def import_from_a_template_without_a_stash():
+    """The template character has no .stash: the new stash still has its 8-byte header."""
+    E = eng()
+    folder = T.fresh_saves()
+    os.remove(os.path.join(folder, 'XBone.stash'))
+    _import_empty('Newbie', folder)
+    st = os.path.join(folder, 'Newbie.stash')
+    T.check(os.path.exists(st) and not independent(st), 'Newbie.stash missing or not readable')
 
 
 T.main(globals())

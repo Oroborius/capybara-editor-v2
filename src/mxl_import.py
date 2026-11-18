@@ -1031,25 +1031,28 @@ def import_character(page_path, template_path, save_dir, name, data, cls_name=No
     tmpl_dir = os.path.dirname(template_path)
     tmpl = os.path.splitext(os.path.basename(template_path))[0]
     stash_src = os.path.join(tmpl_dir, tmpl + '.stash')
-    header = b''
+    version = 1
     if os.path.exists(stash_src):
         with open(stash_src, 'rb') as f:
-            header = f.read()[:8]
-    if stash_blobs:
-        from mxl_save import build_stash, parse_stash
-        content = build_stash(header or b'', {0: stash_blobs})
-        stash_dst = os.path.join(save_dir, name + '.stash')
+            head = f.read(8)
+        if len(head) == 8:
+            version = struct.unpack_from('<I', head, 0)[0]
+    # the 8-byte header (version, page shown last = 0) is always written: a template without a stash gave a file
+    # without its header before; without stash items the stash is the empty 8-byte form (as an empty shared
+    # stash) - the template's own stash is never copied (its items were duplicated into the new character)
+    header = struct.pack('<II', version, 0)
+    from mxl_save import build_stash, parse_stash
+    content = build_stash(header, {0: stash_blobs} if stash_blobs else {})
+    stash_dst = os.path.join(save_dir, name + '.stash')
 
-        def verify_stash(tmp):
-            try:
-                n = len(parse_stash(tmp, data))
-            except Exception as err:
-                raise EditError(T('im.err.stash_verify', 'stash check after writing failed: {error}', error=err))
-            if n != len(stash_blobs):
-                raise EditError(T('im.err.stash_count', 'stash check after writing failed: item count'))
-        commit_file(stash_dst, content, verify_stash, False)
-    # no stash items: no stash file (the game makes an empty one); the template's stash is not copied - its
-    # items were duplicated into the new character
+    def verify_stash(tmp):
+        try:
+            n = len(parse_stash(tmp, data))
+        except Exception as err:
+            raise EditError(T('im.err.stash_verify', 'stash check after writing failed: {error}', error=err))
+        if n != len(stash_blobs):
+            raise EditError(T('im.err.stash_count', 'stash check after writing failed: item count'))
+    commit_file(stash_dst, content, verify_stash, False)
     for fn in os.listdir(tmpl_dir):
         stem, ext = os.path.splitext(fn)
         if stem == tmpl and (ext.lower() in ('.key', '.map') or ext.lower().startswith('.ma')):
