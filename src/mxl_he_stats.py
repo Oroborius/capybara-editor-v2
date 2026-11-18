@@ -599,7 +599,21 @@ class ItemStatsWindow:
 
     def _write_char(self):
         """Character item: re-encodes the item's bytes in the character's entry and saves the character
-        through the character window (its own verification, backup and status line)."""
+        through the character window (its own verification, backup and status line).
+
+        The Character tab reads its file again when someone else wrote it (sync_file, pending page edits kept):
+        the edit then goes onto the item as it is in that file (current_entry: same place, same bytes), or is
+        refused when the item is no longer there - never onto an entry of an older read, whose change the save
+        would silently leave out."""
+        sync, find = getattr(self.chwin, 'sync_file', None), getattr(self.chwin, 'current_entry', None)
+        if sync is not None and find is not None:
+            sync()
+            cur = find(self.entry, False) or find(self.entry, True)
+            if cur is None:
+                self._say(he('err.save', 'not written: {err}', err=T('inv.err.item_gone', 'the item is no longer '
+                                                                     'where it was: select it again')), error=True)
+                return False
+            self.entry = cur
         try:
             self.entry.blob = build_blob(self.rec, self.kids, self.app.data)
             import mxl_char as MC
