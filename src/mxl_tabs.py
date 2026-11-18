@@ -62,6 +62,12 @@ def _autoload_later(app):
     import threading
 
     def build():
+        import sys
+        old_switch = sys.getswitchinterval()
+        # While this thread decodes art (pure Python), the main thread gives up the GIL on every Tk call and then
+        # waits a whole switch interval (5 ms) to get it back: a redraw of ~500 Tk calls took 10x longer during a
+        # first start. A short interval keeps the window responsive (the thread's own work is barely slower).
+        sys.setswitchinterval(min(old_switch, 0.0005))
         try:
             import mxl_d2look_art
             import paths
@@ -69,10 +75,13 @@ def _autoload_later(app):
             gd = settings.get('game_dir')
             if gd:
                 try:
-                    mxl_d2look_art.warm(gd, os.path.join(paths.USER_DIR, 'ui_art'))
+                    import mxl_d2look
+                    mxl_d2look_art.warm(gd, os.path.join(paths.USER_DIR, 'ui_art'),
+                                        settings.get(mxl_d2look.THEME_SETTING))
                 except Exception as e:
                     print('art warm-up failed:', e)
         finally:
+            sys.setswitchinterval(old_switch)
             try:
                 app.root.after(0, lambda: _autoload(app))
             except RuntimeError:                     # no main loop yet (headless test): build now

@@ -77,6 +77,7 @@ and stays open - mark the test `@T.test(xfail='what is wrong')` with a comment d
 | `test_17_statparse.py` | engine | tooltip-line parser round trip |
 | `test_18_stash_order.py` | engine | `mxl_stash_order`: replaced and re-inserted items keep their index; remove + insert-at-index gives the same file |
 | `test_19_not_covered.py` | engine | the known gaps, as skipped tests with their reason |
+| `test_21_perf_caches.py` | engine | the start-up speed-ups give the old results: `mxl_explode` = the collector's explode on real archive streams (and cut-off ones), DC6 `to_rgba` / brightness = the per-pixel loops; `mxl_diskcache` keys change with a table file (mtime, size, new file) and the language; missing-art markers spare the archives and go with a new game version |
 | `test_30_gui_smoke.py` | gui | start in `MXL_THEME=d2` / `he` at 1280x720 and 800x600, every tab and page, status bar, toolbar overflow |
 | `test_31_gui_stash_menu.py` | gui | right-click actions on stash items, undo (delete, create, replace, fill sockets) |
 | `test_32_gui_creator.py` | gui | Creator tab: lists, search, create, Item Editor, honorific, create on the character |
@@ -92,6 +93,7 @@ and stays open - mark the test `@T.test(xfail='what is wrong')` with a comment d
 | `test_38_gui_fill_sockets_undo_char.py` | gui | Ctrl+Z after "Fill sockets with ..." on character and mercenary items (panel and Character tab): the file byte-identical again, pending page edits kept, the undo refused after a newer write |
 | `test_39_gui_merc_weapon_set.py` | gui | no weapon-set switch on the mercenary view (one weapon set: slots 4 / 5) in every look - base-game panel (tabs painted out), Sigma panel, plain panel, Character tab - and the character keeps his set; base-game panel: the I / II tab rectangles, gold marker and clicks match the tabs measured in the art |
 | `test_40_gui_creator_layout.py` | gui | Creator and Item Editor at 800x600 (both looks, UI scale 1.25) and 1280x720: every control of every item type inside its column, no horizontal scrollbar; long combobox lists open wide; goes idle (CAPY_BIG=1 on a 2560x1440 X screen: every variant at that size) |
+| `test_41_gui_perf.py` | gui | generous time budgets: the start (to built Character / Creator tabs), a rebuild of both windows on a warm art cache (and no game archive opened), stash pages, hover, Character pages, Creator / Item Editor, resize; idle afterwards; the Creator's bonus-text index on disk equals a fresh computation |
 
 `--quick` runs the `engine` files only.
 

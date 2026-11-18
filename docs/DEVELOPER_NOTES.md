@@ -546,6 +546,15 @@ longer in the stash).
 - `mxl_import.py`: the character page import (page reader, item rebuilder, new character, Import button).
 - `mxl_d2look.py`, `mxl_d2look_art.py`, `mxl_d2ui_dc6.py`: the game-art look (switched off since 2026-11-10,
   see 'The plain Hero-Editor grids, D2 panels off').
+- `mxl_explode.py`: a ~8x faster PKWARE "explode" swapped in for the collector's `mpq.explode` (same bytes and
+  errors; the art of a first start took 15-25 s in the old one). `mxl_d2ui_dc6.to_rgba` and `Art._bright` work per
+  channel (bytes.translate / PIL) instead of per pixel; `mxl_d2look_art` shares opened archives between Art objects
+  and remembers members no archive has (`raw/<hash>.<set>.none`, wiped with the raw cache on a new game version),
+  so a later start opens no archive at all; `warm()` also extracts the Character tab's panels in the background.
+- `mxl_diskcache.py`: `<user dir>/cache/<name>.json` for values derived from the game tables; the key covers the
+  table files (size, mtime), the editor's code files (or their bytecode when frozen), the Python executable and
+  the caller's extras (language). Used for the Creator's bonus-text search index (was ~2.5 s of CPU after every
+  start).
 - `mxl_he_grid.py`: the light grid constants (replaces the collector's dark theme copies everywhere).
 - `mxl_splash.py`: loading screen (door animation with the capybara).
 - `mxl_log.py`: the log file `capybara.log` in the settings folder (saves, backups, imports, errors).

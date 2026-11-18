@@ -1,4 +1,4 @@
-"""DC6 images (Diablo II UI art) -> RGBA pixels, pure Python (no PIL)."""
+"""DC6 images (Diablo II UI art) -> RGBA pixels, pure Python (no PIL; per-channel bytes operations, no pixel loops)."""
 import struct
 import zlib
 
@@ -43,13 +43,24 @@ def palette(pal_dat):
     return [(pal_dat[i * 3 + 2], pal_dat[i * 3 + 1], pal_dat[i * 3]) for i in range(256)]
 
 
+_ALPHA = bytes([0] + [255] * 255)         # mask byte (0 / 1) -> alpha
+
+
 def to_rgba(frame, pal):
+    """RGBA bytes of one frame: palette colours where the frame has pixels, (0, 0, 0, 0) elsewhere. Done per
+    channel with bytes.translate and a big-int AND (C speed; the per-pixel loop took ~30 ms a frame)."""
     w, h, _ox, _oy, px, mask = frame
-    out = bytearray(w * h * 4)
-    for i in range(w * h):
-        if mask[i]:
-            r, g, b = pal[px[i]]
-            out[i * 4:i * 4 + 4] = bytes((r, g, b, 255))
+    n = w * h
+    out = bytearray(n * 4)
+    if n == 0:
+        return w, h, out
+    alpha = bytes(mask).translate(_ALPHA)
+    keep = int.from_bytes(alpha, 'little')
+    px = bytes(px)
+    for c in range(3):
+        chan = px.translate(bytes(col[c] for col in pal))
+        out[c::4] = (int.from_bytes(chan, 'little') & keep).to_bytes(n, 'little')
+    out[3::4] = alpha
     return w, h, out
 
 

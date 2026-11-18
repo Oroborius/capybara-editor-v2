@@ -9,8 +9,12 @@ Images are decoded once (DC6, mxl_d2ui_dc6) and kept as PNG in <user dir>/ui_art
 import glob
 import os
 import struct
+import threading
 
 import mxl_d2ui_dc6 as DC6
+import mxl_explode
+
+mxl_explode.install()       # the collector's MPQ reader with a ~8x faster implode decoder (first start: art extraction)
 
 THEMES = ('tartarus', 'classic_sigma')
 GAMMA = 0.6                 # in-game brightness (measured on a screenshot: raw palette colours ^0.6)
@@ -40,11 +44,12 @@ def skill_web(self, code, tab, size=None):
     return self._cached(f'web6-{code}-{tab}', build)
 
 
-def warm(game_dir, cache_root):
+def warm(game_dir, cache_root, theme=None):
     """Pre-read the art the editor shows, in the background: opening every MPQ costs ~0.8s and
     some strips are stored implode-compressed, which the pure-python decompressor needs ~0.6s
-    per file - the first picture would otherwise freeze the UI for that. Everything lands in the
-    ui_art cache, so the main thread only reads small files afterwards."""
+    per file - the first picture would otherwise freeze the UI for that (mxl_explode makes that ~8x faster). Everything lands in the
+    ui_art cache, so the main thread only reads small files afterwards. theme: the look's chosen
+    theme (the Character tab's panels: skill tree, stat screen); the first theme is always warmed."""
     try:
         art = get_art(game_dir, THEMES[0], cache_root)
         art.pal()
@@ -66,8 +71,52 @@ def warm(game_dir, cache_root):
                 art.font(f)
             except Exception:
                 pass
+        try:                                         # the Hotkeys page / skill tree use a classic_sigma Art (its own
+            cs = get_art(game_dir, 'classic_sigma', cache_root)          # raw cache and archive handles)
+            cs.pal()
+            cs.read('data\\global\\themes\\classic_sigma\\game\\skills\\icons-shared.dc6')
+        except Exception:
+            pass
+        arts = [art]
+        if theme in THEMES and theme != THEMES[0]:
+            arts.append(get_art(game_dir, theme, cache_root))
+        for a in arts:                               # the Character tab's pages (built right after this)
+            for step in (lambda: a.panel('skill-tree'), lambda: a.frame('skills\\socket', 2),
+                         lambda: a.panel('stat-screen'), lambda: a.panel('stat-screen', 1),
+                         lambda: a.frame('buttons\\stat-screen', 0),
+                         lambda: a.font('font16'), lambda: a.font('font6')):
+                try:
+                    step()
+                except Exception:
+                    pass
     except Exception:
         pass
+
+
+_ARCHIVES = {}
+_ARCHIVES_LOCK = threading.Lock()
+
+
+def _archive(path):
+    """One opened game archive per file and size / mtime, shared by every Art (each theme, the base-game reads):
+    opening one decrypts its hash and block tables in pure Python (~0.1-0.3 s each). The reader keeps the file
+    as a read-only mmap and slices it, so the background warm-up and the main thread can share it. None when
+    the file is missing or unreadable."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    key = (os.path.abspath(path), st.st_size, st.st_mtime_ns)
+    with _ARCHIVES_LOCK:
+        if key in _ARCHIVES:
+            return _ARCHIVES[key]
+        try:
+            from mpq import MPQ
+            m = MPQ(path)
+        except Exception:
+            m = None
+        _ARCHIVES[key] = m
+        return m
 
 
 class ArtError(Exception):
@@ -113,16 +162,9 @@ class Art:
 
     def mpqs(self):
         if self._mpqs is None:
-            from mpq import MPQ
             names = sorted(glob.glob(os.path.join(self.game_dir, 'medianxl-*.mpq')))
             names += [os.path.join(self.game_dir, n) for n in ('patch_d2.mpq', 'd2exp.mpq', 'd2data.mpq')]
-            self._mpqs = []
-            for n in names:
-                if os.path.exists(n):
-                    try:
-                        self._mpqs.append(MPQ(n))
-                    except Exception:
-                        pass
+            self._mpqs = [m for m in map(_archive, names) if m is not None]
         return self._mpqs
 
     def _raw_path(self, name):
@@ -139,12 +181,21 @@ class Art:
             return open(p, 'rb').read()
         except OSError:
             pass
-        for m in archives():
+        # A member no archive has is remembered too (<hash>.<set>.none, removed with the raw folder when the game
+        # version changes): the editor asks for files of one theme that only the other has, and every start
+        # opened all archives (~0.9 s of table decryption) just to learn that again.
+        absent = f'{p[:-4]}.{getattr(archives, "__name__", "mpqs")}.none'
+        if os.path.exists(absent):
+            raise ArtError(f'{name} not found in the game files ({self.game_dir})')
+        clean = True
+        opened = archives()
+        for m in opened:
             try:
                 if m.find(name) is None:
                     continue
                 data = m.read(name)
             except Exception:
+                clean = False
                 continue
             if data:
                 tmp = f'{p}.{os.getpid()}.tmp'
@@ -155,6 +206,12 @@ class Art:
                 except OSError:
                     pass
                 return data
+            clean = False                                # found but empty: not "absent"
+        if clean and opened:
+            try:
+                open(absent, 'wb').close()
+            except OSError:
+                pass
         raise ArtError(f'{name} not found in the game files ({self.game_dir})')
 
     def read(self, name):
@@ -163,15 +220,8 @@ class Art:
     def base_mpqs(self):
         """The base game's own archives only (never the Sigma mod's): patch_d2, d2exp, d2data."""
         if self._base_mpqs is None:
-            from mpq import MPQ
-            self._base_mpqs = []
-            for n in ('patch_d2.mpq', 'd2exp.mpq', 'd2data.mpq'):
-                p = os.path.join(self.game_dir, n)
-                if os.path.exists(p):
-                    try:
-                        self._base_mpqs.append(MPQ(p))
-                    except Exception:
-                        pass
+            names = [os.path.join(self.game_dir, n) for n in ('patch_d2.mpq', 'd2exp.mpq', 'd2data.mpq')]
+            self._base_mpqs = [m for m in map(_archive, names) if m is not None]
         return self._base_mpqs
 
     def read_base(self, name):
@@ -205,14 +255,25 @@ class Art:
         return path
 
     def _bright(self, rgba):
+        """The in-game brightness curve on every visible pixel (alpha > 0); transparent pixels keep their bytes."""
         lut = self._lut
-        out = bytearray(rgba)
-        for i in range(0, len(out), 4):
-            if out[i + 3]:
-                out[i] = lut[out[i]]
-                out[i + 1] = lut[out[i + 1]]
-                out[i + 2] = lut[out[i + 2]]
-        return out
+        n = len(rgba) // 4
+        try:
+            from PIL import Image
+        except ImportError:
+            Image = None
+        if Image is None or n == 0 or len(rgba) != n * 4:
+            out = bytearray(rgba)
+            for i in range(0, len(out), 4):
+                if out[i + 3]:
+                    out[i] = lut[out[i]]
+                    out[i + 1] = lut[out[i + 1]]
+                    out[i + 2] = lut[out[i + 2]]
+            return out
+        im = Image.frombytes('RGBA', (n, 1), bytes(rgba))      # the same per-pixel work in C (PIL point / composite)
+        r, g, b, a = im.split()
+        lit = Image.merge('RGBA', (r.point(lut), g.point(lut), b.point(lut), a))
+        return bytearray(Image.composite(lit, im, a.point([0] + [255] * 255)).tobytes())
 
     def panel(self, name, variant=0):
         """A 512x704 game panel (stash, character-inventory, stat-screen...): 6 tiles of 256 px, 2 per row."""

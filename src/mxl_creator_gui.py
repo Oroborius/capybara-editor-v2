@@ -324,6 +324,35 @@ class ScrollFrame(ttk.Frame):
         self.canvas.yview_moveto(0)
 
 
+BONUS_CACHE = 'creator-bonus-text'
+
+
+def _bonus_disk_key(cr):
+    """Key of the on-disk bonus-text index (mxl_diskcache): the game tables, the editor's code, the language."""
+    try:
+        import mxl_diskcache
+        import settings
+        return mxl_diskcache.key(folders=[cr.data.folder],
+                                 modules=('mxl_catalog_tooltip', 'mxl_stat_text', 'mxl_rules', 'mxl_data', 'stat_ids'),
+                                 extra=['bonus_text', settings.get('language') or ''])
+    except Exception:
+        return None
+
+
+def _bonus_disk_load(k):
+    import mxl_diskcache
+    v = mxl_diskcache.load(BONUS_CACHE, k)
+    try:
+        return {(q, int(row)): text for q, row, text in v} if isinstance(v, list) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _bonus_disk_save(k, cache):
+    import mxl_diskcache
+    mxl_diskcache.save(BONUS_CACHE, k, [[q, row, text] for (q, row), text in cache.items()])
+
+
 class CreatorWindow:
     """Toplevel of the creator. edit_item: item of the open stash to edit (None: create a new item)."""
 
@@ -634,6 +663,18 @@ class CreatorWindow:
         keys = [(kind, i) for kind, rows in (('unique', cr.uniques()), ('set', cr.set_items()), ('runeword', cr.runewords()))
                 for i, _name, _x in rows]
         keys.sort(key=lambda k: k[0] != self.qkey())         # the list on screen first
+        disk = _bonus_disk_key(cr)
+        if disk is not None:                                 # the index of an earlier start (same tables, same
+            got = _bonus_disk_load(disk)                     # editor files, same language): nothing to build
+            if got is not None:
+                cache = cr.__dict__.setdefault('_bonus_text', {})
+                for k, v in got.items():
+                    cache.setdefault(k, v)
+                if all(k in cache for k in keys):
+                    cr._bonus_done = True
+                    if self.search.get().strip():
+                        self.fill_list(only_if_changed=True)
+                    return
         todo = iter(keys)
 
         def step():
@@ -648,6 +689,8 @@ class CreatorWindow:
                         self._bonus_job = self.top.after(15, step)
                         return
                 cr._bonus_done = True
+                if disk is not None:
+                    _bonus_disk_save(disk, cr.__dict__.get('_bonus_text', {}))
                 if self.search.get().strip():
                     self.fill_list(only_if_changed=True)
             except tk.TclError:                              # window closed meanwhile: the next one goes on
@@ -2791,6 +2834,8 @@ def run():
     mxl_splash.start()
     import mxl_log                        # capybara.log in the settings folder: saves, backups, imports, errors
     mxl_log.install()
+    import mxl_explode                    # faster implode decoder for the collector's MPQ reader (game art, tables)
+    mxl_explode.install()
     import mxl_free                      # no "the game must be closed" checks: editing works while the game is open
     mxl_free.install()
     import mxl_format_fix                # Sigma item layouts the collector's reader did not know (before anything reads)
