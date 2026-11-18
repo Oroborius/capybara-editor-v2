@@ -72,6 +72,8 @@ class SkillTree:
         self._text = None
         self._art = False
         self._tip_win = None
+        self._tipper = None                # mxl_floattip.FloatTip, made on the first hover
+        self._tip_label = None
         self._tip_for = None
         self._tip_job = None
         self._tip_photo = None
@@ -84,7 +86,7 @@ class SkillTree:
         cv.bind('<ButtonPress-1>', self.on_press)
         cv.bind('<ButtonPress-3>', self.on_right)
         cv.bind('<Motion>', self.on_motion)
-        cv.bind('<Leave>', lambda e: self.hide_tip())
+        cv.bind('<Leave>', lambda e: self._leave())
         cv.bind('<Destroy>', lambda e: self.hide_tip(), add='+')
         try:                               # the look is switched: the page is drawn the other way
             win.dark.trace_add('write', lambda *_a: self.redraw_later())
@@ -712,8 +714,8 @@ class SkillTree:
 
     def hover(self, what):
         if what == self._tip_for:
-            if self._tip_win is not None:
-                self._place_tip()
+            if self._tip_win is not None and self._tipper is not None:
+                self._tipper.show(self.cv)          # follows the pointer; a pending delayed hide is cancelled
             return
         self.hide_tip()
         self._tip_for = what
@@ -739,12 +741,27 @@ class SkillTree:
                 pass
             self._tip_job = None
         self._tip_for = None
-        if self._tip_win is not None:
+        if self._tipper is not None:
+            self._tipper.hide()
+        self._tip_win = None
+
+    def _leave(self):
+        """<Leave> of the tree: the tip goes a moment later, when the pointer really left (mxl_floattip)."""
+        if self._tip_job is not None:
             try:
-                self._tip_win.destroy()
+                self.cv.after_cancel(self._tip_job)
             except tk.TclError:
                 pass
-            self._tip_win = None
+            self._tip_job = None
+        if self._tipper is not None and self._tipper.shown:
+            self._tipper.leave(self.cv)
+        else:
+            self._tip_for = None
+
+    def _tip_gone(self):
+        """The delayed hide happened: the next hover shows the tip again."""
+        self._tip_for = None
+        self._tip_win = None
 
     def _show_tip(self):
         self._tip_job = None
@@ -752,18 +769,22 @@ class SkillTree:
         if what is None:
             return
         try:
-            w = tk.Toplevel(self.win.top, bg='#000000', bd=0)
-            w.overrideredirect(True)
-            try:
-                w.attributes('-topmost', True)
-                w.attributes('-alpha', 0.9)
-            except tk.TclError:
-                pass
-            self._tip_label = tk.Label(w, bg='#000000', bd=0, highlightthickness=1, highlightbackground='#3a3020')
-            self._tip_label.pack()
+            import mxl_floattip
+            tip = self._tipper
+            if tip is None or not tip.exists():
+                tip = self._tipper = mxl_floattip.FloatTip(self.win.top, gap=(20, 22, 14), within=self.win.top,
+                                                           alpha=0.9, bg='#000000', bd=0)
+                tip.on_hide = self._tip_gone
+                self._tip_label = None
+            w = tip.window()
             self._tip_win = w
+            if not isinstance(self._tip_label, tk.Label) or not self._tip_label.winfo_exists():
+                for c in w.winfo_children():
+                    c.destroy()
+                self._tip_label = tk.Label(w, bg='#000000', bd=0, highlightthickness=1, highlightbackground='#3a3020')
+                self._tip_label.pack()
             self._fill_tip(what)
-            self._place_tip()
+            tip.show(self.cv)
         except tk.TclError:
             self._tip_win = None
 
@@ -844,33 +865,7 @@ class SkillTree:
         self._tip_label.configure(image=self._tip_photo)
 
     def _place_tip(self):
-        """Beside the pointer, inside the Character window (inside the screen when the window is too small)."""
-        w = self._tip_win
-        if w is None:
-            return
-        try:
-            w.update_idletasks()
-            top = self.win.top.winfo_toplevel()
-            px, py = top.winfo_pointerxy()
-            tw, th = w.winfo_reqwidth(), w.winfo_reqheight()
-            x0, y0 = top.winfo_rootx(), top.winfo_rooty()
-            x1, y1 = x0 + top.winfo_width(), y0 + top.winfo_height()
-            sw, sh = top.winfo_screenwidth(), top.winfo_screenheight()
-            if tw > x1 - x0 or th > y1 - y0:
-                x0, y0, x1, y1 = 0, 0, sw, sh
-            x = px + 20
-            if x + tw > x1:
-                x = px - 20 - tw
-            x = max(x0, min(x, x1 - tw))
-            y = py + 22
-            if y + th > y1:
-                y = py - 14 - th
-            y = max(y0, min(y, y1 - th))
-            if x <= px <= x + tw and y <= py <= y + th:        # never under the pointer: no Leave / Enter flicker
-                x = px + 20 if px + 20 + tw <= sw else max(0, px - 20 - tw)
-            geo = f'+{int(x)}+{int(y)}'
-            if getattr(w, '_capy_geo', None) != geo:
-                w._capy_geo = geo
-                w.geometry(geo)
-        except tk.TclError:
-            pass
+        """Beside the pointer, inside the Character window (inside the screen when the window is too small),
+        never under the pointer (mxl_floattip)."""
+        if self._tipper is not None and self._tip_win is not None:
+            self._tipper.place()

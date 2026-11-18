@@ -320,7 +320,7 @@ class HotkeysPage:
             w.bind('<ButtonRelease-1>', lambda e, o=off: self._up(o, e))
             w.bind('<Button-3>', lambda e, o=off: self.clear(o))
             w.bind('<Enter>', lambda e, o=off: self._tip(o), add='+')
-            w.bind('<Leave>', lambda e: self._tip(None), add='+')
+            w.bind('<Leave>', lambda e, f=fr: self._tip_leave(f), add='+')   # crossing to a sibling: kept
             w._hk_off = off
         if hand is not None:
             hand._hk_off = off
@@ -461,6 +461,13 @@ class HotkeysPage:
                      'settings instead).', file=os.path.basename(os.path.splitext(ch.path)[0] + '.key'))
         self.keynote.configure(text=note)
 
+    def _tip_leave(self, cell):
+        """<Leave> of a cell or one of its labels: the tip goes only when the pointer left the whole cell."""
+        try:
+            self.win._sk_tip_leave(cell)
+        except Exception:
+            pass
+
     def _tip(self, off):
         try:
             if off is None:
@@ -480,7 +487,7 @@ class HotkeysPage:
             if off not in MOUSE:
                 lines.append(T('hk.tip.left', 'goes to the left button') if left else
                              T('hk.tip.right', 'goes to the right button'))
-            self.win._sk_tip('\n'.join(lines))
+            self.win._sk_tip('\n'.join(lines), self.cells[off]['frame'] if off in self.cells else None)
         except Exception:
             pass
 
