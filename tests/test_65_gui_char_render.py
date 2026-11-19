@@ -73,7 +73,7 @@ def composite_is_non_empty_and_stable():
     import mxl_char_render as R
     art = art_or_skip()
     folder = view().data.folder
-    gear = {1: 'crn', 3: 'fld', 4: '382', 5: 'tow'}           # crown, field plate, claymore, tower shield
+    gear = {1: 'crn', 3: 'fld', 4: '14@', 5: 'tow'}           # crown, field plate, crystal sword, tower shield
     t = time.time()
     a = R.render(art, folder, 3, gear)
     secs = time.time() - t
