@@ -39,6 +39,13 @@ decoded once into the art's PNG cache anyway.
 skill icons) are kept for the current art object and game data across Character window rebuilds instead of starting empty
 in every new window: a wrapper around their constructors hands each new window the dictionaries of the one
 before. Nothing in them depends on the character (keys are file paths, sizes, fonts, colours, class numbers).
+
+6. The stat screen's scaled panels: every redraw (each notch of the wheel over the "All Item Attributes" list)
+composed both panels of the open book and scaled both with LANCZOS (~16 ms each at 1.25x), although the panel
+beside the list had not changed. The image a page composes now carries a resize() that remembers its result by
+the image's content (a digest of its pixels): the same pixels at the same size give the same scaled pixels, so
+an unchanged panel is not scaled again. Every caller gets its own copy (the redraw draws texts onto it). At most
+SCALED_KEEP results are kept. Composing itself is unchanged: every panel is still composed at every redraw.
 """
 import sys
 import weakref
@@ -50,6 +57,8 @@ DC6_BIG = 2 * 2 ** 20                # a file decoding to more than this is not 
 _dc6 = OrderedDict()                 # file bytes -> (cost, frames as the collector's function returns them)
 _dc6_size = [0]
 _shared = {}                         # kind -> (art, weakref to the game data, value): one per kind
+SCALED_KEEP = 6
+_scaled = OrderedDict()              # (digest, mode, size, new size, resample) -> scaled image
 ICON_KEEP = 400
 _layers = OrderedDict()
 
@@ -254,6 +263,46 @@ def _wrap_statscreen(cls):
     cls.__init__ = __init__
 
 
+def remember_resize(img):
+    """Gives a PIL image a resize() whose result is kept by the image's content (see 6.)."""
+    import hashlib
+    real = img.resize
+
+    def resize(size, resample=None, *a, **k):
+        if a or k or resample is None:
+            return real(size, resample, *a, **k) if resample is not None else real(size, *a, **k)
+        # the pixels as they are now (~1.5 ms for a panel; a resize is ~16 ms)
+        key = (hashlib.blake2b(img.tobytes(), digest_size=20).digest(), img.mode, img.size, tuple(size), resample)
+        got = _scaled.get(key)
+        if got is None:
+            got = real(size, resample)
+            _scaled[key] = got
+            while len(_scaled) > SCALED_KEEP:
+                _scaled.popitem(last=False)
+        else:
+            _scaled.move_to_end(key)
+        return got.copy()
+    img.resize = resize
+    return img
+
+
+def _wrap_compose(cls):
+    orig = cls.compose
+    if getattr(orig, '_capy_fast', False):
+        return
+
+    def compose(self, *a, **k):
+        img = orig(self, *a, **k)
+        try:
+            remember_resize(img)
+        except Exception:
+            pass
+        return img
+    compose._capy_fast = True
+    compose.original = orig
+    cls.compose = compose
+
+
 def _wrap_skilltree(cls):
     orig = cls.__init__
     if getattr(orig, '_capy_fast', False):
@@ -279,6 +328,7 @@ def install_windows():
     try:
         import mxl_statscreen
         _wrap_statscreen(mxl_statscreen.StatScreen)
+        _wrap_compose(mxl_statscreen.StatScreen)
         import mxl_skilltree
         _wrap_skilltree(mxl_skilltree.SkillTree)
     except Exception as e:

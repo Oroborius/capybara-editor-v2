@@ -17,7 +17,9 @@
   game's skill icon sheets and fonts, a caller's change to the returned arrays stays its own, another content
   gets its own frames, the cache stays within its bound.
 - the art's archives are opened lazily: a member is read from the first archive that has it (the same bytes as
-  searching all of them in order) and the archives after it are not opened."""
+  searching all of them in order) and the archives after it are not opened.
+- mxl_speed.remember_resize (the stat screen's scaled panels kept by content): the same pixels as a plain
+  resize, a changed image is scaled again, a caller's change to the result stays its own, bounded."""
 import json
 import os
 import random
@@ -411,6 +413,35 @@ def archives_open_only_up_to_the_match():
     T.check(got == want, 'another archive answered than the first one that has the member')
     T.check(0 < len(asked) < len(names), f'{len(asked)} of {len(names)} archives opened for one member')
     T.eq(asked, names[:len(asked)], 'archives opened out of order')
+
+
+@T.test
+def remembered_resize_same_pixels():
+    from PIL import Image
+    T.engine()
+    import mxl_speed as FS
+    FS._scaled.clear()
+    rnd = random.Random(5)
+    base = Image.frombytes('RGBA', (64, 88), bytes(rnd.getrandbits(8) for _ in range(64 * 88 * 4)))
+    for size in ((81, 111), (40, 55), (81, 111)):
+        img = FS.remember_resize(base.copy())
+        want = base.resize(size, Image.LANCZOS)
+        for _ in range(2):
+            got = img.resize(size, Image.LANCZOS)
+            T.check((got.mode, got.size, got.tobytes()) == (want.mode, want.size, want.tobytes()), f'resize to {size}')
+            got.paste((255, 0, 0, 255), (0, 0, 8, 8))     # a caller's change stays its own
+    img = FS.remember_resize(base.copy())
+    img.resize((81, 111), Image.LANCZOS)
+    img.paste((0, 255, 0, 255), (10, 10, 30, 30))        # the image changed: scaled again
+    got = img.resize((81, 111), Image.LANCZOS)
+    plain = img.copy()
+    plain.__dict__.pop('resize', None)
+    want = Image.Image.resize(plain, (81, 111), Image.LANCZOS)
+    T.check(got.tobytes() == want.tobytes(), 'a changed image got the scaled pixels of the old one')
+    T.check(img.resize((81, 111)).size == (81, 111), 'resize without a filter')
+    for i in range(FS.SCALED_KEEP + 3):
+        FS.remember_resize(base.copy()).resize((20 + i, 20), Image.LANCZOS)
+    T.check(len(FS._scaled) <= FS.SCALED_KEEP, 'the scaled-panel cache is over its bound')
 
 
 T.main(globals())
