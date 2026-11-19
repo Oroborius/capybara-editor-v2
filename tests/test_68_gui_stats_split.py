@@ -1,7 +1,7 @@
 """The Stats page's split layout (dark look): at 1600x900 the stat screen's two pages sit at the left and right
 edges with the scene (the animated character, mxl_char_view) between them, a page dragged towards the middle stays
 there (settings.json) and a double click puts it back, the window's minsize keeps two pages + the scene, the scene
-takes a background (set_background) and animates its sprites; at 800x600 one page shows and no minsize is forced.
+takes a background (set_background) and animates its sprites; at 800x600 the layout of before (no split, no minsize forced, the character beside the pages).
 Set CAPY_SHOTS=<folder> for screenshots."""
 import os
 import subprocess
@@ -133,6 +133,14 @@ def minsize_and_small_window():
     mw, mh = root.minsize()
     T.check(mw >= nw and mh >= nh, f'minsize {mw}x{mh} holds two pages + scene ({nw}x{nh})')
     T.check(mw <= 1600 and mh <= 900, f'minsize {mw}x{mh} within the window')
+    cw.tab.set('inventory')
+    cw.show_tab()
+    T.settle(0.3)
+    T.check(root.minsize()[0] < nw, f'minsize back on the Inventory page: {root.minsize()}')
+    cw.tab.set('stats')
+    cw.show_tab()
+    T.settle(0.3)
+    T.check(root.minsize()[0] >= nw, f'minsize again on the Stats page: {root.minsize()}')
     T.select_tab('Stash')
     T.settle(0.3)
     T.check(root.minsize()[0] < nw, f'minsize back on another tab: {root.minsize()}')
@@ -142,8 +150,14 @@ def minsize_and_small_window():
     T.settle(0.4)
     T.eq(root.winfo_width(), 800, 'window width 800')
     T.check(not scr.split, 'no split layout at 800x600')
+    T.eq(len(scr.shown), scr.spread, 'the layout of before (the book of two pages, or one page)')
     T.check(root.minsize()[0] <= 800, f'no minsize forced at 800x600: {root.minsize()}')
     T.check(scr.slot_x(len(scr.shown) - 1) + round(512 * scr.k) <= scr.cv.winfo_width(), 'pages inside the canvas')
+    v = getattr(cw, 'char_view', None)
+    if v is not None and v.shown:                    # the character beside the pages, never over them
+        x0 = scr.cv.winfo_x()
+        vx = v.cv.winfo_x()
+        T.check(vx + v.cv.winfo_width() <= x0, f'character {vx}+{v.cv.winfo_width()} left of the pages at {x0}')
     shot('800x600')
     root.geometry('1600x900+0+0')
     T.settle(0.5)

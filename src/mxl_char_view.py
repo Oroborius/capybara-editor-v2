@@ -23,6 +23,7 @@ class CharView:
         self._img = self.cv.create_image(0, 0, anchor='nw')
         self.scene = None           # the background: object with .base (PIL), .sprites [{pos, frames, fps}], .anchor
         self._scene_auto = True     # True: made here by mxl_scene (when importable) for the size of the room
+        self._scene_mod = None      # mxl_scene, False when it cannot be imported (tried once)
         self._scene_key = None
         self._scene_busy = False
         self._bg_photo = None
@@ -36,9 +37,11 @@ class CharView:
         self._busy = False
         self._key = None
         self.shown = False
-        self.host.bind('<Configure>', lambda e: self.place(), add='+')
-        scr.cv.bind('<Configure>', lambda e: self.place(), add='+')
-        self.host.bind('<<ScenePlaced>>', lambda e: self.place(), add='+')
+        self._place_job = None
+        self.host.bind('<Configure>', lambda e: self.place_later(), add='+')
+        self.host.bind('<Map>', lambda e: self.place_later(), add='+')
+        scr.cv.bind('<Configure>', lambda e: self.place_later(), add='+')
+        self.host.bind('<<ScenePlaced>>', lambda e: self.place_later(), add='+')
         self.cv.winfo_toplevel().bind('<Map>', lambda e: self.wake(), add='+')
         self.load()
 
@@ -122,11 +125,16 @@ class CharView:
         key = (self._act(), size)
         if key == self._scene_key:
             return
-        self._scene_key = key
-        try:
-            import mxl_scene
-        except Exception:
+        if self._scene_mod is None:
+            try:
+                import mxl_scene
+                self._scene_mod = mxl_scene
+            except Exception:
+                self._scene_mod = False
+        mxl_scene = self._scene_mod
+        if not mxl_scene:
             return                                   # no town map (yet): plain dark ground
+        self._scene_key = key
         self._scene_busy = True
         out = {}
         art, folder = self.art, self.win.data.folder
@@ -214,6 +222,18 @@ class CharView:
                            for f in self.anim.frames]
             self.scale = scale
 
+    def place_later(self):
+        """place() once the pending geometry changes are done (sizes read at a <Configure> can be stale ones)."""
+        if self._place_job is None:
+            try:
+                self._place_job = self.cv.after_idle(self._place_now)
+            except tk.TclError:
+                pass
+
+    def _place_now(self):
+        self._place_job = None
+        self.place()
+
     def place(self):
         try:
             scr = self.win.statscreen
@@ -226,7 +246,7 @@ class CharView:
                 self.cv.itemconfigure(item, state='hidden')
             a = self.anim
             W, H = self.host.winfo_width(), self.host.winfo_height()
-            cw = scr.cv.winfo_width()
+            cw = int(scr.cv.cget('width'))          # (asked for: winfo_width may still be the old one)
             margin = (W - cw) // 2                  # the stat screen is centred
             scale = self._scale_for(margin, H) if W > 1 else 0
             if not scale:
@@ -238,10 +258,10 @@ class CharView:
             w, h = a.size[0] * scale, a.size[1] * scale
             self.cv.configure(width=w, height=h, bg='#000000')
             self.cv.coords(self._img, 0, 0)
-            self.cv.itemconfigure(self._img, anchor='nw')
+            # image first (in the same call): the item's old image may be gone with the old photos
+            self.cv.itemconfigure(self._img, image=self.photos[self.index % len(self.photos)], anchor='nw')
             self.cv.place(x=max(PAD, (margin - w) // 2), y=max(PAD, (H - h) // 2))
             self.shown = True
-            self.cv.itemconfigure(self._img, image=self.photos[self.index % len(self.photos)])
             self.wake()
         except tk.TclError:
             pass
@@ -259,7 +279,11 @@ class CharView:
         self.box = (x, y, w, h)
         self.cv.configure(width=w, height=h, bg=GROUND)
         self.cv.place(x=x, y=y)
-        self._auto_scene((w, h))
+        try:
+            room = (int(scr.cv.cget('width')) - 2 * round(512 * scr.k), h)   # both pages at their edges
+        except (tk.TclError, ValueError):
+            room = (w, h)
+        self._auto_scene(room)
         f, ox, oy = self._draw_scene(w, h)
         for item, _ph, _fps in self._sprites:
             self.cv.itemconfigure(item, state='normal')
@@ -274,13 +298,11 @@ class CharView:
         self._photos_at(scale)
         anchor = getattr(self.scene, 'anchor', None) if getattr(self.scene, 'base', None) is not None else None
         if anchor:
-            cx, cy = ox + anchor[0] * f, oy + anchor[1] * f
-            self.cv.itemconfigure(self._img, anchor='s')
+            cx, cy, where = ox + anchor[0] * f, oy + anchor[1] * f, 's'
         else:
-            cx, cy = w // 2, h // 2
-            self.cv.itemconfigure(self._img, anchor='center')
+            cx, cy, where = w // 2, h // 2, 'center'
         self.cv.coords(self._img, round(cx), round(cy))
-        self.cv.itemconfigure(self._img, image=self.photos[self.index % len(self.photos)])
+        self.cv.itemconfigure(self._img, image=self.photos[self.index % len(self.photos)], anchor=where)
         self.wake()
 
     # ---- animation

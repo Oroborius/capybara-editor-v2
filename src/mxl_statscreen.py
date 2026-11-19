@@ -1277,8 +1277,7 @@ class StatScreen:
         cv = self.cv
         cv.bind('<B1-Motion>', self.on_drag)
         cv.bind('<Double-Button-1>', self.on_double)
-        self.frame.bind('<Map>', lambda e: self._apply_minsize(), add='+')
-        self.frame.bind('<Unmap>', lambda e: self._restore_minsize(), add='+')
+        self._watch_shown()
         cv.bind('<ButtonPress-1>', self.on_press)
         cv.bind('<ButtonRelease-1>', self.on_release)
         cv.bind('<ButtonPress-3>', self.on_right)
@@ -1509,6 +1508,11 @@ class StatScreen:
             self._layout()
             self.cv.configure(width=width if split else round(PANEL_W * k) * len(self.shown), height=round(PANEL_H * k))
             self.redraw()
+        else:
+            try:
+                self.frame.event_generate('<<ScenePlaced>>')   # the space changed: the character view follows
+            except tk.TclError:
+                pass
         self._apply_minsize()
 
     # ------------------------------------------------------------------ split layout
@@ -1529,7 +1533,7 @@ class StatScreen:
         minsize); the old minsize comes back when the page is hidden."""
         try:
             top = self.cv.winfo_toplevel()
-            if not self.split or self._fit_wh is None or not self.frame.winfo_ismapped():
+            if not self.split or self._fit_wh is None or not self.frame.winfo_viewable():
                 self._restore_minsize()
                 return
             W, H = self._fit_wh
@@ -1545,6 +1549,22 @@ class StatScreen:
                 top.minsize(*want)
         except (tk.TclError, TypeError, ValueError):
             pass
+
+    def _watch_shown(self):
+        """The minsize follows whether the page can be seen: <Map> / <Unmap> of the frame and of every parent up to
+        the toplevel (a hidden Character sub-page or main tab unmaps a parent, not the frame itself)."""
+        def changed(_e=None):
+            try:
+                self.frame.after_idle(self._apply_minsize)
+            except tk.TclError:
+                pass
+        w = self.frame
+        while w is not None:
+            if w.winfo_toplevel() is w:
+                break
+            w.bind('<Map>', changed, add='+')
+            w.bind('<Unmap>', changed, add='+')
+            w = w.master
 
     def _restore_minsize(self):
         if self._min_saved is None:
