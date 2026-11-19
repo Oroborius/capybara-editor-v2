@@ -2981,6 +2981,7 @@ def run():
     import mxl_counters; mxl_counters.install(mxl_gui.App)   # Character page "Counters": signets, stat 88
     import mxl_status_attr; mxl_status_attr.install(mxl_gui.App)   # status bar Str / Dex = the Stats page's
     mxl_char_gui.install(mxl_gui.App)
+    mxl_speed.install_windows()          # stat screen / skill tree art caches kept across Character window rebuilds
     import mxl_hotkeys                     # Character page "Hotkeys": skill hotkeys and mouse-button skills
     mxl_hotkeys.install(mxl_gui.App)
     import mxl_merc; mxl_merc.install()   # Character window page "Mercenary"
