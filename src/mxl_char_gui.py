@@ -1387,8 +1387,9 @@ class CharacterWindow(StatEditMixin):
             self.pending_cls = None
         typed = getattr(self, '_sk_keep', {}) if keep else {}
         self._sk_keep = {}
-        if getattr(self, '_skills_cls', None) != ch.cls:
-            self._rebuild_skills()
+        rebuilt = getattr(self, '_skills_cls', None) != ch.cls
+        if rebuilt:
+            self._rebuild_skills()        # (draws the tree: no second drawing below)
         else:
             lv = ch.skill_levels()
             for sid, var in self.sk_vars.items():
@@ -1397,7 +1398,7 @@ class CharacterWindow(StatEditMixin):
             self.statscreen.redraw()
         else:
             self._refresh_stats_grey()
-        if getattr(self, 'sktree', None) is not None:       # levels and the remaining points
+        if getattr(self, 'sktree', None) is not None and not rebuilt:       # levels and the remaining points
             self.sktree.redraw()
         for k in range(3):
             self.wp_trees[k].set_values({('wp', k, n): n in self.wstate[k] for n in MC.waypoint_ids(k)})

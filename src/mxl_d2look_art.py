@@ -44,6 +44,9 @@ def skill_web(self, code, tab, size=None):
     return self._cached(f'web6-{code}-{tab}', build)
 
 
+CLASS_CODES = ('ama', 'sor', 'nec', 'pal', 'bar', 'dru', 'ass')
+
+
 def warm(game_dir, cache_root, theme=None):
     """Pre-read the art the editor shows, in the background: opening every MPQ costs ~0.8s and
     some strips are stored implode-compressed, which the pure-python decompressor needs ~0.6s
@@ -80,6 +83,15 @@ def warm(game_dir, cache_root, theme=None):
         arts = [art]
         if theme in THEMES and theme != THEMES[0]:
             arts.append(get_art(game_dir, theme, cache_root))
+        # every class's skill-tree web file (and, for a theme without them, its "not here" marker): the first
+        # character of another class picked in the dropdown searched all ~60 archives for it on the main thread
+        # (~1 s, once per class); here it is done once in the background, later starts find it in the cache
+        for a in arts:
+            for code in CLASS_CODES:
+                try:
+                    a._theme_file(f'skills\\layout-{code}.dc6')
+                except Exception:
+                    pass
         for a in arts:                               # the Character tab's pages (built right after this)
             for step in (lambda: a.panel('skill-tree'), lambda: a.frame('skills\\socket', 2),
                          lambda: a.panel('stat-screen'), lambda: a.panel('stat-screen', 1),
@@ -140,6 +152,33 @@ def _archive(path):
         return m
 
 
+class _Archives:
+    """The game archives in search order, each opened only when a search gets to it: a member is read from the
+    first archive that has it, so a file of one of the first Sigma archives no longer opens (and decrypts the
+    tables of) all ~60 of them. Same answer as opening them all first: same order, same first match."""
+
+    def __init__(self, names):
+        self.names = list(names)
+        self._opened = {}
+
+    def _get(self, i):
+        if i not in self._opened:
+            self._opened[i] = _archive(self.names[i])
+        return self._opened[i]
+
+    def __iter__(self):
+        for i in range(len(self.names)):
+            m = self._get(i)
+            if m is not None:
+                yield m
+
+    def __bool__(self):
+        return any(True for _m in self)
+
+    def __len__(self):
+        return sum(1 for _m in self)
+
+
 class ArtError(Exception):
     pass
 
@@ -185,7 +224,7 @@ class Art:
         if self._mpqs is None:
             names = sorted(glob.glob(os.path.join(self.game_dir, 'medianxl-*.mpq')))
             names += [os.path.join(self.game_dir, n) for n in ('patch_d2.mpq', 'd2exp.mpq', 'd2data.mpq')]
-            self._mpqs = [m for m in map(_archive, names) if m is not None]
+            self._mpqs = _Archives(names)
         return self._mpqs
 
     def _raw_path(self, name):

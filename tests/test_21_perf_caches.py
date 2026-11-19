@@ -11,7 +11,15 @@
 - mxl_speed.free_spot: the same place as the collector's free_spot (sample stash, a stash filled up item by
   item, random page lists, the item itself in the list), much faster on a full stash.
 - mxl_speed.icon_layers: the same layer images as mxl_gfx.icon_layers, a fresh copy per call; mxl_d2look._source
-  (decoded panel art kept between cell sizes): the same pixels as a fresh decode, bounded in size."""
+  (decoded panel art kept between cell sizes): the same pixels as a fresh decode, bounded in size.
+- mxl_speed's mpq.decrypt: the same bytes as the collector's for random data, lengths and keys.
+- mxl_speed.dc6_frames (decoded DC6 kept by file content): the same frames as mxl_d2ui_dc6.dc6_frames for the
+  game's skill icon sheets and fonts, a caller's change to the returned arrays stays its own, another content
+  gets its own frames, the cache stays within its bound.
+- the art's archives are opened lazily: a member is read from the first archive that has it (the same bytes as
+  searching all of them in order) and the archives after it are not opened.
+- mxl_speed.remember_resize (the stat screen's scaled panels kept by content): the same pixels as a plain
+  resize, a changed image is scaled again, a caller's change to the result stays its own, bounded."""
 import json
 import os
 import random
@@ -303,6 +311,137 @@ def decoded_panel_art_same_pixels():
         T.check((a.mode, a.size, a.tobytes()) == (b.mode, b.size, b.tobytes()), f'{os.path.basename(p)}: other pixels')
     total = sum(x.width * x.height * 4 for x in D._sources.values())
     T.check(total <= D._SOURCES_MAX or len(D._sources) == 1, f'{total} bytes kept (bound {D._SOURCES_MAX})')
+
+
+@T.test
+def fast_decrypt_same_bytes():
+    T.engine()
+    import mpq
+    import mxl_speed as FS
+    orig = getattr(mpq.decrypt, 'original', mpq.decrypt)
+    fast = FS._decrypt_with([int(v) for v in mpq.CT[1024:1280]])
+    rnd = random.Random(11)
+    for n in list(range(0, 21)) + [rnd.randint(21, 4000) for _ in range(60)]:
+        data = bytes(rnd.getrandbits(8) for _ in range(n))
+        for key in (0, 0xFFFFFFFF, 0xC3AF3770, 0xEC83B3A3, rnd.getrandbits(32)):
+            T.check(fast(data, key) == orig(data, key), f'decrypt differs ({n} bytes, key {key:#x})')
+    FS._install_decrypt()
+    T.check(getattr(mpq.decrypt, '_capy_fast', False), 'the fast decrypt was not installed')
+    d = bytes(range(256)) * 64
+    t = time.perf_counter()
+    orig(d, 0x1234)
+    t1 = time.perf_counter() - t
+    t = time.perf_counter()
+    mpq.decrypt(d, 0x1234)
+    t2 = time.perf_counter() - t
+    print(f'  16 KB: collector {t1 * 1000:.1f} ms, fast {t2 * 1000:.1f} ms')
+
+
+@T.test
+def dc6_cache_same_frames():
+    gd = game_dir()
+    T.engine()
+    import mxl_d2look_art as A
+    import mxl_d2ui_dc6 as DC6
+    import mxl_speed as FS
+    orig = getattr(DC6.dc6_frames, 'original', DC6.dc6_frames)
+    FS._state['dc6_orig'] = orig
+    FS._dc6.clear()
+    FS._dc6_size[0] = 0
+    a = A.Art(gd, 'classic_sigma', os.path.join(T.tmp(), 'ui_art'))
+    files = []
+    for code in A.CLASS_CODES + ('shared',):
+        try:
+            files.append(a.read('data\\global\\themes\\classic_sigma\\game\\skills\\icons-' + code + '.dc6'))
+        except A.ArtError:
+            pass
+    T.check(len(files) >= 4, f'only {len(files)} icon sheets found')
+    for data in files + files[:3]:
+        want = orig(data)
+        for _ in range(2):
+            got = FS.dc6_frames(data)
+            T.eq(len(got), len(want), 'number of frames')
+            T.check(got == want, 'frames differ from mxl_d2ui_dc6.dc6_frames')
+            if got and got[0][4]:
+                got[0][4][0] ^= 0xFF                      # a caller's change stays its own
+                got[0][5][0] ^= 1
+    base = orig(files[0])                                 # one pixel byte of the file changed: its own frames
+    p0 = int.from_bytes(files[0][24:28], 'little') + 32
+    other = None
+    for pos in range(p0, min(p0 + 400, len(files[0]))):
+        cand = bytearray(files[0])
+        cand[pos] ^= 0x01
+        try:
+            if orig(bytes(cand)) != base:
+                other = bytes(cand)
+                break
+        except Exception:
+            continue
+    T.check(other is not None, 'no changed file with other frames found')
+    T.check(FS.dc6_frames(other) == orig(other), 'a changed file got the cached frames of the original')
+    T.check(FS._dc6_size[0] <= FS.DC6_KEEP, 'the dc6 cache is over its bound')
+
+
+@T.test
+def archives_open_only_up_to_the_match():
+    gd = game_dir()
+    T.engine()
+    import glob
+    import mxl_d2look_art as A
+    names = sorted(glob.glob(os.path.join(gd, 'medianxl-*.mpq')))
+    names += [os.path.join(gd, n) for n in ('patch_d2.mpq', 'd2exp.mpq', 'd2data.mpq')]
+    member = 'data\\global\\themes\\classic_sigma\\game\\panels\\stat-screen.dc6'
+    want = None
+    for m in (x for x in map(A._archive, names) if x is not None):      # the eager search: first archive that has it
+        if m.find(member) is not None:
+            want = m.read(member)
+            if want:
+                break
+    T.check(want, f'{member} not in the game archives')
+    a = A.Art(gd, 'classic_sigma', os.path.join(T.tmp(), 'ui_art-lazy'))
+    asked = []
+    orig = A._archive
+
+    def spy(path):
+        asked.append(path)
+        return orig(path)
+    A._archive = spy
+    try:
+        got = a.read(member)
+    finally:
+        A._archive = orig
+    T.check(got == want, 'another archive answered than the first one that has the member')
+    T.check(0 < len(asked) < len(names), f'{len(asked)} of {len(names)} archives opened for one member')
+    T.eq(asked, names[:len(asked)], 'archives opened out of order')
+
+
+@T.test
+def remembered_resize_same_pixels():
+    from PIL import Image
+    T.engine()
+    import mxl_speed as FS
+    FS._scaled.clear()
+    rnd = random.Random(5)
+    base = Image.frombytes('RGBA', (64, 88), bytes(rnd.getrandbits(8) for _ in range(64 * 88 * 4)))
+    for size in ((81, 111), (40, 55), (81, 111)):
+        img = FS.remember_resize(base.copy())
+        want = base.resize(size, Image.LANCZOS)
+        for _ in range(2):
+            got = img.resize(size, Image.LANCZOS)
+            T.check((got.mode, got.size, got.tobytes()) == (want.mode, want.size, want.tobytes()), f'resize to {size}')
+            got.paste((255, 0, 0, 255), (0, 0, 8, 8))     # a caller's change stays its own
+    img = FS.remember_resize(base.copy())
+    img.resize((81, 111), Image.LANCZOS)
+    img.paste((0, 255, 0, 255), (10, 10, 30, 30))        # the image changed: scaled again
+    got = img.resize((81, 111), Image.LANCZOS)
+    plain = img.copy()
+    plain.__dict__.pop('resize', None)
+    want = Image.Image.resize(plain, (81, 111), Image.LANCZOS)
+    T.check(got.tobytes() == want.tobytes(), 'a changed image got the scaled pixels of the old one')
+    T.check(img.resize((81, 111)).size == (81, 111), 'resize without a filter')
+    for i in range(FS.SCALED_KEEP + 3):
+        FS.remember_resize(base.copy()).resize((20 + i, 20), Image.LANCZOS)
+    T.check(len(FS._scaled) <= FS.SCALED_KEEP, 'the scaled-panel cache is over its bound')
 
 
 T.main(globals())
