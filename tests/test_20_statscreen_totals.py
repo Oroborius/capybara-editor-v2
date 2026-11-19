@@ -437,7 +437,8 @@ def table_caps_are_applied():
 @T.test
 def page1_boxes_use_the_skill_on_each_mouse_button():
     """Page 1's left / right Damage and Attack Rating boxes apply the skill on that button (skills.bin): Raid (350,
-    srcdam 90 = 70 % weapon damage, + its own 8-8 at level 20, +105 % attack rating at level 20 - the numbers of the
+    srcdam 90 = 70 % weapon damage (its own 8-8 is not added: in game Raid's box is exactly 90/128 of
+    Earth Talons'), +105 % attack rating at level 20 - the numbers of the
     in-game Raid tooltip) and Earth Talons (1295, srcdam 128, no physical damage of its own: the weapon damage).
     A druid (class 5) with 20 hard points in both and an unarmed set, so the weapon damage is the plain 1-2 + items."""
     E = T.engine()
@@ -458,7 +459,7 @@ def page1_boxes_use_the_skill_on_each_mouse_button():
     T.eq(SS.skill_level(ch, E.data, _totals({127: 2}), 1773), 0, 'no hard points: +all skills do not count')
     tot2 = _totals({21: 219, 22: 638, 127: 2, 2: 500})        # 500 dexterity: a positive attack rating
     page = _page(E, ch, tot2)
-    T.eq(page.derived('damage_1')[0], f'{220 * 90 // 128 + 8}-{640 * 90 // 128 + 8}', 'Raid: 70 % + 8-8')
+    T.eq(page.derived('damage_1')[0], f'{220 * 90 // 128}-{640 * 90 // 128}', 'Raid: 70 %, its own 8-8 not added')
     T.eq(page.derived('damage_2')[0], '220-640', 'Earth Talons: the weapon damage')
     ar, _flat, pct = page.attack_rating()
     T.eq(pct, 0, 'no item attack rating %')

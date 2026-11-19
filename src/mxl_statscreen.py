@@ -591,13 +591,14 @@ def skill_attack(data, sid, lvl):
 
 
 def skill_damage(dmg, sk):
-    """Weapon damage (weapon_damage's dict) as the stat screen shows it for a skill: x srcdam / 128, + the skill's
-    own physical damage. dmg unchanged when sk is None."""
+    """Weapon damage (weapon_damage's dict) as the stat screen shows it for a skill: x srcdam / 128. The skill's own
+    physical damage is not added: in game Raid's box is exactly 90/128 of Earth Talons' on both min and max
+    (850-1781 vs 1300-2724, test-druid), so nothing is added per skill. dmg unchanged when sk is None."""
     if dmg is None or sk is None:
         return dmg
-    src, (plo, phi), _toht = sk
-    lo, hi = dmg['min'] * src // 128 + plo, dmg['max'] * src // 128 + phi
-    return dict(dmg, min=max(lo, 1), max=max(hi, lo + 1), src=src, skill_phys=(plo, phi))
+    src = sk[0]
+    lo, hi = dmg['min'] * src // 128, dmg['max'] * src // 128
+    return dict(dmg, min=max(lo, 1), max=max(hi, lo + 1), src=src)
 
 
 def attack_rating(data, cls, tot, dexterity, level=1):
@@ -1368,8 +1369,8 @@ class StatScreen:
         name = self.win._sk_name(sid)
         if sk is None:
             return T('ss.tip.dmg_noweap', '{skill} uses no weapon damage: the plain weapon damage is shown.', skill=name)
-        return T('ss.tip.dmg_sk', '{skill} (level {lvl}): {pct} % weapon damage, + {lo}-{hi} damage of the skill.',
-                 skill=name, lvl=lvl, pct=sk[0] * 100 // 128, lo=sk[1][0], hi=sk[1][1])
+        return T('ss.tip.dmg_sk2', '{skill} (level {lvl}): {pct} % weapon damage.',
+                 skill=name, lvl=lvl, pct=sk[0] * 100 // 128)
 
     def ar_tip(self, flat, pct):
         return T('ss.tip.ar', 'Attack rating: 5 x dexterity - 35 + class bonus, + items {flat}, then {pct:+d} % from '
