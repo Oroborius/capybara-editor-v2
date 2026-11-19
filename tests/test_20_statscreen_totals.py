@@ -224,7 +224,8 @@ def _page(E, ch, tot):
 
 
 def _check_pages_agree(E, page, what):
-    """The Attack Rating row and the Weapon Damage min / max of the game's page 2 show page 1's numbers."""
+    """Page 2's Attack Rating row shows the items' flat attack rating (stat 19) and their attack rating % - the parts
+    page 1's boxes are made of - and its Weapon Damage min / max show the weapon damage."""
     import mxl_statscreen as SS
     rows = {(el['type'], el['stat']): el for el in SS.screen_table(E.data) if el['page'] == 1}
     ar_row, pct_row = rows.get((SS.T_STAT, 19)), rows.get((SS.T_STAT, 119))
@@ -240,7 +241,7 @@ def _check_pages_agree(E, page, what):
         dmg = page.weapon_damage()
         shown = SS.skill_damage(dmg, sk)
         T.eq(page.derived('damage_%d' % n)[0], f"{shown['min']}-{shown['max']}", f'{what}: page 1 damage box {n}')
-    T.eq(page.game_value(ar_row)[0], str(ar), f'{what}: page 2 attack rating = page 1 without the skill')
+    T.eq(page.game_value(ar_row)[0], str(flat), f'{what}: page 2 attack rating = the items\' flat attack rating')
     T.eq(page.game_value(pct_row)[0], f'{pct}%', f'{what}: page 2 attack rating % = the % inside page 1')
     dmg = page.weapon_damage()
     lo, hi = (page.game_value(rows[(SS.T_LABEL, s)])[0] for s in SS.WEAPON_DAMAGE_ROWS)
@@ -249,10 +250,11 @@ def _check_pages_agree(E, page, what):
 
 
 @T.test
-def totals_page_attack_rating_equals_page_one():
-    """Page 2 "Attack Rating" row (stat 19 | stat 119 % in the game's table): the total attack rating that page 1's
-    boxes show, then the items' attack rating %; not the items' flat stat 19 alone (user screenshot: 0 beside
-    53338). Both XBone samples, and a level-1 character holding a weapon."""
+def totals_page_attack_rating_row_shows_the_items():
+    """Page 2 "Attack Rating" row (stat 19 | stat 119 % in the game's table): the items' flat attack rating, then
+    their attack rating % (in game, test-druid: "0 | 1,173%" while page 1 shows 60,671 / 53,338; an earlier version
+    showed page 1's total here, wrongly). Page 1's boxes are still the full attack rating. Both XBone samples, and a
+    level-1 character holding a weapon."""
     E = T.engine()
     import mxl_char
     import mxl_statscreen as SS
@@ -267,7 +269,7 @@ def totals_page_attack_rating_equals_page_one():
         T.eq(tot['error'], None, f'sample {which}: totals')
         T.eq(SS.active_weapon(ch, E.data) is not None, True, f'sample {which}: holds a weapon')
         ar, flat, _pct = _check_pages_agree(E, _page(E, ch, tot), f'sample {which}')
-        T.eq(ar > flat, True, f'sample {which}: the row shows more than the items\' flat attack rating')
+        T.eq(ar > flat, True, f'sample {which}: page 1 shows more than the items\' flat attack rating')
         checked += 1
     name, cls, st, dx, code, _dmg, ar1 = LEVEL1[5]
     try:
@@ -376,18 +378,19 @@ def page_two_strength_bonus_row_counts_442():
 @T.test
 def poison_damage_is_shown_in_points_not_256ths():
     """Page 2 poison row: 768-1280 (raw 256ths of a point per frame, the user's screenshot) is shown the way the item
-    tooltip states poison: raw x frames / 256, lengths of the poison items averaged (two items 100 + 150 frames ->
-    125): 768 x 125 / 256 = 375, 1280 x 125 / 256 = 625."""
+    game's page 2 shows it: raw x frames / 512 (in game, test-druid: raw 768-1280 over 50 frames -> 75-125, half of the
+    item tooltip's raw x frames / 256), lengths of the poison items averaged (two items 100 + 150 frames -> 125):
+    768 x 125 / 512 = 187, 1280 x 125 / 512 = 312."""
     E = T.engine()
     import mxl_statscreen as SS
     tot = _totals({57: 768, 58: 1280, 59: 250})
     tot['n'][59] = 2
-    T.eq(SS.poison_damage(tot), (375, 625, 125, (768, 1280)), 'poison_damage')
+    T.eq(SS.poison_damage(tot), (187, 312, 125, (768, 1280)), 'poison_damage')
     ch = _Char({})
     ch.cls, ch.level, ch.stats = 5, 81, []
     page = _page(E, ch, tot)
-    T.eq(page.game_value(_row(E, 1, SS.T_STAT, 57))[0], '375', 'page 2 min poison')
-    T.eq(page.game_value(_row(E, 1, SS.T_STAT, 58))[0], '625', 'page 2 max poison')
+    T.eq(page.game_value(_row(E, 1, SS.T_STAT, 57))[0], '187', 'page 2 min poison')
+    T.eq(page.game_value(_row(E, 1, SS.T_STAT, 58))[0], '312', 'page 2 max poison')
     T.eq(SS.poison_damage(_totals({})), None, 'no poison')
 
 

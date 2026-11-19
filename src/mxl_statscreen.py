@@ -664,15 +664,161 @@ FPS = 25
 
 
 def poison_damage(tot):
-    """(min, max, frames, (raw min, raw max)) of the items' poison damage the way the item tooltip states it ("Adds
-    min-max poison damage over n seconds": raw x frames / 256), with the lengths of several items averaged (the
-    engine's poison count, stat 326); None without poison damage."""
+    """(min, max, frames, (raw min, raw max)) of the items' poison damage as the game's page 2 shows it: raw x frames
+    / 512, with the lengths of several items averaged (the engine's poison count, stat 326); None without poison
+    damage. In game (test-druid): raw 768-1280 over 50 frames -> 75-125 on page 2, half of what the item tooltip
+    states ("Adds 150-250 Poison Damage over 2 seconds" = raw x frames / 256). One item at 50 frames cannot tell
+    x frames / 512 from x 25 / 256 (the damage of one second); x frames / 512 is taken."""
     lo, hi, length = (total_of(tot, s) for s in POISON)
     if not (lo or hi):
         return None
     n = max((tot.get('n') or {}).get(59, 0), 1)
     frames = length // n
-    return lo * frames // 256, hi * frames // 256, frames, (lo, hi)
+    return lo * frames // 512, hi * frames // 512, frames, (lo, hi)
+
+
+# ---- passive skills: the "passive stats" of skills.bin (0x98: five stats, their formulas at 0xA4)
+PASSIVE_SKIP = frozenset((0, 1, 2, 3, 359, 360, 361, 362, 17, 18, 19, 21, 22, 23, 24, 25, 119, 299, 300, 442,
+                          83, 97, 107, 127))
+# ^ not taken from skills: the attributes and what feeds page 1's Damage / Attack Rating (still worked out without
+#   skills), and the skill levels themselves
+
+
+class _CalcStats(dict):
+    """The character's stats as skill formulas read them (stat('n'.accr)): attributes as the stat screen totals
+    them, other stats stored + items (life / mana / stamina in 256ths, as the engine keeps them)."""
+    def __init__(self, ch, data, tot):
+        super().__init__()
+        self.ch, self.data, self.tot = ch, data, tot
+
+    def __bool__(self):                  # Calc takes `stats or {}`: never empty for it
+        return True
+
+    def get(self, sid, default=0):
+        if sid not in self:
+            ch, data, tot = self.ch, self.data, self.tot
+            if sid in ATTR_IDS.values():
+                v = attribute_total(ch, data, tot, sid)
+            else:
+                v = char_stat(ch, sid) + item_sum(tot, data, sid, ch.level)
+                if sid in FIXED:
+                    v <<= 8
+            self[sid] = v
+        return dict.get(self, sid, default)
+
+
+def skill_passives(ch, data, tot):
+    """{stat id: value} of the passive stats of the skills the character has hard points in (life / mana / stamina
+    in whole points), e.g. Druid: Barkskin +x % Bonus to Defense and +life, Meditation +x % Maximum Mana and mana
+    regeneration, the hidden "damage reduction from all sources" skill's stat 184 (Grit on page 1). The aura / form
+    stats (0x54) are left out (only while the form or aura is on); passives gated on a form (Ferocity, Steel
+    Wings: clc1 = skill('Wereowl Form'.aura)) come out 0, as unmorphed in game. Formulas: mxl_skilldesc.Calc with
+    blvl = hard points and lvl = skill_level (items' + skills included). A passive restricted to an item type
+    (0x96) counts when an equipped item of the active set is of that type. Checked on test-druid (level 81): life
+    2217 -> 3657, mana % 0 -> 16, Bonus to Defense 60 -> 456 %, mana regeneration 411 -> 424 %, Grit 11 %."""
+    out = {}
+    try:
+        import mxl_skilldesc as SD
+        t = SD.tables(data)
+        hard = {s: int(v) for s, v in ch.skill_levels().items() if int(v or 0) > 0}
+    except Exception:
+        return out
+    stats = _CalcStats(ch, data, tot)
+    worn = None
+    for sid in sorted(hard):
+        try:
+            r = t.sk[sid]
+            pst = struct.unpack_from('<5H', r, 0x98)
+            itype = struct.unpack_from('<H', r, 0x96)[0]
+        except Exception:
+            continue
+        if all(s in (0, 0xFFFF) for s in pst):
+            continue
+        if itype:
+            if worn is None:
+                try:
+                    active2 = struct.unpack_from('<I', ch.head, 0x10)[0] == 1
+                    worn = [data.type_ancestors(data.base(e.it['code']).type) for slot, e in ch.equipped().items()
+                            if slot not in ((4, 5) if active2 else (11, 12))]
+                except Exception:
+                    worn = []
+            if not any(itype in anc for anc in worn):
+                continue
+        cls = data.skill_class.get(sid)
+        bonus = total_of(tot, 127) + (total_of(tot, 83, cls) if cls not in (None, 255) else 0)
+        calc = SD.Calc(t, hard, ch.level, stats, bonus)
+        lvl = skill_level(ch, data, tot, sid)
+        for i, s in enumerate(pst):
+            if s in (0, 0xFFFF) or s in PASSIVE_SKIP:
+                continue
+            try:
+                v = int(calc.eval(t.code, t.field(sid, 0xa4 + 4 * i), sid, lvl) or 0)
+            except Exception:
+                continue
+            if s in FIXED:
+                v >>= 8
+            if v:
+                out[s] = out.get(s, 0) + v
+    return out
+
+
+def defense_total(armour, flat, dexterity, pct):
+    """Page 1 Defense: (the worn armour pieces' defense + other flat defense + dexterity / 4) x (100 + the total
+    "Bonus to Defense" %, items and skills: page 3's row) / 100. test-druid: (7876 + 843 / 4) x 556 / 100 = 44958, the
+    game's number (the saved defense of an ethereal piece already holds its +50 %)."""
+    return (armour + flat + dexterity // 4) * (100 + pct) // 100
+
+
+BLOCK_CAP = 50                        # "Max Block Chance: extends the maximum block chance above 50%" (stat 213)
+
+
+def block_factor(data, cls):
+    """The class's BlockFactor (charstats 0x49, next to class_factors' fields), None when unreadable."""
+    try:
+        r = data._rows('charstats')[cls]
+        if len(r) == 196:
+            return r[0x49]
+    except Exception:
+        pass
+    return None
+
+
+def has_shield(ch, data):
+    """The shield of the active weapon set as (item, base), None without one."""
+    try:
+        active2 = struct.unpack_from('<I', ch.head, 0x10)[0] == 1
+        eq = ch.equipped()
+        shield = next((i for i, t in enumerate(data.itypes) if t and t[0] == 'shld'), None)
+    except Exception:
+        return None
+    if shield is None:
+        return None
+    for slot in ((11, 12) if active2 else (4, 5)):
+        e = eq.get(slot)
+        try:
+            b = data.base(e.it['code'])
+            if shield in data.type_ancestors(b.type):
+                return e.it, b
+        except Exception:
+            continue
+    return None
+
+
+def block_chance(data, ch, base_block, dexterity, max_block=0):
+    """Page 1 Block Chance with a shield in the active set, the base game's rule: (the shield's block + "Base Block
+    Chance" (stat 20) + the class's BlockFactor) x (dexterity - 15) / (2 x level), at most 50 + "Max Block Chance".
+    test-druid (Druid, BlockFactor 3, Buckler block 0, base block 2, dexterity 843, level 81): 5 x 828 / 162 = 25, the
+    game's 25 %. None without a shield or without the class's factor."""
+    sh = has_shield(ch, data)
+    fac = block_factor(data, ch.cls)
+    if sh is None or fac is None:
+        return None
+    try:
+        own = int(getattr(sh[1], 'block', 0) or 0)
+    except Exception:
+        own = 0
+    v = (own + base_block + fac) * max(dexterity - 15, 0) // (2 * max(ch.level, 1))
+    return max(0, min(v, BLOCK_CAP + max_block))
 
 
 def class_factors(data, cls):
@@ -1292,6 +1438,20 @@ class StatScreen:
         return T('ss.tip.parts', '{own_label} {own}, equipped items {equip}, charms {charms}, set bonuses {sets}',
                  own_label=own_label or T('ss.tip.own', 'Character'), own=own, **{k: f'{v:+d}' for k, v in parts.items()})
 
+    def passive(self, sid):
+        """The passive skills' share of a stat (skill_passives; whole points), cached per character state."""
+        win = self.win
+        sim, tot = win.st_sim, win.st_totals()
+        try:
+            key = (id(tot), sim.level, tuple(sorted(sim.skill_levels().items())),
+                   tuple(char_stat(sim, a) for a in range(4)))
+        except Exception:
+            return 0
+        hit = getattr(self, '_passives', None)
+        if hit is None or hit[0] != key:
+            hit = self._passives = (key, skill_passives(sim, win.data, tot))
+        return hit[1].get(sid, 0)
+
     def attr_total(self, sid):
         """An attribute as the game totals it: (stored + items) raised by the items' "+x %"."""
         return attribute_total(self.win.st_sim, self.win.data, self.win.st_totals(), sid)
@@ -1306,11 +1466,12 @@ class StatScreen:
         if key in RES_IDS:
             sid = RES_IDS[key]
             own, parts = self._split(sid)
-            total = own + sum(parts.values())
+            total = own + sum(parts.values()) + self.passive(sid)
             if sid not in MAX_RES:
                 return f'{total}%', self._where(own, parts) + '\n' + rest
             mo, mparts = self._split(MAX_RES[sid])
-            shown, pen, cap = resistance(win.data, win.st_sim, sid, total, mo + sum(mparts.values()))
+            shown, pen, cap = resistance(win.data, win.st_sim, sid, total,
+                                         mo + sum(mparts.values()) + self.passive(MAX_RES[sid]))
             diff = difficulty_of(win.st_sim)
             return f'{shown}%', self._where(own, parts) + '\n' + T(
                 'ss.tip.res_cap', 'Sum {total} %, {pen:+d} % in {diff}, capped at {cap} % (75 + maximum resist, '
@@ -1321,10 +1482,23 @@ class StatScreen:
         if key == 'defense':
             own, parts = self._split(31)
             armour = tot['defense']
-            return str(armour + own + sum(parts.values())), T(
-                'ss.tip.defense', 'Defense of the worn armour {armour} + other flat defense: equipped {equip}, '
-                'charms {charms}, set bonuses {sets}.', armour=armour, **parts) + '\n' + T(
-                'ss.tip.defense2', 'Not included: dexterity, the total "Bonus to Defense" %, skills.')
+            flat = own + sum(parts.values()) + self.passive(31)
+            dex = self.attr_total(2)
+            pct = self._bonus_total(171)
+            return str(defense_total(armour, flat, dex, pct)), T(
+                'ss.tip.defense3', '(Defense of the worn armour {armour} + other flat defense {flat} + dexterity '
+                '{dex} / 4) x (100 + {pct} % Bonus to Defense of items and skills) / 100.', armour=armour, flat=flat,
+                dex=dex, pct=pct) + '\n' + T('ss.tip.defense4', 'Not included: auras, forms and buffs.')
+        if key == 'block':
+            base = self._bonus_total(20)
+            v = block_chance(win.data, win.st_sim, base, self.attr_total(2), self._bonus_total(213))
+            if v is None:
+                return None, T('ss.tip.block0', 'Block chance: no shield in the active weapon set.')
+            return f'{v}%', T('ss.tip.block', '(Base Block Chance {base} % + shield + class factor) x (dexterity - 15) '
+                              '/ (2 x level), at most 50 % + Max Block Chance.', base=base)
+        if key == 'grit':
+            v = self._bonus_total(184)
+            return f'{v}%', T('ss.tip.grit', 'Grit (damage reduction from all sources): items and passive skills.')
         if key.startswith('damage'):
             dmg = self.weapon_damage()
             if dmg is None:
@@ -1344,6 +1518,11 @@ class StatScreen:
                                  skill=self.win._sk_name(sid), lvl=lvl, pct=sk[2])
             return str(ar), tip
         return None, T('ss.tip.game', 'computed by the game')
+
+    def _bonus_total(self, sid):
+        """Stored + items (per-level stats included) + passive skills of one stat."""
+        own, parts = self._split(sid)
+        return own + sum(parts.values()) + self.passive(sid)
 
     def attack_rating(self, skill_pct=0):
         """(attack rating, items' flat, items' %) of page 1 and of the Attack Rating row of the game's page 2;
@@ -1402,11 +1581,12 @@ class StatScreen:
                 return None, tot['error'] or T('ss.tip.game', 'computed by the game'), None
             return str(dmg['min' if sid == 21 else 'max']), self.damage_tip(dmg), None
         if kind == T_STAT and sid in AR_ROW and not flags & F_BASE:
-            # the Attack Rating row: total attack rating (as page 1's boxes) | the items' attack rating %
+            # the Attack Rating row: the items' flat attack rating (stat 19) | the items' attack rating % (in game,
+            # test-druid: "0 | 1,173%" while page 1 shows 60,671 / 53,338)
             if tot['error']:
                 return None, tot['error'], None
             ar, flat, pct = self.attack_rating()
-            return (str(ar) if sid == 19 else f'{pct}%'), self.ar_tip(flat, pct), None
+            return (str(flat) if sid == 19 else f'{pct}%'), self.ar_tip(flat, pct), None
         if kind == T_STAT and sid in POISON[:2] and not flags & F_BASE:
             if tot['error']:
                 return None, tot['error'], None
@@ -1414,8 +1594,8 @@ class StatScreen:
             if p is None:
                 return '0', T('ss.tip.poison0', 'No poison damage on the items.'), None
             return str(p[0 if sid == 57 else 1]), T(
-                'ss.tip.poison', 'Poison damage of the items: {lo}-{hi} over {sec} seconds (raw {rlo}-{rhi} / 256 per '
-                'frame x {frames} frames, the lengths of {n} items averaged).', lo=p[0], hi=p[1],
+                'ss.tip.poison2', 'Poison damage of the items as the game\'s page 2 shows it: {lo}-{hi} (raw '
+                '{rlo}-{rhi} x {frames} frames / 512; {sec} seconds, the lengths of {n} items averaged).', lo=p[0], hi=p[1],
                 sec=f'{p[2] / FPS:g}', rlo=p[3][0], rhi=p[3][1], frames=p[2],
                 n=max((tot.get('n') or {}).get(59, 0), 1)) + '\n' + T(
                 'ss.tip.rest4', 'Not included: skills, buffs and the caps of the game.'), None
@@ -1436,12 +1616,14 @@ class StatScreen:
         param = win.st_cls() if kind == T_CLASS_SKILLS else None
         own, parts = self._split(sid, param)
         items = sum(parts.values())
-        v = own + items
-        extra = ''
+        skills = self.passive(sid) if param is None and sid not in PASSIVE_SKIP else 0
+        v = own + items + skills
+        extra = T('ss.tip.skills', 'passive skills {n:+d}', n=skills) if skills else ''
         if sid in (0, 1, 2, 3):
             pct = total_of(tot, PCT_OF[sid])
             v = v * (100 + pct) // 100
             extra = T('ss.tip.pct', 'then {pct:+d} % from items', pct=pct)
+            # (+ skills: none here, attributes are not taken from skills, see PASSIVE_SKIP)
         elif sid in (7, 9, 11):
             fac = class_factors(data, sim.cls)
             attr = 3 if sid in (7, 11) else 1
@@ -1449,10 +1631,11 @@ class StatScreen:
             if fac:
                 per = fac[{7: 0, 9: 1, 11: 2}[sid]]
                 v += more * per // 4
-                extra = T('ss.tip.per_attr', '{more:+d} {attr} from items x {per}/4', more=more, per=per,
-                          attr=T('ss.vitality', 'Vitality') if attr == 3 else T('ss.energy', 'Energy'))
+                extra += (', ' if extra else '') + T(
+                    'ss.tip.per_attr', '{more:+d} {attr} from items x {per}/4', more=more, per=per,
+                    attr=T('ss.vitality', 'Vitality') if attr == 3 else T('ss.energy', 'Energy'))
             if sid in PCT_OF:
-                pct = total_of(tot, PCT_OF[sid])
+                pct = total_of(tot, PCT_OF[sid]) + self.passive(PCT_OF[sid])
                 v = v * (100 + pct) // 100
                 extra += (', ' if extra else '') + T('ss.tip.pct', 'then {pct:+d} % from items', pct=pct)
         elif kind == T_STAT_BONUS:
@@ -1471,6 +1654,8 @@ class StatScreen:
                       'x {attr}', per100=per100, items=items, attr=attr)
         tip = name + ': ' + self._where(own, parts) + (' (' + extra + ')' if extra else '')
         cap = el.get('cap') or 0
+        if kind == T_RESIST and not cap:       # page 3 Poison Length Red.: items 155 %, the game shows 75 %
+            cap = RES_CAP
         if cap and v > cap:                    # the table's own maximum (absorb %: 40)
             tip += '\n' + T('ss.tip.cap', 'Sum {v}{s}, capped at {cap}{s} by the game\'s table.', v=v, cap=cap, s=suffix)
             v = cap
@@ -1739,7 +1924,7 @@ class StatScreen:
             except Exception:
                 return el['tip']
         if kind == 'info':
-            if key in P1_DERIVED and key not in ('block', 'grit'):
+            if key in P1_DERIVED:
                 return self.derived(key)[1]
             if key.startswith('skill_'):
                 sim = win.st_sim

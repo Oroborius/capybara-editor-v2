@@ -12,6 +12,8 @@
 #   MXL_TEST_USER_DIR   user folder with the extracted game tables     (default /tmp/opencode/fakehome)
 #   MXL_TEST_SAVE_DIR   folder with sample saves (*.d2s + *.stash)     (default /tmp/opencode/fakesaves)
 #   MXL_TEST_SAVE_DIR2  optional second sample (honorific item)        (default /tmp/claude-1000/honorific-sample)
+#   MXL_TEST_SAVE_DIR3  optional third sample: test-druid, checked against in-game stat screen screenshots
+#                       (default .cache/samples/owlie of this checkout, else of the main checkout)
 #   MXL_TEST_TMP        where the session folder is made               (default: system temp folder)
 # Build inputs, only used when dist/linux/AppDir does not exist yet (see packaging/build_appimage.sh):
 #   BASE_DIR, PYTHON_DIR
@@ -54,6 +56,14 @@ export CAPY_BASE_DIR="$BASE_DIR"
 export CAPY_SRC_USER="${MXL_TEST_USER_DIR:-/tmp/opencode/fakehome}"
 export CAPY_SRC_SAVES="${MXL_TEST_SAVE_DIR:-/tmp/opencode/fakesaves}"
 export CAPY_SRC_SAVES2="${MXL_TEST_SAVE_DIR2:-/tmp/claude-1000/honorific-sample}"
+if [ -z "${MXL_TEST_SAVE_DIR3:-}" ]; then
+    MXL_TEST_SAVE_DIR3="$ROOT/.cache/samples/owlie"
+    if [ ! -d "$MXL_TEST_SAVE_DIR3" ]; then
+        MAIN="$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+        [ -n "$MAIN" ] && [ -d "$(dirname "$MAIN")/.cache/samples/owlie" ] && MXL_TEST_SAVE_DIR3="$(dirname "$MAIN")/.cache/samples/owlie"
+    fi
+fi
+export CAPY_SRC_SAVES3="$MXL_TEST_SAVE_DIR3"
 # nothing of the caller's session reaches the application
 unset MXL_USER_DIR MXL_SAVE_DIR MXL_EXIT_AFTER MXL_THEME MXL_UI_SCALE || true
 

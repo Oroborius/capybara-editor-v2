@@ -111,7 +111,8 @@ def main():
         base = os.path.join(capytest.REPO, '.cache', 'test-tmp')
         os.makedirs(base, exist_ok=True)
     session = capytest.guard(tempfile.mkdtemp(prefix='capytest-', dir=base), 'session folder')
-    fixtures = [(k, os.environ.get(k, '')) for k in ('CAPY_SRC_USER', 'CAPY_SRC_SAVES', 'CAPY_SRC_SAVES2')]
+    fixtures = [(k, os.environ.get(k, '')) for k in ('CAPY_SRC_USER', 'CAPY_SRC_SAVES', 'CAPY_SRC_SAVES2',
+                                                      'CAPY_SRC_SAVES3')]
     for k, v in fixtures:
         if v and os.path.isdir(v):
             capytest.guard(v, k)                 # the originals are only read, but never from a real save folder
@@ -120,7 +121,8 @@ def main():
     print('fonts:   ' + ('Xft (as the users get them; CAPY_XFT=0: X core fonts)' if capytest.use_xft(appdir) else
                          'X core fonts (no Xft Tk in the application folder, or CAPY_XFT=0)'))
     for label, k, ok in (('tables', 'CAPY_SRC_USER', capytest.user_ok()), ('saves', 'CAPY_SRC_SAVES', capytest.saves_ok()),
-                         ('saves 2', 'CAPY_SRC_SAVES2', capytest.saves_ok(capytest.SRC_SAVES2))):
+                         ('saves 2', 'CAPY_SRC_SAVES2', capytest.saves_ok(capytest.SRC_SAVES2)),
+                         ('saves 3', 'CAPY_SRC_SAVES3', capytest.saves_ok(capytest.SRC_SAVES3))):
         print(f'{label + ":":8} {os.environ.get(k) or "-"}' + ('' if ok else '   (MISSING: the tests that need it are skipped)'))
     print(f'work:    {session}\n')
 

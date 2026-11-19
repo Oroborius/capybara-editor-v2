@@ -12,7 +12,7 @@ A test file is a script:
     T.main(globals())
 
 The runner (tests/run.py) starts one process per file (per test when ISOLATE = True) and passes, in the
-environment: CAPY_APPDIR, CAPY_REPO, CAPY_SRC_USER, CAPY_SRC_SAVES, CAPY_SRC_SAVES2, CAPY_TMP, CAPY_RESULTS,
+environment: CAPY_APPDIR, CAPY_REPO, CAPY_SRC_USER, CAPY_SRC_SAVES, CAPY_SRC_SAVES2, CAPY_SRC_SAVES3, CAPY_TMP, CAPY_RESULTS,
 CAPY_ONLY (names, comma separated; empty = all), CAPY_VARIANT.
 """
 import glob
@@ -78,6 +78,7 @@ REPO = os.environ.get('CAPY_REPO') or os.path.dirname(os.path.dirname(os.path.ab
 SRC_USER = os.environ.get('CAPY_SRC_USER', '')
 SRC_SAVES = os.environ.get('CAPY_SRC_SAVES', '')
 SRC_SAVES2 = os.environ.get('CAPY_SRC_SAVES2', '')
+SRC_SAVES3 = os.environ.get('CAPY_SRC_SAVES3', '')            # test-druid (in-game screenshots)
 VARIANT = os.environ.get('CAPY_VARIANT', '')
 _TMP = None
 
@@ -109,6 +110,8 @@ def missing(needs):
         return f'no sample saves: MXL_TEST_SAVE_DIR={SRC_SAVES!r} has no *.d2s + *.stash (see tests/README.md)'
     if 'saves2' in needs and not saves_ok(SRC_SAVES2):
         return f'no second sample: MXL_TEST_SAVE_DIR2={SRC_SAVES2!r} has no *.d2s + *.stash (see tests/README.md)'
+    if 'saves3' in needs and not saves_ok(SRC_SAVES3):
+        return f'no third sample: MXL_TEST_SAVE_DIR3={SRC_SAVES3!r} has no *.d2s + *.stash (see tests/README.md)'
     return None
 
 
@@ -116,10 +119,11 @@ _n = [0]
 
 
 def fresh_saves(which=1):
-    """A new private copy of a sample save folder (1 = MXL_TEST_SAVE_DIR, 2 = MXL_TEST_SAVE_DIR2)."""
-    src = SRC_SAVES if which == 1 else SRC_SAVES2
+    """A new private copy of a sample save folder (1 = MXL_TEST_SAVE_DIR, 2 = MXL_TEST_SAVE_DIR2,
+    3 = MXL_TEST_SAVE_DIR3)."""
+    src = {1: SRC_SAVES, 2: SRC_SAVES2, 3: SRC_SAVES3}[which]
     if not saves_ok(src):
-        raise Skip(missing(('saves',) if which == 1 else ('saves2',)))
+        raise Skip(missing(({1: 'saves', 2: 'saves2', 3: 'saves3'}[which],)))
     _n[0] += 1
     dst = os.path.join(tmp(), f'saves{which}-{_n[0]}')
     shutil.copytree(src, dst)
