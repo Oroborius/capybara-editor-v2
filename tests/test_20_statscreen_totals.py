@@ -247,8 +247,13 @@ def _check_pages_agree(E, page, what):
         T.eq(page.derived('attack_rating_%d' % n)[0], str(page.attack_rating(sk[2] if sk else 0)[0]),
              f'{what}: page 1 attack rating box {n}')
         dmg = page.weapon_damage()
-        shown = SS.skill_damage(dmg, sk)
-        T.eq(page.derived('damage_%d' % n)[0], f"{shown['min']}-{shown['max']}", f'{what}: page 1 damage box {n}')
+        sid = SS.mouse_skill(page.win.st_sim, 'left' if n == 1 else 'right')
+        if sk is not None and SS.skill_descdam(E.data, sid or 0) != 1:
+            shown = SS.skill_damage(dmg, sk)                        # weapon skill path (descdam 5)
+        else:
+            shown = SS.skill_damage(dict(dmg, pre=(0, 0)), sk) if sk else dmg   # Attack path (descdam 1)
+        T.eq(page.derived('damage_%d' % n)[0], SS.damage_text(shown['min'], shown['max']),
+             f'{what}: page 1 damage box {n}')
     T.eq(page.game_value(ar_row)[0], str(flat), f'{what}: page 2 attack rating = the items\' flat attack rating')
     T.eq(page.game_value(pct_row)[0], f'{pct}%', f'{what}: page 2 attack rating % = the % inside page 1')
     dmg = page.weapon_damage()
@@ -481,6 +486,36 @@ def page1_boxes_use_the_skill_on_each_mouse_button():
     T.check(page.attack_rating(105)[0] > ar, 'Raid raises the attack rating')
     struct.pack_into('<I', ch.head, 0x78, 0)
     T.eq(page.derived('damage_1')[0], '220-640', 'Attack: the weapon damage')
+
+
+@T.test
+def dual_wield_damage_follows_the_game_code():
+    """Dual wield (Assassin / Barbarian; docs/review/game-code-damage.md §7): a weapon skill (descdam 5) uses both
+    hands' weapon damage added; Attack (descdam 1) shows one range per hand, the other hand's item switched off.
+    Two plain daggers, no item stats: each hand's Attack range is the dagger's own damage."""
+    import struct
+    E = T.engine()
+    import mxl_statscreen as SS
+    code, b = _dagger(E)
+    blo, bhi = b.damage['one_hand']
+    ch = _Char({4: {'code': code, 'quality': 'normal'}, 5: {'code': code, 'quality': 'normal'}})
+    ch.cls, ch.level, ch.stats = 6, 50, []
+    ch.inventory = lambda: []
+    ch.skill_levels = lambda: {}
+    tot = _totals({})
+    T.eq([sl for sl, _i, _b in SS.hand_weapons(ch, E.data)], [4, 5], 'both hands hold a weapon')
+    one = SS.weapon_damage(ch, E.data, tot, 0, 0, 50)
+    two = SS.weapon_damage(ch, E.data, tot, 0, 0, 50, both=True)
+    T.eq(one['pre'], (blo, bhi), 'one weapon')
+    T.eq(two['pre'], (2 * blo, 2 * bhi), 'both weapons added')
+    T.eq(SS.weapon_damage(ch, E.data, tot, 0, 0, 50, slot=5)['pre'], (blo, bhi), 'left hand alone')
+    page = _page(E, ch, tot)
+    struct.pack_into('<II', ch.head, 0x78, 0, 0)
+    text = page.derived('damage_1')[0]
+    T.eq(text, f'{blo}-{bhi} {blo}-{bhi}', 'Attack: one range per hand')
+    T.eq(SS.skill_descdam(E.data, 0), 1, 'Attack is descdam 1')
+    T.eq(SS.skill_descdam(E.data, 350), 5, 'Raid is descdam 5')
+    T.eq(SS.damage_text(9999, 12345), '9999-12K', 'numbers of 10000 and more as K')
 
 
 T.main(globals())

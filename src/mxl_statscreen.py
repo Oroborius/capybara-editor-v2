@@ -275,7 +275,7 @@ PCT_OF = {0: 359, 2: 360, 1: 361, 3: 362, 7: 76, 9: 77}       # "+x %" stats of 
 FIXED = (6, 7, 8, 9, 10, 11)                                    # character stats stored with 8 fractional bits
 
 
-def char_totals(ch, data):
+def char_totals(ch, data, exclude=()):
     """Sums of the stats of everything the character wears or carries that counts in game:
     - 'equip': the equipped items of the active weapon set, with their runeword and socketed items;
     - 'charms': the charms lying in the inventory (Median XL charms work from there);
@@ -315,7 +315,7 @@ def char_totals(ch, data):
         import mxl_tooltip
         active2 = struct.unpack_from('<I', ch.head, 0x10)[0] == 1
         skip = (4, 5) if active2 else (11, 12)
-        worn = [e.it for slot, e in sorted(ch.equipped().items()) if slot not in skip]
+        worn = [e.it for slot, e in sorted(ch.equipped().items()) if slot not in skip and slot not in exclude]
         sets = {}
         for it in worn:
             sid = _set_of(it, data)
@@ -522,7 +522,90 @@ STR_BONUS = (299, 442)                # "Current Strength Damage Bonus", "Additi
 DEX_BONUS = (300,)                    # "Additional Dexterity Damage Bonus"
 
 
-def weapon_damage(ch, data, tot, strength, dexterity, level=None):
+def hand_weapons(ch, data):
+    """[(slot, item, base)] of the weapons in the hands of the active weapon set (right hand first); a shield or
+    quiver does not count, a weapon with 0-0 damage of its own (Crystal Sword) does."""
+    try:
+        active2 = struct.unpack_from('<I', ch.head, 0x10)[0] == 1
+        eq = ch.equipped()
+    except Exception:
+        return []
+    out = []
+    for slot in ((11, 12) if active2 else (4, 5)):
+        e = eq.get(slot)
+        if e is None:
+            continue
+        try:
+            b = data.base(e.it['code'])
+        except Exception:
+            continue
+        d = getattr(b, 'damage', None) or {}
+        if any(d.get('one_hand') or ()) or any(d.get('two_hand') or ()) or (getattr(b, 'kind', None) == 'weapons'
+                                                                             and d):
+            out.append((slot, e.it, b))
+    return out
+
+
+def weapon_part(it, b, data):
+    """(base lo, hi, (ED min %, max %), stat pair, str/dex bonus, name, ethereal, weapon lo, hi) of one weapon:
+    weapon lo / hi = base (ethereal +25 %) x (100 + its own enhanced damage, sockets included) / 100."""
+    import mxl_tooltip
+    d = b.damage
+    oh, th = tuple(d.get('one_hand') or (0, 0)), tuple(d.get('two_hand') or (0, 0))
+    min2 = not any(oh)
+    max2 = min2 or (bool(b.two_handed) and any(th))
+    blo, bhi = (th if min2 else oh)[0], (th if max2 else oh)[1]
+    pair = (23 if min2 else 21, 24 if max2 else 22)
+    emin = emax = 0
+    for st in mxl_tooltip.all_stats(it, data):
+        if isinstance(st.get('value'), int):
+            emin += st['value'] if st.get('id') == 18 else 0
+            emax += st['value'] if st.get('id') == 17 else 0
+    eth = bool(it.get('ethereal'))
+    if eth:                                 # Median XL: +25 % base damage (in game: Dirk 18-20 -> 22-25)
+        blo, bhi = blo * ETH_PCT // 100, bhi * ETH_PCT // 100
+    bonus = tuple(getattr(b, 'dmg_bonus', None) or (0, 0))
+    return (blo, bhi, (emin, emax), pair, bonus, b.name, eth,
+            blo * (100 + emin) // 100, bhi * (100 + emax) // 100)
+
+
+DUAL_WIELD_CLASSES = (4, 6)           # Barbarian, Assassin (the game)
+
+
+def skill_descdam(data, sid):
+    """skilldesc.txt descdam of a skill (record +0x12; the skills row's u16 at 404 is its skilldesc row): 1 = the
+    Attack path (the game), 5 = weapon skills (the game); None when unknown."""
+    try:
+        rows = data._capy_descdam
+    except AttributeError:
+        rows = {}
+        try:
+            data._capy_descdam = rows
+        except Exception:
+            pass
+    if sid in rows:
+        return rows[sid]
+    val = None
+    try:
+        import mxl_skilldesc as SD
+        t = SD.tables(data)
+        sd = struct.unpack_from('<H', t.sk[sid], 404)[0]
+        if (0 < sd or sid == 0) and sd < len(t.sd):     # row 0 is Attack's own (sd0), "none" for the others
+            val = t.sd[sd][0x12]
+    except Exception:
+        val = None
+    rows[sid] = val
+    return val
+
+
+def damage_text(lo, hi):
+    """The Damage box text as the game draws it (the game): numbers of 10000 and more as N K."""
+    def one(v):
+        return f'{v // 1000}K' if v >= 10000 else str(v)
+    return f'{one(lo)}-{one(hi)}'
+
+
+def weapon_damage(ch, data, tot, strength, dexterity, level=None, slot=None, both=False):
     """Physical damage of a normal attack with the active weapon, the way the game's stat screen shows it:
     weapon damage = base x (100 + the weapon's own enhanced damage, sockets included) / 100 + the +min / +max
     damage of every equipped item (with the "per character level" ones: 218 max damage per level); then x (100 +
@@ -531,37 +614,32 @@ def weapon_damage(ch, data, tot, strength, dexterity, level=None):
     level: the character level for the per-level stats (default: ch.level).
     Which pair: the minimum from the one-hand damage when the weapon has one, the maximum from the two-hand damage
     of a two-handed weapon (matches the seven level-1 screenshots, among them a Claymore shown 5-8).
+    slot: only the weapon in that slot (dual wield, Attack: one range per hand); both: the two hands' weapons added
+    (dual wield, weapon skills).
     {'min', 'max', 'base': (lo, hi), 'ed': (min %, max %), 'flat': (lo, hi), 'pct', 'name'} or None (no totals)."""
     if tot.get('error'):
         return None
-    w = active_weapon(ch, data)
-    eth = False
-    if w is None:
-        (blo, bhi), ed, pair, bonus, name = UNARMED, (0, 0), (21, 22), (0, 0), None
+    hands = hand_weapons(ch, data)
+    if slot is not None:
+        hands = [h for h in hands if h[0] == slot]
+    elif not both:
+        hands = hands[:1]
+    if not hands:
+        (blo, bhi), ed, pair, bonus, name, eth = UNARMED, (0, 0), (21, 22), (0, 0), None, False
+        wlo, whi = blo, bhi
     else:
-        _slot, it, b = w
-        import mxl_tooltip
-        d = b.damage
-        oh, th = tuple(d.get('one_hand') or (0, 0)), tuple(d.get('two_hand') or (0, 0))
-        min2 = not any(oh)
-        max2 = min2 or (bool(b.two_handed) and any(th))
-        blo, bhi = (th if min2 else oh)[0], (th if max2 else oh)[1]
-        pair = (23 if min2 else 21, 24 if max2 else 22)
-        emin = emax = 0
-        for s in mxl_tooltip.all_stats(it, data):
-            if isinstance(s.get('value'), int):
-                emin += s['value'] if s.get('id') == 18 else 0
-                emax += s['value'] if s.get('id') == 17 else 0
-        ed = (emin, emax)
-        bonus = tuple(getattr(b, 'dmg_bonus', None) or (0, 0))
-        name = b.name
-        if it.get('ethereal'):              # Median XL: +25 % base damage (in game: Dirk 18-20 -> 22-25)
-            blo, bhi, eth = blo * ETH_PCT // 100, bhi * ETH_PCT // 100, True
+        parts = [weapon_part(it, b, data) for _s, it, b in hands]
+        blo, bhi, ed, pair, bonus, name, eth = parts[0][:7]
+        # dual wield on a weapon skill (descdam 5): the unit's 21/22 hold both hands' damage (game-code-damage.md §7);
+        # the strength / dexterity bonus and the one / two hand choice come from the primary weapon
+        wlo, whi = sum(pt[7] for pt in parts), sum(pt[8] for pt in parts)
+        if len(parts) > 1:
+            name = ' + '.join(pt[5] for pt in parts)
     if level is None:
         level = getattr(ch, 'level', 1) or 1
     flat = (item_sum(tot, data, pair[0], level), item_sum(tot, data, pair[1], level))
-    lo = blo * (100 + ed[0]) // 100 + flat[0]
-    hi = bhi * (100 + ed[1]) // 100 + flat[1]
+    lo = wlo + flat[0]
+    hi = whi + flat[1]
     wpd = item_sum(tot, data, 25, level)
     pct = (wpd + bonus[0] * strength // 100 + bonus[1] * dexterity // 100
            + (sum(total_of(tot, s) for s in STR_BONUS) * strength >> 8)
@@ -579,7 +657,8 @@ def weapon_damage(ch, data, tot, strength, dexterity, level=None):
 
 
 ELEMENTS = ((48, 49), (50, 51), (52, 53), (54, 55))     # fire, lightning, magic, cold: min / max damage
-INNATE, INNATE_PCT = 415, 484          # "Innate <element> Damage: (x % of <attribute>)", "Innate Elemental Damage" %
+INNATE, INNATE_PCT = 415, 484
+INNATE_MASTERY = {0: 329, 1: 330, 2: 331}   # element byte 0 fire, 1 lightning, 2 cold (3 poison, 4 magic, 5 tri)          # "Innate <element> Damage: (x % of <attribute>)", "Innate Elemental Damage" %
 
 
 def innate_damage(ch, data, tot):
@@ -600,7 +679,9 @@ def innate_damage(ch, data, tot):
             v = attribute_total(ch, data, tot, attr)
         else:
             continue
-        out += v * st['value'] // 100 * (100 + pct) // 100
+        v = v * st['value'] // 100 * (100 + pct) // 100
+        m = INNATE_MASTERY.get(param & 0xFF)       # it lands in that element's stats, which get the mastery
+        out += v * (100 + total_of(tot, m)) // 100 if m else v
     return out
 
 
@@ -1613,9 +1694,27 @@ class StatScreen:
             if dmg is None:
                 return None, T('ss.tip.game', 'computed by the game')
             sid, lvl, sk = self.button_skill(key)
-            shown = skill_damage(dmg, sk)
-            return f"{shown['min']}-{shown['max']}", self.damage_tip(dmg) + '\n' + self.skill_note(sid, lvl, sk) \
-                + '\n' + T('ss.tip.dmg_forms2', 'Not included: auras and buffs.')
+            forms = '\n' + T('ss.tip.dmg_forms2', 'Not included: auras and buffs.')
+            dd = skill_descdam(win.data, sid or 0)
+            hands = hand_weapons(win.st_sim, win.data)
+            dual = len(hands) > 1 and win.st_sim.cls in DUAL_WIELD_CLASSES
+            if sk is not None and dd != 1:          # weapon skill path (descdam 5): both hands added when dual
+                if dual:
+                    dmg = self.weapon_damage(both=True) or dmg
+                shown = skill_damage(dmg, sk)
+                return damage_text(shown['min'], shown['max']), self.damage_tip(dmg) + '\n' + \
+                    self.skill_note(sid, lvl, sk) + forms
+            if dual:                                 # Attack path, dual wield: one range per hand (the game)
+                per = [self.hand_damage(sl) for sl, _it, _b in hands]
+                if all(per):
+                    if sk is not None:
+                        per = [skill_damage(dict(p, pre=(0, 0)), sk) for p in per]
+                    return ' '.join(damage_text(p['min'], p['max']) for p in per), '\n'.join(
+                        self.damage_tip(p) for p in per) + '\n' + T(
+                        'ss.tip.dual', 'Dual wield: one range per weapon, the other hand\'s item switched off.') + forms
+            shown = skill_damage(dict(dmg, pre=(0, 0)), sk) if sk is not None else dmg
+            return damage_text(shown['min'], shown['max']), self.damage_tip(dmg) + '\n' + \
+                self.skill_note(sid, lvl, sk) + forms
         if key.startswith('attack_rating'):
             sid, lvl, sk = self.button_skill(key)
             ar, flat, pct = self.attack_rating(sk[2] if sk else 0)
@@ -1674,6 +1773,20 @@ class StatScreen:
         win = self.win
         sim = win.st_sim
         return weapon_damage(sim, win.data, win.st_totals(), self.attr_total(0), self.attr_total(2), sim.level)
+
+    def hand_damage(self, slot):
+        """Attack damage of one hand of a dual-wielding character: the other hand's item switched off (its stats
+        and its share of the attributes), as the game's per-hand lines do (the game)."""
+        win = self.win
+        sim, data = win.st_sim, win.data
+        other = {4: 5, 5: 4, 11: 12, 12: 11}.get(slot)
+        key = (id(win.st_totals()), slot)
+        hit = getattr(self, '_hand_tot', None)
+        if hit is None or hit[0] != key:
+            hit = self._hand_tot = (key, char_totals(sim, data, exclude=(other,)))
+        tot = hit[1]
+        return weapon_damage(sim, data, tot, attribute_total(sim, data, tot, 0), attribute_total(sim, data, tot, 2),
+                             sim.level, slot=slot)
 
     def damage_tip(self, dmg):
         return T('ss.tip.dmg2', '{weapon}: base {lo}-{hi}{eth}, enhanced damage +{ed} %, +{flo} / +{fhi} damage from '
