@@ -8,7 +8,7 @@ classes make (title, geometry, protocol, icons, grabs) as friendly no-ops. The s
 its detail panel become the first tab; the Character button opens or focuses the Character tab
 and every Creator / Item Editor opens as its own tab (reusing the Creator tab).
 
-The three tabs (Stash, Character, Creator) exist from the start: an empty page shows a hint
+The fixed tabs (Stash, Character, Creator, Library, Bit editor) exist from the start: an empty page shows a hint
 until its window builds into it, so the tabs never appear or disappear while working.
 
 install() wraps App._build as the FIRST of the install chain, so its wrapper runs after every
@@ -35,7 +35,14 @@ def tab_label(key):
         return T('tab.character', 'Character')
     if key == 'Creator':
         return T('tab.creator', 'Creator')
+    if key == 'Library':
+        return T('tab.library', 'Library')
+    if key == 'Bit editor':
+        return T('tab.bitedit', 'Bit editor')
     return key
+
+
+FIXED = ('Stash', 'Character', 'Creator', 'Library', 'Bit editor')
 
 
 def install(App):
@@ -55,6 +62,7 @@ def _make_host(app):
     nb = ttk.Notebook(app.root)
     nb.pack(side='top', fill='both', expand=True)
     _state['nb'] = nb
+    _state['app'] = app
     stash = TabPage(nb, 'Stash')
     body = app.canvas.master.master          # the grid + character panel + detail panel frame
     body.pack(in_=stash, fill='both', expand=True)
@@ -63,7 +71,7 @@ def _make_host(app):
     except tk.TclError:                      # after it and would cover it with its own background
         pass
     stash.built = True
-    for name in ('Character', 'Creator'):    # the tabs exist from the start, empty until used
+    for name in FIXED[1:]:                   # the tabs exist from the start, empty until used
         TabPage(nb, name, fixed_name=True).placeholder()
     nb.select(stash)
     app.root.after_idle(lambda: _autoload_later(app))
@@ -156,8 +164,24 @@ class TabPage(tk.Frame):
     def placeholder(self):
         """A short hint shown in an empty tab (removed again when the window builds into it)."""
         from mxl_lang import T
-        ttk.Label(self, text='  ' + T('tab.empty', '{name}: empty - use the matching button in the toolbar above.',
-                                      name=tab_label(self._key)) + '  ', padding=24).pack(expand=True)
+        if self._key == 'Bit editor':
+            text = T('tab.bitedit.empty', 'Bit editor: right-click an item -> "Open in Bit editor".')
+        else:
+            text = T('tab.empty', '{name}: empty - use the matching button in the toolbar above.',
+                     name=tab_label(self._key))
+        ttk.Label(self, text='  ' + text + '  ', padding=24).pack(expand=True)
+        if self._key == 'Library':                # built on first view (cheap: reads the library index)
+            self.bind_all_once()
+
+    def bind_all_once(self):
+        def on_map(_e=None):
+            if not self.built and _state.get('app') is not None:
+                try:
+                    import mxl_itemlib
+                    mxl_itemlib.open_library(_state['app'])
+                except Exception as e:
+                    print('library tab failed:', e)
+        tk.Frame.bind(self, '<Map>', on_map)
 
     def clear(self):
         """Removes everything built into the page (a hint or a previous window's widgets)."""

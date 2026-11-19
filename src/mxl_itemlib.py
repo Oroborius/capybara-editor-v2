@@ -2,7 +2,7 @@
 
 - right-click an item -> "Add to library...": its exact bytes (socketed items included, the same bytes as Export
   item...) go into the folder under a name ("Folder/Name" puts it in a folder);
-- More » "Item library...": the list (icon, name, folder, base) with a search box; "Place a copy" puts a copy on
+- the Library main tab (More » "Item library..." selects it): the list (icon, name, folder, base) with a search box; "Place a copy" puts a copy on
   the stash page shown (else the first page with room) through the collector's safe writer (edit_stash: verified
   write, backup policy) and records it for Ctrl+Z; Rename / Delete edit the entry.
 This is not the collector's old library.json (a record of found uniques, removed in V2): other file, other folder.
@@ -175,50 +175,94 @@ def place_copy(app, entry):
     return tuple(spot)
 
 
-# ------------------------------------------------------------------ the window
+# ------------------------------------------------------------------ the Library tab
+def _dark():
+    try:
+        import mxl_d2_theme as D
+        return D.dark()
+    except Exception:
+        return False
+
+
 class LibraryWindow:
+    """The Library main tab: search + folders / items (icons) on the left, the selected item's tooltip on the
+    right, Place a copy / Rename / Delete / Inspect in Bit editor. Without the tabs (not installed) a Toplevel."""
     ICON = 32
 
     def __init__(self, app):
         self.app = app
         master = app.root if hasattr(app, 'root') else app.canvas
-        top = self.top = tk.Toplevel(master)
+        top = None
+        try:
+            import mxl_tabs
+            if mxl_tabs._state.get('nb') is not None:
+                top = mxl_tabs.host_window(app, 'Library', owner=self, replace=True)
+        except Exception:
+            top = None
+        if top is None:
+            top = tk.Toplevel(master)
+        self.top = top
         top.title(tr('title', 'Item library'))
         self.icons = {}
-        row = tk.Frame(top)
-        row.pack(fill='x', padx=2, pady=2)
-        tk.Label(row, text=tr('search', 'Search:')).pack(side='left')
-        self.q = tk.StringVar()
-        ent = tk.Entry(row, textvariable=self.q, width=24)
-        ent.pack(side='left', fill='x', expand=True, padx=2)
-        self.q.trace_add('write', lambda *_a: self.refresh())
+        self.rows = {}
+        dark = _dark()
         bar = tk.Frame(top)
         bar.pack(side='bottom', fill='x', padx=2, pady=2)
         self.b_place = tk.Button(bar, text=tr('place', 'Place a copy'), command=self.place)
         self.b_place.pack(side='left', padx=2)
-        tk.Button(bar, text=tr('inspect', 'Inspect...'), command=self.inspect).pack(side='left', padx=2)
         tk.Button(bar, text=tr('rename', 'Rename...'), command=self.rename).pack(side='left', padx=2)
         tk.Button(bar, text=tr('delete', 'Delete'), command=self.delete).pack(side='left', padx=2)
-        tk.Button(bar, text=tr('close', 'Close'), command=top.destroy).pack(side='right', padx=2)
+        tk.Button(bar, text=tr('inspect', 'Inspect in Bit editor'), command=self.inspect).pack(side='left', padx=2)
+        self.status = tk.Label(bar, text='', anchor='w')
+        self.status.pack(side='left', fill='x', expand=True, padx=4)
+        pw = ttk.PanedWindow(top, orient='horizontal')
+        pw.pack(fill='both', expand=True)
+        left = tk.Frame(pw)
+        right = tk.Frame(pw)
+        pw.add(left, weight=3)
+        pw.add(right, weight=2)
+        row = tk.Frame(left)
+        row.pack(fill='x', padx=2, pady=2)
+        tk.Label(row, text=tr('search', 'Search:')).pack(side='left')
+        self.q = tk.StringVar()
+        tk.Entry(row, textvariable=self.q, width=18).pack(side='left', fill='x', expand=True, padx=2)
+        self.q.trace_add('write', lambda *_a: self.refresh())
         try:
             ttk.Style(top).configure('CapyLib.Treeview', rowheight=self.ICON + 4)
         except tk.TclError:
             pass
-        body = tk.Frame(top)
+        body = tk.Frame(left)
         body.pack(fill='both', expand=True)
-        self.tree = ttk.Treeview(body, columns=('folder', 'base'), style='CapyLib.Treeview', height=10)
+        self.tree = ttk.Treeview(body, columns=('base',), style='CapyLib.Treeview', height=8)
         self.tree.heading('#0', text=tr('c.name', 'Name'))
-        self.tree.heading('folder', text=tr('c.folder', 'Folder'))
         self.tree.heading('base', text=tr('c.base', 'Base'))
-        self.tree.column('#0', width=240)
-        self.tree.column('folder', width=100)
-        self.tree.column('base', width=140)
+        self.tree.column('#0', width=220)
+        self.tree.column('base', width=110)
         sy = ttk.Scrollbar(body, orient='vertical', command=self.tree.yview)
         self.tree.configure(yscrollcommand=sy.set)
         sy.pack(side='right', fill='y')
         self.tree.pack(fill='both', expand=True)
         self.tree.bind('<Double-1>', lambda _e: self.place())
-        self.rows = {}
+        self.tree.bind('<<TreeviewSelect>>', lambda _e: self.show())
+        bg, fg = ('#141112', '#c7b377') if dark else ('white', 'black')
+        try:
+            det = app.detail
+            bg, fg, font = det.cget('bg'), det.cget('fg'), det.cget('font')
+        except Exception:
+            font = 'TkDefaultFont'
+        dsy = ttk.Scrollbar(right, orient='vertical')
+        self.detail = tk.Text(right, width=28, wrap='word', bg=bg, fg=fg, bd=0, padx=6, pady=6, font=font,
+                              cursor='arrow', highlightthickness=0, yscrollcommand=dsy.set)
+        dsy.configure(command=self.detail.yview)
+        dsy.pack(side='right', fill='y')
+        self.detail.pack(fill='both', expand=True)
+        self.panel = None
+        try:
+            from mxl_creator_gui import PreviewPanel, PreviewHost, setup_detail_tags
+            setup_detail_tags(self.detail)
+            self.panel = PreviewPanel(self.detail, PreviewHost(app))
+        except Exception as e:
+            print('library: tooltip panel disabled:', e)
         self.refresh()
 
     def _icon(self, entry):
@@ -251,31 +295,67 @@ class LibraryWindow:
     def refresh(self):
         self.tree.delete(*self.tree.get_children())
         self.rows = {}
+        folders = {}
+        first = None
         for e in sorted(search(load(), self.q.get()), key=lambda e: (e.get('folder', '').lower(), e['name'].lower())):
+            parent = ''
+            fo = e.get('folder', '')
+            if fo:
+                if fo not in folders:
+                    folders[fo] = self.tree.insert('', 'end', text=' ' + fo + '/', open=True, values=('',))
+                parent = folders[fo]
             kw = {}
             img = self._icon(e)
             if img is not None:
                 kw['image'] = img
-            iid = self.tree.insert('', 'end', text=' ' + e['name'], values=(e.get('folder', ''), self._base(e)), **kw)
+            iid = self.tree.insert(parent, 'end', text=' ' + e['name'], values=(self._base(e),), **kw)
             self.rows[iid] = e
-        kids = self.tree.get_children()
-        if kids and not self.tree.selection():
-            self.tree.selection_set(kids[0])
+            first = first or iid
+        if first is not None and not (self.tree.selection() and self.tree.selection()[0] in self.rows):
+            self.tree.selection_set(first)
+        self.show()
 
     def current(self):
         sel = self.tree.selection()
         return self.rows.get(sel[0]) if sel else None
 
+    def show(self):
+        """The selected entry's tooltip (the main window's detail panel, read only) in the right pane."""
+        e = self.current()
+        try:
+            self.detail.configure(state='normal')
+            self.detail.delete('1.0', 'end')
+        except tk.TclError:
+            return
+        if e is None:
+            return
+        try:
+            from mxl_save import blob_item
+            it = blob_item(blob_of(e), self.app.data)
+            if self.panel is None:
+                raise RuntimeError('no panel')
+            self.panel.show(it)
+        except Exception:
+            try:
+                import mxl_inspect
+                self.detail.delete('1.0', 'end')
+                self.detail.insert('1.0', mxl_inspect.dump(blob_of(e), self.app.data, e['name']))
+            except Exception as err:
+                self.detail.insert('1.0', str(err))
+
     def place(self):
         e = self.current()
         if e is not None:
-            place_copy(self.app, e)
+            r = place_copy(self.app, e)
+            self.status.configure(text=(tr('placed.short', 'placed: page {page} ({x}, {y})', page=r[0] + 1, x=r[1],
+                                           y=r[2]) if r else ''))
 
     def inspect(self):
         e = self.current()
         if e is not None:
-            import mxl_inspect
-            mxl_inspect.open_blob(self.top, blob_of(e), self.app.data, e['name'])
+            import mxl_bitedit
+            mxl_bitedit.open_item(self.app, blob_of(e), e['name'], source=None,
+                                 reason=tr('ro', 'library item: read only here'))
 
     def rename(self):
         from tkinter import simpledialog
@@ -301,10 +381,20 @@ class LibraryWindow:
 
 
 def open_library(app):
+    """More » Item library... and the Library tab: builds the tab (or selects it when it is built)."""
+    try:
+        import mxl_tabs
+        w = mxl_tabs.built_owner('Library')
+        if w is not None:
+            mxl_tabs.focus_existing('Library')
+            w.refresh()
+            return w
+    except Exception:
+        pass
     return LibraryWindow(app)
 
 
 def install(App=None):
-    """More » "Item library..." (mxl_toolbar)."""
+    """More » "Item library..." (mxl_toolbar) selects the Library tab."""
     import mxl_toolbar
     mxl_toolbar.add_entry(lambda: tr('menu', 'Item library...'), open_library)

@@ -165,7 +165,7 @@ def new_plain_stat(item):
 def opening_the_tab_writes_nothing():
     import mxl_he_stats as H
     it = Item()
-    T.check(H.TAB_KEY in str(T.tab_names()) or len(T.tab_names()) == 4, f'tabs: {T.tab_names()}')
+    T.check(H.TAB_KEY in str(T.tab_names()) or len(T.tab_names()) == 6, f'tabs: {T.tab_names()}')
     T.check(T.read(it.path) == it.raw0, 'opening the Item stats tab changed the file')
     shown = [(r['s']['id'], r['s'].get('param') or None, r['s']['value']) for r in it.w.rows if r['kind'] == 'slot' and r['s'] is not None]
     T.eq(shown, it.stats(), 'stats listed in the tab vs stats on disk')

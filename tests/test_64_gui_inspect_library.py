@@ -1,6 +1,6 @@
 """Item inspector (mxl_inspect) and personal item library (mxl_itemlib), driven through the stash's right-click menu.
 
-Inspector: the dump of every item of the second sample names the fields and stats the host decoder reads; the bit layout covers every
+Inspector (now the Bit editor tab's text dump): the dump of every item of the second sample names the fields and stats the host decoder reads; the bit layout covers every
 bit of the item without a gap; the bytes mxlsave re-encodes are the item's own bytes. Library: Add to library...
 stores the exact bytes, the list finds it, Place a copy writes one copy (verified by a fresh read + mxlsave),
 Ctrl+Z (mxl_undo) removes it, rename / delete edit the index."""
@@ -80,17 +80,19 @@ def inspect_from_the_menu():
     if it is None:
         T.skip('no item with stats')
     raw = T.read(G.app.path)
-    lab = T.invoke(T.stash_menu(it['page'], it['x'], it['y']), 'Inspect...')
-    T.check(lab, 'no Inspect entry')
-    import gc
-    import mxl_inspect
-    wins = [o for o in gc.get_objects() if isinstance(o, mxl_inspect.InspectWindow)]
-    T.check(wins, 'no inspector window opened')
-    w = wins[-1]
-    T.check(w.text.get('1.0', 'end').strip() == w.text_value.strip(), 'the window does not show the dump')
-    T.check(str(w.text.cget('state')) == 'disabled', 'the inspector text is editable')
-    w.copy()
-    T.eq(G.root.clipboard_get(), w.text_value, 'clipboard after Copy')
+    lab = T.invoke(T.stash_menu(it['page'], it['x'], it['y']), 'Open in Bit editor')
+    T.check(lab, 'no Open in Bit editor entry')
+    T.pump()
+    import mxl_tabs
+    import mxl_bitedit
+    w = mxl_tabs.built_owner('Bit editor')
+    T.check(isinstance(w, mxl_bitedit.BitEditor), 'the Bit editor tab did not open')
+    w.toggle_view()
+    T.pump()
+    T.check(w.text.get('1.0', 'end').strip() == w.dump_text().strip(), 'the text view does not show the dump')
+    T.check(str(w.text.cget('state')) == 'disabled', 'the dump text is editable')
+    w.copy_dump()
+    T.eq(G.root.clipboard_get(), w.dump_text(), 'clipboard after Copy text dump')
     w.top.destroy()
     T.check(T.read(G.app.path) == raw, 'inspecting wrote the stash file')
 

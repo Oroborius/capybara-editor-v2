@@ -31,7 +31,7 @@ def main_tabs_follow_the_language():
         want = expected()
         T.check(want[0] != 'Stash' and want[1] != 'Character', f'{code}: no translation of the tab names {want}')
         T.eq(T.tab_names()[:3], want, f'tabs in {code}')
-        T.eq(sorted(mxl_tabs._state['pages'])[:3], ['Character', 'Creator', 'Stash'], 'registry keys stay')
+        T.eq(sorted(k for k in mxl_tabs._state['pages'] if k in ('Stash', 'Character', 'Creator')), ['Character', 'Creator', 'Stash'], 'registry keys stay')
     switch('en')
     T.eq(T.tab_names()[:3], ['Stash', 'Character', 'Creator'], 'English tabs again')
 
