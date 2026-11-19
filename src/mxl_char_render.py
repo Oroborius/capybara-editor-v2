@@ -148,9 +148,11 @@ def render(art, folder, cls, gear, direction=FRONT):
         if ly is None:
             continue
         want = arm.get(t, 'lit')
-        if t in (5, 6, 7) and t not in arm:
+        if t in (5, 6) and t not in arm:           # two-handed bows / crossbows / staves draw in both hands
+            want = arm.get(11 - t)
+        if want is None or t == 7 and t not in arm:
             continue                               # an empty hand has no weapon layer
-        for a in dict.fromkeys((want, 'lit')):
+        for a in (want,) if t in (5, 6, 7) else dict.fromkeys((want, 'lit')):
             try:
                 data = read(art, f'data\\global\\chars\\{cl}\\{ly}\\{cl}{ly}{a}{mode}{lwc}.dcc')
                 nd = D.header(data)[0]
