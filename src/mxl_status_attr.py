@@ -10,6 +10,10 @@ the character file as it is on disk (pending edits of the Character tab show aft
 of the status bar). The totals are cached per file (path, size, mtime): reading the save and summing its items
 takes 5-7 ms (about 50 ms on the very first call), and show_status runs on every stash redraw. When the file
 cannot be read, the collector's own text stays.
+
+The item tooltip's red "Required Strength / Dexterity" lines (host `mxl_tooltip.requirements`, also behind
+`requirements_unmet`) compared against those same low `char['strength']` / `char['dexterity']`: install_tooltip()
+makes them compare against the stat screen totals of the character file (`char['path']`), as above.
 """
 import os
 
@@ -58,7 +62,41 @@ def status_text(app):
                       str=t[0], dex=t[1])
 
 
+def real_char(char, data):
+    """A copy of the collector's char dict with the stat screen's Strength / Dexterity, or char itself."""
+    if not char or not isinstance(char, dict) or not char.get('path'):
+        return char
+    t = totals(char['path'], data)
+    if t is None:
+        return char
+    out = dict(char)
+    out['strength'], out['dexterity'] = t
+    return out
+
+
+def install_tooltip():
+    try:
+        import mxl_tooltip as MT
+    except Exception:
+        return False
+    if getattr(MT.requirements, '_capy_attr', False):
+        return True
+    orig = MT.requirements
+
+    def requirements(it, data, char, *a, **k):
+        try:
+            char = real_char(char, data)
+        except Exception:
+            pass
+        return orig(it, data, char, *a, **k)
+    requirements._capy_attr = True
+    requirements.__name__ = 'requirements'
+    MT.requirements = requirements           # section_requirements / requirements_unmet look it up globally
+    return True
+
+
 def install(App):
+    install_tooltip()
     if getattr(App.show_status, '_capy_attr', False):
         return
     orig = App.show_status
