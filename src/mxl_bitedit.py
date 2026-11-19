@@ -851,8 +851,8 @@ class UdieLook:
         bh = max(b.winfo_reqheight() for b in self.buttons)
         need = TB + 4 * lh + 40 + 22 + 8 * ed.ch + 2 * lh + 14 + bh + 6 * M     # with 8 rows of bits
         strip = 0
-        if H - need >= 70:
-            strip = 56
+        if H - need >= round(104 * self.STRIP_K) + 8:
+            strip = round(104 * self.STRIP_K)
             self._strip(H - strip, W, strip)
         yb = H - strip - M - bh
         x = M + 4
@@ -930,25 +930,46 @@ class UdieLook:
         cv.itemconfigure(self.win['props'], width=W - M - 3 - rx, height=max(20, yb - M - y))
         cv.tag_lower('art')
 
+    STRIP_K = 0.7                                    # the control panel art (104 px high) at 70 %
+
     def _strip(self, y0, W, h):
-        """The bottom edge: the game's orbs and belt where the game has them (decoration only)."""
-        cv = self.bgcv
+        """The bottom edge as in the game: the control panel with the life / mana orbs and the belt (base-game
+        art 800ctrlpnl7 / hlthmana / overlap; decoration only). Flat circles when the art is missing."""
+        cv, k = self.bgcv, self.STRIP_K
         cv.create_rectangle(0, y0, W, y0 + h, fill='#0e0c0a', outline='', tags='art')
-        cv.create_line(0, y0, W, y0, fill='#c8ac68', tags='art')
+
+        def put(name, idx, x, y, anchor='nw'):
+            p = self.art.base_frame(name, idx)
+            from PIL import Image
+            with Image.open(p) as im:
+                iw, ih = im.size
+            img = self.D2.photo(p, (max(1, round(iw * k)), max(1, round(ih * k))), tag='bitedit')
+            cv.create_image(x, y, image=img, anchor=anchor, tags='art')
+            return round(iw * k)
+
+        try:
+            bottom = y0 + h
+            mid = [1, 2, 3, 4]
+            mw = sum(round(w * k) for w in (128, 128, 128, 86))
+            x = (W - mw) // 2
+            for i in mid:
+                x += put('800ctrlpnl7.dc6', i, x, bottom, 'sw')
+            for side, orb in ((0, 0), (1, 1)):
+                hx = 0 if side == 0 else W
+                put('800ctrlpnl7.dc6', 0 if side == 0 else 5, hx, bottom, 'sw' if side == 0 else 'se')
+                cx = hx + (round(64 * k) if side == 0 else -round(64 * k))
+                cy = bottom - round(52 * k)
+                put('hlthmana.dc6', orb, cx, cy, 'center')
+                put('overlap.dc6', orb, cx, cy, 'center')
+            return
+        except Exception:
+            pass
         r = h // 2 - 4
-        for cx, col, hi in ((r + 14, '#7a0c0c', '#ff6060'), (W - r - 14, '#0c0c7a', '#6060ff')):
+        for cx, col in ((r + 14, '#7a0c0c'), (W - r - 14, '#0c0c7a')):
             cy = y0 + h // 2
             cv.create_oval(cx - r - 3, cy - r - 3, cx + r + 3, cy + r + 3, fill='#2a2214', outline='#6e5a32',
                            width=2, tags='art')
             cv.create_oval(cx - r, cy - r, cx + r, cy + r, fill=col, outline='', tags='art')
-            cv.create_oval(cx - r // 4, cy - r // 2, cx + r // 8, cy - r // 4, fill=hi, outline='', tags='art')
-        bw = min(4 * 34, W - 4 * r - 80)
-        if bw > 60:
-            bx = W // 2 - bw // 2
-            for k in range(4):
-                x = bx + k * bw // 4
-                cv.create_rectangle(x + 2, y0 + 10, x + bw // 4 - 2, y0 + h - 10, fill='#141414',
-                                    outline='#8a8a8a', width=2, tags='art')
 
     # ---- content
     def refresh_item(self):
