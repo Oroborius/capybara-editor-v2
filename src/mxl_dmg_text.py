@@ -14,6 +14,9 @@ collector's text was wrong:
   54 as 0) and a minimum above the maximum "Adds 70-45 Damage". Such a pair is shown as the two stats' own lines
   ("+120 to Minimum Magic Damage"; "+70 to Minimum Damage" and "+45 to Maximum Damage"), the companion with
   value 0 not at all: only the game's own strings and the true values. Pairs with 0 < min <= max are untouched.
+- ethereal weapons: Median XL gives them +25 % base damage (`mxl_statscreen.ETH_PCT`), applied to the base before
+  enhanced damage (in game: ethereal Dirk 18-20, +220 % ED, +12 max -> "One-Hand Damage: 70 to 92"). The host's
+  section_damage has no ethereal rule ("57 to 76"); it is run on the base scaled to 125 % (all three lines).
 
 install() is called by mxl_format_fix.install(); it is idempotent.
 """
@@ -90,6 +93,34 @@ def weapon_lines(ctx, S):
     return out
 
 
+ETH_PCT = 125                       # = mxl_statscreen.ETH_PCT
+
+
+class _EthBase:
+    """An item base whose weapon damage is the ethereal one (x 125 // 100); every other attribute the base's."""
+
+    def __init__(self, base):
+        self._b = base
+        self.damage = {k: (tuple(x * ETH_PCT // 100 for x in v) if isinstance(v, (tuple, list)) else v)
+                       for k, v in base.damage.items()}
+
+    def __getattr__(self, name):
+        return getattr(self._b, name)
+
+
+def _eth_base(ctx):
+    """The ethereal-scaled base of ctx's item, or None (not ethereal / no weapon damage)."""
+    try:
+        if not ctx.it.get('ethereal'):
+            return None
+        base = ctx.base()
+        if not getattr(base, 'damage', None):
+            return None
+        return _EthBase(base)
+    except Exception:
+        return None
+
+
 def _replace_text(lines, old, new):
     n = 0
     for ln in lines:
@@ -104,14 +135,24 @@ def _replace_text(lines, old, new):
 
 def _make_section(orig, S):
     def section_damage(ctx, *rest, **kw):
-        out = orig(ctx, *rest, **kw)
+        eb = _eth_base(ctx)
+        if eb is not None:
+            ctx.base = lambda: eb           # instance attribute over the method, for this call only
         try:
-            for key, lo, hi in weapon_lines(ctx, S):
-                if lo > hi:
-                    label = ctx.data.key(key)
-                    _replace_text(out, f'{label} {lo} to {hi}', f'{label} {lo} to {lo + 1}')
-        except Exception:
-            pass
+            out = orig(ctx, *rest, **kw)
+            try:
+                for key, lo, hi in weapon_lines(ctx, S):
+                    if lo > hi:
+                        label = ctx.data.key(key)
+                        _replace_text(out, f'{label} {lo} to {hi}', f'{label} {lo} to {lo + 1}')
+            except Exception:
+                pass
+        finally:
+            if eb is not None:
+                try:
+                    del ctx.base
+                except AttributeError:
+                    pass
         return out
     section_damage._capy_dmg = True
     section_damage.__name__ = 'section_damage'
