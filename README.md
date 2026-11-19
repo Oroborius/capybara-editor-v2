@@ -16,11 +16,11 @@ An offline item creator and character editor for **Median XL**, built on top of 
 V2 is a fork of [capybara-heroeditor](https://github.com/Nugwa628/capybara-heroeditor) 1.2. Everything below is
 unique to it.
 
-**Not yet tried in the game.** The newer additions (game-art panels, compact layout, the stat screen, the skill
-tree, the Mercenary / Quests+ / Counters / Hotkeys pages, the save check, Fill sockets) pass the editor's automated
-test suite, which works on copies of sample saves in a virtual display; it checks that they work and write the
-right bytes, not how they look. They have not yet been checked in the running game, and the Windows build has only been run under Wine, not on real Windows. Keep your backups, and
-please report what you find.
+**How it is checked.** Every addition passes the editor's automated test suite, which works on copies of sample
+saves in a virtual display and checks that each change writes exactly the right bytes. The stat screen's numbers
+(damage, attack rating, life, mana, defense, block, resistances) have been compared with the running game and
+match it. The Windows build has only been run under Wine, not on real Windows. Keep your backups, and please
+report what you find.
 
 **Editing**
 - **Unrestricted editing**: any stat (id, parameter, value) can be added to, changed on or removed from any item;
@@ -43,8 +43,11 @@ please report what you find.
   recognised and kept. It replaces the value sliders of the main window.
 - **Edit items where they are**: equipped, mercenary and inventory items can be edited from the Stash tab, without
   moving them to the stash first.
-- **Undo** (Ctrl+Z, 50 steps) for delete, create and replace; Delete key removes the item under the cursor. An
-  undone delete puts the item back at its old place in the file, so the file ends up exactly as before.
+- **Undo** (Ctrl+Z, 50 steps) for delete, create, replace, paste, quantity, quality, ethereal, personalize, Make
+  perfect and Item stats edits; Delete key removes the item under the cursor. An undone delete puts the item back
+  at its old place in the file, so the file ends up exactly as before, also when it was the only item on its page.
+- **Change quality** to rare, crafted or tempered and **"Which set / unique?"** work from the right-click menu;
+  **Move to page** uses the first free spot when the item's own spot is taken.
 - **Edits that change nothing leave the item as it was**, byte for byte: "Edit item" followed by Replace without
   changes no longer gives the item a new id, resets durability, drops socketed items or changes quantities.
 - **Honorific items** (quality 9) are read, shown and kept intact (the original editor crashed on characters
@@ -63,15 +66,29 @@ please report what you find.
 - Pickers accept typing (Enter takes the exact, prefix or substring match).
 - Barrels, crates, clusters and containers start at Quantity 1000.
 - Stats deleted from an item no longer come back at 0 when it is edited again.
+- **Runewords get all of their stats**: Median XL runewords have 13 property slots; every one of them is read
+  (runewords made before missed their first slot and slots 9-13). A value the save format cannot hold is stored as
+  the nearest value it can.
+- Fits the window down to 800x600 at UI scale 1.25 (rows put the field under its label when narrow).
+- Tooltips show damage the way the game does (no more "145 to 132" or "Adds 120-0").
 
 **Character**
 - **Stats page drawn like the game's character screen** (dark look): name, level, attributes and stat points are
   edited in place; the + buttons spend a stat point. Further pages: the game's two stat list pages (damage,
   pierce, speed, defenses and more), "All Item Attributes" and "Saved Values" (experience, skill points,
   life / mana / stamina, gold, hardcore and other flags, difficulty). Two pages are shown side by side when the
-  window is wide enough. The totals are the editor's own sum of equipped items (with their socketed items),
-  inventory charms and set bonuses, so they can differ from what the game shows. The light look has a plain page
-  with the same fields.
+  window is wide enough. The light look has a plain page with the same fields.
+- **The numbers match the game's character screen** (compared with the running game):
+  - Damage and Attack Rating for the skill on each mouse button: the skill's share of weapon damage, its own
+    physical and elemental damage and its attack rating bonus, at its level with all + skills;
+  - weapon damage with ethereal (+25 % in Median XL), the items' elemental and poison damage, innate elemental
+    weapons (% of an attribute, raised by Innate Elemental Damage), weapons without base damage, dual wield
+    (one range per hand for Attack, both hands for weapon skills), numbers of 10,000 and more as "K";
+  - life, mana, defense, mana regeneration and grit with the character's passive skills; Defense with dexterity
+    and all Bonus to Defense; Block Chance; resistances with the difficulty penalty and their caps;
+  - equipped items with their sockets, inventory charms, partial and full set bonuses, and per-level stats.
+  Hovering a value explains how it is made up.
+- The status bar shows the same Strength / Dexterity totals as the Stats page.
 - **Skills page laid out like the in-game tree**: the game's panel, skill icons, tree web and tabs. Click a level
   box to type a level, left-click an icon for +1, right-click for -1. Hovering a skill shows its game tooltip,
   computed from the game's own tables for the character's levels (a few lines still show raw values). Skills whose
@@ -82,10 +99,14 @@ please report what you find.
 - **Quests+ page**: every quest word of each difficulty with its bits, plus Re-open and Complete. The plain Quests
   page now writes the quest words the way the game does (the Act V word was wrong before).
 - **Counters page**: Signets of Learning and Skill used, kill counters (achievements) and play time.
-- **Hotkeys page**: the 16 skill hotkeys and the four mouse-button skills, with skill icons.
+- **Hotkeys page**: the 16 skill hotkeys and the four mouse-button skills, with skill icons (also for Attack, skills
+  from items and other classes' skills).
 - Character tab edits stay pending until SAVE and survive changes made elsewhere in the meantime (for example an
   item moved from the Stash tab); RELOAD discards them.
-- The Character dropdown loads the chosen character at once.
+- The Character dropdown loads the chosen character at once, and switching characters is fast.
+- **Import character...** from a saved median-xl.com character page creates the character with its items, without
+  carrying over anything of the template character (stash, mercenary, waypoints, counters).
+- Copy / rename character: names the game refuses are refused, and a rename that fails half-way is rolled back.
 
 **Safe saving**
 - **Save check**: before every write, a second, independent save reader checks the new file (structure, size,
@@ -97,6 +118,12 @@ please report what you find.
   and can put the backup back.
 - The same reader can be used by hand from the `tools/` folder: `python3 -m mxlsave verify <file>`,
   `python3 -m mxlsave dump <file>`, `python3 -m mxlsave diff <old> <new>`.
+- **Out-of-date views are refused**: if the game wrote the stash after the editor read it, Delete, Edit, Copy, Cut,
+  Duplicate, Export and Make perfect do nothing instead of acting on the wrong item.
+- A save the game or an antivirus holds for a moment is retried; one that is refused shows an error, and a move
+  to the stash is put back instead of leaving the item in two files.
+- Characters whose name contains "gf" or with certain skill levels are read correctly; a quest reward that would
+  push a stat over its maximum is capped instead of making the save fail.
 
 **Interface**
 - **Tabs instead of windows** (Stash, Character, Creator, Item stats): made for tiling window managers.
@@ -106,11 +133,16 @@ please report what you find.
   on Median XL's own in-game panels. Without the game files they are plain dark grids.
 - **Compact layout, usable at 800x600**: cell sizes follow the window size, pages scroll only when they must, and
   toolbar items that do not fit move into a "More »" menu.
-- Game art is cached, so the editor starts without the long freeze.
+- **Fast**: the first start went from about 35 s to about 8 s, later starts take about 2.5 s; finding a free spot
+  in a full stash takes milliseconds; scrolling (one mouse-wheel notch = one step) and character switching are
+  quick; game art and stat sums are cached.
+- **Hover tooltips work on Wayland compositors** such as Hyprland (no flicker, no fixed-size box).
+- Switching the language updates the toolbar, tabs and footer at once; the Stash / Character / Creator tabs are
+  translated.
 
 **Platforms**
-- **Native Linux AppImage** (no Wine): finds the Median XL save folder inside Wine, Lutris, Bottles and Steam
-  prefixes, opens at a size that fits the screen, and does not double-scale on HiDPI Wayland
+- **Native Linux AppImage** (no Wine): finds the Median XL save folder inside Wine, Lutris, Bottles, Steam
+  (also Flatpak), Heroic and PlayOnLinux prefixes, opens at a size that fits the screen, and does not double-scale on HiDPI Wayland
   (`MXL_UI_SCALE=<factor>` to choose a scale). Text is antialiased (Tk built with Xft; plain X fonts as a
   fallback).
 - Windows build from the same source tree, also buildable on Linux.
@@ -121,10 +153,13 @@ please report what you find.
   and every tab and page opens in both looks at 1280x720 and 800x600.
 
 ## Install
-**Linux**: build the AppImage (see [Building](#building)), make it executable and run it. Settings and the log are
+Download the latest build from the **[Releases page](https://git.wyrd.games/oroborius/capybara-editor-v2/releases)**
+(or build it yourself, see [Building](#building)).
+
+**Linux**: download `MXL_Capybara_Editor_V2-x86_64.AppImage`, make it executable (`chmod +x`) and run it. Settings and the log are
 in `~/.local/share/MXL Capybara Editor/`. Set `MXL_SAVE_DIR=<folder>` to work on a copy of your saves.
 
-**Windows**: build the release folder (see [Building](#building)) and run `MXL Capybara Editor V2.exe` from it.
+**Windows**: download `MXL-Capybara-Editor-V2-windows.zip`, unzip it and run `MXL Capybara Editor V2.exe`.
 Settings and the log are in `%LOCALAPPDATA%\MXL Capybara Editor\`.
 
 On first start, choose the Median XL game folder. Backups are made before every change; you do not need to close
