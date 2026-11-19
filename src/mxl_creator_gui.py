@@ -2998,6 +2998,7 @@ def run():
     mxl_import.install(mxl_gui.App)
     import mxl_inv_gui
     mxl_inv_gui.install(mxl_gui.App)
+    import mxl_ingame; mxl_ingame.install(mxl_gui.App)   # character in a game: live reload, warning, confirm
     import mxl_fit                         # stash / inventory cell size from the window's size, on every resize
     mxl_fit.install(mxl_gui.App)
     import mxl_he_theme                    # the Hero-Editor look for every window - outermost (walks what others build)
