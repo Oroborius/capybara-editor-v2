@@ -899,6 +899,15 @@ class CharacterWindow(StatEditMixin):
     def _sk_name(self, sid):
         nm = self.data.skill_names.get(sid) or ''
         if not nm or 'OLAR BUFFALO' in nm.upper():     # the game's placeholder for an unnamed skill
+            try:                                       # the skilldesc's own name string (Attack, skill 0, has
+                import re                              # no entry in the collector's skill names)
+                import mxl_skilldesc
+                nm = re.sub('\xffc.', '', mxl_skilldesc.tables(self.data).name(sid) or '').strip()
+                if 'OLAR BUFFALO' in nm.upper() or 'hidden #' in nm or nm.startswith('skill #'):
+                    nm = ''
+            except Exception:
+                nm = ''
+        if not nm:
             try:                                       # a hidden helper skill: the name derived from what it does
                 import mxl_statnames
                 nm = mxl_statnames.hidden_skill_name(self.data, sid) or ''
