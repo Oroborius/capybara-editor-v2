@@ -1,11 +1,15 @@
-"""The animated character (mxl_char_render) on the Character tab's Stats page, dark look only: placed in the free
-margin left of the in-game stat screen, hidden when the margin is too narrow (800x600 keeps the stat screen as it
-was). The animation runs only while the canvas is viewable: a hidden tab costs no CPU (the loop stops, a <Map>
+"""The animated character (mxl_char_render) on the Character tab's Stats page, dark look only. In the split layout
+(StatScreen.split: the two pages at the left and right edges) it is a SCENE filling the space between the pages: a
+background (set_background(scene): a mxl_scene town map, else plain dark ground) with its own animated sprites, the
+character in front of it. Otherwise it sits in the free margin left of the centred stat screen, hidden when the
+margin is too narrow (800x600 keeps the stat screen as it was). The animation runs only while the canvas is viewable: a hidden tab costs no CPU (the loop stops, a <Map>
 of the window restarts it). Decoding runs in a thread; Tk images are made on the main thread."""
 import threading
+import time
 import tkinter as tk
 
 PAD = 6
+GROUND = '#0d0b08'          # the scene without a background
 
 
 class CharView:
@@ -15,7 +19,15 @@ class CharView:
         scr = win.statscreen
         self.host = scr.frame
         self.cv = tk.Canvas(self.host, bg='#000000', highlightthickness=0, bd=0, width=1, height=1)
+        self._bg = self.cv.create_image(0, 0, anchor='nw')
         self._img = self.cv.create_image(0, 0, anchor='nw')
+        self.scene = None           # the background: object with .base (PIL), .sprites [{pos, frames, fps}], .anchor
+        self._scene_auto = True     # True: made here by mxl_scene (when importable) for the size of the room
+        self._scene_key = None
+        self._scene_busy = False
+        self._bg_photo = None
+        self._sprites = []          # [(canvas item, [Tk images], fps)]
+        self.box = None             # split layout: (x, y, w, h) of the scene in the host frame
         self.anim = None            # mxl_char_render.Anim
         self.photos = []            # Tk images of the frames at the current scale
         self.scale = 0
@@ -26,6 +38,7 @@ class CharView:
         self.shown = False
         self.host.bind('<Configure>', lambda e: self.place(), add='+')
         scr.cv.bind('<Configure>', lambda e: self.place(), add='+')
+        self.host.bind('<<ScenePlaced>>', lambda e: self.place(), add='+')
         self.cv.winfo_toplevel().bind('<Map>', lambda e: self.wake(), add='+')
         self.load()
 
@@ -77,38 +90,198 @@ class CharView:
         except tk.TclError:
             self._busy = False
 
+    # ---- background (hook for the town map)
+    def set_background(self, scene):
+        """The scene behind the character: an object with .base (PIL image, the room's size or scaled to it),
+        .sprites ([{'pos': (x, y), 'frames': [PIL images], 'fps': n}], positions in .base pixels) and .anchor
+        ((x, y) in .base pixels: where the character's feet stand; None: centred). None: plain dark ground.
+        Setting one by hand stops the automatic mxl_scene background."""
+        self._scene_auto = False
+        self._set_scene(scene)
+
+    def _set_scene(self, scene):
+        self.scene = scene
+        self._bg_photo = None
+        for item, _ph, _fps in self._sprites:
+            self.cv.delete(item)
+        self._sprites = []
+        self.place()
+
+    def _act(self):
+        """The act of the town behind the character (the save's current act when the window knows it)."""
+        for name in ('scene_act', 'act'):
+            v = getattr(self.win, name, None)
+            if isinstance(v, int) and 1 <= v <= 5:
+                return v
+        return 1
+
+    def _auto_scene(self, size):
+        """mxl_scene.scene(art, data_folder, act, size) in a thread when the module exists; else dark ground."""
+        if not self._scene_auto or self._scene_busy:
+            return
+        key = (self._act(), size)
+        if key == self._scene_key:
+            return
+        self._scene_key = key
+        try:
+            import mxl_scene
+        except Exception:
+            return                                   # no town map (yet): plain dark ground
+        self._scene_busy = True
+        out = {}
+        art, folder = self.art, self.win.data.folder
+
+        def work():
+            try:
+                out['scene'] = mxl_scene.scene(art, folder, key[0], size)
+            except Exception as e:
+                print('scene disabled:', e)
+                out['scene'] = None
+            out['done'] = True
+        threading.Thread(target=work, daemon=True).start()
+
+        def poll():
+            if not out.get('done'):
+                try:
+                    self.cv.after(50, poll)
+                except tk.TclError:
+                    pass
+                return
+            self._scene_busy = False
+            if self._scene_auto:
+                self.scene = out['scene']
+                self._bg_photo = None
+                for item, _ph, _fps in self._sprites:
+                    self.cv.delete(item)
+                self._sprites = []
+                self.place()
+        try:
+            self.cv.after(50, poll)
+        except tk.TclError:
+            self._scene_busy = False
+
+    def _draw_scene(self, w, h):
+        """The background and its sprites for a room of w x h: the base scaled to cover it, centred."""
+        sc = self.scene
+        base = getattr(sc, 'base', None)
+        if base is None:
+            self.cv.itemconfigure(self._bg, image='', state='hidden')
+            return 1.0, 0, 0
+        from PIL import Image, ImageTk
+        f = max(w / base.width, h / base.height)
+        bw, bh = max(1, round(base.width * f)), max(1, round(base.height * f))
+        ox, oy = (w - bw) // 2, (h - bh) // 2
+        if self._bg_photo is None or self._bg_photo[0] != (w, h):
+            img = base if (bw, bh) == base.size else base.resize((bw, bh), Image.NEAREST if f >= 1 else Image.LANCZOS)
+            self._bg_photo = ((w, h), ImageTk.PhotoImage(img, master=self.cv))
+            for item, _ph, _fps in self._sprites:
+                self.cv.delete(item)
+            self._sprites = []
+            for sp in getattr(sc, 'sprites', None) or ():
+                frames = sp.get('frames') or []
+                if not frames:
+                    continue
+                phs = [ImageTk.PhotoImage(fr.resize((max(1, round(fr.width * f)), max(1, round(fr.height * f))),
+                                                    Image.NEAREST), master=self.cv) for fr in frames]
+                x, y = sp.get('pos', (0, 0))
+                item = self.cv.create_image(ox + x * f, oy + y * f, anchor='nw', image=phs[0])
+                self._sprites.append((item, phs, float(sp.get('fps') or 10)))
+            self.cv.tag_raise(self._img)
+        self.cv.coords(self._bg, ox, oy)
+        self.cv.itemconfigure(self._bg, image=self._bg_photo[1], state='normal')
+        return f, ox, oy
+
+    def _step_sprites(self):
+        t = time.monotonic()
+        for item, phs, fps in self._sprites:
+            self.cv.itemconfigure(item, image=phs[int(t * fps) % len(phs)])
+
     # ---- layout
+    def _scale_for(self, room_w, room_h):
+        a = self.anim
+        if a is None:
+            return 0
+        w, h = a.size
+        for s in (3, 2, 1):
+            if room_w >= w * s + 2 * PAD and room_h >= h * s + 2 * PAD:
+                return s
+        return 0
+
+    def _photos_at(self, scale):
+        if scale != self.scale:
+            from PIL import Image, ImageTk
+            self.photos = [ImageTk.PhotoImage(f.resize((f.width * scale, f.height * scale), Image.NEAREST))
+                           for f in self.anim.frames]
+            self.scale = scale
+
     def place(self):
         try:
+            scr = self.win.statscreen
+            box = scr.scene_box() if getattr(scr, 'split', False) else None
+            if box is not None:
+                return self._place_scene(scr, box)
+            self.box = None
+            self.cv.itemconfigure(self._bg, state='hidden')
+            for item, _ph, _fps in self._sprites:
+                self.cv.itemconfigure(item, state='hidden')
             a = self.anim
             W, H = self.host.winfo_width(), self.host.winfo_height()
-            cw = self.win.statscreen.cv.winfo_width()
+            cw = scr.cv.winfo_width()
             margin = (W - cw) // 2                  # the stat screen is centred
-            scale = 0
-            if a is not None and W > 1:
-                w, h = a.size
-                for s in (3, 2, 1):
-                    if margin >= w * s + 2 * PAD and H >= h * s + 2 * PAD:
-                        scale = s
-                        break
+            scale = self._scale_for(margin, H) if W > 1 else 0
             if not scale:
                 self.cv.place_forget()
                 self.shown = False
                 self.load()                          # no animation loop runs now: still follow a character change
                 return
-            if scale != self.scale:
-                from PIL import Image, ImageTk
-                self.photos = [ImageTk.PhotoImage(f.resize((f.width * scale, f.height * scale), Image.NEAREST))
-                               for f in a.frames]
-                self.scale = scale
+            self._photos_at(scale)
             w, h = a.size[0] * scale, a.size[1] * scale
-            self.cv.configure(width=w, height=h)
+            self.cv.configure(width=w, height=h, bg='#000000')
+            self.cv.coords(self._img, 0, 0)
+            self.cv.itemconfigure(self._img, anchor='nw')
             self.cv.place(x=max(PAD, (margin - w) // 2), y=max(PAD, (H - h) // 2))
             self.shown = True
             self.cv.itemconfigure(self._img, image=self.photos[self.index % len(self.photos)])
             self.wake()
         except tk.TclError:
             pass
+
+    def _place_scene(self, scr, box):
+        """The split layout: the canvas fills the room between the pages; the character stands in front of the
+        background, centred (or on the scene's anchor)."""
+        x, y, w, h = box
+        x += scr.cv.winfo_x()
+        y += scr.cv.winfo_y()
+        if w < 2 or h < 2:
+            self.cv.place_forget()
+            self.shown = False
+            return
+        self.box = (x, y, w, h)
+        self.cv.configure(width=w, height=h, bg=GROUND)
+        self.cv.place(x=x, y=y)
+        self._auto_scene((w, h))
+        f, ox, oy = self._draw_scene(w, h)
+        for item, _ph, _fps in self._sprites:
+            self.cv.itemconfigure(item, state='normal')
+        self.shown = True
+        scale = self._scale_for(w, h)
+        if not scale:
+            self.cv.itemconfigure(self._img, image='')
+            self.photos, self.scale = [], 0
+            self.load()
+            self.wake()
+            return
+        self._photos_at(scale)
+        anchor = getattr(self.scene, 'anchor', None) if getattr(self.scene, 'base', None) is not None else None
+        if anchor:
+            cx, cy = ox + anchor[0] * f, oy + anchor[1] * f
+            self.cv.itemconfigure(self._img, anchor='s')
+        else:
+            cx, cy = w // 2, h // 2
+            self.cv.itemconfigure(self._img, anchor='center')
+        self.cv.coords(self._img, round(cx), round(cy))
+        self.cv.itemconfigure(self._img, image=self.photos[self.index % len(self.photos)])
+        self.wake()
 
     # ---- animation
     def wake(self):
@@ -122,13 +295,20 @@ class CharView:
     def _tick(self):
         self._job = None
         try:
-            if not self.shown or not self.photos or not self.cv.winfo_viewable():
+            if not self.shown or not (self.photos or self._sprites) or not self.cv.winfo_viewable():
                 return                               # hidden: stop; <Map> restarts
-            self.index = (self.index + 1) % len(self.photos)
-            self.cv.itemconfigure(self._img, image=self.photos[self.index])
-            if self.index == 0:
-                self.load()                          # gear changed on the Inventory page: render again
-            self._job = self.cv.after(max(20, int(1000 / self.anim.fps)), self._tick)
+            if self._sprites:
+                self._step_sprites()
+            fps = 12.0
+            if self.photos and self.scale:
+                self.index = (self.index + 1) % len(self.photos)
+                self.cv.itemconfigure(self._img, image=self.photos[self.index])
+                if self.index == 0:
+                    self.load()                      # gear changed on the Inventory page: render again
+                fps = self.anim.fps
+            if self._sprites:
+                fps = max([fps] + [s[2] for s in self._sprites])
+            self._job = self.cv.after(max(20, int(1000 / fps)), self._tick)
         except tk.TclError:
             self._job = None
 

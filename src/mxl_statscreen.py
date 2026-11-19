@@ -43,6 +43,9 @@ MIN_K = 0.6                      # below this the game fonts are unreadable: the
 TEXT_BOOST = float(os.environ.get('MXL_SS_BOOST', 1.2))   # how much less than the art the texts shrink
 SHARPEN = int(os.environ.get('MXL_SS_SHARP', 60))
 SPREAD_LOSS = 0.85               # two pages side by side when that costs at most this much of the scale
+K_SPLIT = 0.7                    # the smallest scale of the split layout (pages at the edges, the scene between)
+MIN_SCENE = 200                  # the narrowest scene between the two pages (px at UI scale 1)
+OFFSETS_SETTING = 'statscreen_page_offsets'   # how far each page was moved from its edge (page pixels)
 MAX_K = 2.0
 ATTRS = ('strength', 'dexterity', 'vitality', 'energy')
 # stats that describe one item, not the character: left out of the totals
@@ -1238,6 +1241,13 @@ class StatScreen:
         self.k = 1.0
         self._pil = {}
         self.spread = 1                   # panels side by side (2: an open book)
+        self.split = False                # the two pages at the left and right edges, the scene (char view) between
+        self.offsets = self._load_offsets()   # split: how far page A / B was moved from its edge (page pixels)
+        self._fit_wh = None
+        self._drag = None                 # (slot, pointer x at the press, offset at the press)
+        self._min_saved = None            # the toplevel's minsize before the split layout raised it
+        self._slot_regs = []
+        self._photos = []
         table = screen_table(win.data)
         self.table = {}                   # game page number -> its rows
         for el in table:
@@ -1263,7 +1273,12 @@ class StatScreen:
                             takefocus=1)
         self.cv.pack(expand=True)
         self._item = self.cv.create_image(0, 0, anchor='nw')
+        self._items = [self._item, self.cv.create_image(0, 0, anchor='nw')]
         cv = self.cv
+        cv.bind('<B1-Motion>', self.on_drag)
+        cv.bind('<Double-Button-1>', self.on_double)
+        self.frame.bind('<Map>', lambda e: self._apply_minsize(), add='+')
+        self.frame.bind('<Unmap>', lambda e: self._restore_minsize(), add='+')
         cv.bind('<ButtonPress-1>', self.on_press)
         cv.bind('<ButtonRelease-1>', self.on_release)
         cv.bind('<ButtonPress-3>', self.on_right)
@@ -1476,18 +1491,162 @@ class StatScreen:
         """Scale and number of panels from the space of the tab: the whole panel height whenever the text stays
         readable (down to MIN_K, then the page scrolls), and two pages side by side, like an open book, when the
         width allows it without making them much smaller."""
+        self._fit_wh = (W, H)
         k1 = min(W / PANEL_W, max(H / PANEL_H, MIN_K), MAX_K)
         k2 = min(W / (2 * PANEL_W), max(H / PANEL_H, MIN_K), MAX_K)
-        spread = 2 if len(self.pages) > 1 and k2 >= k1 * SPREAD_LOSS else 1
-        k = k2 if spread == 2 else k1
+        ks = min((W - self.min_scene()) / (2 * PANEL_W), H / PANEL_H, MAX_K)
+        split = len(self.pages) > 1 and ks >= K_SPLIT      # the split layout: pages at the edges, the scene between
+        spread = 2 if split or (len(self.pages) > 1 and k2 >= k1 * SPREAD_LOSS) else 1
+        k = ks if split else (k2 if spread == 2 else k1)
         k = max(0.5, int(k * 64) / 64)
-        if abs(k - self.k) > 1e-6 or spread != self.spread or self._photo is None:
+        width = W if split else round(PANEL_W * k) * spread
+        if (abs(k - self.k) > 1e-6 or spread != self.spread or split != self.split or self._photo is None
+                or (split and int(self.cv.cget('width')) != width)):
             self.k = k
             self.spread = spread
+            self.split = split
             self.cancel_edit()
             self._layout()
-            self.cv.configure(width=round(PANEL_W * k) * len(self.shown), height=round(PANEL_H * k))
+            self.cv.configure(width=width if split else round(PANEL_W * k) * len(self.shown), height=round(PANEL_H * k))
             self.redraw()
+        self._apply_minsize()
+
+    # ------------------------------------------------------------------ split layout
+    def min_scene(self):
+        try:
+            ui = max(0.5, self.cv.winfo_fpixels('1i') / 96.0)
+        except tk.TclError:
+            ui = 1.0
+        return round(MIN_SCENE * ui)
+
+    def min_size(self):
+        """The smallest (width, height) of the space fit() gets that still holds the split layout."""
+        return (2 * round(PANEL_W * K_SPLIT) + self.min_scene() + 2, round(PANEL_H * K_SPLIT) + 2)
+
+    def _apply_minsize(self):
+        """The toplevel's minsize: never narrower than two pages + the scene, while the Stats page shows the split
+        layout. Only when the window already holds it (a small screen, 800x600, keeps the single page and no
+        minsize); the old minsize comes back when the page is hidden."""
+        try:
+            top = self.cv.winfo_toplevel()
+            if not self.split or self._fit_wh is None or not self.frame.winfo_ismapped():
+                self._restore_minsize()
+                return
+            W, H = self._fit_wh
+            nw, nh = self.min_size()
+            mw = top.winfo_width() - W + nw
+            mh = top.winfo_height() - H + nh
+            if mw > top.winfo_width() or mh > top.winfo_height():
+                return
+            if self._min_saved is None:
+                self._min_saved = tuple(top.minsize())
+            want = (max(mw, self._min_saved[0]), max(mh, self._min_saved[1]))
+            if tuple(top.minsize()) != want:
+                top.minsize(*want)
+        except (tk.TclError, TypeError, ValueError):
+            pass
+
+    def _restore_minsize(self):
+        if self._min_saved is None:
+            return
+        try:
+            self.cv.winfo_toplevel().minsize(*self._min_saved)
+        except tk.TclError:
+            pass
+        self._min_saved = None
+
+    def _load_offsets(self):
+        try:
+            import settings
+            v = settings.get(OFFSETS_SETTING)
+            return [max(0.0, float(v[0])), max(0.0, float(v[1]))]
+        except Exception:
+            return [0.0, 0.0]
+
+    def _save_offsets(self):
+        try:
+            import settings
+            settings.put(OFFSETS_SETTING, [round(self.offsets[0], 1), round(self.offsets[1], 1)])
+        except Exception:
+            pass
+
+    def max_offset(self):
+        """How far (page pixels) a page may move from its edge: up to the middle, the scene keeping its minimum."""
+        try:
+            W = int(self.cv.cget('width'))
+        except tk.TclError:
+            return 0
+        pw = round(PANEL_W * self.k)
+        return max(0, (W - 2 * pw - self.min_scene()) // 2) / self.k
+
+    def slot_x(self, slot):
+        """Canvas x of a shown page (slot 0 left, 1 right)."""
+        pw = round(PANEL_W * self.k)
+        if not self.split:
+            return slot * pw
+        m = self.max_offset()
+        off = round(min(self.offsets[slot], m) * self.k)
+        if slot == 0:
+            return off
+        return int(self.cv.cget('width')) - pw - off
+
+    def scene_box(self):
+        """The scene between the two pages: (x, y, w, h) in the canvas, or None outside the split layout."""
+        if not self.split or len(self.shown) < 2:
+            return None
+        pw, ph = round(PANEL_W * self.k), round(PANEL_H * self.k)
+        x0 = self.slot_x(0) + pw
+        return x0, 0, self.slot_x(1) - x0, ph
+
+    def _place_slots(self):
+        """Puts the page images where they belong and their click regions with them."""
+        regions = []
+        for slot, item in enumerate(self._items):
+            if slot < len(self._photos):
+                x = self.slot_x(slot)
+                self.cv.coords(item, x, 0)
+                self.cv.itemconfigure(item, image=self._photos[slot], state='normal')
+            else:
+                self.cv.itemconfigure(item, image='', state='hidden')
+        for slot, (reg, page) in enumerate(self._slot_regs):
+            dx = self.slot_x(slot) / self.k
+            regions += [(kind, key, (x + dx, y, w, h), page) for kind, key, (x, y, w, h) in reg]
+        self._regions = regions
+        try:
+            self.frame.event_generate('<<ScenePlaced>>')
+        except tk.TclError:
+            pass
+
+    def move_page(self, slot, offset, save=True):
+        self.offsets[slot] = max(0.0, min(float(offset), self.max_offset()))
+        self._place_slots()
+        if save:
+            self._save_offsets()
+
+    def _slot_at(self, x):
+        pw = round(PANEL_W * self.k)
+        for slot in range(len(self.shown)):
+            if self.slot_x(slot) <= x < self.slot_x(slot) + pw:
+                return slot
+        return None
+
+    def on_drag(self, ev):
+        d = self._drag
+        if d is None:
+            return
+        slot, x0, off0 = d
+        dx = (ev.x - x0) / self.k
+        self.move_page(slot, off0 + (dx if slot == 0 else -dx), save=False)
+
+    def on_double(self, ev):
+        """Double click on a page's empty part: the page back at its edge."""
+        if not self.split:
+            return
+        kind, _key, _box = self._at(ev)
+        slot = self._slot_at(ev.x)
+        if kind is None and slot is not None:
+            self._drag = None
+            self.move_page(slot, 0)
 
     def _starts(self):
         """Indexes of the pages a view can start at: every page, but a book never runs past the last page.
@@ -1524,16 +1683,14 @@ class StatScreen:
             self._redraw_job = None
         pw, ph = round(PANEL_W * self.k), round(PANEL_H * self.k)
         try:
-            regions = []
-            sheet = Image.new('RGBA', (pw * len(self.shown), ph), (0, 0, 0, 255))
+            slot_regs, photos = [], []
             for slot, page in enumerate(self.shown):
                 reg = []
                 boost = min(1 / self.k, TEXT_BOOST) if self.k < 1 else 1
                 # (the game's pages only: their texts have room in their cells; the editor's lists fill theirs)
                 texts = [] if boost > 1 and (page == 'main' or page.startswith('game')) else None
                 img = self.compose(page, reg, texts)
-                dx = slot * PANEL_W
-                regions += [(kind, key, (x + dx, y, w, h), page) for kind, key, (x, y, w, h) in reg]
+                slot_regs.append((reg, page))
                 if (pw, ph) != img.size:
                     img = img.resize((pw, ph), Image.LANCZOS)
                 for line, cap, cx, cy, align in texts or ():
@@ -1545,15 +1702,16 @@ class StatScreen:
                     img.alpha_composite(line, (max(0, int(round(x))), max(0, int(round(cy * self.k - cap * ks)))))
                 if self.k < 1:
                     img = img.filter(ImageFilter.UnsharpMask(radius=1, percent=SHARPEN, threshold=0))
-                sheet.paste(img, (slot * pw, 0))
-            self._regions = regions
+                photos.append(ImageTk.PhotoImage(img, master=self.cv))
+            self._slot_regs = slot_regs
         except Exception as e:                    # never a dead tab: the reason on the status line
             import traceback
             traceback.print_exc()
             self.win.set_bar(str(e), error=True)
             return
-        self._photo = ImageTk.PhotoImage(sheet, master=self.cv)
-        self.cv.itemconfigure(self._item, image=self._photo)
+        self._photos = photos
+        self._photo = photos[0] if photos else None
+        self._place_slots()
 
     def compose(self, page=None, reg=None, texts=None):
         """One 512 x 704 page as an image; reg collects its click regions (kind, key, box in page pixels).
@@ -2240,8 +2398,16 @@ class StatScreen:
         elif kind == 'list':
             x, y, w, h = box
             self.scroll((1 if ev.y / self.k > y + h / 2 else -1) * ((h - 10) // LIST_PITCH - 1))
+        elif kind is None and self.split:
+            slot = self._slot_at(ev.x)              # the empty part of a page: drag it left / right
+            if slot is not None:
+                self._drag = (slot, ev.x, min(self.offsets[slot], self.max_offset()))
 
     def on_release(self, ev):
+        if self._drag is not None:
+            self._drag = None
+            self._save_offsets()
+            return
         if self.pressed is None:
             return
         pressed, self.pressed = self.pressed, None
