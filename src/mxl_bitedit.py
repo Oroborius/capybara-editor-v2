@@ -276,8 +276,9 @@ class BitEditor:
             b.pack(side='left', padx=2)
         self.mode = tk.Label(bar, text='', font=self.font)
         self.mode.pack(side='right', padx=4)
-        self.state = tk.Label(top, text='', anchor='w', justify='left')
+        self.state = tk.Label(top, text='', anchor='w', justify='left', wraplength=700)
         self.state.pack(side='bottom', fill='x', padx=4)
+        self.state.bind('<Configure>', lambda e: self.state.configure(wraplength=max(200, e.width - 8)))
         line = tk.Frame(top)
         line.pack(side='bottom', fill='x', padx=4)
         self.pos_l = tk.Label(line, text='', font=self.font, anchor='w')
@@ -438,13 +439,8 @@ class BitEditor:
         r = int((y - self.top_h) // self.ch)
         if r < 0:
             return
-        best = None
-        for c in range(COLS):
-            cx, _cy = self._xy(c)
-            if cx <= x < cx + self.cw + 3:
-                best = c
-                break
-        if best is None:
+        best = min(range(COLS), key=lambda c: abs(self._xy(c)[0] + self.cw / 2 - x))   # nearest cell (gaps too)
+        if x < self.left - 2:
             return
         self.cur = max(0, min(r * COLS + best, len(self.bits) - (0 if self.insert else 1)))
         self.draw()

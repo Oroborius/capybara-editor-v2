@@ -15,7 +15,8 @@ import capytest as T
 MODE = 'gui'
 RESET = True
 SAMPLE = 2
-VARIANTS = {'d2': {'MXL_THEME': 'd2'}, 'he': {'MXL_THEME': 'he'}}
+VARIANTS = {'d2': {'MXL_THEME': 'd2', 'CAPY_GEOMETRY': '800x600+0+0'},
+            'he': {'MXL_THEME': 'he', 'CAPY_GEOMETRY': '800x600+0+0'}}
 G = T.G
 ETH = 16 + 22          # ethereal: flag bit 22, the flags start after 'JM'
 
@@ -66,6 +67,68 @@ def _open(it):
 def tabs_exist():
     names = T.tab_names()
     T.check('Library' in names and 'Bit editor' in names, f'tabs: {names}')
+
+
+@T.test
+def library_tab_builds_when_shown():
+    import mxl_itemlib
+    import mxl_tabs
+    T.check(mxl_tabs.built_owner('Library') is None, 'the Library tab is built before it is shown')
+    T.select_tab('Library')
+    T.pump(10)
+    T.check(isinstance(mxl_tabs.built_owner('Library'), mxl_itemlib.LibraryWindow), 'showing the tab did not build it')
+
+
+@T.test
+def every_sample_item_decodes():
+    import mxl_bitedit
+    n = socketed = lists = 0
+    for it, blob in _items(lambda it, b: True):
+        what = f"{it['code']} page {it['page'] + 1} ({it['x']}, {it['y']})"
+        T.eq(mxl_bitedit.pack(mxl_bitedit.unpack(blob)), blob, f'{what}: bits round trip')
+        d = mxl_bitedit.decode(blob, G.app.data)
+        at = 0
+        for off, w, lab, _v, _k in d.fields:
+            T.eq(off, at, f'{what}: field {lab}')
+            at = off + w
+        T.eq(at, len(blob) * 8, f'{what}: fields cover the bits')
+        secs = {mxl_bitedit.section_of(lab, k) for _o, _w, lab, _v, k in d.fields}
+        socketed += 'socketed' in secs
+        lists += 'lists' in secs
+        n += 1
+    T.check(n > 10 and socketed and lists, f'{n} items, {socketed} socketed, {lists} with runeword / set lists')
+
+
+@T.test
+def socketed_runeword_opens_valid():
+    import mxl_bitedit
+    it, blob = next(_items(lambda it, b: it.get('socketed') and b.count(b'JM') > 1), (None, None))
+    if it is None:
+        T.skip('no socketed item')
+    w = _open(it)
+    T.check(w.valid, f'socketed item shown as not parsing: {w.error}')
+    T.check(len(w.dec.items) > 1, 'socketed items not decoded')
+    T.check(w.b_apply.cget('state') == 'normal', 'Apply disabled on a stash item')
+    shot('socketed')
+
+
+@T.test
+def character_item_opens_read_only():
+    import mxl_bitedit
+    import mxl_rc_menu
+    import mxl_tabs
+    cw = T.chartab()
+    if cw is None:
+        T.skip('no Character tab')
+    e = next(iter(cw.ch.equipped(False).values()), None)
+    if e is None:
+        T.skip('nothing equipped')
+    mxl_rc_menu._inspect_char(cw, e)
+    T.pump()
+    w = mxl_tabs.built_owner('Bit editor')
+    T.check(isinstance(w, mxl_bitedit.BitEditor) and w.valid, 'character item not opened / not parsing')
+    T.eq(w.b_apply.cget('state'), 'disabled', 'Apply on a character item')
+    T.check(w.apply() is False, 'Apply wrote a character item')
 
 
 @T.test
