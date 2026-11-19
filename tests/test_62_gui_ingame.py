@@ -14,6 +14,7 @@ import capytest as T
 MODE = 'gui'
 RESET = True
 ALLOW_ERRORS = True
+VARIANTS = {'d2': {'MXL_THEME': 'd2'}, 'he': {'MXL_THEME': 'he'}}
 G = T.G
 
 
@@ -88,10 +89,13 @@ def in_game_only_when_game_exe_holds_the_characters_files():
             ms = (time.perf_counter() - t) * 1000
             T.eq(got, {'XBone'}, f'Game.exe holding {name}')
             T.check(ms < 100, f'in_game (cold) took {ms:.1f} ms')
-            M._cache.clear()                            # a poll: the fds again, the process list cached
-            t = time.perf_counter()
-            M.in_game(G.save_dir)
-            ms = (time.perf_counter() - t) * 1000
+            polls = []
+            for _ in range(5):                          # a poll: the fds again, the process list cached
+                M._cache.clear()                        # (best of 5: a garbage collection of the big
+                t = time.perf_counter()                 # application process may fall into one of them)
+                M.in_game(G.save_dir)
+                polls.append((time.perf_counter() - t) * 1000)
+            ms = min(polls)
             T.check(ms < 20, f'in_game (poll) took {ms:.1f} ms')
             t = time.perf_counter()
             M.in_game(G.save_dir)
@@ -127,8 +131,35 @@ def in_game_save_is_read_again_with_a_note():
         M.tick(G.app)
     T.pump(4)
     T.eq(warning(), '', 'warning after the game let go')
+    cw = T.chartab()
+    if cw is not None:
+        T.check('in a game' not in str(cw.status.cget('text')), 'Character tab still warns: ' + str(cw.status.cget('text')))
     for e in T.errors_since(m0):
         T.check('Traceback' not in e, 'traceback: ' + e)
+
+
+@T.test
+def the_poll_runs_by_itself():
+    """No tick() from the test: the application's own after() loop reads the game's save again."""
+    import mxl_ingame as M
+    m0 = T.mark()
+    p = hold('XBone.d2s')
+    try:
+        T.wait_for(lambda: 'in a game' in warning(), secs=6, what='warning from the poll loop')
+        if os.environ.get('CAPY_SHOT'):                 # a look at the warning line (both looks)
+            T.pump(10)
+            subprocess.run(['import', '-window', 'root', os.environ['CAPY_SHOT']], check=False)
+        G.app.status.configure(text='')
+        new = game_save()
+        T.wait_for(lambda: G.app.inventory.ch is not None and bytes(G.app.inventory.ch.raw) == new, secs=6,
+                   what='reload by the poll loop')
+        T.pump(4)
+        T.check('Reloaded: the game saved XBone' in T.status_text(), 'status: ' + T.status_text())
+        T.check(bytes(G.app.inventory.ch.raw) == new, 'inventory panel shows the old file')
+    finally:
+        stop(p)
+    for e in T.errors_since(m0):
+        T.check('in-game watch' not in e and 'Traceback' not in e, e)
 
 
 @T.test

@@ -106,16 +106,47 @@ def _linux(save_dir):
     return names
 
 
-def _windows(save_dir):
+_win_game = [0.0, False]
+
+
+def _win_game_running():
+    """A Game.exe in the process list (Toolhelp snapshot, no subprocess), cached PROC_TTL."""
+    now = time.monotonic()
+    if now - _win_game[0] < PROC_TTL:
+        return _win_game[1]
     import ctypes
     from ctypes import wintypes
-    import subprocess
-    try:                                    # only while a Game.exe runs: the probe is not free for the game
-        out = subprocess.run(['tasklist', '/FI', 'IMAGENAME eq Game.exe', '/NH'], capture_output=True, text=True,
-                             timeout=2, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0)).stdout
-    except Exception:
-        return set()
-    if 'game.exe' not in out.lower():
+
+    class PE(ctypes.Structure):
+        _fields_ = [('dwSize', wintypes.DWORD), ('cntUsage', wintypes.DWORD), ('th32ProcessID', wintypes.DWORD),
+                    ('th32DefaultHeapID', ctypes.c_size_t), ('th32ModuleID', wintypes.DWORD),
+                    ('cntThreads', wintypes.DWORD), ('th32ParentProcessID', wintypes.DWORD),
+                    ('pcPriClassBase', ctypes.c_long), ('dwFlags', wintypes.DWORD),
+                    ('szExeFile', ctypes.c_wchar * 260)]
+    k32 = ctypes.WinDLL('kernel32', use_last_error=True)
+    k32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    snap = k32.CreateToolhelp32Snapshot(2, 0)                    # TH32CS_SNAPPROCESS
+    found = False
+    try:
+        pe = PE()
+        pe.dwSize = ctypes.sizeof(PE)
+        ok = k32.Process32FirstW(snap, ctypes.byref(pe))
+        while ok:
+            if pe.szExeFile.lower() in GAME_EXES:
+                found = True
+                break
+            ok = k32.Process32NextW(snap, ctypes.byref(pe))
+    finally:
+        k32.CloseHandle(snap)
+    _win_game[:] = [now, found]
+    return found
+
+
+def _windows(save_dir, only=None):
+    """Characters whose files cannot be opened with sharing mode 0 while a Game.exe runs (only: that one name)."""
+    import ctypes
+    from ctypes import wintypes
+    if not _win_game_running():         # the probe is not free for the game: only while it runs
         return set()
     k32 = ctypes.WinDLL('kernel32', use_last_error=True)
     k32.CreateFileW.restype = wintypes.HANDLE
@@ -125,7 +156,7 @@ def _windows(save_dir):
     files = {}
     for f in os.listdir(save_dir):
         n = char_of(f)
-        if n:
+        if n and (only is None or n.lower() == only.lower()):
             files.setdefault(n, []).append(f)
     names = set()
     for n, fs in files.items():
@@ -141,18 +172,19 @@ def _windows(save_dir):
     return names
 
 
-def in_game(save_dir):
-    """Names of the characters of save_dir that are in a game now (see the module text). Never raises."""
+def in_game(save_dir, only=None):
+    """Names of the characters of save_dir that are in a game now (see the module text). Never raises.
+    only: the one character that matters (Windows then probes that character's files alone)."""
     try:
         if not save_dir or not os.path.isdir(save_dir):
             return set()
-        key = os.path.realpath(save_dir)
+        key = (os.path.realpath(save_dir), only.lower() if only and sys.platform == 'win32' else None)
         now = time.monotonic()
         hit = _cache.get(key)
         if hit is not None and now - hit[0] < TTL:
             return set(hit[1])
         if sys.platform == 'win32':
-            names = _windows(save_dir)
+            names = _windows(save_dir, only)
         elif os.path.isdir('/proc'):
             names = _linux(save_dir)
         else:
@@ -169,7 +201,7 @@ def is_in_game(path):
         return False
     d, f = os.path.split(path)
     n = char_of(f)
-    return bool(n) and n.lower() in {x.lower() for x in in_game(d)}
+    return bool(n) and n.lower() in {x.lower() for x in in_game(d, n)}
 
 
 # ------------------------------------------------------------------------------------------- the editor's side
@@ -240,10 +272,8 @@ def _show_warning(app, name):
     if lbl is None:
         if not name:
             return
-        import tkinter as tk
-        st = app.status
-        lbl = tk.Label(st.master, text='', fg='#e06060', bg=st.master.cget('background')
-                       if 'background' in st.master.keys() else None, anchor='w')
+        from tkinter import ttk
+        lbl = ttk.Label(app.status.master, text='', foreground='#e06060', anchor='w')
         app._ig_label = lbl
     text = warning_text(name) if name else ''
     if str(lbl.cget('text')) == text:
@@ -284,6 +314,8 @@ def tick(app):
             warned = getattr(w, '_ig_warned', False)
             if same and now_in and not warned:
                 w.set_status(warning_text(name), True)
+            elif warned and not (same and now_in) and str(w.status.cget('text')) == warning_text(char_of(os.path.basename(wch.path))):
+                w.set_status('')                       # back at the menu: the tab's warning goes
             w._ig_warned = bool(same and now_in)
         grace = GRACE if now_in else max(0, getattr(app, '_ig_grace', 0) - 1)
         app._ig_grace = grace
@@ -361,11 +393,39 @@ def install(App):
         return r
     mxl_char.Character.save = save
 
+    import logging
+
+    class OwnWrites(logging.Handler):            # mxl_log's "saved: <what>: <file>": the editor's own writes
+        def emit(self, rec):
+            try:
+                if str(rec.msg).startswith('saved:') and rec.args:
+                    f = str(rec.args[-1])
+                    _own[os.path.abspath(f)] = _sig(f)
+            except Exception:
+                pass
+    logging.getLogger('capybara').addHandler(OwnWrites(logging.INFO))
+
     o_load = App.load
 
     def load(self, *a, **k):
+        # the collector reloads a stash changed on disk by itself: the game's save is then already shown
+        # when the poll comes; the note is given here (after the collector's own status text)
+        try:
+            path, files = _watched(self)
+            old = getattr(self, '_ig_sigs', None)
+            foreign = bool(path and old is not None and (is_in_game(path) or getattr(self, '_ig_grace', 0)) and any(
+                _sig(f) != old.get(f) and _sig(f) != _own.get(f) for f in files))
+        except Exception:
+            path, foreign = None, False
         r = o_load(self, *a, **k)
         _baseline(self)
+        if foreign:
+            name = char_of(os.path.basename(path))
+            try:
+                self.root.after_idle(lambda: self.status.configure(
+                    text=_T('ig.reloaded', 'Reloaded: the game saved {name}', name=name)))
+            except Exception:
+                pass
         return r
     App.load = load
 
