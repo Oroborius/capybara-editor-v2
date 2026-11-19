@@ -212,6 +212,9 @@ class _Win:
     def st_value(self, key):
         return 0
 
+    def _sk_name(self, sid):
+        return 'skill %d' % sid
+
 
 def _page(E, ch, tot):
     import mxl_statscreen as SS
@@ -227,14 +230,21 @@ def _check_pages_agree(E, page, what):
     ar_row, pct_row = rows.get((SS.T_STAT, 19)), rows.get((SS.T_STAT, 119))
     if ar_row is None or pct_row is None:
         T.skip('the game table has no Attack Rating row on page 2')
+    # page 1's boxes add the skill on their mouse button (its attack rating %, its share of the weapon damage);
+    # page 2's rows are the skill-free numbers underneath
     ar, flat, pct = page.attack_rating()
-    T.eq(page.derived('attack_rating_1')[0], str(ar), f'{what}: page 1 attack rating box 1')
-    T.eq(page.derived('attack_rating_2')[0], str(ar), f'{what}: page 1 attack rating box 2')
-    T.eq(page.game_value(ar_row)[0], page.derived('attack_rating_1')[0], f'{what}: page 2 attack rating = page 1')
+    for n in (1, 2):
+        _sid, _lvl, sk = page.button_skill('attack_rating_%d' % n)
+        T.eq(page.derived('attack_rating_%d' % n)[0], str(page.attack_rating(sk[2] if sk else 0)[0]),
+             f'{what}: page 1 attack rating box {n}')
+        dmg = page.weapon_damage()
+        shown = SS.skill_damage(dmg, sk)
+        T.eq(page.derived('damage_%d' % n)[0], f"{shown['min']}-{shown['max']}", f'{what}: page 1 damage box {n}')
+    T.eq(page.game_value(ar_row)[0], str(ar), f'{what}: page 2 attack rating = page 1 without the skill')
     T.eq(page.game_value(pct_row)[0], f'{pct}%', f'{what}: page 2 attack rating % = the % inside page 1')
-    dmg = page.derived('damage_1')[0]
+    dmg = page.weapon_damage()
     lo, hi = (page.game_value(rows[(SS.T_LABEL, s)])[0] for s in SS.WEAPON_DAMAGE_ROWS)
-    T.eq(f'{lo}-{hi}', dmg, f'{what}: page 2 weapon damage = page 1')
+    T.eq(f'{lo}-{hi}', f"{dmg['min']}-{dmg['max']}", f'{what}: page 2 weapon damage = the weapon damage')
     return ar, flat, pct
 
 
@@ -422,6 +432,41 @@ def table_caps_are_applied():
     T.eq(page.game_value(el)[0], f"{el['cap']}%", 'capped')
     page = _page(E, ch, _totals({el['stat']: el['cap'] - 1}))
     T.eq(page.game_value(el)[0], f"{el['cap'] - 1}%", 'below the cap')
+
+
+@T.test
+def page1_boxes_use_the_skill_on_each_mouse_button():
+    """Page 1's left / right Damage and Attack Rating boxes apply the skill on that button (skills.bin): Raid (350,
+    srcdam 90 = 70 % weapon damage, + its own 8-8 at level 20, +105 % attack rating at level 20 - the numbers of the
+    in-game Raid tooltip) and Earth Talons (1295, srcdam 128, no physical damage of its own: the weapon damage).
+    A druid (class 5) with 20 hard points in both and an unarmed set, so the weapon damage is the plain 1-2 + items."""
+    E = T.engine()
+    import struct
+    import mxl_statscreen as SS
+    T.eq(SS.skill_attack(E.data, 350, 20), (90, (8, 8), 105), 'Raid at level 20')
+    T.eq(SS.skill_attack(E.data, 1295, 20), (128, (0, 0), 0), 'Earth Talons at level 20')
+    T.eq(SS.skill_attack(E.data, 0, 20), None, 'no skill')
+    ch = _Char({})
+    ch.cls, ch.level, ch.stats = 5, 81, []
+    ch.skill_levels = lambda: {350: 18, 1295: 20}
+    struct.pack_into('<II', ch.head, 0x78, 350, 1295)
+    tot = _totals({21: 219, 22: 638})                       # unarmed 1-2 + 219-638 = 220-640 before the skill
+    page = _page(E, ch, tot)
+    base = SS.weapon_damage(ch, E.data, tot, page.attr_total(0), page.attr_total(2), ch.level)
+    T.eq((base['min'], base['max']), (220, 640), 'weapon damage')
+    T.eq(SS.skill_level(ch, E.data, _totals({127: 2}), 350), 20, 'hard 18 + 2 all skills')
+    T.eq(SS.skill_level(ch, E.data, _totals({127: 2}), 1773), 0, 'no hard points: +all skills do not count')
+    tot2 = _totals({21: 219, 22: 638, 127: 2, 2: 500})        # 500 dexterity: a positive attack rating
+    page = _page(E, ch, tot2)
+    T.eq(page.derived('damage_1')[0], f'{220 * 90 // 128 + 8}-{640 * 90 // 128 + 8}', 'Raid: 70 % + 8-8')
+    T.eq(page.derived('damage_2')[0], '220-640', 'Earth Talons: the weapon damage')
+    ar, _flat, pct = page.attack_rating()
+    T.eq(pct, 0, 'no item attack rating %')
+    T.eq(page.derived('attack_rating_2')[0], str(ar), 'Earth Talons: no attack rating bonus')
+    T.eq(page.derived('attack_rating_1')[0], str(page.attack_rating(105)[0]), 'Raid: +105 %')
+    T.check(page.attack_rating(105)[0] > ar, 'Raid raises the attack rating')
+    struct.pack_into('<I', ch.head, 0x78, 0)
+    T.eq(page.derived('damage_1')[0], '220-640', 'Attack: the weapon damage')
 
 
 T.main(globals())

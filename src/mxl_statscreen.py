@@ -542,6 +542,64 @@ def weapon_damage(ch, data, tot, strength, dexterity, level=None):
     return {'min': lo, 'max': hi, 'base': (blo, bhi), 'ed': ed, 'flat': flat, 'pct': pct, 'wpd': wpd, 'name': name}
 
 
+def mouse_skill(ch, side):
+    """Skill id on the left (0x78) or right (0x7C) mouse button as the save stores it, or None."""
+    try:
+        return struct.unpack_from('<I', ch.head, 0x78 if side == 'left' else 0x7C)[0]
+    except Exception:
+        return None
+
+
+def skill_level(ch, data, tot, sid):
+    """Effective level of a skill: hard points + the items' "+all skills" (127), "+class skills" (83, the skill's
+    class) and "+single skill" (107); an oskill (97) counts with or without hard points. Not included: the
+    "+skill tab" stat (188) and skills/buffs that raise other skills."""
+    try:
+        hard = int(ch.skill_levels().get(sid, 0))
+    except Exception:
+        hard = 0
+    osk = total_of(tot, 97, sid)
+    if hard <= 0:
+        return osk
+    cls = data.skill_class.get(sid)
+    return hard + total_of(tot, 127) + (total_of(tot, 83, cls) if cls not in (None, 255) else 0) \
+        + total_of(tot, 107, sid) + osk
+
+
+def skill_attack(data, sid, lvl):
+    """(source weapon damage in 128ths, (skill min, max physical damage), attack rating %) of a skill at a level,
+    from skills.bin (srcdam, mindam / maxdam with the per-level steps and damage formula, tohit + its formula).
+    None for no skill or a skill that uses no weapon damage (srcdam 0)."""
+    if not sid:
+        return None
+    import mxl_skilldesc as SD
+    try:
+        t = SD.tables(data)
+        src = t.sk[sid][0x1a5]
+    except Exception:
+        return None
+    if not src:
+        return None
+    c = SD.Calc(t, {sid: lvl}, 1)
+    c._self, c._blvl = sid, None
+    try:
+        phys = (c.phys(sid, lvl), c.phys(sid, lvl, True)) if lvl > 0 else (0, 0)
+        toht = c.code('toht', sid, lvl) if lvl > 0 else 0
+    except Exception:
+        phys, toht = (0, 0), 0
+    return src, phys, int(toht or 0)
+
+
+def skill_damage(dmg, sk):
+    """Weapon damage (weapon_damage's dict) as the stat screen shows it for a skill: x srcdam / 128, + the skill's
+    own physical damage. dmg unchanged when sk is None."""
+    if dmg is None or sk is None:
+        return dmg
+    src, (plo, phi), _toht = sk
+    lo, hi = dmg['min'] * src // 128 + plo, dmg['max'] * src // 128 + phi
+    return dict(dmg, min=max(lo, 1), max=max(hi, lo + 1), src=src, skill_phys=(plo, phi))
+
+
 def attack_rating(data, cls, tot, dexterity, level=1):
     """Attack rating as the stat screen shows it: (5 x dexterity - 35 + the class's ToHitFactor (charstats) + the
     items' flat attack rating) x (100 + the items' attack rating %) / 100. Base part checked on the seven level-1
@@ -549,7 +607,7 @@ def attack_rating(data, cls, tot, dexterity, level=1):
     return attack_rating_parts(data, cls, tot, dexterity, level)[0]
 
 
-def attack_rating_parts(data, cls, tot, dexterity, level=1):
+def attack_rating_parts(data, cls, tot, dexterity, level=1, skill_pct=0):
     """(attack rating, the items' flat attack rating (stat 19), the items' attack rating % (stat 119)): the one
     computation behind page 1's two Attack Rating boxes and the Attack Rating row of the game's page 2."""
     tohit = 10
@@ -561,7 +619,7 @@ def attack_rating_parts(data, cls, tot, dexterity, level=1):
         pass
     flat = item_sum(tot, data, 19, level)
     pct = item_sum(tot, data, 119, level)
-    return (5 * dexterity - 35 + tohit + flat) * (100 + pct) // 100, flat, pct
+    return (5 * dexterity - 35 + tohit + flat) * (100 + pct + skill_pct) // 100, flat, pct
 
 
 MAX_RES = {39: 40, 41: 42, 43: 44, 45: 46}     # resistance -> its "maximum resist" stat
@@ -1270,20 +1328,48 @@ class StatScreen:
             dmg = self.weapon_damage()
             if dmg is None:
                 return None, T('ss.tip.game', 'computed by the game')
-            return f"{dmg['min']}-{dmg['max']}", self.damage_tip(dmg) + '\n' + T(
-                'ss.tip.dmg_skill', 'Normal attack: the bonuses of the skill on this mouse button are not included.'
-            ) + '\n' + T('ss.tip.dmg_forms', 'Not included either: shapeshift forms, auras and passive skills (they can '
-                          'add a lot of "Weapon Physical Damage", e.g. Ferocity in Wereowl Form).')
+            sid, lvl, sk = self.button_skill(key)
+            shown = skill_damage(dmg, sk)
+            return f"{shown['min']}-{shown['max']}", self.damage_tip(dmg) + '\n' + self.skill_note(sid, lvl, sk) \
+                + '\n' + T('ss.tip.dmg_forms', 'Not included: shapeshift forms, auras and passive skills (they can '
+                            'add a lot of "Weapon Physical Damage", e.g. Ferocity in Wereowl Form) and elemental '
+                            'damage of the skill.')
         if key.startswith('attack_rating'):
-            ar, flat, pct = self.attack_rating()
-            return str(ar), self.ar_tip(flat, pct)
+            sid, lvl, sk = self.button_skill(key)
+            ar, flat, pct = self.attack_rating(sk[2] if sk else 0)
+            tip = self.ar_tip(flat, pct)
+            if sk and sk[2]:
+                tip += '\n' + T('ss.tip.ar_sk', '{skill} (level {lvl}): attack rating {pct:+d} % included.',
+                                 skill=self.win._sk_name(sid), lvl=lvl, pct=sk[2])
+            return str(ar), tip
         return None, T('ss.tip.game', 'computed by the game')
 
-    def attack_rating(self):
-        """(attack rating, items' flat, items' %) of page 1 and of the Attack Rating row of the game's page 2."""
+    def attack_rating(self, skill_pct=0):
+        """(attack rating, items' flat, items' %) of page 1 and of the Attack Rating row of the game's page 2;
+        skill_pct: the attack rating % of the skill on the mouse button (page 1 only), added to the items' %."""
         win = self.win
         sim = win.st_sim
-        return attack_rating_parts(win.data, sim.cls, win.st_totals(), self.attr_total(2), sim.level)
+        return attack_rating_parts(win.data, sim.cls, win.st_totals(), self.attr_total(2), sim.level, skill_pct)
+
+    def button_skill(self, key):
+        """(skill id, effective level, skill_attack tuple or None) of the mouse button of a page-1 box
+        ('..._1' = left, '..._2' = right)."""
+        win = self.win
+        sim = win.st_sim
+        sid = mouse_skill(sim, 'left' if key.endswith('_1') else 'right')
+        if not sid:
+            return sid, 0, None
+        lvl = skill_level(sim, win.data, win.st_totals(), sid)
+        return sid, lvl, skill_attack(win.data, sid, lvl)
+
+    def skill_note(self, sid, lvl, sk):
+        if not sid:
+            return T('ss.tip.dmg_attack', 'Normal attack.')
+        name = self.win._sk_name(sid)
+        if sk is None:
+            return T('ss.tip.dmg_noweap', '{skill} uses no weapon damage: the plain weapon damage is shown.', skill=name)
+        return T('ss.tip.dmg_sk', '{skill} (level {lvl}): {pct} % weapon damage, + {lo}-{hi} damage of the skill.',
+                 skill=name, lvl=lvl, pct=sk[0] * 100 // 128, lo=sk[1][0], hi=sk[1][1])
 
     def ar_tip(self, flat, pct):
         return T('ss.tip.ar', 'Attack rating: 5 x dexterity - 35 + class bonus, + items {flat}, then {pct:+d} % from '
