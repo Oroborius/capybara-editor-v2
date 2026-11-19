@@ -234,30 +234,39 @@ def undo_keeps_the_pending_page_edits():
 
 @T.test
 def undo_refused_after_a_newer_save():
-    """Fill, then the Character tab's SAVE writes a pending stat edit, then Ctrl+Z: the undo refuses (the file is
-    not the one the fill wrote any more) and writes nothing."""
+    """Fill, then the Character tab's SAVE writes a pending stat edit. The SAVE is an undo step of its own
+    (test_62): the first Ctrl+Z gives the file of after the fill back, the second the file of before the fill.
+    A write that is NOT recorded (the game) between the fill and its undo makes the undo refuse and write nothing."""
     import mxl_undo
+    import mxl_char
     was = unrestricted(False)
     try:
         copy_a_gem()
         where = seed_inventory()
         path = G.app.character_file()
         G.app._undo = []
+        raw0 = T.read(path)
         T.invoke(menu(where, False), 'Fill sockets with')
         T.pump()
+        filled = T.read(path)
         cw = chartab()
         cur = cw.st_value('strength')
         cw.st_set('strength', str(cur + 7))
         cw.save_progress()
         T.pump(6)
-        saved = T.read(path)
         T.check(not cw.dirty(), 'still pending after SAVE')
+        mxl_undo._do_undo(G.app)
+        T.pump()
+        T.check(T.read(path) == filled, f'the first undo did not undo the SAVE: {T.status_text()!r}')
+        ch = mxl_char.Character(path, G.app.data)           # "the game" writes the file: not recorded
+        ch.set_field('gold', 7)
+        ch.save(backup=False)
+        saved = T.read(path)
         mxl_undo._do_undo(G.app)
         T.pump()
         T.check('changed' in T.status_text(), f'status of the refused undo: {T.status_text()!r}')
         T.check(T.read(path) == saved, 'the refused undo wrote the character file')
-        T.check(not mxl_undo.can_undo(G.app), 'the refused undo stayed on the stack')
-        views_hold(saved, 'refused undo')
+        T.check(T.read(path) != raw0, 'the file is the one before the fill')
     finally:
         unrestricted(was)
 
