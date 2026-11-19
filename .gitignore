@@ -4,3 +4,18 @@ __pycache__/
 dist/
 .cache/
 .claude/
+
+# internal notes: kept on this machine only, not published
+/CLAUDE.md
+/.claudeignore
+/docs/AGENT_BRIEF.md
+/docs/FEATURE_IDEAS.md
+/docs/IDEAS_*.md
+/docs/INGAME_OBSERVATIONS.md
+/docs/INTERNALS.md
+/docs/LOST_SESSION_CHANGES.md
+/docs/OVERNIGHT_REPORT.md
+/docs/STAT_PARAMS_REPORT.txt
+/docs/WORKLOG.md
+/docs/review/
+/docs/statscreen-ref/

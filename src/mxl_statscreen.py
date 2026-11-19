@@ -569,12 +569,12 @@ def weapon_part(it, b, data):
             blo * (100 + emin) // 100, bhi * (100 + emax) // 100)
 
 
-DUAL_WIELD_CLASSES = (4, 6)           # Barbarian, Assassin (the game)
+DUAL_WIELD_CLASSES = (4, 6)           # Barbarian, Assassin
 
 
 def skill_descdam(data, sid):
     """skilldesc.txt descdam of a skill (record +0x12; the skills row's u16 at 404 is its skilldesc row): 1 = the
-    Attack path (the game), 5 = weapon skills (the game); None when unknown."""
+    Attack path, 5 = weapon skills; None when unknown."""
     try:
         rows = data._capy_descdam
     except AttributeError:
@@ -599,7 +599,7 @@ def skill_descdam(data, sid):
 
 
 def damage_text(lo, hi):
-    """The Damage box text as the game draws it (the game): numbers of 10000 and more as N K."""
+    """The Damage box text as the game draws it: numbers of 10000 and more as N K."""
     def one(v):
         return f'{v // 1000}K' if v >= 10000 else str(v)
     return f'{one(lo)}-{one(hi)}'
@@ -630,7 +630,7 @@ def weapon_damage(ch, data, tot, strength, dexterity, level=None, slot=None, bot
     else:
         parts = [weapon_part(it, b, data) for _s, it, b in hands]
         blo, bhi, ed, pair, bonus, name, eth = parts[0][:7]
-        # dual wield on a weapon skill (descdam 5): the unit's 21/22 hold both hands' damage (game-code-damage.md §7);
+        # dual wield on a weapon skill (descdam 5): the unit's 21/22 hold both hands' damage;
         # the strength / dexterity bonus and the one / two hand choice come from the primary weapon
         wlo, whi = sum(pt[7] for pt in parts), sum(pt[8] for pt in parts)
         if len(parts) > 1:
@@ -689,7 +689,7 @@ MASTERY = {(48, 49): 329, (50, 51): 330, (54, 55): 331}   # fire / lightning / c
 
 
 def elemental_damage(tot):
-    """(min, max) of the items' elemental damage as page 1's Damage boxes add it (the game): fire,
+    """(min, max) of the items' elemental damage as page 1's Damage boxes add it: fire,
     lightning, cold each x (100 + their mastery %) / 100, magic as is, + poison over its whole length (raw x frames
     >> 8, frames = stat 101 when set, else stat 59 / stat 326). Page 2 shows poison per second (half at 2 s).
     In game (test-druid, Attack): 130-260 + 330-660 + 230-385 + 150-250 = 840-1555 on top of the physical 249-671."""
@@ -766,9 +766,9 @@ def skill_attack(data, sid, lvl, levels=None, bonus=0, ulvl=1):
 
 def skill_damage(dmg, sk):
     """Page 1's Damage box for the skill on a mouse button (weapon_damage's dict; sk from skill_attack). The game
-    (the game, skilldesc descdam 5; docs/review/game-code-damage.md): (physical + elemental + poison, as
+    (skilldesc descdam 5): (physical + elemental + poison, as
     for Attack) x srcdam / 128, + a second copy of the weapon damage (unit stats 21/22, before any %) x srcdam / 128
-    (Sigma's "include weapon" patch of the game), + the skill's own physical and elemental damage.
+    (the weapon counted once more), + the skill's own physical and elemental damage.
     In game (test-druid): Raid 1089 x 90/128 + 110 x 90/128 + 8 = 850, 2226 -> 1781; Earth Talons 1089 + 110 + 101
     = 1300, 2226 + 296 + 202 = 2724; with the Crystal Sword 1287 + 40 + 101 = 1428. dmg unchanged when sk is None."""
     if dmg is None or sk is None:
@@ -1735,7 +1735,7 @@ class StatScreen:
                 shown = skill_damage(dmg, sk)
                 return damage_text(shown['min'], shown['max']), self.damage_tip(dmg) + '\n' + \
                     self.skill_note(sid, lvl, sk) + forms
-            if dual:                                 # Attack path, dual wield: one range per hand (the game)
+            if dual:                                 # Attack path, dual wield: one range per hand
                 per = [self.hand_damage(sl) for sl, _it, _b in hands]
                 if all(per):
                     if sk is not None:
@@ -1807,7 +1807,7 @@ class StatScreen:
 
     def hand_damage(self, slot):
         """Attack damage of one hand of a dual-wielding character: the other hand's item switched off (its stats
-        and its share of the attributes), as the game's per-hand lines do (the game)."""
+        and its share of the attributes), as the game's per-hand lines do."""
         win = self.win
         sim, data = win.st_sim, win.data
         other = {4: 5, 5: 4, 11: 12, 12: 11}.get(slot)

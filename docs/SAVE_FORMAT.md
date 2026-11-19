@@ -233,8 +233,7 @@ Parameter 0x2000 + n = general counters:
 | 11 | 402 → 402 → 417 → 417 | unknown counter |
 | 12 | 41 902 → 42 214 → 56 529 → 57 991 | **play time in seconds**: Q → A is +312 while the save time (0x30) moved by 314 s; B → C is +1462 over three calendar days |
 
-`the game` contains `..\D2Achievements.cpp` and chat-command texts `Stat %d, Layer %d has a value of %d` /
-`Has Been Set To` — "layer" is the game's word for the parameter. The names of the counters are not in the
+The game's chat commands call the parameter a "layer" (`Stat %d, Layer %d has a value of %d`). The names of the counters are not in the
 extracted tables.
 
 ## 5. Skills, item lists, corpse, mercenary, golem
@@ -409,9 +408,7 @@ character stat 15; a shared gold field does not exist in these files), a checksu
 a wrong count or a missing marker makes the whole file unreadable for the game's reader as well as for ours — the
 three `Mr_Owlie…corrupt` samples each contain one item with an impossible stat list.
 
-`the game` holds the strings `_default`, `.stash`, `_sharedstash`, `.shared`, `.ladder` next to
-`..\D2SaveFile.cpp`: a separate shared stash for ladder characters (`_sharedstash.ladder`?) probably exists; no
-sample.
+A separate shared stash for ladder characters (`_sharedstash.ladder`?) probably exists; no sample.
 
 ## 8. Companion files
 
@@ -425,8 +422,8 @@ chat, 6: H help, 7: Tab automap…).
 
 The game folder's `default.key` (1146 bytes) holds the same 114 records behind a 6-byte header: `WS`, u16 `0x25`,
 u16 file size. The character's `.key` was written once (same bytes in A and C, file time = character creation).
-Sigma keeps its real key configuration in `preferences.json` (strings `hotkey_merc`, `hotkey_quests`,
-`hotkey_automap`… in `the game`, source file `src\config\player_config.cpp`), so the `.key` file is probably a
+Sigma keeps its real key configuration in `preferences.json` (`hotkey_merc`, `hotkey_quests`,
+`hotkey_automap`…), so the `.key` file is probably a
 vanilla leftover the game no longer reads — not verified. Editor: renamed with the character, otherwise ignored.
 
 ### 8.2 `<name>.map` — the last four game seeds (**S**)
@@ -457,7 +454,7 @@ Deleting them only loses the remembered automap (**V**: not tested in game).
 
 ### 8.4 Other files in the save folder
 
-- `preferences.json`, `infographics.json` (names from `the game`): account-wide settings of Sigma, outside the
+- `preferences.json`, `infographics.json` (Sigma's own files): account-wide settings of Sigma, outside the
   per-character set; not in the samples, not examined.
 - `MXL Item Collector/library.json`: the host application's own item library, not a game file.
 
@@ -489,8 +486,7 @@ String tables: `string.tbl` (index 0…), `patchstring.tbl` (10 000…), `expans
 
 ## 10. Open questions
 
-Settled only by analysing `the game` / `the game` / `the game` (a analysis project is not on disk) or
-by an in-game experiment on a throw-away character:
+Settled only by an in-game experiment on a throw-away character:
 
 1. Stat 88: the names of counters 0x2000–0x200C and the list of tracked monsters; which of them gate content
    (uberquest entry, challenges, trophies) and whether the game recomputes any of them.

@@ -476,7 +476,7 @@ def page1_boxes_use_the_skill_on_each_mouse_button():
     tot2 = _totals({21: 219, 22: 638, 127: 2, 2: 500})        # 500 dexterity: a positive attack rating
     page = _page(E, ch, tot2)
     # unarmed 1-2 + 219-638 = 220-640, no % here: a weapon skill takes srcdam/128 of the damage and of the weapon
-    # damage once more (Sigma's "include weapon" patch), Raid 90/128 + 8
+    # damage once more, Raid 90/128 + 8
     T.eq(page.derived('damage_1')[0], f'{2 * (220 * 90 // 128) + 8}-{2 * (640 * 90 // 128) + 8}', 'Raid')
     T.eq(page.derived('damage_2')[0], '440-1280', 'Earth Talons: damage + weapon damage, nothing of its own')
     ar, _flat, pct = page.attack_rating()
@@ -490,7 +490,7 @@ def page1_boxes_use_the_skill_on_each_mouse_button():
 
 @T.test
 def dual_wield_damage_follows_the_game_code():
-    """Dual wield (Assassin / Barbarian; docs/review/game-code-damage.md §7): a weapon skill (descdam 5) uses both
+    """Dual wield (Assassin / Barbarian): a weapon skill (descdam 5) uses both
     hands' weapon damage added; Attack (descdam 1) shows one range per hand, the other hand's item switched off.
     Two plain daggers, no item stats: each hand's Attack range is the dagger's own damage."""
     import struct

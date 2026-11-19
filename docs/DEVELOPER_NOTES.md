@@ -190,8 +190,8 @@
   - out-of-range values of kept stats (hacked / upgraded items) stay as they are upstream, and in this build
     the free sliders and raw rows can put any storable value on a new item as well.
 - The game tables the editor relies on were cross-checked against the extracted Median XL data
-  (itemstatcost: max storable stat id 510) (9-bit stat
-  id, 5-bit param pieces, 0x200 stride): the editor's item saving is exactly the game's.
+  (itemstatcost: max storable stat id 510; 9-bit stat id, 5-bit param pieces): the editor's item saving matches
+  the game's.
 - Language keys of the changed windows: `cr.unrestricted`, `cr.unrestricted_note`, `cr.raw.*` and
   `cr.warn.unrestricted` (English text is in the code, `lang/*.json` carry the three languages).
 
@@ -544,7 +544,7 @@ longer in the stash).
 - `mxl_statparse.py`: reads tooltip lines back into item stats (uses the collector's tooltip text as the reference).
 - `mxl_format_fix.py`: the reader fix above.
 - `mxl_dmg_text.py` (installed by `mxl_format_fix.install()`): item tooltip damage lines with min above max
-  (weapon line max = min + 1; "Adds X-Y" with min > max or a 0 side as the stats' own lines). docs/review/gui.md 9.
+  (weapon line max = min + 1; "Adds X-Y" with min > max or a 0 side as the stats' own lines).
 - `mxl_status_attr.py`: status bar Strength / Dexterity = the stat screen's totals (`mxl_statscreen.attribute_total`).
 - `mxl_import.py`: the character page import (page reader, item rebuilder, new character, Import button).
 - `mxl_d2look.py`, `mxl_d2look_art.py`, `mxl_d2ui_dc6.py`: the game-art look (switched off since 2026-11-10,
