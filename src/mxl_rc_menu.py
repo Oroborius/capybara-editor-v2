@@ -129,6 +129,7 @@ def _stash_menu(app, ev):
         menu.add_command(label=rc('delete', 'Delete item'), command=lambda: delete_selected(app))
         menu.add_command(label=rc('export', 'Export item...'), command=lambda: _export_stash(app, it))
         menu.add_command(label=rc('inspect', 'Inspect...'), command=lambda: _inspect_stash(app, it))
+        menu.add_command(label=rc('to_library', 'Add to library...'), command=lambda: _library_stash(app, it))
     else:
         if clip is not None:
             menu.add_command(label=rc('paste_here', 'Paste here ({name})', name=clip[1]),
@@ -472,6 +473,7 @@ def _char_menu(win, cv, ev):
         menu.add_command(label=rc('delete_short', 'Delete'), command=win.delete)
         menu.add_command(label=rc('export', 'Export item...'), command=lambda: _export_char(win, e))
         menu.add_command(label=rc('inspect', 'Inspect...'), command=lambda: _inspect_char(win, e))
+        menu.add_command(label=rc('to_library', 'Add to library...'), command=lambda: _library_char(win, e))
     else:
         if clip is not None and cv is win.inv:
             menu.add_command(label=rc('paste_here', 'Paste here ({name})', name=clip[1]),
@@ -1124,7 +1126,7 @@ def _import_char(win, ev):
     win.save(rc('imp.done', 'item imported from {file}', file=os.path.basename(path)))
 
 
-# ---- inspector (mxl_inspect) read the item's bytes as Export does
+# ---- inspector (mxl_inspect) and personal item library (mxl_itemlib): read the item's bytes as Export does
 def _inspect_stash(app, it):
     import mxl_inspect
     try:
@@ -1144,6 +1146,31 @@ def _inspect_char(win, e):
         return None
     return mxl_inspect.open_blob(win.top, blob, win.data, clean_name(win, e))
 
+
+def _library_stash(app, it):
+    import mxl_itemlib
+    try:
+        blob = _now(app, it)[2]
+    except (EditError, FormatError, OSError) as e:
+        _status(app, str(e), True)
+        return None
+    entry = mxl_itemlib.ask_add(app.root if hasattr(app, 'root') else app.canvas, blob, app.data, app.full_name(it))
+    if entry is not None:
+        _status(app, rc('lib.added', '{name} added to the item library', name=entry['name']))
+    return entry
+
+
+def _library_char(win, e):
+    import mxl_itemlib
+    try:
+        blob = win.ch.stash_blob(e)
+    except (OSError, AttributeError) as err:
+        win.set_status(str(err), True)
+        return None
+    entry = mxl_itemlib.ask_add(win.top, blob, win.data, clean_name(win, e))
+    if entry is not None:
+        win.set_status(rc('lib.added', '{name} added to the item library', name=entry['name']))
+    return entry
 
 
 # ------------------------------------------------------------------ the Hero-Editor submenu pair
