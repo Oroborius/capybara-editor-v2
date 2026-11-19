@@ -273,7 +273,7 @@ it can skip one corpse).
 `jf`, and — only when the header's mercenary id (0xB3) is not 0 — an item list (`JM` + count + items) (**C**).
 All samples: 7 worn items. **The Median XL mercenary wears more than the vanilla one**: slots 1 helm, 2 amulet,
 3 armor, 4 weapon, 8 belt, 9 boots, 10 gloves are in use in the samples (**S**). Editor: **E** for the items, but
-`mxl_char.MERC_SLOTS = (1, 3, 4, 5)` only lets the user place items in helm / armor / the two hands.
+`mxl_char.MERC_SLOTS = (1, 2, 3, 4, 5, 8, 9, 10)`: every one of these slots can be filled from the editor.
 
 ### 5.5 Iron golem
 
@@ -338,7 +338,7 @@ All other bits are 0 in the samples. Parsers keep the 32 bits as they are.
 | **15** | set / unique row (vanilla: 12 bits) | quality 5 or 7 | C | E |
 | 8 + 8 | rare name prefix / suffix | quality 6, 8 **and 9** | C | E |
 | 6 × (1 + 11) | six affix slots: present bit + affix number | quality 6 or 8 only (an honorific item has none) | C | E |
-| **16** | runeword id: low 12 bits = `runes.bin` row, high 4 bits = 2 on all 16 samples (vanilla: 12 bits + 4 unknown) | flag 26 | C (low 12), S (high 4) | E |
+| **16** | runeword id: the `string.tbl` index of the runeword's name key (e.g. 0x20BB = 8379 = "Dyaus Pita"), not a `runes.bin` row; the "high 4 bits = 2" seen on the samples is only a side effect of indices around 8 200 | flag 26 | C (checked on every sample runeword) | E |
 | 7 × n + 7 | personalized name, 7-bit characters, ended by 0 | flag 24 | K | E |
 | 5 | unknown tome field | code `tbk ` or `ibk ` | K | K |
 | 1 | "realm data follows" bit of vanilla; 0 on every sample. What follows when 1 is not known | always | S | K (written as 0) |
@@ -493,7 +493,7 @@ Settled only by an in-game experiment on a throw-away character:
 2. Quest words: bit 15 on act V quests, the meaning of word 41 (`0x8002`), which bits the Sigma quest log and
    the "labyrinth" / challenge NPCs test; whether word 34 (written by the editor) is read at all.
 3. Header 0x2A (`0x5F`), 0x26, 0x34, 0xAF; whether 0x2C (creation time) is ever written.
-4. Item flags 10, 20, 27 and the high 4 bits of the runeword field; the layout behind the realm bit; ears.
+4. Item flags 10, 20, 27; the layout behind the realm bit; ears.
 5. The mercenary: whether 0xB9 is validated against `hireling.bin` rows of the current difficulty, how the name
    index is bounded, what a seed (0xB3) change does to its stats.
 6. Whether the game checks 0x30 (last played), 0xAB (map seed) against `.map`, and what it does when `.maN`
