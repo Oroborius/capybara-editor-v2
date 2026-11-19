@@ -22,12 +22,10 @@ import mxl_scene as S
 
 MODES = ('NU', 'WL', 'SC')
 FRONT = 4
-NAMES = {'PS': 'Akara', 'RC': 'Kashya', 'CI': 'Charsi', 'GH': 'Gheed', 'WA': 'Warriv', 'DC': 'Deckard Cain',
-         'CA': 'Deckard Cain', 'GR': 'Greiz', 'EL': 'Elzix', 'FA': 'Fara', 'DR': 'Drognan', 'LG': 'Lysander',
-         'GE': 'Geglash', 'JE': 'Jerhyn', 'AT': 'Atma', 'ME': 'Meshif', 'MS': 'Meshif', 'AS': 'Asheara',
-         'HR': 'Hratli', 'AL': 'Alkor', 'OR': 'Ormus', 'NA': 'Natalya', 'TY': 'Tyrael', 'TX': 'Tyrael',
-         'JM': 'Jamella', 'HL': 'Halbu', 'IZ': 'Izual', 'L1': 'Larzuk', 'L2': 'Larzuk', 'MA': 'Malah',
-         'XA': 'Anya', 'XR': 'Qual-Kehk', 'NK': 'Nihlathak', 'XB': 'Anya', 'Q1': 'Qual-Kehk'}
+NAMES = {'PS': 'Akara', 'RC': 'Kashya', 'CI': 'Charsi', 'GH': 'Gheed', 'WA': 'Warriv', 'WX': 'Warriv',
+         'DC': 'Deckard Cain', '2D': 'Deckard Cain', '3D': 'Deckard Cain', '4D': 'Deckard Cain', 'GR': 'Greiz',
+         'EL': 'Elzix', 'DR': 'Drognan', 'LY': 'Lysander', 'GE': 'Geglash', 'AS': 'Atma', 'OF': 'Fara',
+         'MS': 'Meshif', 'AL': 'Alkor', 'OR': 'Ormus', 'AH': 'Asheara', 'TX': 'Tyrael', '20': 'Halbu'}   # token -> name
 _LOCK = threading.Lock()
 _ANIM = {}
 _TAB = {}
@@ -70,6 +68,22 @@ def monster_plan(folder, mid):
         v = r2[0x26 + 12 * t]
         parts[t] = codes[v] if v < len(codes) and v != 0xFF else 'lit'
     return tok, wc, parts
+
+
+def town_presets(art, data_folder, act):
+    """Every NPC preset of the town map: [(name, token, monstats row, (world x, y))]; the whole map, no window."""
+    ds1s, _dt1 = S.town_files(data_folder, act)
+    if not ds1s:
+        return []
+    m = S.DS1(R.read(art, ds1s[0]))
+    pr = presets(data_folder, act)
+    ms = _rows(data_folder, 'monstats.bin')
+    out = []
+    for typ, oid, x, y in m.objects:
+        if typ == 1 and 0 <= oid < len(pr) and pr[oid] is not None and pr[oid] < len(ms):
+            tok = S._s(ms[pr[oid]][0x10:0x14])
+            out.append((NAMES.get(tok.upper(), tok), tok, pr[oid], S._sub_px(x, y)))
+    return out
 
 
 def monster_anim(art, folder, pal, mid, direction=FRONT):
