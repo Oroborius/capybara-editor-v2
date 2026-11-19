@@ -7,8 +7,10 @@ with mxl_dcc. Pure Python + PIL Image methods.
 gear: {slot: item code or (item code, colour)} (slots of mxl_char.SLOTS: 1 helm, 3 body armor, 4 right hand,
 5 left hand). Colour tints as the game: the item's Transform column (armor/weapons .bin byte 321) picks a colormap
 file of data\\global\\items\\palette (21 maps of 256 palette indices), the unique's / set item's chrtransform
-(uniqueitems.bin 0x38, setitems.bin 0x40; 255 = none) picks the map. Not done: magic / rare affix colours,
-the unit's shadow, a background scene."""
+(uniqueitems.bin 0x38, setitems.bin 0x40; 255 = none) picks the map; magic / rare / crafted items take the
+transformcolor of their affixes (magicprefix / magicsuffix.bin byte 0x56, the last coloured affix wins, as the game).
+Barbarian / assassin with two one-handers use the dual-wield classes (1ss 1st 1js 1jt, ht2 for two claws). Under
+the character its shadow: the composite flattened, sheared and darkened, half transparent."""
 import glob
 import os
 import struct
@@ -103,10 +105,49 @@ def _split(g):
 _COLORS = {}
 
 
+AFFIX_REC = 144
+AFFIX_COLOR = 0x56
+
+
+def _affix_colors(folder, name):
+    t = _COLORS.get((folder, name))
+    if t is None:
+        try:
+            d = open(os.path.join(folder, name), 'rb').read()
+            cnt = struct.unpack_from('<I', d, 0)[0]
+            t = bytes(d[4 + i * AFFIX_REC + AFFIX_COLOR] for i in range(min(cnt, (len(d) - 4) // AFFIX_REC)))
+        except (OSError, struct.error):
+            t = b''
+        _COLORS[(folder, name)] = t
+    return t
+
+
+def affix_color(folder, it):
+    """The colour (0..20) a magic / rare / crafted item takes from its affixes (save ids = row + 1), or None."""
+    q = it.get('quality')
+    if q == 'magic':
+        ids = [('magicprefix.bin', it.get('prefix')), ('magicsuffix.bin', it.get('suffix'))]
+    elif q in ('rare', 'crafted'):
+        ids = [('magicsuffix.bin' if i % 2 else 'magicprefix.bin', a)
+               for i, a in enumerate(it.get('rare_affixes') or ())]
+    else:
+        return None
+    col = None
+    for name, a in ids:
+        if a:
+            t = _affix_colors(folder, name)
+            c = t[a - 1] if 0 < a <= len(t) else 255
+            if c < 21:
+                col = c
+    return col
+
+
 def item_color(folder, it):
-    """The character colour (0..20) of a unique / set item dict of the save, or None."""
+    """The character colour (0..20) of an item dict of the save (unique / set row, else its affixes), or None."""
     q = it.get('quality')
     n = it.get('set_unique_id')
+    if q in ('magic', 'rare', 'crafted'):
+        return affix_color(folder, it)
     if q not in ('unique', 'set') or n is None:
         return None
     name, rs, off = ('uniqueitems.bin', 332, 0x38) if q == 'unique' else ('setitems.bin', 440, 0x40)
@@ -150,6 +191,7 @@ def plan(folder, cls, gear):
             v = body[3][i]
             if v < 3:
                 arm[lt] = ARMTYPES[v]
+    hands = {}
     for slot in (4, 5):
         g = gear.get(slot) and item_gfx(folder, gear[slot])
         if not g or g[0] not in (5, 6, 7):
@@ -158,10 +200,17 @@ def plan(folder, cls, gear):
         if lt == 5 and slot == 5:                  # a second one-hander is drawn in the left hand
             lt = 6
         arm.setdefault(lt, g[1])
+        hands[slot] = g[2]
         # one-or-two-handed swords: the one-handed class only for the barbarian, two-handed for everyone else
         wc = g[2] if cls == 4 else g[5]
         if lt != 7 and wc and wclass == 'hth':
             wclass = wc
+    r, l = hands.get(4), hands.get(5)
+    if cls == 6 and r == 'ht1' and l == 'ht1':
+        wclass = 'ht2'                              # two claws
+    elif cls == 4 and r in ('1hs', '1ht') and l in ('1hs', '1ht'):
+        # barbarian: left hand swing / jab, right hand swing / thrust (batn1st.cof: rh 1ht, lh 1ss)
+        wclass = '1' + ('s' if l == '1hs' else 'j') + ('s' if r == '1hs' else 't')
     return cl, wclass, arm
 
 
@@ -196,8 +245,31 @@ def _colormap(art, name, col):
     return b'\0' + bytes(m[1:])                     # index 0 stays transparent
 
 
-def render(art, folder, cls, gear, direction=FRONT):
-    """The animated character (list of RGBA frames on one canvas) or None when the class files are missing."""
+SHADOW_ALPHA = 0.45
+
+
+def _with_shadow(img, fx, fy):
+    """The frame over its shadow (the game's look): the silhouette flattened to half height, sheared to the upper
+    left from the feet (fx, fy), black at SHADOW_ALPHA. The canvas grows on both sides alike (the feet stay
+    centred)."""
+    from PIL import Image
+    w, h = img.size
+    pad = fy // 2 + 2
+    W = w + 2 * pad
+    FX, FY = fx + pad, fy
+    a = img.split()[3].point(lambda v: int(255 * SHADOW_ALPHA) if v else 0)
+    # output (u, v) <- input (fx + (u - FX) - (v - FY), fy + 2 (v - FY))
+    sh = a.transform((W, h), Image.AFFINE, (1, -1, fx - FX + FY, 0, 2, fy - 2 * FY), Image.NEAREST)
+    out = Image.new('RGBA', (W, h), (0, 0, 0, 0))
+    out.putalpha(sh)
+    out.alpha_composite(img, (pad, 0))
+    return out
+
+
+def render(art, folder, cls, gear, direction=FRONT, shadow=True):
+    """The animated character (list of RGBA frames on one canvas) or None when the class files are missing.
+    direction: 0..15 (the game's order; FRONT = 4 faces the viewer); 8-direction animations use direction % 8 ...
+    shadow: draw the unit's shadow under it."""
     cl, wclass, arm = plan(folder, cls, gear)
     tint = tints(folder, gear)
     cof = None
@@ -265,8 +337,8 @@ def render(art, folder, cls, gear, direction=FRONT):
                 continue
             fr = layers[t][f % len(ims)]
             can.alpha_composite(ims[f % len(ims)], (fr.x0 - x0, fr.y0 - y0))
-        frames.append(can)
-    return Anim(frames, fps, (cl, wclass, tuple(sorted(arm.items())), tuple(sorted(tint.items()))))
+        frames.append(_with_shadow(can, -x0, -y0) if shadow else can)
+    return Anim(frames, fps, (cl, wclass, tuple(sorted(arm.items())), tuple(sorted(tint.items())), direction))
 
 
 def gear_of(ch, merc=False):
