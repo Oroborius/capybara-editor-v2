@@ -192,11 +192,12 @@ def town_npcs(art, data_folder, act, scene, centre=None):
                     fi.paste(comp2[0][0], (qx - x0, qy - y0), comp2[0][1])
                     fm.paste(255, (qx - x0, qy - y0), comp2[0][1])
             fr = []
-            for ci, cm in comp:
+            for ci, cm, (bm, bs) in comp:
                 c = (x0 - px, y0 - py, x1 - px, y1 - py)
-                ci, cm = ci.crop(c), cm.crop(c)
+                ci, cm, bm = ci.crop(c), cm.crop(c), bm.crop(c)
                 ci.paste(fi, (0, 0), fm)
-                fr.append(scene.lit(S.to_rgba(ci, cm, scene.pal), (x0, y0)))
+                bm.paste(0, (0, 0), fm)
+                fr.append(scene.lit(S.to_rgba(ci, cm, scene.pal), (x0, y0), (bm, bs.crop(c))))
             tok = S._s(ms[mid][0x10:0x14])
             out.append({'pos': (x0, y0), 'frames': fr, 'fps': fps, 'token': tok, 'monstats': mid,
                         'name': NAMES.get(tok.upper(), tok)})

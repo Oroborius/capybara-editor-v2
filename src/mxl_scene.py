@@ -31,6 +31,7 @@ modules (mxl_npcs) draw sprites into the same window.
 Not done: flicker, tile animation (water), object overlays / missiles, monsters, the wilderness around Act 1's
 camp (the game generates it), the light-level (shadow table) rendering of the software renderer (lights are an RGB
 multiply here)."""
+import collections
 import os
 import struct
 import threading
@@ -42,7 +43,8 @@ import mxl_dcc as D
 TOWNS = {1: (1, 1), 2: (40, 12), 3: (75, 20), 4: (103, 26), 5: (109, 29)}
 MODES = ('NU', 'OP', 'ON', 'S1', 'S2', 'S3', 'S4', 'S5')
 _LOCK = threading.Lock()
-_CACHE = {}
+_CACHE = collections.OrderedDict()      # (game dir, folder, act, size, centre) -> Scene, least recently used first
+CACHE_SIZE = 6
 
 
 def _s(b):
@@ -269,10 +271,11 @@ def pl2_tables(art, act):
     return _PL2C[k]
 
 
-def blend(cb, W, H, layers, tables, dm=None):
+def blend(cb, W, H, layers, tables, dm=None, sm=None):
     """Draw layers [(index bytes, w, h, x, y, mode)] into the palette-index canvas cb (bytearray W*H) as the game
     does: opaque copy, or tables[mode][screen][sprite] for blended modes; index 0 of a layer is transparent.
-    dm (bytearray W*H): set to 255 where a layer drew."""
+    dm (bytearray W*H): set where a layer drew, 255 by an opaque layer, draw mode + 1 by a blended one;
+    sm (bytearray W*H): the sprite index of that last layer."""
     for px, w, h, x, y, mode in layers:
         T = tables.get(mode) if mode != NORMAL else None
         xa, xb = max(0, -x), min(w, W - x)
@@ -287,18 +290,23 @@ def blend(cb, W, H, layers, tables, dm=None):
                     o = o0 + xx
                     cb[o] = T[cb[o]][s] if T is not None else s
                     if dm is not None:
-                        dm[o] = 255
+                        dm[o] = mode + 1 if T is not None else 255
+                        sm[o] = s
 
 
 def compose(bg, layers, tables):
     """bg: 'L' palette-index image (what is on screen under the sprite); -> ('L' indices, 'L' mask of the drawn
-    pixels)."""
+    pixels, blend info ('L' draw mode + 1 where a blended layer drew
+    last, else 0; 'L' that layer's sprite index) for Scene.lit."""
     from PIL import Image
     W, H = bg.size
     cb = bytearray(bg.tobytes())
     dm = bytearray(W * H)
-    blend(cb, W, H, layers, tables, dm)
-    return Image.frombytes('L', (W, H), bytes(cb)), Image.frombytes('L', (W, H), bytes(dm))
+    sm = bytearray(W * H)
+    blend(cb, W, H, layers, tables, dm, sm)
+    dm = Image.frombytes('L', (W, H), bytes(dm))
+    return Image.frombytes('L', (W, H), bytes(cb)), dm.point(lambda v: 255 if v else 0), \
+        (dm.point(lambda v: 0 if v == 255 else v), Image.frombytes('L', (W, H), bytes(sm)))
 
 
 def layers_rgba(layers, size, pal):
@@ -519,13 +527,49 @@ class Scene:
             msk.paste(255, (x - x0, y - y0), m)
         return idx, msk
 
-    def lit(self, im, pos):
-        """im (RGBA) at window pos lit like .base (the light map crop; outside the window: ambient)."""
+    def lit(self, im, pos, info=None):
+        """im (RGBA) at window pos lit like .base (the light map crop; outside the window: ambient). info: the
+        blend info of compose() (cut like im): pixels drawn last by a blended layer are blended again in RGB over
+        the LIT scene with their draw mode (additive: lit screen + sprite colour), so a flame or fog glows instead
+        of being darkened like the ground under it."""
+        from PIL import Image
         lm = self.light_rgb or self.light
         if lm is None:
             return im
         x, y = pos
-        return _lit(im, lm.crop((x, y, x + im.width, y + im.height)))
+        w, h = im.size
+        amb = Image.new(lm.mode, (w, h), AMBIENT if lm.mode == 'L' else (AMBIENT,) * 3)
+        c = (max(0, x), max(0, y), min(lm.width, x + w), min(lm.height, y + h))
+        if c[0] < c[2] and c[1] < c[3]:
+            amb.paste(lm.crop(c), (c[0] - x, c[1] - y))
+        out = _lit(im, amb)
+        if info is None or self.base is None or not info[0].getbbox():
+            return out
+        pal = self.pal
+        W, H = self.base.size
+        modes, srcs = info[0].tobytes(), info[1].tobytes()
+        under = self.base.crop((x, y, x + w, y + h)).tobytes()
+        px = out.load()
+        for o, v in enumerate(modes):
+            if not v:
+                continue
+            i, j = divmod(o, w)
+            if not (0 <= x + j < W and 0 <= y + i < H):
+                continue
+            px[j, i] = _rgb_blend(v - 1, under[3 * o:3 * o + 3], pal[srcs[o]]) + (px[j, i][3],)
+        return out
+
+
+def _rgb_blend(mode, d, s):
+    """Screen colour d, sprite colour s, draw mode -> (r, g, b) (the pl2 tables' formulas, in RGB)."""
+    if mode == 3:
+        return tuple(min(255, a + b) for a, b in zip(d, s))
+    if mode == 4:
+        return tuple(a * b // 255 for a, b in zip(d, s))
+    k = {0: 64, 1: 128, 2: 191}.get(mode)
+    if k is None:                                           # 6: opacity = the brightest channel
+        k = max(s)
+    return tuple((b * k + a * (255 - k)) // 255 for a, b in zip(d, s))
 
 
 def act_palette(art, act):
@@ -572,6 +616,8 @@ def _pick(cands, tx, ty):
     """One of the tile variants of a cell: rarity-weighted, stable per cell."""
     if len(cands) == 1:
         return cands[0]
+    if cands[0].anim & 1:                   # animated tile group (flags 0x100): its frames, ordered by rarity
+        return min(cands, key=lambda t: t.rarity)
     tot = sum(max(0, t.rarity) for t in cands)
     if tot <= 0:
         return cands[0]
@@ -731,18 +777,19 @@ def build(art, folder, act, size=(512, 384), centre=None):
         k, kind = items[n][:2]
         fi, fm = sc.front(box, k, kind)
         out = []
-        for ci, cm in comp:
+        for ci, cm, (bm, bs) in comp:
             c = (x0 - px, y0 - py, x1 - px, y1 - py)
-            ci, cm = ci.crop(c), cm.crop(c)
+            ci, cm, bm = ci.crop(c), cm.crop(c), bm.crop(c)
             ci.paste(fi, (0, 0), fm)
-            out.append(to_rgba(ci, cm, pal))
+            bm.paste(0, (0, 0), fm)
+            out.append((to_rgba(ci, cm, pal), (bm, bs.crop(c))))
         raw.append({'pos': (x0, y0), 'frames': out, 'fps': fps})
     # lighting: the character's light around the anchor, pools (in the objects' light colours) around the
     # light-emitting objects, the rest dark; baked into .base and every sprite frame
     sc.light = light_map((W, H), sc.anchor, lights)
     sc.light_rgb = Image.merge('RGB', [light_map((W, H), sc.anchor, lights, c) for c in range(3)])
     sc.base = _lit(to_rgba(idx, None, pal), sc.light_rgb)
-    sc.sprites = [dict(sp, frames=[sc.lit(f, sp['pos']) for f in sp['frames']]) for sp in raw]
+    sc.sprites = [dict(sp, frames=[sc.lit(f, sp['pos'], bi) for f, bi in sp['frames']]) for sp in raw]
     return sc
 
 
@@ -773,14 +820,18 @@ def _object_layers_cached(art, row):
 
 
 def scene(art, data_folder, act, size=(512, 384), centre=None):
-    """Cached per (act, size, centre); None when the town's files are missing."""
+    """Cached per (act, size, centre), the CACHE_SIZE most recently used; None when the town's files are missing."""
     k = (getattr(art, 'game_dir', None), data_folder, act, tuple(size), centre)
     with _LOCK:
-        if k not in _CACHE:
+        if k in _CACHE:
+            _CACHE.move_to_end(k)
+        else:
             try:
                 _CACHE[k] = build(art, data_folder, act, size, centre)
             except Exception:
                 import logging
                 logging.getLogger('mxl_scene').exception('town scene of act %s', act)
                 _CACHE[k] = None
+            while len(_CACHE) > CACHE_SIZE:
+                _CACHE.popitem(last=False)
         return _CACHE[k]

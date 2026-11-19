@@ -155,6 +155,14 @@ def draw_modes():
     T.check(fm.getbbox(), 'Scene.front of everything is not empty')
     fi, fm = sc.front((0, 0, 512, 384), 1 << 31)
     T.check(not fm.getbbox(), 'nothing in front of the deepest point')
+    # outside the window a sprite is lit with the ambient light, not black
+    from PIL import Image
+    g = sc.lit(Image.new('RGBA', (4, 4), (200, 200, 200, 255)), (-50, -50)).getpixel((0, 0))
+    T.check(g[0] == 200 * S.AMBIENT // 255 or abs(g[0] - 200 * S.AMBIENT // 255) <= 1, f'ambient outside {g}')
+    # the scene cache is bounded (LRU)
+    for c in range(S.CACHE_SIZE + 2):
+        S.scene(art, folder, 1, (64, 48), (c * 40, 2000))
+    T.check(len(S._CACHE) <= S.CACHE_SIZE, f'cache size {len(S._CACHE)}')
 
 
 T.main(globals())
