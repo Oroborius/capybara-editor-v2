@@ -504,3 +504,51 @@ Settled only by an in-game experiment on a throw-away character:
 9. `.key`: whether Sigma still reads it; `.maN` block contents.
 10. The cap behaviour of stats 6 / 8 / 10 (current life stored at the 21-bit maximum in B / C) and of gold
     (25 bits) — what the game does with values above its own limits (stash gold cap 2 500 000 seen).
+
+## 11. Field meanings from community format documentation
+
+From the community's format write-ups (Trevin Corbin's notes,
+<http://user.xmission.com/~trevin/DiabloIIv1.09_File_Format.shtml>; dschu012/d2s,
+<https://github.com/dschu012/d2s>; The Phrozen Keep, <https://d2mods.info>), checked against the samples. Marks:
+**V** = base-game behaviour from those sources (Median XL may differ), **S** = seen on the samples.
+
+- 0x24 is a 32-bit flag field; 0x26–0x27 are its upper half, 0 in practice. [V]
+- 0x29 = number of base stats, always 16. [V, S]
+- 0x2A = number of skills per class; vanilla 30 (0x1E), Median XL 2.14.x 95 (0x5F). [V + S]
+- 0x2C = creation time (0 in single player); 0x30 = time of the save; 0x34 = play time, always written as
+  0xFFFFFFFF. [V, S]
+- Hotkeys 0x38 and the mouse skills 0x78–0x87 are pairs of u16: skill id (bit 15 = left button for hotkeys,
+  0xFFFF = none) and the 1-based index of the item granting the skill (0 = none). [V]
+- 0xAB = map seed of the saved game; vanilla single player re-uses it for the next game. [V]
+- 0xAF is a u32 of mercenary flags; bit 16 (byte 0xB1 = 1) = mercenary dead. [V, S: one sample has a dead
+  mercenary]
+- 0xB7 is relative to the hireling row's first name; out-of-range values fall back to the first name. 0xB9 is
+  the `Id` column of `hireling.txt`; each Id belongs to one act and difficulty (2.14.x: Ids 0–29). 0xB3 is the
+  hireling's random seed (it selected the hired variant and its initial stats). [V; S: a Normal-difficulty Id
+  loads in Hell]
+- 0xCF guild emblem colour, 0xD0 / 0xD4 / 0xD8 last level / last town / last difficulty: all 0 in single player. [V]
+- Quest words: word n = quest record entry n. Word 32 = act III Dark Wanderer scene seen; word 34 unused; word 41
+  = Akara's free reset (1.14 numbering; in Median XL it is 0x8002 in every difficulty entered, so it is not an
+  "act V completed" flag). [V; S for 41]
+- Quest bits: 0 reward granted, 1 reward pending, 2 started, 3 left town, 4 entered area, 5–11 quest specific,
+  12 quest log updated, 13 primary goal done, 14 completed now, 15 completed before. On load the game clears 13
+  and 14 and sets 15 on every word 0–40 that has bit 1. [V; S: every bit-15 word in the samples has or had bit 1]
+- NPC section: the first 3 × 8 bytes are quest-intro flags, the next 3 × 8 NPC greeting flags; bit n (LSB first)
+  = NPC n of the list Gheed 1, Akara 2, Kashya 3, Warriv 4, Charsi 5, Cain 6, Warriv 7, Atma 8, Drognan 9,
+  Fara 10, Lysander 11, Geglash 12, Meshif 13, Jerhyn 14, Greiz 15, Elzix 16, Cain 17–19, Tyrael 20,
+  Asheara 21, Hratli 22, Alkor 23, Ormus 24, Izual 25, Halbu 26, Meshif 27, Natalya 28, Larzuk 29, Drehya 30,
+  Malah 31, Nihlathak 32, Qual-Kehk 33, Cain 34. [V, S]
+- Item flags: 0 new, 8 broken, 9 repaired, 12 no-sell, 13 in store / picked up, 14 no-equip, 15 named, 16 ear,
+  17 starter, 19 init, 21 compact, 22 ethereal, 23 just saved, 24 personalized, 25 low quality, 26 runeword;
+  bits 10, 18, 20, 27 have no documented meaning. [V]
+- Item format (10 bits): a classic/expansion marker (0 = classic item); 101 on every Median XL sample. [V, S]
+- Realm bit: when 1, 96 bits follow (two u32 realm values and an unused u32); single player always writes 0.
+  On a compact item this bit is the last field (after a quest-difficulty field for quest items that have one). [V]
+- Ear (flag 16): the item code is replaced by class (3 bits), level (7 bits) and a name of 7-bit characters
+  ended by 0. [V]
+- Runeword field: one 16-bit value naming the runeword; the high nibble is part of it. [V]
+- The 32-bit item "id" is the item's random seed. [V]
+- Gold: inventory limit 10 000 × level, stash limit 50 000 × (level/10 + 1) up to level 30 and 50 000 ×
+  (level/2 + 1) above; vanilla resets an over-limit value to 0 on load. [V]
+- Values beyond a stat's save width are saturated at save time (character stats and item stats). [V; S: current
+  life at the 21-bit maximum]
