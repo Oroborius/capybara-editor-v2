@@ -214,8 +214,12 @@ def class_names(data):
 def class_skills(data, cls):
     """The class's skill ids in the save-file order: skills.bin row order (u32 at 12 is the class).
     The skills section of the .d2s ('if') holds one byte per one of these skills, in this order."""
-    return [i for i, r in enumerate(data._rows('skills'))
-            if struct.unpack_from('<I', r, 12)[0] == cls]
+    cache = data.__dict__.setdefault('_capy_class_skills', {})
+    hit = cache.get(cls)
+    if hit is None:                  # skills.bin is read from disk by _rows: once per class, not per call
+        hit = cache[cls] = tuple(i for i, r in enumerate(data._rows('skills'))
+                                 if struct.unpack_from('<I', r, 12)[0] == cls)
+    return list(hit)
 
 
 def class_skill_count(data, cls):
