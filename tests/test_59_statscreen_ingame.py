@@ -153,4 +153,26 @@ def big_numbers_are_drawn_with_commas():
                        ('850-1781', '850-1781'), ('150 / 400', '150 / 400'), ('-1200', '-1,200'), ('0%', '0%')):
         T.eq(SS.grouped(text), want, text)
 
+@T.test
+def damage_boxes_match_the_game():
+    """Page 1 Damage of test-druid as the game shows it (screenshots of 2026-11-19): Raid 850-1781 and Earth Talons
+    1300-2724 on the two buttons as saved; plain Attack 1089-2226 (Attack 53,338) with Attack on the left button.
+    Ethereal Dirk 18-20 -> 22-25 (+25 %), x 320 % -> 70-80, + 12 max: the in-game tooltip's 70-92."""
+    import struct
+    E = T.engine()
+    SS, ch, tot, page = _owlie(E)
+    T.eq(SS.mouse_skill(ch, 'left'), 350, 'Raid on the left button')
+    T.eq(SS.mouse_skill(ch, 'right'), 1295, 'Earth Talons on the right button')
+    d = page.weapon_damage()
+    T.eq((d['base'], d['eth']), ((22, 25), True), 'ethereal Dirk base +25 %')
+    T.eq((d['base'][0] * 320 // 100, d['base'][1] * 320 // 100 + 12), (70, 92), "the dagger tooltip's 70-92")
+    T.eq(d['phys'], (249, 671), 'physical part of Attack')
+    T.eq(d['ele'], (840, 1555), 'fire + lightning + cold + poison (x frames / 256)')
+    T.eq(page.derived('damage_1')[0], '850-1781', 'Raid')
+    T.eq(page.derived('damage_2')[0], '1300-2724', 'Earth Talons')
+    struct.pack_into('<I', ch.head, 0x78, 0)
+    T.eq(page.derived('damage_1')[0], '1089-2226', 'Attack')
+    T.eq(page.derived('attack_rating_1')[0], '53338', 'Attack Rating, Attack')
+
+
 T.main(globals())

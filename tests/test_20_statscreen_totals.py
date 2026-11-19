@@ -184,12 +184,20 @@ def weapon_damage_of_the_sample_characters():
         for s in mxl_tooltip.all_stats(it, E.data):
             if s.get('id') in own and isinstance(s.get('value'), int):
                 own[s['id']] += s['value']
+        if it.get('ethereal'):
+            # the collector's tooltip leaves ethereal out; the game gives +25 % base (in game: Dirk 18-20 -> 70-92 at
+            # +220 % with +12 max), so the expected weapon part is rebuilt from the +25 % base here
+            b = base.damage['two_hand']
+            hand = (hand[0], b[0] * SS.ETH_PCT // 100 * (100 + own[17]) // 100 + own[23],
+                    b[1] * SS.ETH_PCT // 100 * (100 + own[17]) // 100 + own[24])
         lo = hand[1] + SS.total_of(tot, 23) - own[23]
         hi = hand[2] + SS.total_of(tot, 24) - own[24]
         strength = (SS.char_stat(ch, 0) + SS.total_of(tot, 0)) * (100 + SS.total_of(tot, 359)) // 100
         pct = SS.total_of(tot, 25) + 16 * strength // 100
         d = SS.weapon_damage(ch, E.data, tot, strength, 0)
-        T.eq((d['min'], d['max']), (lo * (100 + pct) // 100, hi * (100 + pct) // 100), f'sample {which}: damage')
+        T.eq(d['phys'], (lo * (100 + pct) // 100, hi * (100 + pct) // 100), f'sample {which}: physical damage')
+        ele = SS.elemental_damage(tot)
+        T.eq((d['min'], d['max']), (d['phys'][0] + ele[0], d['phys'][1] + ele[1]), f'sample {which}: + elemental')
         T.eq(d['ed'][1], own[17], f'sample {which}: enhanced damage of weapon + sockets')
         T.eq((d['min'], d['max']) > (0, 0) and d['name'] is not None, True, f'sample {which}: armed, not a dash')
         checked += 1
@@ -447,8 +455,8 @@ def page1_boxes_use_the_skill_on_each_mouse_button():
     E = T.engine()
     import struct
     import mxl_statscreen as SS
-    T.eq(SS.skill_attack(E.data, 350, 20), (90, (8, 8), 105), 'Raid at level 20')
-    T.eq(SS.skill_attack(E.data, 1295, 20), (128, (0, 0), 0), 'Earth Talons at level 20')
+    T.eq(SS.skill_attack(E.data, 350, 20), (90, (8, 8), 105, (0, 0)), 'Raid at level 20')
+    T.eq(SS.skill_attack(E.data, 1295, 20), (128, (0, 0), 0, (0, 0)), 'Earth Talons at level 20 (no Charged Talons)')
     T.eq(SS.skill_attack(E.data, 0, 20), None, 'no skill')
     ch = _Char({})
     ch.cls, ch.level, ch.stats = 5, 81, []
@@ -462,8 +470,9 @@ def page1_boxes_use_the_skill_on_each_mouse_button():
     T.eq(SS.skill_level(ch, E.data, _totals({127: 2}), 1773), 0, 'no hard points: +all skills do not count')
     tot2 = _totals({21: 219, 22: 638, 127: 2, 2: 500})        # 500 dexterity: a positive attack rating
     page = _page(E, ch, tot2)
-    T.eq(page.derived('damage_1')[0], f'{220 * 90 // 128}-{640 * 90 // 128}', 'Raid: 70 %, its own 8-8 not added')
-    T.eq(page.derived('damage_2')[0], '220-640', 'Earth Talons: the weapon damage')
+    # unarmed 1-2 + 219-638 = 220-640 before the %, no % here: a weapon skill adds 100 % (x 2), Raid x 90/128 + 8
+    T.eq(page.derived('damage_1')[0], f'{220 * 200 * 90 // 12800 + 8}-{640 * 200 * 90 // 12800 + 8}', 'Raid')
+    T.eq(page.derived('damage_2')[0], '440-1280', 'Earth Talons: x 2, nothing of its own')
     ar, _flat, pct = page.attack_rating()
     T.eq(pct, 0, 'no item attack rating %')
     T.eq(page.derived('attack_rating_2')[0], str(ar), 'Earth Talons: no attack rating bonus')

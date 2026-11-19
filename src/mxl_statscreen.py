@@ -286,7 +286,17 @@ def char_totals(ch, data):
      'n': {stat id: number of item stats summed}, 'defense': defense of the armour pieces,
      'items' / 'charms' / 'set_pieces': counts, 'error': str or None}."""
     out = {'stats': {}, 'by': {k: {} for k in SOURCES}, 'n': {}, 'defense': 0, 'items': 0, 'charms': 0,
-           'set_pieces': 0, 'set_skipped': 0, 'error': None}
+           'set_pieces': 0, 'set_skipped': 0, 'error': None, 'per_item': []}
+    plmap = per_level_map(data)
+
+    def keep_levels(src, stats):
+        """The per-level stats of one item: the game rounds value x level >> shift item by item."""
+        mine = {}
+        for st in stats:
+            if st.get('id') in plmap and isinstance(st.get('value'), int):
+                mine[st['id']] = mine.get(st['id'], 0) + st['value']
+        if mine:
+            out['per_item'].append((src, mine))
 
     def add(src, s, scale=1):
         sid, val = s.get('id'), s.get('value')
@@ -316,7 +326,9 @@ def char_totals(ch, data):
             out['items'] += 1
             ed = flat = 0
             mine = []
-            for s in mxl_tooltip.all_stats(it, data):
+            its = mxl_tooltip.all_stats(it, data)
+            keep_levels('equip', its)
+            for s in its:
                 val = s.get('value')
                 if isinstance(val, int):
                     if s.get('id') == 16:
@@ -348,7 +360,9 @@ def char_totals(ch, data):
                 continue
             if charm is not None and charm in data.type_ancestors(kind):
                 out['charms'] += 1
-                for s in mxl_tooltip.all_stats(e.it, data):
+                its = mxl_tooltip.all_stats(e.it, data)
+                keep_levels('charms', its)
+                for s in its:
                     add('charms', s)
     except Exception as e:                       # an item the host cannot describe: no sums rather than wrong ones
         out['error'] = str(e)
@@ -443,8 +457,16 @@ def per_level_map(data):
 def item_sum(tot, data, sid, level, param=None, src=None):
     """total_of + the "per character level" stats that feed this stat, at this level."""
     v = total_of(tot, sid, param, src)
+    per_item = tot.get('per_item')
     for pl, (targets, shift) in per_level_map(data).items():
         if sid in targets:
+            if per_item is not None and src in (None, 'equip', 'charms'):
+                # item by item, as the game rounds (test-druid: 16, 9, 9, 8 x 81 >> 5 = 104, not 42 x 81 >> 5 = 106)
+                v += sum(m[pl] * level >> shift for s, m in per_item if pl in m and src in (None, s))
+                if src is None:
+                    raw = total_of(tot, pl, None, 'sets')
+                    v += raw * level >> shift if raw else 0
+                continue
             raw = total_of(tot, pl, None, src)
             if raw:
                 v += raw * level >> shift
@@ -464,6 +486,8 @@ def char_stat(ch, sid, param=None):
     return v >> 8 if sid in FIXED else v
 
 
+ETH_PCT = 125                         # ethereal weapon base damage, % (Median XL; the base game has 150)
+SKILL_PHYS_PCT = 100                  # physical damage % a weapon skill adds over Attack (in game, see skill_damage)
 UNARMED = (1, 2)                      # damage without a weapon (the base game's rule; not seen on a screenshot)
 
 
@@ -508,6 +532,7 @@ def weapon_damage(ch, data, tot, strength, dexterity, level=None):
     if tot.get('error'):
         return None
     w = active_weapon(ch, data)
+    eth = False
     if w is None:
         (blo, bhi), ed, pair, bonus, name = UNARMED, (0, 0), (21, 22), (0, 0), None
     else:
@@ -527,6 +552,8 @@ def weapon_damage(ch, data, tot, strength, dexterity, level=None):
         ed = (emin, emax)
         bonus = tuple(getattr(b, 'dmg_bonus', None) or (0, 0))
         name = b.name
+        if it.get('ethereal'):              # Median XL: +25 % base damage (in game: Dirk 18-20 -> 22-25)
+            blo, bhi, eth = blo * ETH_PCT // 100, bhi * ETH_PCT // 100, True
     if level is None:
         level = getattr(ch, 'level', 1) or 1
     flat = (item_sum(tot, data, pair[0], level), item_sum(tot, data, pair[1], level))
@@ -536,10 +563,31 @@ def weapon_damage(ch, data, tot, strength, dexterity, level=None):
     pct = (wpd + bonus[0] * strength // 100 + bonus[1] * dexterity // 100
            + (sum(total_of(tot, s) for s in STR_BONUS) * strength >> 8)
            + (sum(total_of(tot, s) for s in DEX_BONUS) * dexterity >> 8))
-    lo, hi = max(lo * (100 + pct) // 100, 1), hi * (100 + pct) // 100
+    pre = (lo, hi)
+    ele = elemental_damage(tot)
+    plo, phi = max(lo * (100 + pct) // 100, 1), hi * (100 + pct) // 100
+    lo, hi = plo + ele[0], phi + ele[1]
     if hi <= lo:
         hi = lo + 1
-    return {'min': lo, 'max': hi, 'base': (blo, bhi), 'ed': ed, 'flat': flat, 'pct': pct, 'wpd': wpd, 'name': name}
+    return {'min': lo, 'max': hi, 'base': (blo, bhi), 'ed': ed, 'flat': flat, 'pct': pct, 'wpd': wpd, 'name': name,
+            'pre': pre, 'phys': (plo, phi), 'ele': ele, 'eth': eth}
+
+
+ELEMENTS = ((48, 49), (50, 51), (52, 53), (54, 55))     # fire, lightning, magic, cold: min / max damage
+
+
+def elemental_damage(tot):
+    """(min, max) of the items' elemental damage as page 1's Damage boxes add it: fire + lightning + magic + cold +
+    poison over its whole length (raw x frames / 256, the item tooltip's number - page 2 shows half of it).
+    In game (test-druid, Attack): 130-260 + 330-660 + 230-385 + 150-250 = 840-1555 on top of the physical 249-671."""
+    lo = sum(total_of(tot, a) for a, _b in ELEMENTS)
+    hi = sum(total_of(tot, b) for _a, b in ELEMENTS)
+    plo, phi, length = (total_of(tot, s) for s in POISON)
+    if plo or phi:
+        frames = length // max((tot.get('n') or {}).get(59, 0), 1)
+        lo += plo * frames // 256
+        hi += phi * frames // 256
+    return lo, hi
 
 
 def mouse_skill(ch, side):
@@ -566,10 +614,12 @@ def skill_level(ch, data, tot, sid):
         + total_of(tot, 107, sid) + osk
 
 
-def skill_attack(data, sid, lvl):
-    """(source weapon damage in 128ths, (skill min, max physical damage), attack rating %) of a skill at a level,
-    from skills.bin (srcdam, mindam / maxdam with the per-level steps and damage formula, tohit + its formula).
-    None for no skill or a skill that uses no weapon damage (srcdam 0)."""
+def skill_attack(data, sid, lvl, levels=None, bonus=0, ulvl=1):
+    """(source weapon damage in 128ths, (skill min, max physical damage), attack rating %, (min, max elemental
+    damage)) of a skill at a level, from skills.bin (srcdam, mindam / maxdam, tohit, emin / emax with their per-level
+    steps and formulas; levels / bonus / ulvl: the character's hard points, + all skills and level, for the formulas
+    that read other skills - Earth Talons' lightning comes from Charged Talons). None for no skill or a skill that
+    uses no weapon damage (srcdam 0)."""
     if not sid:
         return None
     import mxl_skilldesc as SD
@@ -580,24 +630,39 @@ def skill_attack(data, sid, lvl):
         return None
     if not src:
         return None
-    c = SD.Calc(t, {sid: lvl}, 1)
+    lv = dict(levels or {})
+    lv.setdefault(sid, lvl)
+    c = SD.Calc(t, lv, ulvl, bonus=bonus)
     c._self, c._blvl = sid, None
-    try:
-        phys = (c.phys(sid, lvl), c.phys(sid, lvl, True)) if lvl > 0 else (0, 0)
-        toht = c.code('toht', sid, lvl) if lvl > 0 else 0
-    except Exception:
-        phys, toht = (0, 0), 0
-    return src, phys, int(toht or 0)
+    phys, toht, elem = (0, 0), 0, (0, 0)
+    if lvl > 0:
+        try:
+            phys = (c.phys(sid, lvl), c.phys(sid, lvl, True))
+            toht = c.code('toht', sid, lvl)
+        except Exception:
+            pass
+        try:
+            elem = (max(c.elem(sid, lvl), 0), max(c.elem(sid, lvl, True), 0))
+        except Exception:
+            pass
+    return src, phys, int(toht or 0), elem
 
 
 def skill_damage(dmg, sk):
-    """Weapon damage (weapon_damage's dict) as the stat screen shows it for a skill: x srcdam / 128. The skill's own
-    physical damage is not added: in game Raid's box is exactly 90/128 of Earth Talons' on both min and max
-    (850-1781 vs 1300-2724, test-druid), so nothing is added per skill. dmg unchanged when sk is None."""
+    """Page 1's Damage box for the skill on a mouse button (weapon_damage's dict; sk from skill_attack). Matched
+    exactly in game (test-druid, 4 numbers): a weapon skill adds SKILL_PHYS_PCT % to the physical multiplier, takes
+    srcdam / 128 of the physical and of the items' elemental damage (each rounded down on its own), then adds its
+    own physical and elemental damage:
+      Attack       249-671 + 840-1555                                 = 1089-2226
+      Earth Talons 110-296 x 327 % + 840-1555 + 101-202 (lightning)   = 1300-2724
+      Raid         110-296 x 327 % x 90/128 + 840-1555 x 90/128 + 8-8 = 850-1781
+    Where the +100 % comes from is not known (no skill row or tooltip shows it). dmg unchanged when sk is None."""
     if dmg is None or sk is None:
         return dmg
-    src = sk[0]
-    lo, hi = dmg['min'] * src // 128, dmg['max'] * src // 128
+    src, (slo, shi), _toht, (elo, ehi) = sk
+    m = 100 + dmg['pct'] + SKILL_PHYS_PCT
+    lo = dmg['pre'][0] * m * src // 12800 + dmg['ele'][0] * src // 128 + slo + elo
+    hi = dmg['pre'][1] * m * src // 12800 + dmg['ele'][1] * src // 128 + shi + ehi
     return dict(dmg, min=max(lo, 1), max=max(hi, lo + 1), src=src)
 
 
@@ -1518,9 +1583,7 @@ class StatScreen:
             sid, lvl, sk = self.button_skill(key)
             shown = skill_damage(dmg, sk)
             return f"{shown['min']}-{shown['max']}", self.damage_tip(dmg) + '\n' + self.skill_note(sid, lvl, sk) \
-                + '\n' + T('ss.tip.dmg_forms', 'Not included: shapeshift forms, auras and passive skills (they can '
-                            'add a lot of "Weapon Physical Damage", e.g. Ferocity in Wereowl Form) and elemental '
-                            'damage of the skill.')
+                + '\n' + T('ss.tip.dmg_forms2', 'Not included: auras and buffs.')
         if key.startswith('attack_rating'):
             sid, lvl, sk = self.button_skill(key)
             ar, flat, pct = self.attack_rating(sk[2] if sk else 0)
@@ -1551,8 +1614,15 @@ class StatScreen:
         sid = mouse_skill(sim, 'left' if key.endswith('_1') else 'right')
         if not sid:
             return sid, 0, None
-        lvl = skill_level(sim, win.data, win.st_totals(), sid)
-        return sid, lvl, skill_attack(win.data, sid, lvl)
+        tot = win.st_totals()
+        lvl = skill_level(sim, win.data, tot, sid)
+        try:
+            hard = {k: v for k, v in sim.skill_levels().items() if v}
+        except Exception:
+            hard = {}
+        cls = win.data.skill_class.get(sid)
+        bonus = total_of(tot, 127) + (total_of(tot, 83, cls) if cls not in (None, 255) else 0)
+        return sid, lvl, skill_attack(win.data, sid, lvl, hard, bonus, getattr(sim, 'level', 1) or 1)
 
     def skill_note(self, sid, lvl, sk):
         if not sid:
@@ -1560,8 +1630,9 @@ class StatScreen:
         name = self.win._sk_name(sid)
         if sk is None:
             return T('ss.tip.dmg_noweap', '{skill} uses no weapon damage: the plain weapon damage is shown.', skill=name)
-        return T('ss.tip.dmg_sk2', '{skill} (level {lvl}): {pct} % weapon damage.',
-                 skill=name, lvl=lvl, pct=sk[0] * 100 // 128)
+        return T('ss.tip.dmg_sk3', '{skill} (level {lvl}): {pct} % weapon damage, +{sp} % physical damage of a '
+                 'weapon skill, + its own {lo}-{hi} physical and {elo}-{ehi} elemental damage.', skill=name, lvl=lvl,
+                 pct=sk[0] * 100 // 128, sp=SKILL_PHYS_PCT, lo=sk[1][0], hi=sk[1][1], elo=sk[3][0], ehi=sk[3][1])
 
     def ar_tip(self, flat, pct):
         return T('ss.tip.ar', 'Attack rating: 5 x dexterity - 35 + class bonus, + items {flat}, then {pct:+d} % from '
@@ -1573,10 +1644,13 @@ class StatScreen:
         return weapon_damage(sim, win.data, win.st_totals(), self.attr_total(0), self.attr_total(2), sim.level)
 
     def damage_tip(self, dmg):
-        return T('ss.tip.dmg', '{weapon}: base {lo}-{hi}, enhanced damage +{ed} %, +{flo} / +{fhi} damage from the '
-                 'equipped items, then {pct:+d} % (weapon physical damage, strength / dexterity bonus).',
+        return T('ss.tip.dmg2', '{weapon}: base {lo}-{hi}{eth}, enhanced damage +{ed} %, +{flo} / +{fhi} damage from '
+                 'the equipped items, then {pct:+d} % (weapon physical damage, strength / dexterity bonus) = physical '
+                 '{plo}-{phi}; + elemental damage of the items {elo}-{ehi}.',
                  weapon=dmg['name'] or T('ss.unarmed', 'Unarmed'), lo=dmg['base'][0], hi=dmg['base'][1],
-                 ed=dmg['ed'][1], flo=dmg['flat'][0], fhi=dmg['flat'][1], pct=dmg['pct'])
+                 eth=T('ss.tip.eth', ' (ethereal +25 %)') if dmg.get('eth') else '',
+                 ed=dmg['ed'][1], flo=dmg['flat'][0], fhi=dmg['flat'][1], pct=dmg['pct'],
+                 plo=dmg['phys'][0], phi=dmg['phys'][1], elo=dmg['ele'][0], ehi=dmg['ele'][1])
 
     # ------------------------------------------------------------------ the game's list pages (statscreen table)
     BASE_KEYS = {0: 'strength', 1: 'energy', 2: 'dexterity', 3: 'vitality', 7: 'life_max', 9: 'mana_max',
@@ -1591,7 +1665,7 @@ class StatScreen:
             dmg = self.weapon_damage()
             if dmg is None:
                 return None, tot['error'] or T('ss.tip.game', 'computed by the game'), None
-            return str(dmg['min' if sid == 21 else 'max']), self.damage_tip(dmg), None
+            return str(dmg['phys'][0 if sid == 21 else 1]), self.damage_tip(dmg), None
         if kind == T_STAT and sid in AR_ROW and not flags & F_BASE:
             # the Attack Rating row: the items' flat attack rating (stat 19) | the items' attack rating % (in game,
             # test-druid: "0 | 1,173%" while page 1 shows 60,671 / 53,338)
