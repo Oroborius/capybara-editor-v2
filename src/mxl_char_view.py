@@ -7,10 +7,15 @@ of the window restarts it). Decoding runs in a thread; Tk images are made on the
 import threading
 import time
 import tkinter as tk
+from collections import OrderedDict
 
 PAD = 6
 GROUND = '#0d0b08'          # the scene without a background
 TURN = (4, 0, 5, 1, 6, 2, 7, 3)  # the game's directions clockwise from the front (S, SW, W, NW, N, NE, E, SE)
+ZOOMS = (1, 2, 3)           # the scene's pixel scale (mouse wheel)
+ZOOM_SETTING = 'char_view_zoom'
+KEEP = 4                    # scenes kept (per act, size, centre): the last few only
+PAN_DELAY = 150             # ms without mouse motion before a dragged scene is rendered again
 
 
 class CharView:
@@ -30,6 +35,13 @@ class CharView:
         self._scene_mod = None      # mxl_scene, False when it cannot be imported (tried once)
         self._scene_key = None
         self._scene_busy = False
+        self._scenes = OrderedDict()   # (act, size, centre or None) -> scene with .centre (world): the last KEEP
+        self.zoom = _load_zoom()        # None: automatic (2 when the room is tall)
+        self.centre = None              # world pixel the scene is centred on; None: the default framing
+        self._drag = None               # (x, y of the last motion, centre when it started)
+        self._pan_job = None
+        self._scene_f = 0.0             # canvas pixels per scene pixel of the shown scene
+        self._scene_offset = (0, 0)     # canvas pixels the shown scene is moved by (a pan not rendered yet)
         self._bg_photo = None
         self._sprites = []          # [(canvas item, [Tk images], fps)]
         self.box = None             # split layout: (x, y, w, h) of the scene in the host frame
@@ -47,6 +59,15 @@ class CharView:
         scr.cv.bind('<Configure>', lambda e: self.place_later(), add='+')
         self.host.bind('<<ScenePlaced>>', lambda e: self.place_later(), add='+')
         self.cv.winfo_toplevel().bind('<Map>', lambda e: self.wake(), add='+')
+        self.cv.bind('<Map>', lambda e: self.place_later(), add='+')
+        # zoom (wheel), pan (drag the empty scene), reset (double click): the split layout's scene only
+        self.cv.bind('<Button-4>', lambda e: self.zoom_by(1, e), add='+')
+        self.cv.bind('<Button-5>', lambda e: self.zoom_by(-1, e), add='+')
+        self.cv.bind('<MouseWheel>', lambda e: self.zoom_by(1 if e.delta > 0 else -1, e), add='+')
+        self.cv.bind('<ButtonPress-1>', self._press, add='+')
+        self.cv.bind('<B1-Motion>', self._motion, add='+')
+        self.cv.bind('<ButtonRelease-1>', self._release, add='+')
+        self.cv.bind('<Double-Button-1>', self._double, add='+')
         self.load()
 
     # ---- data
@@ -128,11 +149,26 @@ class CharView:
         return save_act(getattr(self.win, 'ch', None))
 
     def _auto_scene(self, size):
-        """mxl_scene.scene(art, data_folder, act, size) in a thread when the module exists; else dark ground."""
-        if not self._scene_auto or self._scene_busy:
+        """mxl_scene.scene(art, data_folder, act, size, centre) in a thread when the module exists; else dark ground.
+        The last KEEP scenes are kept here (mxl_scene's own cache entry is dropped: a pan makes a new one each
+        time). Nothing is rendered while the canvas is hidden; the shown scene stays until the new one is ready."""
+        if not self._scene_auto:
             return
-        key = (self._act(), size)
+        key = (self._act(), tuple(size), self.centre)
         if key == self._scene_key:
+            return
+        hit = self._scenes.get(key)
+        if hit is not None:
+            self._scenes.move_to_end(key)
+            self._scene_key = key
+            self._show_scene(hit)
+            return
+        if self._scene_busy:
+            return                                   # placed again when the running one is done
+        try:
+            if not self.cv.winfo_viewable():
+                return                               # hidden: no rendering (<Map> places again)
+        except tk.TclError:
             return
         if self._scene_mod is None:
             try:
@@ -149,14 +185,20 @@ class CharView:
         art, folder = self.art, self.win.data.folder
 
         def work():
+            act, sz, centre = key
             try:
-                sc = mxl_scene.scene(art, folder, key[0], size)
+                if centre is None:
+                    centre = default_centre(art, folder, act, sz)
+                sc = mxl_scene.scene(art, folder, act, sz, centre)
+                _forget(mxl_scene, art, folder, act, sz, centre)
                 if sc is not None:
+                    sprites = sc.sprites
                     try:                             # the town's NPCs (Akara, Kashya...) as extra sprites
                         import mxl_npcs
-                        sc = _WithNpcs(sc, mxl_npcs.add_npcs(sc, art, folder, key[0]))
+                        sprites = mxl_npcs.add_npcs(sc, art, folder, act, centre)
                     except Exception as e:
                         print('town NPCs left out:', e)
+                    sc = _WithNpcs(sc, sprites, centre)
                 out['scene'] = sc
             except Exception as e:
                 print('scene disabled:', e)
@@ -172,17 +214,94 @@ class CharView:
                     pass
                 return
             self._scene_busy = False
-            if self._scene_auto:
-                self.scene = out['scene']
-                self._bg_photo = None
-                for item, _ph, _fps in self._sprites:
-                    self.cv.delete(item)
-                self._sprites = []
-                self.place()
+            self._scenes[key] = out['scene']
+            while len(self._scenes) > KEEP:
+                self._scenes.popitem(last=False)
+            if self._scene_auto and key == self._scene_key:
+                self._show_scene(out['scene'])
+            else:
+                self.place()                         # asked for another one meanwhile
         try:
             self.cv.after(50, poll)
         except tk.TclError:
             self._scene_busy = False
+
+    def _show_scene(self, sc):
+        self.scene = sc
+        self._bg_photo = None
+        for item, _ph, _fps in self._sprites:
+            self.cv.delete(item)
+        self._sprites = []
+        self.place()
+
+    # ---- zoom and pan (the split layout's scene)
+    def _zoom_now(self, room_h):
+        return self.zoom if self.zoom in ZOOMS else (2 if room_h >= 560 else 1)
+
+    def zoom_by(self, step, e=None):
+        if self.box is None:
+            return
+        z = self._zoom_now(self.box[3])
+        nz = min(max(z + step, ZOOMS[0]), ZOOMS[-1])
+        if nz != z:
+            self.zoom = nz
+            _save_zoom(nz)
+            self.place()
+
+    def _on_char(self, x, y):
+        bb = self.cv.bbox(self._img)
+        return bool(bb) and self.cv.itemcget(self._img, 'image') != '' and bb[0] <= x <= bb[2] and bb[1] <= y <= bb[3]
+
+    def _shown_centre(self):
+        c = getattr(self.scene, 'centre', None)
+        return self.centre or c
+
+    def _press(self, e):
+        self._drag = None
+        if self.box is None or self._on_char(e.x, e.y) or self._shown_centre() is None:
+            return                                   # the character: its own click (turn)
+        self._drag = (e.x, e.y, self._shown_centre())
+
+    def _motion(self, e):
+        if self._drag is None:
+            return
+        x0, y0, c0 = self._drag
+        f = self._scene_f or 1.0
+        self.centre = (int(round(c0[0] - (e.x - x0) / f)), int(round(c0[1] - (e.y - y0) / f)))
+        self._apply_offset()
+        if self._pan_job is not None:
+            self.cv.after_cancel(self._pan_job)
+        self._pan_job = self.cv.after(PAN_DELAY, self._pan_done)
+
+    def _release(self, e):
+        if self._drag is not None:
+            self._motion(e)
+            self._drag = None
+
+    def _pan_done(self):
+        self._pan_job = None
+        self.place()
+
+    def _double(self, e):
+        if self.box is None or self._on_char(e.x, e.y):
+            return
+        self._drag = None
+        self.centre = None
+        self.zoom = None
+        _save_zoom(None)
+        self.place()
+
+    def _apply_offset(self):
+        """Moves the shown background + sprites to where the wanted centre puts them (until it is rendered)."""
+        c, sc_c = self.centre, getattr(self.scene, 'centre', None)
+        f = self._scene_f or 1.0
+        off = (0, 0) if c is None or sc_c is None else (round((sc_c[0] - c[0]) * f), round((sc_c[1] - c[1]) * f))
+        dx, dy = off[0] - self._scene_offset[0], off[1] - self._scene_offset[1]
+        if dx or dy:
+            self.cv.move(self._bg, dx, dy)
+            for item, _ph, _fps in self._sprites:
+                self.cv.move(item, dx, dy)
+        self._scene_offset = off
 
     def _draw_scene(self, w, h):
         """The background and its sprites for a room of w x h: the base scaled to cover it, centred."""
@@ -195,7 +314,8 @@ class CharView:
         f = max(w / base.width, h / base.height)
         bw, bh = max(1, round(base.width * f)), max(1, round(base.height * f))
         ox, oy = (w - bw) // 2, (h - bh) // 2
-        if self._bg_photo is None or self._bg_photo[0] != (w, h):
+        fresh = self._bg_photo is None or self._bg_photo[0] != (w, h)
+        if fresh:
             img = base if (bw, bh) == base.size else base.resize((bw, bh), Image.NEAREST if f >= 1 else Image.LANCZOS)
             self._bg_photo = ((w, h), ImageTk.PhotoImage(img, master=self.cv))
             for item, _ph, _fps in self._sprites:
@@ -212,7 +332,13 @@ class CharView:
                 self._sprites.append((item, phs, float(sp.get('fps') or 10)))
             self.cv.tag_raise(self._img)
         self.cv.coords(self._bg, ox, oy)
+        for item, _ph, _fps in self._sprites:            # sprites back at their place: the offset is applied anew
+            if not fresh and self._scene_offset != (0, 0):
+                self.cv.move(item, -self._scene_offset[0], -self._scene_offset[1])
+        self._scene_offset = (0, 0)
         self.cv.itemconfigure(self._bg, image=self._bg_photo[1], state='normal')
+        self._scene_f = f
+        self._apply_offset()
         return f, ox, oy
 
     def _step_sprites(self):
@@ -299,7 +425,7 @@ class CharView:
             room = (int(scr.cv.cget('width')) - 2 * round(512 * scr.k), h)   # both pages at their edges
         except (tk.TclError, ValueError):
             room = (w, h)
-        zoom = 2 if room[1] >= 560 else 1           # the town and the character share one pixel scale
+        zoom = self._zoom_now(room[1])              # the town and the character share one pixel scale
         self._auto_scene((max(1, room[0] // zoom), max(1, room[1] // zoom)))
         f, ox, oy = self._draw_scene(w, h)
         for item, _ph, _fps in self._sprites:
@@ -356,12 +482,108 @@ class CharView:
 
 
 class _WithNpcs:
-    """A scene with the NPCs added to its sprites (the cached Scene itself stays as it is)."""
-    def __init__(self, scene, sprites):
-        self._scene, self.sprites = scene, sprites
+    """A scene with the NPCs added to its sprites (the cached Scene itself stays as it is) and the world pixel it is
+    centred on (.centre)."""
+    def __init__(self, scene, sprites, centre=None):
+        self._scene, self.sprites, self.centre = scene, sprites, centre
 
     def __getattr__(self, name):
         return getattr(self._scene, name)
+
+
+_CENTRES = {}
+
+
+def _box_fits(box, size):
+    return box[2] - box[0] <= size[0] and box[3] - box[1] <= size[1]
+
+
+def _union(a, b):
+    return min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3])
+
+
+def _inside(box, c, size):
+    W, H = size
+    return c[0] - W / 2 <= box[0] and box[2] <= c[0] + W / 2 and c[1] - H * 3 / 5 <= box[1] and box[3] <= c[1] + H * 2 / 5
+
+
+def default_centre(art, folder, act, size):
+    """The world pixel to centre the town on so that the waypoint and the nearest town NPCs (up to 3) fit a window of
+    `size` (mxl_scene puts the centre 3/5 down the window); when not even one NPC fits beside the waypoint, the
+    point nearest the waypoint that still shows the nearest NPC. None (mxl_scene's waypoint default) when unknown."""
+    k = (getattr(art, 'game_dir', None), folder, act, tuple(size))
+    if k in _CENTRES:
+        return _CENTRES[k]
+    c = None
+    try:
+        import mxl_scene as S
+        import mxl_npcs as N
+        ds1s, _dt1 = S.town_files(folder, act)
+        m = S.DS1(S.R.read(art, ds1s[0]))
+        pre, rows = S._objects(folder)
+        wp = None
+        for typ, oid, x, y in m.objects:
+            i = (act - 1) * 150 + oid
+            if typ == 2 and i < len(pre) and pre[i] < len(rows) and S._s(rows[pre[i]][:64]).lower() == 'waypoint':
+                wp = S._sub_px(x, y)
+                break
+        wc = (wp[0] + 40, wp[1] + 24) if wp else S._sub_px(m.w * 5 // 2, m.h * 5 // 2)   # mxl_scene's default
+        box = (wc[0] - 60, wc[1] - 110, wc[0] + 60, wc[1] + 40)      # the waypoint and the character on it
+        npcs = sorted((p for _n, _t, _r, p in N.town_presets(art, folder, act)),
+                      key=lambda p: (p[0] - wc[0]) ** 2 + (p[1] - wc[1]) ** 2)[:3]
+        boxes = [(p[0] - 40, p[1] - 110, p[0] + 40, p[1] + 16) for p in npcs]   # a townsperson stands on its feet
+        got = box
+        for nb in boxes:
+            u = _union(got, nb)
+            if _box_fits(u, size):
+                got = u
+        W, H = size
+        if got is not box or not boxes:
+            c = ((got[0] + got[2]) // 2, (got[1] + got[3]) // 2 + H // 10)
+        else:                                        # too far: towards the nearest NPC until it is in the window
+            nb = boxes[0]
+            nc = ((nb[0] + nb[2]) // 2, (nb[1] + nb[3]) // 2 + H // 10)
+            c = nc
+            for i in range(21):
+                t = i / 20
+                p = (round(wc[0] + (nc[0] - wc[0]) * t), round(wc[1] + (nc[1] - wc[1]) * t))
+                if _inside(nb, p, size):
+                    c = p
+                    break
+        c = (int(c[0]), int(c[1]))
+    except Exception as e:
+        print('scene framing: the waypoint default', e)
+        c = None
+    if len(_CENTRES) > 32:
+        _CENTRES.clear()
+    _CENTRES[k] = c
+    return c
+
+
+def _forget(mxl_scene, art, folder, act, size, centre):
+    """Drops the scene from mxl_scene's unbounded cache: CharView keeps the last few itself."""
+    try:
+        with mxl_scene._LOCK:
+            mxl_scene._CACHE.pop((getattr(art, 'game_dir', None), folder, act, tuple(size), centre), None)
+    except Exception:
+        pass
+
+
+def _load_zoom():
+    try:
+        import settings
+        v = settings.get(ZOOM_SETTING)
+        return v if v in ZOOMS else None
+    except Exception:
+        return None
+
+
+def _save_zoom(z):
+    try:
+        import settings
+        settings.put(ZOOM_SETTING, z)
+    except Exception:
+        pass
 
 
 def save_act(ch):
