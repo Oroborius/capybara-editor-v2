@@ -28,16 +28,25 @@ mxl_char.copy_character writes its new file directly: it is checked right after 
 "Compare with backup..." (the "More" menu of the top bar) shows the same diff between a file and one of the
 backups next to it (*.bak-*), and can put the backup back ("Restore this backup": the current file is first
 kept as a new backup; the confirmation is asked in the window itself).
+
+Backups (F10 of docs/review/save-safety.md): install() also replaces the collector's mxl_save.make_backup, which
+kept ONE <file>.bak-<date>-<time> per file (each new backup deleted the older ones). The replacement makes the
+same backup (same name, -2, -3... when the name exists) and keeps the newest N of that file (setting
+"backups_keep" of settings.json, default 5, at least 1); only that file's dated backups are counted and removed
+(<file>.bak-savecheck-*, .bak-before-restore-* and other files' backups are never touched).
 """
 import functools
 import glob
 import hashlib
 import os
+import re
 import shutil
 import sys
 import time
 
 SETTING = 'savecheck'
+KEEP_SETTING = 'backups_keep'
+KEEP_DEFAULT = 5
 MODES = ('strict', 'warn', 'off')
 EXTRA_TAG = 'savecheck'
 TEST_HOOK = None            # tests: function(path, content) -> content, applied before the check AND the write
@@ -281,6 +290,57 @@ def _warn_user(text):
         pass
 
 
+def backups_keep():
+    """How many dated backups per file make_backup keeps (settings.json "backups_keep", default 5, at least 1)."""
+    try:
+        import settings
+        v = settings.get(KEEP_SETTING)
+    except Exception:
+        v = None
+    if v is None or v == '':
+        return KEEP_DEFAULT
+    try:
+        return max(1, int(v))
+    except (TypeError, ValueError):
+        return KEEP_DEFAULT
+
+
+def _dated(path):
+    """The collector-style backups of path, oldest first: [(key, file)], key = (date-time, n)."""
+    pat = re.compile(re.escape(os.path.basename(path)) + r'\.bak-(\d{8})-(\d{6})(?:-(\d+))?$')
+    out = []
+    for f in glob.glob(glob.escape(path) + '.bak-*'):
+        m = pat.fullmatch(os.path.basename(f))
+        if m and os.path.isfile(f):
+            out.append(((m.group(1) + m.group(2), int(m.group(3) or 1)), f))
+    out.sort()
+    return out
+
+
+def make_backup(path):
+    """The collector's make_backup (same name: <path>.bak-<date>-<time>[-n]; returns it), keeping the newest
+    backups_keep() of this file instead of one. The order is the date-time in the name (mtime is the copied
+    file's own, copy2 keeps it)."""
+    stamp = time.strftime('%Y%m%d-%H%M%S')
+    bak = f'{path}.bak-{stamp}'
+    n = 1
+    while os.path.exists(bak):
+        n += 1
+        bak = f'{path}.bak-{stamp}-{n}'
+    shutil.copy2(path, bak)
+    keep = backups_keep()
+    old = [f for _k, f in _dated(path) if f != bak]
+    for f in old[:max(0, len(old) - (keep - 1))]:
+        try:
+            os.remove(f)
+        except OSError as e:
+            _log().warning('backup: old backup %s not removed: %s', os.path.basename(f), e)
+    return bak
+
+
+make_backup._capy_keep = True
+
+
 def _edit_error():
     try:
         import mxl_save
@@ -439,6 +499,14 @@ def _rebind(old, new, name):
 def install():
     """Called at the end of mxl_creator_gui.run(), after every module that wraps or binds the writers."""
     log = _log()
+    try:
+        import mxl_save
+        if not getattr(mxl_save.make_backup, '_capy_keep', False):
+            current = mxl_save.make_backup
+            mxl_save.make_backup = make_backup        # host commit_file looks it up at call time (global)
+            _rebind(current, make_backup, 'make_backup')
+    except Exception as e:
+        log.error('backup rotation not installed: %s: %s', type(e).__name__, e)
     try:
         lib()
         import mxl_save
