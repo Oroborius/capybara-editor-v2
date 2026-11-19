@@ -1475,8 +1475,11 @@ class Creator:
             for m in ms:
                 others_lo = tot_lo - m.min
                 others_hi = tot_hi - m.max
-                nmax = min(m.max, hi_s - others_lo)
-                nmin = max(m.min, lo_s - others_hi)
+                lo_a, hi_a = lo_s - others_hi, hi_s - others_lo
+                # both ends into [lo_a, hi_a]: a fixed value below the range (Athame's Light Radius -6 of -5..250,
+                # read since all 13 rune slots are) becomes the nearest storable value, not left as it was
+                nmin = min(max(m.min, lo_a), hi_a)
+                nmax = max(min(m.max, hi_a), lo_a)
                 nmin = min(nmin, nmax)
                 if (nmin, nmax) == (m.min, m.max):
                     continue
