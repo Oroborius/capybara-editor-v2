@@ -20,7 +20,10 @@ Formats (community documentation: Paul Siramy's DS1 / DT1 notes, OpenDiablo2's d
   wall tile hangs from the bottom of its cell.
 Tables: lvlprest.bin (432-byte rows: level id @4, six 60-byte DS1 names @68), lvltypes.bin (32 x 60-byte DT1 names),
 objpreset.bin (u32 objects.bin row per act * 150 + preset id), objects.bin (448-byte rows).
-Not done: lighting, the light radius, tile animation (water), object overlays / missiles, NPCs and monsters
+Lighting: AMBIENT darkness, the character's light radius around .anchor, warm pools around objects with a
+Lit0-7 radius (objects.txt), baked into .base and the sprite frames (.light = the light map). Blended (Trans) COF
+layers glow (opacity = brightness).
+Not done: flicker, tile animation (water), object overlays / missiles, NPCs and monsters
 (DS1 type 1), the wilderness around Act 1's camp (the game generates it)."""
 import os
 import struct
@@ -264,9 +267,9 @@ def object_anim(art, pal, row):
         imgs = {}
         for t, (frs, transp) in layers.items():
             ims = [f.image(pal) for f in frs]
-            if transp:                                            # blended layers (glow): half opacity
+            if transp:                                            # blended layers (glow): additive-like
                 for im in ims:
-                    im.putalpha(im.getchannel('A').point(lambda a: a // 2))
+                    _glow(im)
             imgs[t] = ims
         frames = []
         for f in range(nfr):
@@ -283,12 +286,71 @@ def object_anim(art, pal, row):
     return None
 
 
+def _glow(im):
+    """A blended (Trans / additive) layer, in place: opacity = brightness, so black adds nothing and the bright
+    flame core covers fully - alpha compositing then acts like the game's additive / screen blend."""
+    from PIL import Image
+    a = im.getchannel('A')
+    lum = im.convert('RGB').point(lambda v: min(255, v * 3 // 2)).convert('L')
+    im.putalpha(Image.composite(lum, Image.new('L', im.size, 0), a))
+
+
+def object_light(row):
+    """Light radius (objects.txt Lit0-7, the largest; 0 = none) of an objects.bin row."""
+    return max(row[0x110:0x118])
+
+
+AMBIENT = 96            # darkness of the town away from any light (0 black .. 255 unlit)
+CHAR_LIGHT = 0.42       # the character's light radius, as a share of the window width
+
+
+def _pool(rx, strength=255):
+    """RGBA white with a soft round falloff, rx wide, flattened to the isometric ground (half as high)."""
+    from PIL import Image
+    g = Image.radial_gradient('L').point(lambda v: max(0, 255 - v * 2) * strength // 255 if v < 128 else 0)
+    w = max(2, int(rx * 2))
+    h = max(2, w // 2)
+    im = Image.new('RGBA', (w, h), (255, 255, 255, 0))
+    im.putalpha(g.resize((w, h)))
+    return im
+
+
+def light_map(size, anchor, lights):
+    """'L' light image: AMBIENT away from lights, up to 255 in the character's light (around anchor) and in the
+    pools of lights [(x, y, radius px)]; pools add up like light (screen)."""
+    from PIL import Image
+    W, H = size
+    acc = Image.new('RGBA', size, (255, 255, 255, 0))
+    rx = W * CHAR_LIGHT
+    p = _pool(rx)
+    _paste(acc, p, int(anchor[0] - rx), int(anchor[1] - rx / 2))
+    for x, y, r in lights:
+        p = _pool(r, 230)
+        _paste(acc, p, int(x - r), int(y - r / 2))
+    amb = AMBIENT
+    return acc.getchannel('A').point(lambda a: amb + (255 - amb) * a // 255)
+
+
+def _lit(im, lm, warm=None):
+    """im (RGB / RGBA) multiplied by the light map lm (same size); warm: 'L' mask of the warm (fire) tint."""
+    from PIL import Image
+    rgb = im.convert('RGB')
+    out = Image.composite(rgb, Image.new('RGB', im.size, (0, 0, 0)), lm)
+    if warm is not None:
+        out = Image.composite(Image.new('RGB', im.size, (255, 150, 60)), out, warm)
+    if im.mode == 'RGBA':
+        out = out.convert('RGBA')
+        out.putalpha(im.getchannel('A'))
+    return out
+
+
 # ---------------------------------------------------------------- scene
 class Scene:
-    __slots__ = ('base', 'sprites', 'anchor', 'act')
+    __slots__ = ('base', 'sprites', 'anchor', 'act', 'light')
 
-    def __init__(self, base, sprites, anchor, act):
+    def __init__(self, base, sprites, anchor, act, light=None):
         self.base, self.sprites, self.anchor, self.act = base, sprites, anchor, act
+        self.light = light          # the 'L' light map baked into .base and the sprites (None: unlit)
 
     def composite(self, i=0):
         """.base with frame i of every animated object (RGB)."""
@@ -486,7 +548,29 @@ def build(art, folder, act, size=(512, 384), centre=None):
             f.alpha_composite(front)
             out.append(f)
         sprites.append({'pos': (x0, y0), 'frames': out, 'fps': fps})
-    return Scene(img.convert('RGB'), sprites, (anchor_w[0] - vx, anchor_w[1] - vy), act)
+    # lighting: the character's light around the anchor, pools around the light-emitting objects, the rest dark;
+    # baked into .base and every sprite frame (the frames sit on .base at pos, so they take the same crop)
+    anchor = (anchor_w[0] - vx, anchor_w[1] - vy)
+    lights = []
+    for ox, oy, row in objs:
+        r = object_light(row)
+        if r and vx - 400 < ox < vx + W + 400 and vy - 300 < oy < vy + H + 300:
+            lights.append((ox - vx, oy - vy - 20, r * 14))
+    lm = light_map((W, H), anchor, lights)
+    warm = None
+    if lights:
+        acc = Image.new('RGBA', (W, H), (255, 255, 255, 0))
+        for x, y, r in lights:
+            _paste(acc, _pool(r * 0.8, 70), int(x - r * 0.8), int(y - r * 0.4))
+        warm = acc.getchannel('A')
+    base = _lit(img, lm, warm)
+    for sp in sprites:
+        x, y = sp['pos']
+        fw, fh = sp['frames'][0].size
+        bx = (x, y, x + fw, y + fh)
+        c, cw = lm.crop(bx), warm.crop(bx) if warm is not None else None
+        sp['frames'] = [_lit(f, c, cw) for f in sp['frames']]
+    return Scene(base, sprites, anchor, act, lm)
 
 
 def _paste(img, im, x, y):
