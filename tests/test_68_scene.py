@@ -75,7 +75,7 @@ def act1_scene():
     T.check(sc is not None, 'scene built')
     T.eq(sc.base.size, (512, 384), 'size')
     cols = sc.base.getcolors(1 << 20) or []
-    T.check(len(cols) > 100, f'{len(cols)} colours')
+    T.check(len(cols) > 60, f'{len(cols)} colours')
     black = sum(n for n, c in cols if c == (0, 0, 0))
     T.check(black < 512 * 384 // 10, f'{black} black pixels')
     ax, ay = sc.anchor
@@ -84,6 +84,11 @@ def act1_scene():
     for s in sc.sprites:
         T.check(len(s['frames']) > 1 and len({f.size for f in s['frames']}) == 1 and 1 <= s['fps'] <= 25,
                 f'sprite at {s["pos"]}: {len(s["frames"])} frames, {s["fps"]} fps')
+        x, y = s['pos']
+        fw, fh = s['frames'][0].size
+        T.check(x >= 0 and y >= 0 and x + fw <= 512 and y + fh <= 384, f'sprite box {s["pos"]} {fw}x{fh} inside')
+    T.eq(sc.composite(1).size, (512, 384), 'composite')
+    T.check(sc.composite(0).tobytes() != sc.base.tobytes(), 'the animated objects are not in .base')
     T.check(S.scene(art, folder, 1, (512, 384)) is sc, 'cached per (act, size)')
     print(f'act 1 scene: {secs:.1f} s, {len(sc.sprites)} animated objects')
 

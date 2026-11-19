@@ -4,9 +4,12 @@ DCC animations. Read from the player's MPQs through mxl_d2look_art / mxl_char_re
 Pure Python + PIL Image methods.
 
     sc = scene(art, data_folder, act, size=(w, h), centre=None)
-    sc.base      PIL RGB image: the tiles and the first frame of every object
-    sc.sprites   [{'pos': (x, y), 'frames': [PIL RGBA], 'fps': float}]  objects with more than one frame, drawn on
-                 top of .base at pos (top-left) - a UI cycles them (they are already in .base at frame 0)
+    sc.base      PIL RGB image: the tiles and the still objects (no animated ones)
+    sc.sprites   [{'pos': (x, y), 'frames': [PIL RGBA], 'fps': float}]  the animated objects, to paste on .base at
+                 pos (top-left; always inside .base): frames are cut to the window and already carry whatever stands
+                 in front of the object (walls, roofs), so pasting them in any order is right
+    sc.composite(i)  .base with frame i of every sprite
+scene() builds under a lock and takes 2-10 s on a cold art cache: call it from a worker thread.
     sc.anchor    (x, y) pixel of .base where the character's feet go
 
 Formats (community documentation: Paul Siramy's DS1 / DT1 notes, OpenDiablo2's d2ds1 / d2dt1):
@@ -287,6 +290,13 @@ class Scene:
     def __init__(self, base, sprites, anchor, act):
         self.base, self.sprites, self.anchor, self.act = base, sprites, anchor, act
 
+    def composite(self, i=0):
+        """.base with frame i of every animated object (RGB)."""
+        im = self.base.convert('RGBA')
+        for s in self.sprites:
+            im.alpha_composite(s['frames'][i % len(s['frames'])], s['pos'])
+        return im.convert('RGB')
+
 
 def act_palette(art, act):
     """256 (r, g, b) of data\\global\\palette\\act<N>\\pal.dat, with the editor's in-game brightness curve."""
@@ -383,16 +393,18 @@ def build(art, folder, act, size=(512, 384), centre=None):
     img = Image.new('RGBA', (W, H), (0, 0, 0, 255))
     cache = {}
 
-    def put(t, wx, wy, shadow=False):
+    def put(t, wx, wy, shadow=False, dst=None, box=None):
+        """Draw tile t at world (wx, wy) into the window (or into dst, whose window box is (x0, y0, x1, y1))."""
+        bx0, by0, bx1, by1 = box or (vx, vy, vx + W, vy + H)
         x0, y0, x1, y1 = t.bbox()
-        if wx + x1 < vx or wx + x0 > vx + W or wy + y1 < vy or wy + y0 > vy + H:
+        if wx + x1 <= bx0 or wx + x0 >= bx1 or wy + y1 <= by0 or wy + y0 >= by1:
             return
         k = (id(t), shadow)
         got = cache.get(k)
         if got is None:
             got = cache[k] = _tile_image(t, flat, shadow)
         im, ox, oy = got
-        _paste(img, im, wx + ox - vx, wy + oy - vy)
+        _paste(img if dst is None else dst, im, wx + ox - bx0, wy + oy - by0)
 
     def tile_of(orient, dw, tx, ty):
         c = cell(dw)
@@ -442,18 +454,38 @@ def build(art, folder, act, size=(512, 384), centre=None):
             continue
         draw.append((oy, 2, a, ox, oy))
     draw.sort(key=lambda d: (d[0], d[1]))
-    for _k, kind, t, wx, wy in draw:
+    anim = []                                    # (index in draw, window box) of the animated objects
+    for n, (_k, kind, t, wx, wy) in enumerate(draw):
         if kind == 2:
             frames, fps = t
             im, fx, fy = frames[0]
             px, py = wx + fx - vx, wy + fy - vy
-            if px + im.width < 0 or py + im.height < 0 or px > W or py > H:
+            if px + im.width <= 0 or py + im.height <= 0 or px >= W or py >= H:
                 continue
-            _paste(img, im, px, py)
-            if len(frames) > 1:
-                sprites.append({'pos': (px, py), 'frames': [f[0] for f in frames], 'fps': fps})
+            if len(frames) > 1:                  # animated: kept out of .base, drawn by the UI
+                anim.append((n, (max(0, px), max(0, py), min(W, px + im.width), min(H, py + im.height)),
+                             (px, py), frames, fps))
+            else:
+                _paste(img, im, px, py)
         else:
             put(t, wx, wy)
+    # each animated object: its frames cut to the window, with what is drawn in front of it (walls, roofs, objects
+    # standing lower) laid over them, so the UI only has to paste the frames on .base
+    for n, (x0, y0, x1, y1), (px, py), frames, fps in anim:
+        box = (x0 + vx, y0 + vy, x1 + vx, y1 + vy)
+        front = Image.new('RGBA', (x1 - x0, y1 - y0), (0, 0, 0, 0))
+        for _k, kind, t, wx, wy in draw[n + 1:]:
+            if kind == 2:
+                im, fx, fy = t[0][0]
+                _paste(front, im, wx + fx - box[0], wy + fy - box[1])
+            else:
+                put(t, wx, wy, dst=front, box=box)
+        out = []
+        for im, _fx, _fy in frames:
+            f = im.crop((x0 - px, y0 - py, x1 - px, y1 - py))
+            f.alpha_composite(front)
+            out.append(f)
+        sprites.append({'pos': (x0, y0), 'frames': out, 'fps': fps})
     return Scene(img.convert('RGB'), sprites, (anchor_w[0] - vx, anchor_w[1] - vy), act)
 
 
@@ -491,5 +523,7 @@ def scene(art, data_folder, act, size=(512, 384), centre=None):
             try:
                 _CACHE[k] = build(art, data_folder, act, size, centre)
             except Exception:
+                import logging
+                logging.getLogger('mxl_scene').exception('town scene of act %s', act)
                 _CACHE[k] = None
         return _CACHE[k]
