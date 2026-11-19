@@ -510,6 +510,10 @@ def active_weapon(ch, data):
         d = getattr(b, 'damage', None) or {}
         if any(d.get('one_hand') or ()) or any(d.get('two_hand') or ()):
             return slot, e.it, b
+        if getattr(b, 'kind', None) == 'weapons' and d:
+            # a weapon without a damage of its own (Crystal Sword: 0-0, its damage is innate): still the weapon,
+            # not unarmed (in game: test-druid's Crystal Sword (Sacred) - Attack 1287-2043 with base 0-0)
+            return slot, e.it, b
     return None
 
 
@@ -565,15 +569,36 @@ def weapon_damage(ch, data, tot, strength, dexterity, level=None):
            + (sum(total_of(tot, s) for s in DEX_BONUS) * dexterity >> 8))
     pre = (lo, hi)
     ele = elemental_damage(tot)
+    innate = innate_damage(ch, data, tot)
+    ele = (ele[0] + innate, ele[1] + innate)
     plo, phi = max(lo * (100 + pct) // 100, 1), hi * (100 + pct) // 100
     lo, hi = plo + ele[0], phi + ele[1]
     if hi <= lo:
         hi = lo + 1
     return {'min': lo, 'max': hi, 'base': (blo, bhi), 'ed': ed, 'flat': flat, 'pct': pct, 'wpd': wpd, 'name': name,
-            'pre': pre, 'phys': (plo, phi), 'ele': ele, 'eth': eth}
+            'pre': pre, 'phys': (plo, phi), 'ele': ele, 'eth': eth, 'innate': innate}
 
 
 ELEMENTS = ((48, 49), (50, 51), (52, 53), (54, 55))     # fire, lightning, magic, cold: min / max damage
+INNATE, INNATE_PCT = 415, 484          # "Innate <element> Damage: (x % of <attribute>)", "Innate Elemental Damage" %
+
+
+def innate_damage(ch, data, tot):
+    """The weapons' innate elemental damage (stat 415: value = % of an attribute, param = attribute << 8 | element
+    (0 str, 1 energy, 2 dex, 3 vit; element 1 lightning, 2 cold, 5 tri-elemental ...)), one fixed number added to
+    both min and max: attribute x % / 100, then x (100 + Innate Elemental Damage %) / 100. In game (test-druid,
+    Crystal Sword (Sacred), 49 % of Dexterity 843, +22 %): 413 -> 503, in both Damage boxes. Tri-elemental counted
+    once (not seen in game)."""
+    pct = total_of(tot, INNATE_PCT)
+    out = 0
+    for (sid, param), st in tot['stats'].items():
+        if sid != INNATE or not st.get('value') or param is None:
+            continue
+        attr = (param >> 8) & 0xFF
+        if attr not in (0, 1, 2, 3):
+            continue
+        out += attribute_total(ch, data, tot, attr) * st['value'] // 100 * (100 + pct) // 100
+    return out
 
 
 def elemental_damage(tot):

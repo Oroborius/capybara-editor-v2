@@ -175,4 +175,33 @@ def damage_boxes_match_the_game():
     T.eq(page.derived('attack_rating_1')[0], '53338', 'Attack Rating, Attack')
 
 
+@T.test
+def innate_weapon_damage_matches_the_game():
+    """test-druid with a Crystal Sword (Sacred) (base 0-0, "Innate Cold Damage (49 % of Dexterity)", Adds 160-250 cold;
+    copy in .cache/samples/owlie-cs, in-game screenshot 2026-11-19 02:23): Attack 1287-2043, Earth Talons 1428-2449,
+    Attack Rating 49,148. The weapon counts although its own damage is 0-0; innate 843 x 49 % = 413, x 122 % = 503,
+    added to min and max."""
+    import shutil
+    import struct
+    import mxl_char
+    import mxl_statscreen as SS
+    src = os.path.join(T.REPO, '.cache', 'samples', 'owlie-cs')
+    if not os.path.isfile(os.path.join(src, 'test-druid.d2s')):
+        T.skip('no .cache/samples/owlie-cs (test-druid with the Crystal Sword)')
+    E = T.engine()
+    dst = T.guard(os.path.join(T.tmp(), 'owlie-cs'), 'owlie-cs copy')
+    shutil.copytree(src, dst, dirs_exist_ok=True)
+    ch = mxl_char.Character(os.path.join(dst, 'test-druid.d2s'), E.data)
+    tot = SS.char_totals(ch, E.data)
+    page = object.__new__(SS.StatScreen)
+    page.win = _Win(E, ch, tot)
+    d = page.weapon_damage()
+    T.eq((d['name'], d['base'], d['innate']), ('Crystal Sword (Sacred)', (0, 0), 503), 'weapon and innate damage')
+    T.eq(d['phys'], (54, 275), 'physical: items only, x 135 %')
+    struct.pack_into('<II', ch.head, 0x78, 0, 1295)
+    T.eq(page.derived('damage_1')[0], '1287-2043', 'Attack')
+    T.eq(page.derived('damage_2')[0], '1428-2449', 'Earth Talons')
+    T.eq(page.derived('attack_rating_1')[0], '49148', 'Attack Rating')
+
+
 T.main(globals())
