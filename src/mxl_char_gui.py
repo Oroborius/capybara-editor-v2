@@ -1461,7 +1461,7 @@ class CharacterWindow(StatEditMixin):
                  'stats': (T('he.n_stat1', 'stat point'), T('he.n_stat', 'stat points')),
                  'life': (T('he.n_life', 'life'), T('he.n_life', 'life'))}
         rewards = ', '.join(f'{v:+d} {names[k][0] if abs(v) == 1 else names[k][1]}' for k, v in log.items() if v)
-        if (self._save_renamed(new_name) if new_name else self.save(T('he.saved', '{name} saved', name=ch.name))):
+        if (self._save_renamed(new_name) if new_name else self._save_undoable(ch)):
             self._init_state()
             self.refresh_progress()
             self.set_bar(T('he.saved_level', '{name} saved: level {level}', name=ch.name, level=ch.level)
@@ -1470,6 +1470,20 @@ class CharacterWindow(StatEditMixin):
                          + (T('he.saved_rewards', ' - quest rewards: {rewards}', rewards=rewards) if rewards else ''))
             self.top.title(f'Median XL Capybara Editor V2 - {ch.name}')
             self._follow_later()
+
+    def _save_undoable(self, ch):
+        """SAVE without a rename: one undo step of the main window's Ctrl+Z (mxl_undo 'files': the file's bytes of
+        before, refused when the file changed since)."""
+        before = None
+        try:
+            import mxl_undo
+            before = mxl_undo.snapshot([ch.path])
+        except Exception as e:
+            print('character save not undoable:', e)
+        ok = self.save(T('he.saved', '{name} saved', name=ch.name))
+        if ok and before:
+            mxl_undo.record_files(self.app, before, T('undo.char_save', 'SAVE of {name}', name=ch.name))
+        return ok
 
     def _save_renamed(self, new_name):
         """SAVE with a new name: the character (with every pending change) is written as <new name>.d2s through
