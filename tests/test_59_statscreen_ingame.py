@@ -111,21 +111,46 @@ def passive_skills_found():
 
 @T.test
 def damage_boxes_do_not_move_with_passive_skills():
-    """Page 1 Damage / Attack Rating and page 2's weapon damage rows are the same with and without the passives."""
+    """Page 1 Damage / Attack Rating and page 2's weapon damage rows are the same with and without the passives:
+    test-druid and both XBone samples (the samples of the damage tests)."""
     E = T.engine()
-    SS, ch, tot, page = _owlie(E)
+    import mxl_char
+    import mxl_statscreen as SS
+    pages = [_owlie(E)[3]]
+    for which in (1, 2):
+        try:
+            folder = T.fresh_saves(which)
+        except T.Skip:
+            continue
+        ch = mxl_char.Character(sorted(glob.glob(os.path.join(folder, '*.d2s')))[0], E.data)
+        page = object.__new__(SS.StatScreen)
+        page.win = _Win(E, ch, SS.char_totals(ch, E.data))
+        pages.append(page)
     keys = ('damage_1', 'damage_2', 'attack_rating_1', 'attack_rating_2')
     rows = [el for el in SS.screen_table(E.data) if el['page'] == 1 and el['type'] == SS.T_LABEL
             and el['stat'] in SS.WEAPON_DAMAGE_ROWS]
-    with_ = [page.derived(k)[0] for k in keys] + [page.game_value(el)[0] for el in rows]
+
+    def shown(page):
+        return [page.derived(k)[0] for k in keys] + [page.game_value(el)[0] for el in rows]
+    with_ = [shown(p) for p in pages]
     real = SS.skill_passives
     try:
         SS.skill_passives = lambda *a: {}
-        page._passives = None
-        without = [page.derived(k)[0] for k in keys] + [page.game_value(el)[0] for el in rows]
+        for p in pages:
+            p._passives = None
+        without = [shown(p) for p in pages]
     finally:
         SS.skill_passives = real
     T.eq(with_, without, 'damage / attack rating with and without passive skills')
 
+
+@T.test
+def big_numbers_are_drawn_with_commas():
+    """The game draws "3,657", "44,958", "1,173%" but "850-1781": grouped() (drawing only)."""
+    T.engine()
+    import mxl_statscreen as SS
+    for text, want in (('3657', '3,657'), ('44958', '44,958'), ('1173%', '1,173%'), ('963', '963'),
+                       ('850-1781', '850-1781'), ('150 / 400', '150 / 400'), ('-1200', '-1,200'), ('0%', '0%')):
+        T.eq(SS.grouped(text), want, text)
 
 T.main(globals())

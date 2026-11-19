@@ -889,6 +889,17 @@ def total_lines(tot, data, char=None):
         return [(1, str(e))]
 
 
+def grouped(text, tx=None, font=None):
+    """A value as the game draws it: a single number of four digits or more with thousands commas ("3,657",
+    "44,958", "1,173%"); ranges ("850-1781"), several numbers and other texts as they are. Only for drawing: the
+    values (derived / game_value) keep plain digits."""
+    import re
+    m = re.fullmatch(r'(-?)(\d{4,})(%?)', text or '')
+    if not m or (tx is not None and not tx.has(',', font)):
+        return text
+    return m.group(1) + f'{int(m.group(2)):,}' + m.group(3)
+
+
 # ====================================================================================== game fonts
 class GameText:
     """Lines of text in the game's fonts as PIL images; the glyph cells keep the font's baseline, so captions
@@ -1423,7 +1434,8 @@ class StatScreen:
             if val is None:
                 self._dash(out, cx, cy)
             else:
-                tx.draw(out, val, cx, cy, 'font6' if small and key in RES_IDS else 'font16', WHITE)
+                font = 'font6' if small and key in RES_IDS else 'font16'
+                tx.draw(out, grouped(val, tx, font), cx, cy, font, WHITE)
             reg.append(('info', key, (x, y, w, h)))
 
     # ------------------------------------------------------------------ values summed by the editor
@@ -1670,6 +1682,7 @@ class StatScreen:
             tx._font(font)
         except Exception:
             font = 'font6'
+        text = grouped(text, tx, font)
         text = ''.join(c if c == '\n' or tx.has(c, font) else '?' for c in text)
         col = color or SS_COLORS.get(el['color'], WHITE)
         mode = {A_CENTER: 'center', A_LEFT: 'left'}.get(el['align'], 'right')
