@@ -79,8 +79,8 @@ _TABLES = {}
 
 
 def item_gfx(folder, code):
-    """(component layer type, alternate gfx code, weapon class, body armtypes bytes, transform) of an item code,
-    or None."""
+    """(component layer type, alternate gfx code, weapon class, body armtypes bytes, transform, two-handed weapon
+    class) of an item code, or None."""
     t = _TABLES.get(folder)
     if t is None:
         t = _TABLES[folder] = {**_rows(folder, 'weapons.bin'), **_rows(folder, 'armor.bin')}
@@ -89,7 +89,8 @@ def item_gfx(folder, code):
         return None
     alt = r[144:148].split(b'\0')[0].decode('latin-1').strip().lower() or code.lower()
     wc = r[192:196].split(b'\0')[0].decode('latin-1').strip().lower()
-    return r[277], alt, wc, bytes(r[278:284]), r[321]
+    wc2 = r[196:200].split(b'\0')[0].decode('latin-1').strip().lower()
+    return r[277], alt, wc, bytes(r[278:284]), r[321], wc2 or wc
 
 
 def _split(g):
@@ -157,8 +158,10 @@ def plan(folder, cls, gear):
         if lt == 5 and slot == 5:                  # a second one-hander is drawn in the left hand
             lt = 6
         arm.setdefault(lt, g[1])
-        if lt != 7 and g[2] and wclass == 'hth':
-            wclass = g[2]
+        # one-or-two-handed swords: the one-handed class only for the barbarian, two-handed for everyone else
+        wc = g[2] if cls == 4 else g[5]
+        if lt != 7 and wc and wclass == 'hth':
+            wclass = wc
     return cl, wclass, arm
 
 

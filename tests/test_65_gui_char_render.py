@@ -120,4 +120,97 @@ def canvas_animates_only_while_visible():
     T.check(v._job is not None, 'animating again on the Character tab')
 
 
+def _logged(R):
+    """Wraps R.read: the list of member names read successfully."""
+    got = []
+    real = R.read
+
+    def read(art, name):
+        d = real(art, name)
+        got.append(name.lower())
+        return d
+    R.read = read
+    return got, real
+
+
+@T.test
+def owlie_render_uses_worn_gear():
+    import glob
+    import mxl_char
+    import mxl_char_render as R
+    art = art_or_skip()
+    cw = view()
+    data = cw.data
+    path = sorted(glob.glob(os.path.join(T.fresh_saves(3), 'test-druid*.d2s')))[0]
+    ch = mxl_char.Character(path, data)
+    gear = R.gear_of(ch)
+    T.eq({k: v[0] for k, v in gear.items()}, {1: 'k23', 3: '838', 4: '483', 5: '851'},
+         'test-druid: Tiara / Splint Mail / Dirk / Buckler (save codes without the padding space)')
+    T.eq({k: v[1] for k, v in gear.items()}, {1: 4, 3: 5, 4: 19, 5: 7}, 'unique colours (chrtransform)')
+    got, real = _logged(R)
+    try:
+        a = R.render(art, data.folder, ch.cls, gear)
+    finally:
+        R.read = real
+    d = 'data\\global\\chars\\dz\\'
+    for want in ('cof\\dztn1ht.cof', 'tr\\dztrhvytnhth.dcc', 'ra\\dzramedtn1ht.dcc', 'la\\dzlamedtn1ht.dcc',
+                 'rh\\dzrhdirtn1ht.dcc', 'sh\\dzshbuctnhth.dcc', 'hd\\dzhdlittnhth.dcc'):
+        T.check(d + want in got, f'read {want}')
+    T.check(any('items\\palette\\grey2.dat' in n for n in got), 'colormap grey2.dat read (tints)')
+    T.check(a is not None and a.key[1] == '1ht', f'one-handed thrust animation: {a and a.key[:2]}')
+    plain = R.render(art, data.folder, ch.cls, {})
+    T.check(plain.frames[0].tobytes() != a.frames[0].tobytes(), 'differs from the bare model')
+    untinted = R.render(art, data.folder, ch.cls, {k: v[0] for k, v in gear.items()})
+    T.check(untinted.frames[0].tobytes() != a.frames[0].tobytes(), 'colour tints change the picture')
+    folder = os.environ.get('CAPY_SHOTS')
+    if folder:
+        os.makedirs(folder, exist_ok=True)
+        a.frames[0].resize((a.size[0] * 4, a.size[1] * 4)).save(os.path.join(folder, '65-owlie.png'))
+
+
+@T.test
+def every_class_wears_a_typical_outfit():
+    import mxl_char_render as R
+    art = art_or_skip()
+    folder = view().data.folder
+    for cls, cl in enumerate(R.CLASS_CODES):
+        gear = {1: 'crn', 3: 'fld', 4: '382'}                  # crown, field plate, claymore (two-handed) ...
+        if cl == 'ba':
+            gear[5] = 'tow'                                    # ... the barbarian wields it in one hand + shield
+        got, real = _logged(R)
+        try:
+            a = R.render(art, folder, cls, gear)
+        finally:
+            R.read = real
+        T.check(a is not None, f'{cl}: rendered')
+        T.eq(a.key[1], '1hs' if cl == 'ba' else '2hs', f'{cl}: claymore weapon class')
+        for ly, part in (('hd', 'crn'), ('tr', 'hvy'), ('rh', 'clm')) + ((('sh', 'tow'),) if cl == 'ba' else ()):
+            T.check(any(f'\\{ly}\\{cl}{ly}{part}' in n for n in got), f'{cl}: {ly} layer {part}')
+
+
+@T.test
+def view_renders_the_loaded_characters_gear():
+    import mxl_char_render as R
+    art_or_skip()
+    cw = view()
+    v = cw.char_view
+    T.wait_for(lambda: v.anim is not None and not v._busy, 30, 'character rendered')
+    gear = R.gear_of(cw.ch)
+    T.check(gear, 'the loaded character wears something')
+    T.eq(v._key, (cw.ch.cls, tuple(sorted(gear.items()))), 'render key = class + gear with colours')
+    T.check(len(v.anim.key[2]) > 0, f'gear layers in the shown render: {v.anim.key[2]}')
+    # another character (test-druid, druid) in the window: the view renders it again
+    import glob
+    import mxl_char
+    path = sorted(glob.glob(os.path.join(T.fresh_saves(3), 'test-druid*.d2s')))[0]
+    old = cw.ch
+    cw.ch = mxl_char.Character(path, cw.data)
+    try:
+        T.wait_for(lambda: v.anim is not None and v.anim.key[0] == 'dz' and not v._busy, 30, 'druid rendered')
+        T.eq(v.anim.key[1], '1ht', 'with the dirk')
+        T.eq(v._key, (cw.ch.cls, tuple(sorted(R.gear_of(cw.ch).items()))), 'render key follows the character')
+    finally:
+        cw.ch = old
+
+
 T.main(globals())

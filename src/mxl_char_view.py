@@ -94,6 +94,7 @@ class CharView:
             if not scale:
                 self.cv.place_forget()
                 self.shown = False
+                self.load()                          # no animation loop runs now: still follow a character change
                 return
             if scale != self.scale:
                 from PIL import Image, ImageTk
