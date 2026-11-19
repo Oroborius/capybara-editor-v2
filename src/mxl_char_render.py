@@ -77,7 +77,7 @@ def item_gfx(folder, code):
     t = _TABLES.get(folder)
     if t is None:
         t = _TABLES[folder] = {**_rows(folder, 'weapons.bin'), **_rows(folder, 'armor.bin')}
-    r = t.get(code)
+    r = t.get((code or '').strip())              # save codes are 4 bytes, padded with a space ('k23 ')
     if r is None:
         return None
     alt = r[144:148].split(b'\0')[0].decode('latin-1').strip().lower() or code.lower()
@@ -194,7 +194,7 @@ def gear_of(ch, merc=False):
     try:
         for slot, e in ch.equipped(merc).items():
             if slot in (1, 3, 4, 5):
-                out[slot] = e.it['code']
+                out[slot] = e.it['code'].strip()
     except Exception:
         pass
     return out
