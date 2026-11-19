@@ -128,7 +128,7 @@ def _stash_menu(app, ev):
         menu.add_separator()
         menu.add_command(label=rc('delete', 'Delete item'), command=lambda: delete_selected(app))
         menu.add_command(label=rc('export', 'Export item...'), command=lambda: _export_stash(app, it))
-        menu.add_command(label=rc('inspect', 'Inspect...'), command=lambda: _inspect_stash(app, it))
+        menu.add_command(label=rc('bitedit', 'Open in Bit editor'), command=lambda: _inspect_stash(app, it))
         menu.add_command(label=rc('to_library', 'Add to library...'), command=lambda: _library_stash(app, it))
     else:
         if clip is not None:
@@ -472,7 +472,7 @@ def _char_menu(win, cv, ev):
         menu.add_command(label=rc('to_stash', 'To stash'), command=win.to_stash)
         menu.add_command(label=rc('delete_short', 'Delete'), command=win.delete)
         menu.add_command(label=rc('export', 'Export item...'), command=lambda: _export_char(win, e))
-        menu.add_command(label=rc('inspect', 'Inspect...'), command=lambda: _inspect_char(win, e))
+        menu.add_command(label=rc('bitedit', 'Open in Bit editor'), command=lambda: _inspect_char(win, e))
         menu.add_command(label=rc('to_library', 'Add to library...'), command=lambda: _library_char(win, e))
     else:
         if clip is not None and cv is win.inv:
@@ -1128,23 +1128,25 @@ def _import_char(win, ev):
 
 # ---- inspector (mxl_inspect) and personal item library (mxl_itemlib): read the item's bytes as Export does
 def _inspect_stash(app, it):
-    import mxl_inspect
+    import mxl_bitedit
     try:
         blob = _now(app, it)[2]
     except (EditError, FormatError, OSError) as e:
         _status(app, str(e), True)
         return None
-    return mxl_inspect.open_blob(app.root if hasattr(app, 'root') else app.canvas, blob, app.data, app.full_name(it))
+    src = {k: it.get(k) for k in ('page', 'x', 'y', 'code', '_offset')}
+    return mxl_bitedit.open_item(app, blob, app.full_name(it), source=src)
 
 
 def _inspect_char(win, e):
-    import mxl_inspect
+    import mxl_bitedit
     try:
         blob = win.ch.stash_blob(e)
     except (OSError, AttributeError) as err:
         win.set_status(str(err), True)
         return None
-    return mxl_inspect.open_blob(win.top, blob, win.data, clean_name(win, e))
+    return mxl_bitedit.open_item(win.app, blob, clean_name(win, e), source=None,
+                                 reason=rc('bitedit.char', 'character item: read only here'))
 
 
 def _library_stash(app, it):
