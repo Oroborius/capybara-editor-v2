@@ -1402,7 +1402,38 @@ class StatScreen:
                             icons[s] = Image.frombytes('RGBA', (w, h), bytes(self.art._bright(rgba)))
             except Exception as e:
                 print('stat screen: no skill icons:', e)
-        return icons.get(sid)
+        hit = icons.get(sid)
+        if hit is None and sid is not None and ('other', sid) not in icons:
+            icons[('other', sid)] = None
+            hit = icons[('other', sid)] = self._other_icon(sid)
+        return hit if hit is not None else icons.get(('other', sid))
+
+    def _other_icon(self, sid):
+        """Icon of a skill outside the class's trees (Attack, oskills from items, another class's skill): its
+        skilldesc cel (u16 at 22) in icons-shared.dc6, or in icons-<class>.dc6 of the skill's own class."""
+        try:
+            import mxl_d2ui_dc6 as DC6
+            from PIL import Image
+            data = self.win.data
+            srows, sd_rows = data._rows('skills'), data._rows('skilldesc')
+            sd = struct.unpack_from('<H', srows[sid], 404)[0]
+            if not (sid == 0 or 0 < sd < len(sd_rows)):
+                return None
+            cel = struct.unpack_from('<H', sd_rows[sd], 22)[0]
+            owner = data.skill_class.get(sid, 255)
+            sheet = data._rows('playerclass')[owner][:4].decode('latin1').strip() if owner < 7 else 'shared'
+            key = ('sheet', sheet)
+            if key not in self._pil:
+                self._pil[key] = DC6.dc6_frames(self.art.read(
+                    'data\\global\\themes\\classic_sigma\\game\\skills\\icons-' + sheet + '.dc6'))
+            cels = self._pil[key]
+            if cel >= len(cels):
+                return None
+            w, h, rgba = DC6.to_rgba(cels[cel], self.art.pal())
+            return Image.frombytes('RGBA', (w, h), bytes(self.art._bright(rgba)))
+        except Exception as e:
+            print('stat screen: no icon for skill', sid, e)
+            return None
 
     def _background(self, kind):
         """'game': the panel art as it is. 'blank': the same frame and header, the middle replaced with the

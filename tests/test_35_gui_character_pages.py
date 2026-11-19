@@ -1274,6 +1274,19 @@ def another_character_in_the_dropdown_with_pending_edits():
 
 
 @T.test
+def attack_and_other_skills_have_an_icon_on_the_stat_screen():
+    """Page 1's skill frames: Attack (skill 0, outside every skill tree; icons-shared.dc6) and a class skill both
+    get an icon (Attack had none: the frame stayed empty)."""
+    cw = start('stats')
+    scr = cw.statscreen
+    cls = cw.st_sim.cls
+    T.check(scr._skill_icon(cls, 0) is not None, 'Attack has an icon')
+    own = next((sid for sid, lv in cw.st_sim.skill_levels().items() if lv), None)
+    if own is not None:
+        T.check(scr._skill_icon(cls, own) is not None, f'class skill {own} has an icon')
+
+
+@T.test
 def events_reached_the_widgets():
     """Not a check of the application: reports which key / pointer events had to be replaced by their handlers on
     this X server (see press_key())."""
