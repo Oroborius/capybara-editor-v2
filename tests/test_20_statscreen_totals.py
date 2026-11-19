@@ -470,9 +470,10 @@ def page1_boxes_use_the_skill_on_each_mouse_button():
     T.eq(SS.skill_level(ch, E.data, _totals({127: 2}), 1773), 0, 'no hard points: +all skills do not count')
     tot2 = _totals({21: 219, 22: 638, 127: 2, 2: 500})        # 500 dexterity: a positive attack rating
     page = _page(E, ch, tot2)
-    # unarmed 1-2 + 219-638 = 220-640 before the %, no % here: a weapon skill adds 100 % (x 2), Raid x 90/128 + 8
-    T.eq(page.derived('damage_1')[0], f'{220 * 200 * 90 // 12800 + 8}-{640 * 200 * 90 // 12800 + 8}', 'Raid')
-    T.eq(page.derived('damage_2')[0], '440-1280', 'Earth Talons: x 2, nothing of its own')
+    # unarmed 1-2 + 219-638 = 220-640, no % here: a weapon skill takes srcdam/128 of the damage and of the weapon
+    # damage once more (Sigma's "include weapon" patch), Raid 90/128 + 8
+    T.eq(page.derived('damage_1')[0], f'{2 * (220 * 90 // 128) + 8}-{2 * (640 * 90 // 128) + 8}', 'Raid')
+    T.eq(page.derived('damage_2')[0], '440-1280', 'Earth Talons: damage + weapon damage, nothing of its own')
     ar, _flat, pct = page.attack_rating()
     T.eq(pct, 0, 'no item attack rating %')
     T.eq(page.derived('attack_rating_2')[0], str(ar), 'Earth Talons: no attack rating bonus')

@@ -487,7 +487,6 @@ def char_stat(ch, sid, param=None):
 
 
 ETH_PCT = 125                         # ethereal weapon base damage, % (Median XL; the base game has 150)
-SKILL_PHYS_PCT = 100                  # physical damage % a weapon skill adds over Attack (in game, see skill_damage)
 UNARMED = (1, 2)                      # damage without a weapon (the base game's rule; not seen on a screenshot)
 
 
@@ -595,23 +594,34 @@ def innate_damage(ch, data, tot):
         if sid != INNATE or not st.get('value') or param is None:
             continue
         attr = (param >> 8) & 0xFF
-        if attr not in (0, 1, 2, 3):
+        if attr == 4:                    # "whichever is higher" of strength and dexterity (the tooltip code)
+            v = max(attribute_total(ch, data, tot, 0), attribute_total(ch, data, tot, 2))
+        elif attr in (0, 1, 2, 3):
+            v = attribute_total(ch, data, tot, attr)
+        else:
             continue
-        out += attribute_total(ch, data, tot, attr) * st['value'] // 100 * (100 + pct) // 100
+        out += v * st['value'] // 100 * (100 + pct) // 100
     return out
 
 
+MASTERY = {(48, 49): 329, (50, 51): 330, (54, 55): 331}   # fire / lightning / cold mastery %; magic has none
+
+
 def elemental_damage(tot):
-    """(min, max) of the items' elemental damage as page 1's Damage boxes add it: fire + lightning + magic + cold +
-    poison over its whole length (raw x frames / 256, the item tooltip's number - page 2 shows half of it).
+    """(min, max) of the items' elemental damage as page 1's Damage boxes add it (the game): fire,
+    lightning, cold each x (100 + their mastery %) / 100, magic as is, + poison over its whole length (raw x frames
+    >> 8, frames = stat 101 when set, else stat 59 / stat 326). Page 2 shows poison per second (half at 2 s).
     In game (test-druid, Attack): 130-260 + 330-660 + 230-385 + 150-250 = 840-1555 on top of the physical 249-671."""
-    lo = sum(total_of(tot, a) for a, _b in ELEMENTS)
-    hi = sum(total_of(tot, b) for _a, b in ELEMENTS)
+    lo = hi = 0
+    for a, b in ELEMENTS:
+        m = 100 + total_of(tot, MASTERY[(a, b)]) if (a, b) in MASTERY else 100
+        lo += total_of(tot, a) * m // 100
+        hi += total_of(tot, b) * m // 100
     plo, phi, length = (total_of(tot, s) for s in POISON)
     if plo or phi:
-        frames = length // max((tot.get('n') or {}).get(59, 0), 1)
-        lo += plo * frames // 256
-        hi += phi * frames // 256
+        frames = total_of(tot, 101) or length // max(total_of(tot, 326), (tot.get('n') or {}).get(59, 0), 1)
+        lo += plo * frames >> 8
+        hi += phi * frames >> 8
     return lo, hi
 
 
@@ -674,20 +684,17 @@ def skill_attack(data, sid, lvl, levels=None, bonus=0, ulvl=1):
 
 
 def skill_damage(dmg, sk):
-    """Page 1's Damage box for the skill on a mouse button (weapon_damage's dict; sk from skill_attack). Matched
-    exactly in game (test-druid, 4 numbers): a weapon skill adds SKILL_PHYS_PCT % to the physical multiplier, takes
-    srcdam / 128 of the physical and of the items' elemental damage (each rounded down on its own), then adds its
-    own physical and elemental damage:
-      Attack       249-671 + 840-1555                                 = 1089-2226
-      Earth Talons 110-296 x 327 % + 840-1555 + 101-202 (lightning)   = 1300-2724
-      Raid         110-296 x 327 % x 90/128 + 840-1555 x 90/128 + 8-8 = 850-1781
-    Where the +100 % comes from is not known (no skill row or tooltip shows it). dmg unchanged when sk is None."""
+    """Page 1's Damage box for the skill on a mouse button (weapon_damage's dict; sk from skill_attack). The game
+    (the game, skilldesc descdam 5; docs/review/game-code-damage.md): (physical + elemental + poison, as
+    for Attack) x srcdam / 128, + a second copy of the weapon damage (unit stats 21/22, before any %) x srcdam / 128
+    (Sigma's "include weapon" patch of the game), + the skill's own physical and elemental damage.
+    In game (test-druid): Raid 1089 x 90/128 + 110 x 90/128 + 8 = 850, 2226 -> 1781; Earth Talons 1089 + 110 + 101
+    = 1300, 2226 + 296 + 202 = 2724; with the Crystal Sword 1287 + 40 + 101 = 1428. dmg unchanged when sk is None."""
     if dmg is None or sk is None:
         return dmg
     src, (slo, shi), _toht, (elo, ehi) = sk
-    m = 100 + dmg['pct'] + SKILL_PHYS_PCT
-    lo = dmg['pre'][0] * m * src // 12800 + dmg['ele'][0] * src // 128 + slo + elo
-    hi = dmg['pre'][1] * m * src // 12800 + dmg['ele'][1] * src // 128 + shi + ehi
+    lo = dmg['min'] * src // 128 + dmg['pre'][0] * src // 128 + slo + elo
+    hi = dmg['max'] * src // 128 + dmg['pre'][1] * src // 128 + shi + ehi
     return dict(dmg, min=max(lo, 1), max=max(hi, lo + 1), src=src)
 
 
@@ -1655,9 +1662,9 @@ class StatScreen:
         name = self.win._sk_name(sid)
         if sk is None:
             return T('ss.tip.dmg_noweap', '{skill} uses no weapon damage: the plain weapon damage is shown.', skill=name)
-        return T('ss.tip.dmg_sk3', '{skill} (level {lvl}): {pct} % weapon damage, +{sp} % physical damage of a '
-                 'weapon skill, + its own {lo}-{hi} physical and {elo}-{ehi} elemental damage.', skill=name, lvl=lvl,
-                 pct=sk[0] * 100 // 128, sp=SKILL_PHYS_PCT, lo=sk[1][0], hi=sk[1][1], elo=sk[3][0], ehi=sk[3][1])
+        return T('ss.tip.dmg_sk4', '{skill} (level {lvl}): {pct} % of the damage, + {pct} % of the weapon damage once '
+                 'more, + its own {lo}-{hi} physical and {elo}-{ehi} elemental damage.', skill=name, lvl=lvl,
+                 pct=sk[0] * 100 // 128, lo=sk[1][0], hi=sk[1][1], elo=sk[3][0], ehi=sk[3][1])
 
     def ar_tip(self, flat, pct):
         return T('ss.tip.ar', 'Attack rating: 5 x dexterity - 35 + class bonus, + items {flat}, then {pct:+d} % from '
