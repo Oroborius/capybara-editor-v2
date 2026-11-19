@@ -180,6 +180,11 @@ def install():
     except Exception:
         pass
     try:
+        import mxl_runes_fix              # runeword mods from all 13 runes.bin slots (the host read slots 2-8)
+        mxl_runes_fix.install()
+    except Exception:
+        pass
+    try:
         import mxl_char                   # the collector's character reader finds its sections by searching
         mxl_char.install_reader_fix()
     except Exception:

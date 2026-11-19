@@ -102,8 +102,8 @@ def known_lines():
     E, prep = _prep()
     d = E.data
     exp = {'Anak': ['One-Hand Damage: 145 to 146', '+70 to Minimum Damage', '+45 to Maximum Damage'],
-           'Aether': ['+120 to Minimum Magic Damage'],
-           'Black Cat': ['+8 to Minimum Fire Damage'],
+           'Aether': ['Adds 120-180 Magic Damage'],   # min (slot 8) + max (slot 9, read since W34)
+           'Black Cat': ['Adds 8-12 Fire Damage'],          # likewise (pr155 slot 8 + pr153 slot 9)
            'Jaguar': ['+203 to Minimum Damage', '+202 to Maximum Damage']}
     for name, want in exp.items():
         it = created(E, runeword_spec(E, prep, rw_row(E, name)))
