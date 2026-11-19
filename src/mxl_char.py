@@ -383,6 +383,18 @@ FIELDS = (
     ('gold_stash', 15, 0, 'Gold in stash'),
 )
 FIELD_KEYS = tuple(f[0] for f in FIELDS)
+STASH_GOLD_CAP = 2500000             # Median XL Sigma: the most a stash was seen holding (level 100 and 117 samples)
+
+
+def gold_limit(key, level):
+    """The game's gold limit: inventory 10 000 x level; stash 50 000 x (level / 10 + 1) up to level 30, 50 000 x
+    (level / 2 + 1) above (the base game's rule), and at most the 2 500 000 seen in Median XL. Above it the game
+    sets the gold to 0 when the character loads."""
+    level = max(int(level or 1), 1)
+    if key == 'gold':
+        return 10000 * level
+    vanilla = 50000 * (level // 10 + 1) if level <= 30 else 50000 * (level // 2 + 1)
+    return min(vanilla, STASH_GOLD_CAP)
 _FIELD = {f[0]: f for f in FIELDS}
 
 
@@ -649,8 +661,14 @@ class Character:
                      n=1 << shift, raw=raw)
         elif key in ('strength', 'dexterity', 'vitality', 'energy'):
             note = T('ch.note.base', 'base value without items')
+        top = raw_max >> shift
+        if key in ('gold', 'gold_stash'):
+            # the game resets gold above its limit to 0 when the character loads (not capped): never offer more
+            cap = gold_limit(key, self.level)
+            top = min(top, max(cap, raw))          # a value already in the file stays editable as it is
+            note = T('ch.note.gold', 'the game sets gold above {cap} to 0 when the character loads', cap=cap)
         return StatField(key=key, label=T('ch.field.' + key, label), sid=sid, bits=bits, shift=shift, raw=raw,
-                         raw_max=raw_max, value=raw >> shift, min=lo, max=raw_max >> shift,
+                         raw_max=raw_max, value=raw >> shift, min=lo, max=top,
                          present=any(st[0] == sid for st in self.stats), where=where, stored=True, note=note)
 
     def stat_fields(self):
@@ -662,7 +680,7 @@ class Character:
         f, raw = self._field_raw(key)
         return raw >> f[2]
 
-    def set_field(self, key, value):
+    def set_field(self, key, value, _raw=False):
         """Writes one stat-screen value as given, nothing else is recalculated ("unrestricted"). Limits are what
         the file can store (stat_field(key).min / .max); anything else raises CharError and changes nothing.
         Life / mana / stamina take whole points (a float sets the fraction too; an unchanged whole number keeps the
@@ -694,6 +712,9 @@ class Character:
         if not fd.min << shift <= new <= fd.raw_max:
             raise CharError(T('ch.err.field_range', '{label}: {value} cannot be stored, the file holds {lo} to {hi}',
                               label=fd.label, value=value, lo=fd.min, hi=fd.max))
+        if key in ('gold', 'gold_stash') and new > fd.max and not _raw:
+            raise CharError(T('ch.err.gold', '{label}: {value} is above the game\'s limit of {hi} (it would set the '
+                              'gold to 0 when the character loads)', label=fd.label, value=value, hi=fd.max))
         self.set_stat(sid, new)
         if key == 'level':
             self.head[0x2B] = new
@@ -703,7 +724,7 @@ class Character:
         f, _cur = self._field_raw(key)
         if isinstance(raw, bool) or not isinstance(raw, int):
             raise CharError(T('ch.err.field_number', '{label}: a number is expected', label=f[3]))
-        self.set_field(key, raw / (1 << f[2]) if f[2] else raw)
+        self.set_field(key, raw / (1 << f[2]) if f[2] else raw, _raw=True)   # raw editing: the file's limits only
 
     def set_level_raw(self, level):
         """Sets the level only (header byte and stat 12), down or up, without the game's level-up gains."""

@@ -309,4 +309,30 @@ def level_and_experience_helpers():
     T.check(lo < hi, f'exp range of level 50: {lo}..{hi}')
 
 
+@T.test
+def gold_stays_within_the_games_limit():
+    """The game sets gold above its limit to 0 when the character loads: inventory 10 000 x level, stash the base
+    game's 50 000 x (level / 2 + 1) above level 30, at most 2 500 000 (Median XL). set_field refuses more; raw
+    editing (set_field_raw) is limited by the file only."""
+    E = T.engine()
+    MC = E.MC
+    T.eq(MC.gold_limit('gold', 81), 810000, 'inventory, level 81')
+    T.eq(MC.gold_limit('gold_stash', 81), 2050000, 'stash, level 81: 50 000 x 41')
+    T.eq(MC.gold_limit('gold_stash', 117), 2500000, 'stash, level 117: Median XL cap')
+    T.eq(MC.gold_limit('gold_stash', 20), 150000, 'stash, level 20: 50 000 x 3')
+    c = MC.Character(fresh(samples()[0][0]), E.data)
+    for k in ('gold', 'gold_stash'):
+        cap = MC.gold_limit(k, c.level)
+        T.check(c.stat_field(k).max >= cap, f'{k}: the limit can be typed')
+        if c.stat_field(k).raw <= cap:
+            T.eq(c.stat_field(k).max, cap, f'{k}: field maximum is the game limit')
+            try:
+                c.set_field(k, cap + 1)
+                T.check(False, f'{k}: {cap + 1} accepted')
+            except MC.CharError:
+                pass
+        c.set_field(k, cap)
+        c.set_field_raw(k, cap + 1)                 # raw editing: the file's limits only
+
+
 T.main(globals())
