@@ -9,6 +9,9 @@ is recorded in a buffer (app._undo), and Ctrl+Z - or the new Undo button - steps
 - char (Fill sockets on a character / mercenary item): the undo writes the character file's previous bytes,
   only while the file is still exactly what the action wrote (a later write - the Character tab's SAVE, another
   item action, the game - makes the undo refuse instead of putting older data over the newer file).
+- files (an item dragged between stash pages, stash files, the inventory, the equipment, the mercenary - the main
+  grid, the Stash tab's panel, the Character tab - and the Character tab's SAVE): every file the action changed
+  goes back to its bytes of before, only while EVERY one of them is still exactly what the action wrote.
 
 Each undo is one stash write through the collector's own safe writer (mxl_save.edit_stash), with the
 usual backup policy and an instant grid refresh. The buffer holds the last 50 actions of this session.
@@ -79,6 +82,8 @@ def undo(app):
         return None
     if stack[-1]['kind'] == 'char':
         return _undo_char(app, stack.pop())
+    if stack[-1]['kind'] == 'files':
+        return _undo_files(app, stack)
     if not app.path:
         return None
     op = stack.pop()
@@ -186,6 +191,90 @@ def _undo_char(app, op):
     return T('undo.char', 'Undo: {name} restored to its previous bytes', name=name)
 
 
+def _read(path):
+    try:
+        with open(path, 'rb') as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def snapshot(paths):
+    """{absolute path: bytes or None} of the given files (None / empty entries skipped)."""
+    out = {}
+    for p in paths:
+        if p:
+            p = os.path.abspath(str(p))
+            if p not in out:
+                out[p] = _read(p)
+    return out
+
+
+def record_files(app, before, name=None):
+    """After an action: records a 'files' step of the files of before (snapshot()) whose bytes changed. Nothing
+    is recorded when no file changed (refused, rolled back). True when recorded."""
+    try:
+        files = []
+        for p, old in before.items():
+            new = _read(p)
+            if old is not None and new is not None and new != old:
+                files.append((p, bytes(old), bytes(new)))
+        if not files:
+            return False
+        return record(app, 'files', files=files, name=name)
+    except Exception as e:
+        _log_error('undo: move not recorded (%s: %s)', type(e).__name__, e)
+        return False
+
+
+def _verify_for(path, want, data):
+    def verify(tmp):
+        with open(tmp, 'rb') as f:
+            if f.read() != want:
+                raise EditError('undo: written bytes differ')
+        if path.lower().endswith('.d2s'):
+            from mxl_char import Character
+            from mxl_save import load_character
+            Character(tmp, data)
+            load_character(tmp, data)
+        else:
+            parse_stash(tmp, data)
+    return verify
+
+
+def _undo_files(app, stack):
+    """Puts every file of the last 'files' step back to its bytes of before; refused (step kept) when one of
+    them changed since. A failure half-way writes the files already restored back to what the action wrote."""
+    import mxl_save
+    op = stack.pop()
+    name = op.get('name') or 'item'
+    for path, _before, after in op['files']:
+        if _read(path) != after:
+            stack.append(op)
+            return T('undo.files_changed', 'Undo: {file} changed since ({name}) - not undone',
+                     file=os.path.basename(path), name=name)
+    done = []
+    try:
+        for path, before, after in op['files']:
+            bak = mxl_save.commit_file(path, before, _verify_for(path, before, app.data), app.needs_backup(path))
+            done.append((path, after))
+            app.backup_made(path, bak)
+    except Exception as e:
+        for path, after in done:
+            try:
+                mxl_save.commit_file(path, after, _verify_for(path, after, app.data), False)
+            except Exception as rb:
+                _log_error('undo: %s not written back (%s)', path, rb)
+        stack.append(op)
+        return T('undo.err', 'Undo failed: {err}', err=e)
+    for path, _b, _a in op['files']:
+        if path.lower().endswith('.d2s'):
+            _refresh_char(app, path)
+    if app.path:
+        _refresh(app)
+    return T('undo.files', 'Undo: {name} undone', name=name)
+
+
 def _refresh_item_stats_later(app):
     try:
         app.root.after_idle(_refresh_item_stats)
@@ -245,6 +334,88 @@ def _refresh(app, sel_key=None):
             pass
 
 
+def _char_path(app):
+    try:
+        return app.character_file()
+    except Exception:
+        return None
+
+
+def _track(fn, paths_of):
+    """Wraps a drag-release handler: paths_of(self) -> (app, files it may write, item name); the files are read
+    before, and the ones the handler changed are recorded as one 'files' undo step."""
+    import functools
+
+    @functools.wraps(fn)
+    def wrapper(self, *a, **kw):
+        try:
+            app, paths, name = paths_of(self)
+            before = snapshot(paths) if app is not None else None
+        except Exception:
+            before = None
+        r = fn(self, *a, **kw)
+        if before and record_files(app, before, name):
+            try:
+                st = getattr(self, 'status', None) or app.status
+                txt = st.cget('text')
+                if txt and 'Ctrl+Z' not in txt:
+                    st.configure(text=txt + T('undo.move_hint', ' - Ctrl+Z moves it back'))
+            except Exception:
+                pass
+        return r
+    wrapper._capy_undo_track = True
+    return wrapper
+
+
+def _clean(name):
+    try:
+        from mxl_creator_gui import clean
+        return clean(name)
+    except Exception:
+        return name
+
+
+def _install_move_undo(App):
+    """Drag moves become undoable: the main grid (move_item / transfer_item of the collector, stash -> character
+    of mxl_inv_gui), the Stash tab's character panel and the Character tab. The classes are patched before any
+    window binds the handlers."""
+    def main_paths(app):
+        d = getattr(app, 'drag', None)
+        if not d or d.get('item') is None:
+            return None, (), None
+        try:
+            name = app.full_name(d['item'])
+        except Exception:
+            name = None
+        return app, (app.path, d.get('path'), _char_path(app)), name
+
+    def panel_paths(w):
+        d = getattr(w, 'drag', None)
+        if not d or not d.get('moved'):
+            return None, (), None
+        ch = getattr(w, 'ch', None)
+        try:
+            name = _clean(d['entry'].it['name'])
+        except Exception:
+            name = None
+        return w.app, (w.app.path, ch.path if ch is not None else None), name
+
+    targets = [(App, main_paths)]
+    try:
+        import mxl_inv_gui
+        targets.append((mxl_inv_gui.MainInventory, panel_paths))
+    except Exception as e:
+        print('undo of panel moves disabled:', e)
+    try:
+        import mxl_char_gui
+        targets.append((mxl_char_gui.CharacterWindow, panel_paths))
+    except Exception as e:
+        print('undo of character tab moves disabled:', e)
+    for cls, paths_of in targets:
+        if not getattr(cls.on_release, '_capy_undo_track', False):
+            cls.on_release = _track(cls.on_release, paths_of)
+
+
 def install(App):
     """Delete-key-on-hover (instant, no prompt) + Ctrl+Z + the Undo button."""
     o_build = App._build
@@ -263,6 +434,21 @@ def install(App):
         except Exception as e:
             print('undo / delete-on-hover disabled:', e)
 
+    App._build = _build
+    _wrap_release_late(App)
+
+
+def _wrap_release_late(App):
+    """The move undo wraps the release handlers after mxl_inv_gui (installed after this module) patched
+    App.on_release: done at the first _build, before any widget binds them."""
+    o_build = App._build
+
+    def _build(self):
+        try:
+            _install_move_undo(type(self))
+        except Exception as e:
+            print('undo of moves disabled:', e)
+        o_build(self)
     App._build = _build
 
 
