@@ -20,7 +20,8 @@ import capytest as T
 
 MODE = 'gui'
 NEEDS = ('user', 'saves', 'saves2')
-VARIANTS = {'d2': {'MXL_THEME': 'd2', 'CAPY_GEOMETRY': '1180x680+0+0', 'MXL_UI_SCALE': '1.25'}}
+# the animated character (test_65) keeps a timer running: switched off here so 'quiet' means the switch is done
+VARIANTS = {'d2': {'MXL_THEME': 'd2', 'CAPY_GEOMETRY': '1180x680+0+0', 'MXL_UI_SCALE': '1.25', 'MXL_CHAR_RENDER': '0'}}
 G = T.G
 SWITCH_BUDGET = 4.0          # s until the event loop is quiet again (measured ~0.5 s)
 NAME = 'Zweiter'

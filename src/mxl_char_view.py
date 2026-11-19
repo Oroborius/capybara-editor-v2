@@ -133,7 +133,10 @@ class CharView:
 
 
 def install():
+    import os
     import mxl_char_gui
+    if os.environ.get('MXL_CHAR_RENDER', '1') == '0':      # off: no animated character (and no animation timer)
+        return
     W = mxl_char_gui.CharacterWindow
     if getattr(W, '_capy_char_view', False):
         return

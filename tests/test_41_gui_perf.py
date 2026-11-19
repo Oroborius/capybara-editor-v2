@@ -18,7 +18,10 @@ import time
 import capytest as T
 
 MODE = 'gui'
-VARIANTS = {'d2-scale1.25': {'MXL_THEME': 'd2', 'CAPY_GEOMETRY': '1180x680+0+0', 'MXL_UI_SCALE': '1.25'}}
+# the animated character (test_65) runs a timer while the Stats page is shown, so the event loop is never quiet
+# there: it is switched off here; its own timer rate and stop-when-hidden are checked in test_65
+VARIANTS = {'d2-scale1.25': {'MXL_THEME': 'd2', 'CAPY_GEOMETRY': '1180x680+0+0', 'MXL_UI_SCALE': '1.25',
+                             'MXL_CHAR_RENDER': '0'}}
 G = T.G
 
 START_BUDGET = 60.0          # s: first start, art partly extracted (measured ~10 s)

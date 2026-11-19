@@ -367,8 +367,10 @@ def confirm(path, parent=None):
 
 
 def _gate(cls, meth, path_of, parent_of):
+    import functools
     orig = getattr(cls, meth)
 
+    @functools.wraps(orig)                  # keeps the name (buttons and tests find the command by it)
     def gated(self, *a, **k):
         try:
             path, parent = path_of(self), parent_of(self)
@@ -377,7 +379,6 @@ def _gate(cls, meth, path_of, parent_of):
         if not confirm(path, parent):
             return None
         return orig(self, *a, **k)
-    gated.__wrapped__ = orig
     setattr(cls, meth, gated)
 
 
