@@ -184,6 +184,20 @@ def bit_editor_layout_contiguous():
         T.eq(sum(w.bits[off + j] << j for j in range(n)), v, f'field {lab}: value from its bits (LSB first)')
         at = off + n
     T.eq(at, len(w.bits), 'layout ends on the last bit')
+    if T.VARIANT == 'd2':                          # UdieToo's layout: stone art behind, Properties list
+        T.check(w.udie is not None, 'dark Bit editor without the game-art layout')
+        cv = w.udie.bgcv
+        T.check(any(cv.type(i) == 'image' for i in cv.find_withtag('art')), 'no art image on the background')
+        T.check(w.udie.props.size() > 0, 'Properties list empty')
+        row = w.udie.rows.index(next(i for i, f in enumerate(w.dec.fields) if f[2] == 'item level'))
+        w.udie.props.selection_clear(0, 'end')
+        w.udie.props.selection_set(row)
+        w.udie.on_pick()
+        T.eq(w.field_at(w.cur)[2], 'item level', 'Properties click moves the cursor')
+        T.check(w.pos_l.cget('text').startswith(f'Pos {w.cur} ({len(w.bits)}) Selection['),
+                f'status bar: {w.pos_l.cget("text")!r}')
+    else:
+        T.check(w.udie is None, 'light look got the game-art layout')
     w.cur = ETH
     w.show_status()
     T.check('ethereal' in w.val_l.cget('text'), f'status at the ethereal bit: {w.val_l.cget("text")!r}')
