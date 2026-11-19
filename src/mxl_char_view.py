@@ -116,7 +116,7 @@ class CharView:
             v = getattr(self.win, name, None)
             if isinstance(v, int) and 1 <= v <= 5:
                 return v
-        return 1
+        return save_act(getattr(self.win, 'ch', None))
 
     def _auto_scene(self, size):
         """mxl_scene.scene(art, data_folder, act, size) in a thread when the module exists; else dark ground."""
@@ -283,12 +283,16 @@ class CharView:
             room = (int(scr.cv.cget('width')) - 2 * round(512 * scr.k), h)   # both pages at their edges
         except (tk.TclError, ValueError):
             room = (w, h)
-        self._auto_scene(room)
+        zoom = 2 if room[1] >= 560 else 1           # the town and the character share one pixel scale
+        self._auto_scene((max(1, room[0] // zoom), max(1, room[1] // zoom)))
         f, ox, oy = self._draw_scene(w, h)
         for item, _ph, _fps in self._sprites:
             self.cv.itemconfigure(item, state='normal')
         self.shown = True
-        scale = self._scale_for(w, h)
+        if getattr(self.scene, 'base', None) is not None and self.anim is not None:
+            scale = max(1, int(round(f)))           # the same scale as the town behind it
+        else:
+            scale = self._scale_for(w, h)
         if not scale:
             self.cv.itemconfigure(self._img, image='')
             self.photos, self.scale = [], 0
@@ -333,6 +337,18 @@ class CharView:
             self._job = self.cv.after(max(20, int(1000 / fps)), self._tick)
         except tk.TclError:
             self._job = None
+
+
+def save_act(ch):
+    """The act the character was last in (1-5): header 0xA8-0xAA, one byte per difficulty, bit 7 = the difficulty
+    last played, low 3 bits = its act (0-4). 1 when unknown."""
+    try:
+        for b in ch.head[0xA8:0xAB]:
+            if b & 0x80:
+                return min((b & 7) + 1, 5)
+    except Exception:
+        pass
+    return 1
 
 
 def install():
