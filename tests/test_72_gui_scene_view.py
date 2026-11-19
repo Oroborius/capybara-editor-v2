@@ -76,6 +76,23 @@ def npcs_seen(v):
     return n
 
 
+_T = [1000]
+
+
+def when(gap=0):
+    """Event time stamps (ms): generated events otherwise all carry one, so any two clicks make a double click."""
+    _T[0] += gap
+    return _T[0]
+
+
+def double(v, x, y):
+    """A double click (two clicks in a row: Tk cannot generate <Double-Button-1> itself)."""
+    t = when(5000)
+    for i in range(2):
+        v.cv.event_generate('<ButtonPress-1>', x=x, y=y, time=t + 100 * i)
+        v.cv.event_generate('<ButtonRelease-1>', x=x, y=y, time=t + 100 * i + 50)
+
+
 def far_point(v):
     """A canvas point of the scene away from the character."""
     w, h = v.box[2], v.box[3]
@@ -126,7 +143,7 @@ def wheel_zooms():
     T.eq(settings.get('char_view_zoom'), 3, 'zoom remembered (settings.json)')
     wait_scene(v, 'zoom 3 rendered')
     shot('zoom3')
-    v.cv.event_generate('<Double-Button-1>', x=x, y=y)
+    double(v, x, y)
     wait_scene(v, 'reset')
 
 
@@ -139,18 +156,21 @@ def drag_pans_and_double_click_resets():
     x, y = far_point(v)
     dx = 40 if x < v.box[2] / 2 else -40
     dy = 30 if y < v.box[3] / 2 else -30
-    v.cv.event_generate('<ButtonPress-1>', x=x, y=y)
-    v.cv.event_generate('<B1-Motion>', x=x + dx, y=y + dy)
-    v.cv.event_generate('<ButtonRelease-1>', x=x + dx, y=y + dy)
+    t = when(5000)                                   # past the double-click time of the clicks before
+    v.cv.event_generate('<ButtonPress-1>', x=x, y=y, time=t)
+    T.check(v._drag is not None, f'drag started at {x},{y} (box {v.box}, on char {v._on_char(x, y)}, '
+            f'centre {v._shown_centre()})')
+    v.cv.event_generate('<Motion>', x=x + dx, y=y + dy, state=0x100, time=t + 100)   # button 1 held
+    v.cv.event_generate('<ButtonRelease-1>', x=x + dx, y=y + dy, time=t + 200)
     T.check(v.centre is not None and v.centre != c0, f'centre moved {c0} -> {v.centre}')
     f = v._scene_f
     T.check(abs(v.centre[0] - (c0[0] - dx / f)) <= 1 and abs(v.centre[1] - (c0[1] - dy / f)) <= 1,
             'moved against the drag')
-    wait_scene(v, 'panned scene rendered')
+    T.wait_for(lambda: (G.root.update(), ready(v) and v.scene.centre == v.centre)[1], 90, 'panned scene rendered')
     T.eq(v.scene.centre, v.centre, 'the scene rendered at the new centre')
     T.check(v._scene_key != k0, 'a new scene')
     shot('panned')
-    v.cv.event_generate('<Double-Button-1>', x=x, y=y)
+    double(v, x, y)
     T.eq(v.centre, None, 'double click: default framing')
     wait_scene(v, 'default scene again')
     T.eq(v.scene.centre, c0, 'the default centre again')
@@ -159,3 +179,6 @@ def drag_pans_and_double_click_resets():
     d0 = v.direction
     v.turn(1)
     T.eq(v.direction, (d0 + 1) % 8, 'character turns')
+
+
+T.main(globals())
