@@ -128,6 +128,7 @@ def _stash_menu(app, ev):
         menu.add_separator()
         menu.add_command(label=rc('delete', 'Delete item'), command=lambda: delete_selected(app))
         menu.add_command(label=rc('export', 'Export item...'), command=lambda: _export_stash(app, it))
+        menu.add_command(label=rc('inspect', 'Inspect...'), command=lambda: _inspect_stash(app, it))
     else:
         if clip is not None:
             menu.add_command(label=rc('paste_here', 'Paste here ({name})', name=clip[1]),
@@ -470,6 +471,7 @@ def _char_menu(win, cv, ev):
         menu.add_command(label=rc('to_stash', 'To stash'), command=win.to_stash)
         menu.add_command(label=rc('delete_short', 'Delete'), command=win.delete)
         menu.add_command(label=rc('export', 'Export item...'), command=lambda: _export_char(win, e))
+        menu.add_command(label=rc('inspect', 'Inspect...'), command=lambda: _inspect_char(win, e))
     else:
         if clip is not None and cv is win.inv:
             menu.add_command(label=rc('paste_here', 'Paste here ({name})', name=clip[1]),
@@ -1120,6 +1122,27 @@ def _import_char(win, ev):
         return
     win.app._capy_clip = None
     win.save(rc('imp.done', 'item imported from {file}', file=os.path.basename(path)))
+
+
+# ---- inspector (mxl_inspect) read the item's bytes as Export does
+def _inspect_stash(app, it):
+    import mxl_inspect
+    try:
+        blob = _now(app, it)[2]
+    except (EditError, FormatError, OSError) as e:
+        _status(app, str(e), True)
+        return None
+    return mxl_inspect.open_blob(app.root if hasattr(app, 'root') else app.canvas, blob, app.data, app.full_name(it))
+
+
+def _inspect_char(win, e):
+    import mxl_inspect
+    try:
+        blob = win.ch.stash_blob(e)
+    except (OSError, AttributeError) as err:
+        win.set_status(str(err), True)
+        return None
+    return mxl_inspect.open_blob(win.top, blob, win.data, clean_name(win, e))
 
 
 
