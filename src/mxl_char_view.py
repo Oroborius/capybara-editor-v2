@@ -10,6 +10,7 @@ import tkinter as tk
 
 PAD = 6
 GROUND = '#0d0b08'          # the scene without a background
+TURN = (4, 0, 5, 1, 6, 2, 7, 3)  # the game's directions clockwise from the front (S, SW, W, NW, N, NE, E, SE)
 
 
 class CharView:
@@ -21,6 +22,9 @@ class CharView:
         self.cv = tk.Canvas(self.host, bg='#000000', highlightthickness=0, bd=0, width=1, height=1)
         self._bg = self.cv.create_image(0, 0, anchor='nw')
         self._img = self.cv.create_image(0, 0, anchor='nw')
+        self.direction = 0          # index in TURN: left click on the character turns it left, right click right
+        self.cv.tag_bind(self._img, '<Button-1>', lambda e: self.turn(1))
+        self.cv.tag_bind(self._img, '<Button-3>', lambda e: self.turn(-1))
         self.scene = None           # the background: object with .base (PIL), .sprites [{pos, frames, fps}], .anchor
         self._scene_auto = True     # True: made here by mxl_scene (when importable) for the size of the room
         self._scene_mod = None      # mxl_scene, False when it cannot be imported (tried once)
@@ -49,7 +53,12 @@ class CharView:
     def _wanted(self):
         import mxl_char_render as R
         ch = self.win.ch
-        return ch.cls, tuple(sorted(R.gear_of(ch).items()))
+        return ch.cls, tuple(sorted(R.gear_of(ch).items())), TURN[self.direction % len(TURN)]
+
+    def turn(self, step):
+        """Turns the character by one of the 8 directions and renders it again."""
+        self.direction = (self.direction + step) % len(TURN)
+        self.load()
 
     def load(self):
         """Renders the character again when class or gear changed (in a thread)."""
@@ -68,7 +77,7 @@ class CharView:
         def work():
             try:
                 import mxl_char_render as R
-                out['anim'] = R.render(art, folder, key[0], dict(key[1]))
+                out['anim'] = R.render(art, folder, key[0], dict(key[1]), direction=key[2])
             except Exception as e:
                 print('character render disabled:', e)
                 out['anim'] = None

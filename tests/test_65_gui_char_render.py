@@ -197,7 +197,7 @@ def view_renders_the_loaded_characters_gear():
     T.wait_for(lambda: v.anim is not None and not v._busy, 30, 'character rendered')
     gear = R.gear_of(cw.ch)
     T.check(gear, 'the loaded character wears something')
-    T.eq(v._key, (cw.ch.cls, tuple(sorted(gear.items()))), 'render key = class + gear with colours')
+    T.eq(v._key[:2], (cw.ch.cls, tuple(sorted(gear.items()))), 'render key = class + gear with colours')
     T.check(len(v.anim.key[2]) > 0, f'gear layers in the shown render: {v.anim.key[2]}')
     # another character (test-druid, druid) in the window: the view renders it again
     import glob
@@ -208,9 +208,60 @@ def view_renders_the_loaded_characters_gear():
     try:
         T.wait_for(lambda: v.anim is not None and v.anim.key[0] == 'dz' and not v._busy, 30, 'druid rendered')
         T.eq(v.anim.key[1], '1ht', 'with the dirk')
-        T.eq(v._key, (cw.ch.cls, tuple(sorted(R.gear_of(cw.ch).items()))), 'render key follows the character')
+        T.eq(v._key[:2], (cw.ch.cls, tuple(sorted(R.gear_of(cw.ch).items()))), 'render key follows the character')
     finally:
         cw.ch = old
+
+
+@T.test
+def shadow_affix_colour_dual_wield_and_rotation():
+    import mxl_char_render as R
+    art = art_or_skip()
+    folder = view().data.folder
+    gear = {1: 'crn', 3: 'fld', 4: '14@', 5: 'tow'}
+    a = R.render(art, folder, 3, gear)
+    bare = R.render(art, folder, 3, gear, shadow=False)
+    f, g = a.frames[0], bare.frames[0]
+    T.check(f.width > g.width and f.height == g.height, f'shadow widens the canvas {g.size} -> {f.size}')
+    # the shadow: half transparent black pixels where the character alone has none, the lowest of them at the
+    # feet (bottom fifth of the canvas)
+    px, bx = f.load(), g.load()
+    w, h = f.size
+    pad = (w - g.width) // 2
+    sh = [(x, y) for y in range(h) for x in range(w)
+          if 0 < px[x, y][3] < 200 and max(px[x, y][:3]) < 20
+          and not (0 <= x - pad < g.width and bx[x - pad, y][3])]
+    T.check(len(sh) > 300, f'shadow pixels: {len(sh)}')
+    T.check(max(y for _x, y in sh) >= h * 4 // 5, 'the shadow reaches the feet')
+    # a magic prefix with a transformcolor (row 361 of magicprefix.bin) tints the armor like a unique
+    t = R._affix_colors(folder, 'magicprefix.bin')
+    pid = next(i + 1 for i, c in enumerate(t) if c < 21)
+    col = R.item_color(folder, {'quality': 'magic', 'prefix': pid, 'suffix': 0})
+    T.eq(col, t[pid - 1], 'magic item colour from its prefix')
+    rc = R.item_color(folder, {'quality': 'rare', 'rare_affixes': [None, None, pid, None, None, None]})
+    T.eq(rc, col, 'rare item colour from its affixes')
+    T.eq(R.item_color(folder, {'quality': 'magic', 'prefix': 0, 'suffix': 0}), None, 'no affix: no colour')
+    m = R.render(art, folder, 3, {1: ('crn', col), 3: ('fld', col), 4: '14@', 5: 'tow'})
+    T.check(m.frames[0].tobytes() != f.tobytes(), 'the magic colour changes the composite')
+    # dual wield: barbarian with two swords, assassin with two claws
+    b = R.render(art, folder, 4, {4: 'leg', 5: 'leg'})
+    T.eq(b.key[:2], ('ba', '1ss'), 'barbarian with two one-handed swing weapons: 1ss')
+    T.eq(R.plan(folder, 4, {4: 'leg', 5: 'gpm'})[1], '1js', 'barbarian swing + thrust: 1js')
+    T.eq(R.plan(folder, 3, {4: 'leg', 5: 'leg'})[1], '1hs', 'paladin cannot dual wield')
+    c = R.render(art, folder, 6, {4: 'j25', 5: 'j59'})
+    T.eq(c.key[:2], ('ai', 'ht2'), 'assassin with two claws: ht2')
+    T.eq(R.plan(folder, 6, {4: 'j25'})[1], 'ht1', 'assassin with one claw: ht1')
+    # rotation
+    r = R.render(art, folder, 3, gear, direction=1)
+    T.check(r.frames[0].tobytes() != f.tobytes(), 'another direction gives another frame')
+    v = view().char_view
+    T.wait_for(lambda: v.anim is not None, 30, 'character rendered')
+    k0 = v._wanted()[2]
+    v.turn(1)
+    T.check(v._wanted()[2] != k0, 'turn() changes the direction asked for')
+    T.wait_for(lambda: v.anim is not None and v.anim.key[-1] == v._wanted()[2], 30, 'rendered in the new direction')
+    shot('turned')
+    v.turn(-1)
 
 
 T.main(globals())
