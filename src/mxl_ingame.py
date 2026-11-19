@@ -172,6 +172,227 @@ def is_in_game(path):
     return bool(n) and n.lower() in {x.lower() for x in in_game(d)}
 
 
+# ------------------------------------------------------------------------------------------- the editor's side
+# Live refresh: while the selected character is in a game (and a few polls after it left: the save & exit write
+# lands as the game closes its files), its .d2s, its .stash, the shared stash and the stash shown are watched;
+# a change the editor did not make itself is read again (the Stash tab, the inventory panel, the Character tab
+# with its pending edits kept: CharacterWindow.sync_file) and the status bar says so. Not in game: nothing.
+# Warning: a red line beside the status bar while the selected character is in a game; moves between stash and
+# character and the Character tab's SAVE ask first.
+POLL_MS = 1500
+GRACE = 3                          # polls still watched after the character left the game
+_own = {}                          # path -> sig of the file as the editor itself last wrote it
+
+
+def _sig(path):
+    try:
+        st = os.stat(path)
+        return (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return None
+
+
+def _T(key, default, **kw):
+    try:
+        from mxl_lang import T
+        return T(key, default, **kw)
+    except Exception:
+        return default.format(**kw)
+
+
+def _watched(app):
+    path = app.character_file()
+    if not path:
+        return None, []
+    d, f = os.path.split(path)
+    n = char_of(f)
+    files = [path, getattr(app, 'path', None), os.path.join(d, f'{n}.stash'), os.path.join(d, '_sharedstash.shared')]
+    out = []
+    for x in files:
+        if x and os.path.abspath(x) not in out:
+            out.append(os.path.abspath(x))
+    return path, out
+
+
+def _baseline(app):
+    try:
+        _, files = _watched(app)
+        app._ig_sigs = {f: _sig(f) for f in files}
+    except Exception:
+        app._ig_sigs = {}
+
+
+def _char_tab():
+    try:
+        import mxl_tabs
+        return mxl_tabs.built_owner('Character')
+    except Exception:
+        return None
+
+
+def warning_text(name):
+    return _T('ig.warn', '{name} is in a game: the game will overwrite edits to this character when it saves',
+              name=name)
+
+
+def _show_warning(app, name):
+    lbl = getattr(app, '_ig_label', None)
+    if lbl is None:
+        if not name:
+            return
+        import tkinter as tk
+        st = app.status
+        lbl = tk.Label(st.master, text='', fg='#e06060', bg=st.master.cget('background')
+                       if 'background' in st.master.keys() else None, anchor='w')
+        app._ig_label = lbl
+    text = warning_text(name) if name else ''
+    if str(lbl.cget('text')) == text:
+        return
+    lbl.configure(text=text)
+    if name:
+        mgr = app.status.winfo_manager()
+        if mgr == 'grid':
+            gi = app.status.grid_info()
+            lbl.grid(row=int(gi.get('row', 0)) + 1, column=gi.get('column', 0), sticky='w')
+        else:
+            lbl.pack(side='bottom', fill='x', after=app.status)
+    else:
+        lbl.pack_forget() if lbl.winfo_manager() == 'pack' else lbl.grid_forget()
+
+
+def _busy(app):
+    if getattr(app, 'drag', None):
+        return True
+    inv = getattr(app, 'inventory', None)
+    if inv is not None and getattr(inv, 'drag', None) is not None:
+        return True
+    w = _char_tab()
+    return w is not None and getattr(w, 'drag', None) is not None
+
+
+def tick(app):
+    """One poll (the loop calls it every POLL_MS; tests call it directly). Never raises."""
+    try:
+        path, files = _watched(app)
+        name = char_of(os.path.basename(path)) if path else None
+        now_in = bool(path) and is_in_game(path)
+        _show_warning(app, name if now_in else None)
+        w = _char_tab()
+        wch = getattr(w, 'ch', None) if w is not None else None
+        if wch is not None:
+            same = path and os.path.abspath(wch.path) == os.path.abspath(path)
+            warned = getattr(w, '_ig_warned', False)
+            if same and now_in and not warned:
+                w.set_status(warning_text(name), True)
+            w._ig_warned = bool(same and now_in)
+        grace = GRACE if now_in else max(0, getattr(app, '_ig_grace', 0) - 1)
+        app._ig_grace = grace
+        old = getattr(app, '_ig_sigs', None)
+        if not (now_in or grace) or old is None:
+            _baseline(app)
+            return False
+        if _busy(app):
+            return False
+        new = {f: _sig(f) for f in files}
+        changed = [f for f in files if new[f] != old.get(f) and new[f] != _own.get(f)]
+        if not changed:
+            app._ig_sigs = new
+            return False
+        shown = []
+        if app.path and os.path.abspath(app.path) in changed:
+            app.load(app.path, keep_selection=True)        # draw_grid -> inventory panel -> Character tab
+            shown.append(app.path)
+        if os.path.abspath(path) in changed:
+            inv = getattr(app, 'inventory', None)
+            if inv is not None:
+                inv.refresh()
+            if wch is not None and os.path.abspath(wch.path) == os.path.abspath(path):
+                w.sync_file()
+            shown.append(path)
+        app._ig_sigs = {f: _sig(f) for f in files}
+        if shown:
+            app.status.configure(text=_T('ig.reloaded', 'Reloaded: the game saved {name}', name=name))
+        return bool(shown)
+    except Exception as e:
+        print('in-game watch:', e)
+        return False
+
+
+def confirm(path, parent=None):
+    """True when the write may go ahead: the character of path is not in a game, or the user says so."""
+    try:
+        if not path or not is_in_game(path):
+            return True
+        from tkinter import messagebox
+        name = char_of(os.path.basename(path))
+        return bool(messagebox.askyesno(_T('ig.title', 'Character in a game'), _T(
+            'ig.ask', '{name} is in a game: the game will overwrite this change when it saves the character '
+            '(and an item moved between stash and character may end up twice or be lost). Write anyway?',
+            name=name), parent=parent))
+    except Exception as e:
+        print('in-game check:', e)
+        return True
+
+
+def _gate(cls, meth, path_of, parent_of):
+    orig = getattr(cls, meth)
+
+    def gated(self, *a, **k):
+        try:
+            path, parent = path_of(self), parent_of(self)
+        except Exception:
+            path, parent = None, None
+        if not confirm(path, parent):
+            return None
+        return orig(self, *a, **k)
+    gated.__wrapped__ = orig
+    setattr(cls, meth, gated)
+
+
+def install(App):
+    import mxl_char
+    from mxl_char_gui import CharacterWindow
+    from mxl_inv_gui import MainInventory
+    o_save = mxl_char.Character.save
+
+    def save(self, *a, **k):
+        r = o_save(self, *a, **k)
+        _own[os.path.abspath(self.path)] = _sig(self.path)
+        return r
+    mxl_char.Character.save = save
+
+    o_load = App.load
+
+    def load(self, *a, **k):
+        r = o_load(self, *a, **k)
+        _baseline(self)
+        return r
+    App.load = load
+
+    for m in ('save_progress', 'to_stash', 'from_stash'):
+        _gate(CharacterWindow, m, lambda w: w.ch.path, lambda w: w.top)
+    for m in ('to_stash', 'drop_from_stash'):
+        _gate(MainInventory, m, lambda i: i.ch.path if i.ch is not None else i.app.character_file(),
+              lambda i: i.app.root)
+
+    o_build = App._build
+
+    def _build(self):
+        o_build(self)
+
+        def loop():
+            tick(self)
+            try:
+                self.root.after(POLL_MS, loop)
+            except Exception:
+                pass
+        try:
+            self.root.after(POLL_MS, loop)
+        except Exception as e:
+            print('in-game watch not started:', e)
+    App._build = _build
+
+
 if __name__ == '__main__':                  # evidence: what the game holds open, at the menu and in a game
     folder = sys.argv[1] if len(sys.argv) > 1 else '.'
     g, s = _processes()
