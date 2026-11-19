@@ -118,6 +118,43 @@ def lighting():
     im.putpixel((1, 0), (250, 200, 100, 255))
     S._glow(im)
     T.check(im.getpixel((0, 0))[3] == 0 and im.getpixel((1, 0))[3] > 200, 'additive-like glow alpha')
+    # light colours: objects.txt Red / Green / Blue (the waypoint's light is blue, fires are orange)
+    rows = S._objects(folder)[1]
+    wp = [S.object_light_rgb(r) for r in rows if S._s(r[:64]).lower() == 'waypoint' and S.object_light(r)]
+    T.check(wp and wp[0][2] > wp[0][0], f'waypoint light colour {wp[:1]}')
+    T.check(any(S.object_light_rgb(r)[0] > S.object_light_rgb(r)[2] + 100 for r in rows if S.object_light(r)),
+            'warm (fire) light colours')
+    T.check(sc.light_rgb is not None and sc.light_rgb.mode == 'RGB', 'coloured light map')
+
+
+@T.test
+def draw_modes():
+    import mxl_scene as S
+    art, folder = setup()
+    tb = S.pl2_tables(art, 1)
+    T.check(all(m in tb for m in (0, 1, 2, 3, 4, 6)), f'pl2 tables {sorted(map(str, tb))}')
+    pal = S.act_palette(art, 1)
+    lum = lambda i: sum(pal[i])
+    dark = min(range(1, 256), key=lambda i: abs(lum(i) - 150))
+    bright = max(range(1, 256), key=lum)
+    # an additive layer brightens what is under it; black adds nothing; 50 % lands between
+    T.check(lum(tb[3][dark][bright]) > lum(dark), f'additive brightens ({lum(dark)} -> {lum(tb[3][dark][bright])})')
+    T.check(abs(lum(tb[3][dark][0]) - lum(dark)) < 30, 'additive black adds nothing')
+    mid = lum(tb[1][dark][bright])
+    T.check(lum(dark) < mid < lum(bright), 'half-transparent blend in between')
+    # through blend(): an additive layer over a scene pixel, an opaque one replaces it
+    cb = bytearray([dark, dark])
+    S.blend(cb, 2, 1, [(bytes([bright]), 1, 1, 0, 0, 3), (bytes([bright]), 1, 1, 1, 0, S.NORMAL)], tb)
+    T.check(lum(cb[0]) > lum(dark) and cb[1] == bright, f'blend() modes {list(cb)}')
+    sc = S.scene(art, folder, 1, (512, 384))
+    vx, vy = sc.window
+    T.check(isinstance(vx, int) and isinstance(vy, int), f'Scene.window {sc.window}')
+    T.eq(sc.index.size, (512, 384), 'Scene.index')
+    T.check(sc.items and all(a[:2] <= b[:2] for a, b in zip(sc.items, sc.items[1:])), 'depth-sorted items')
+    fi, fm = sc.front((0, 0, 512, 384), -(1 << 31))
+    T.check(fm.getbbox(), 'Scene.front of everything is not empty')
+    fi, fm = sc.front((0, 0, 512, 384), 1 << 31)
+    T.check(not fm.getbbox(), 'nothing in front of the deepest point')
 
 
 T.main(globals())
