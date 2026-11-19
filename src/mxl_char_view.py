@@ -150,7 +150,14 @@ class CharView:
 
         def work():
             try:
-                out['scene'] = mxl_scene.scene(art, folder, key[0], size)
+                sc = mxl_scene.scene(art, folder, key[0], size)
+                if sc is not None:
+                    try:                             # the town's NPCs (Akara, Kashya...) as extra sprites
+                        import mxl_npcs
+                        sc = _WithNpcs(sc, mxl_npcs.add_npcs(sc, art, folder, key[0]))
+                    except Exception as e:
+                        print('town NPCs left out:', e)
+                out['scene'] = sc
             except Exception as e:
                 print('scene disabled:', e)
                 out['scene'] = None
@@ -346,6 +353,15 @@ class CharView:
             self._job = self.cv.after(max(20, int(1000 / fps)), self._tick)
         except tk.TclError:
             self._job = None
+
+
+class _WithNpcs:
+    """A scene with the NPCs added to its sprites (the cached Scene itself stays as it is)."""
+    def __init__(self, scene, sprites):
+        self._scene, self.sprites = scene, sprites
+
+    def __getattr__(self, name):
+        return getattr(self._scene, name)
 
 
 def save_act(ch):
