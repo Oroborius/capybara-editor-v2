@@ -73,8 +73,8 @@ def list_point(scr):
     import mxl_statscreen as S
     slot = scr.shown.index('totals')
     x, y, w, h = S.LIST_BOX
-    pw = round(S.PANEL_W * scr.k)
-    return slot * pw + (x + w / 2) * scr.k, (y + h / 2) * scr.k
+    sx = scr.slot_x(slot) if hasattr(scr, 'slot_x') else slot * round(S.PANEL_W * scr.k)
+    return sx + (x + w / 2) * scr.k, (y + h / 2) * scr.k
 
 
 def show_totals(cw, scr):
