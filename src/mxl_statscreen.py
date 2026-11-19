@@ -1659,14 +1659,15 @@ class StatScreen:
         self.move_page(slot, off0 + (dx if slot == 0 else -dx), save=False)
 
     def on_double(self, ev):
-        """Double click on a page's empty part: the page back at its edge."""
-        if not self.split:
-            return
+        """Double click on a page's empty part: the page back at its edge. Anywhere else the second click of a
+        double click is a click (<Double-Button-1> takes the place of <ButtonPress-1>: quick clicks on + count)."""
         kind, _key, _box = self._at(ev)
-        slot = self._slot_at(ev.x)
+        slot = self._slot_at(ev.x) if self.split else None
         if kind is None and slot is not None:
             self._drag = None
             self.move_page(slot, 0)
+            return
+        return self.on_press(ev)
 
     def _starts(self):
         """Indexes of the pages a view can start at: every page, but a book never runs past the last page.
