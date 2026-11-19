@@ -11,7 +11,9 @@ Data: DS1 type-1 entries (sub-tile x, y) -> monpreset.bin (u8 act, u8 kind, u16 
 the DS1 id counts the act's rows) -> monstats.bin (424-byte rows: code @0x10, monstats2 row @0x18) ->
 monstats2.bin (308-byte rows: base weapon class @0x10, layer present flags @0x15 (16), layer variants @0x26
 (16 x 12 compcode.bin indices)) -> data\\global\\monsters\\<tok>\\cof\\<tok><mode><wc>.cof + the layer DCCs
-<tok>\\<ly>\\<tok><ly><part><mode><wc>.dcc. Mode NU (neutral), direction 4 (facing the viewer)."""
+<tok>\\<ly>\\<tok><ly><part><mode><wc>.dcc. Mode NU (neutral), direction 4 (facing the viewer).
+Drawn into the scene's window like its objects (mxl_scene: pal.pl2 draw modes against Scene.index, Scene.front laid
+over, Scene.lit), so blended layers and the light match the town."""
 import os
 import struct
 import threading
@@ -86,13 +88,24 @@ def town_presets(art, data_folder, act):
     return out
 
 
-def monster_anim(art, folder, pal, mid, direction=FRONT):
-    """(frames [RGBA, one canvas], x0, y0 of the canvas relative to the feet, fps) or None."""
+def monster_layers(art, folder, mid, direction=FRONT):
+    """(frames, (x0, y0, x1, y1) box relative to the feet, fps) or None; frames[f] = [(index bytes, w, h, x, y,
+    draw mode)] in draw order (mxl_scene.blend), x / y relative to the box. The monster's colour: monstats TransLvl
+    > 0 picks that row of <tok>\\cof\\palshift.dat (all the towns' NPCs have 0: their own colours)."""
     p = monster_plan(folder, mid)
     if p is None:
         return None
     tok, wc, parts = p
     base = f'data\\global\\monsters\\{tok}\\'
+    remap = None
+    shift = _rows(folder, 'monstats.bin')[mid][77]
+    if shift:
+        try:
+            ps = R.read(art, f'{base}cof\\palshift.dat')
+            if len(ps) >= 256 * (shift + 1):
+                remap = ps[256 * shift:256 * (shift + 1)]
+        except Exception:
+            pass
     for mode in MODES:
         for w in dict.fromkeys((wc, 'hth')):
             try:
@@ -100,7 +113,7 @@ def monster_anim(art, folder, pal, mid, direction=FRONT):
             except Exception:
                 continue
             layers = {}
-            for t, transp, _eff, lwc in cof.layers:
+            for t, transp, eff, lwc in cof.layers:
                 if t >= len(D.LAYERS):
                     continue
                 ly = D.LAYERS[t]
@@ -108,173 +121,83 @@ def monster_anim(art, folder, pal, mid, direction=FRONT):
                     try:
                         data = R.read(art, f'{base}{ly}\\{tok}{ly}{part}{mode}{lwc or w}.dcc')
                         nd = D.header(data)[0]
-                        layers[t] = (D.decode_direction(data, direction % nd if nd else 0), transp)
+                        layers[t] = (D.decode_direction(data, direction % nd if nd else 0), S.draw_mode(transp, eff))
                         break
                     except Exception:
                         continue
             if not layers:
                 continue
-            from PIL import Image
-            x0 = min(f[0].x0 for f, _ in layers.values())
-            y0 = min(f[0].y0 for f, _ in layers.values())
-            x1 = max(f[0].x0 + f[0].w for f, _ in layers.values())
-            y1 = max(f[0].y0 + f[0].h for f, _ in layers.values())
-            imgs = {}
-            for t, (frs, transp) in layers.items():
-                ims = [f.image(pal) for f in frs]
-                if transp:
-                    for im in ims:
-                        im.putalpha(im.getchannel('A').point(lambda a: a // 2))
-                imgs[t] = ims
+            box = S._union(layers)
             cd = direction % (cof.dirs or 1)
-            frames = []
-            for f in range(max(1, cof.frames)):
-                can = Image.new('RGBA', (x1 - x0, y1 - y0), (0, 0, 0, 0))
-                for t in cof.draw_order(cd, f):
-                    if t in imgs:
-                        ims = imgs[t]
-                        fr = layers[t][0][f % len(ims)]
-                        can.alpha_composite(ims[f % len(ims)], (fr.x0 - x0, fr.y0 - y0))
-                frames.append(can)
+            frames = [S._frame_layers(cof, cd, f, layers, box, remap) for f in range(max(1, cof.frames))]
             fpd, speed = R._animdata(art, folder).get(f'{tok}{mode}{w}'.lower(), (len(frames), 256))
             fps = max(1.0, min(25.0, speed * 25 / 256)) if speed else 12.5
-            return frames, x0, y0, fps
+            return frames, box, fps
     return None
 
 
-def _anim_cached(art, folder, act, pal, mid):
-    k = (getattr(art, 'game_dir', None), folder, act, mid)
+def monster_anim(art, folder, pal, mid, direction=FRONT):
+    """(frames [RGBA over nothing, one canvas], x0, y0 of the canvas relative to the feet, fps) or None."""
+    got = monster_layers(art, folder, mid, direction)
+    if got is None:
+        return None
+    frames, (x0, y0, x1, y1), fps = got
+    return [S.layers_rgba(fl, (x1 - x0, y1 - y0), pal) for fl in frames], x0, y0, fps
+
+
+def _layers_cached(art, folder, mid):
+    k = (getattr(art, 'game_dir', None), folder, mid)
     if k not in _ANIM:
         try:
-            _ANIM[k] = monster_anim(art, folder, pal, mid)
+            _ANIM[k] = monster_layers(art, folder, mid)
         except Exception:
             _ANIM[k] = None
     return _ANIM[k]
 
 
-def _window(art, folder, act, m, size, centre):
-    """(vx, vy): world pixel of .base's top-left, as mxl_scene.build places its window."""
-    W, H = size
-    if centre is None:
-        pre, objrows = S._objects(folder)
-        for typ, oid, x, y in m.objects:
-            i = (act - 1) * 150 + oid
-            if typ == 2 and i < len(pre) and pre[i] < len(objrows) and \
-                    S._s(objrows[pre[i]][:64]).lower() == 'waypoint':
-                wx, wy = S._sub_px(x, y)
-                centre = (wx + 40, wy + 24)
-                break
-        else:
-            centre = S._sub_px(m.w * 5 // 2, m.h * 5 // 2)
-    return centre[0] - W // 2, centre[1] - H * 3 // 5
-
-
-def _front_items(art, folder, act, m, flat, pal):
-    """The scene's depth-sorted walls / roofs / objects as (depth key, kind, tile or image, wx, wy) - the same keys
-    mxl_scene.build sorts by (kind 0/1 tiles, kind 2 object frame 0 as (PIL RGBA, fx, fy))."""
-    tiles = {}
-    names = ['data' + f.split('\\data', 1)[1].rsplit('.', 1)[0] + '.dt1' for f in m.files if '\\data\\' in f.lower()]
-    seen = set()
-    for f in names + S.town_files(folder, act)[1]:
-        if f.lower() in seen:
-            continue
-        seen.add(f.lower())
-        try:
-            for t in S.dt1_tiles(R.read(art, f)):
-                tiles.setdefault((t.orient, t.main, t.sub), []).append(t)
-        except Exception:
-            continue
-    out = []
-    for cells, orients in m.walls:
-        for i, dw in enumerate(cells):
-            o = orients[i]
-            if o in (0, 10, 11, 13):
-                continue
-            c = S.cell(dw)
-            if c is None:
-                continue
-            tx, ty = i % m.w, i // m.w
-            wx, wy = (tx - ty) * 80, (tx + ty) * 40
-            for oo in ((3, 4) if o == 3 else (o,)):
-                cands = tiles.get((oo,) + c)
-                if not cands:
-                    continue
-                t = S._pick(cands, tx, ty)
-                if oo == 15:
-                    out.append((1 << 30, 0, t, wx, wy - t.roof_y))
-                elif oo < 16:
-                    out.append((wy + 80, 1, t, wx, wy + 80))
-    pre, objrows = S._objects(folder)
-    for typ, oid, x, y in m.objects:
-        i = (act - 1) * 150 + oid
-        if typ == 2 and i < len(pre) and pre[i] < len(objrows):
-            a = S._object_anim_cached(art, act, pal, objrows[pre[i]])
-            if a:
-                ox, oy = S._sub_px(x, y)
-                out.append((oy, 2, a[0][0], ox, oy))
-    return out
-
-
 def town_npcs(art, data_folder, act, scene, centre=None):
-    """The NPC sprites of an act's town for `scene` (an mxl_scene.Scene built with the same centre)."""
-    if scene is None:
+    """The NPC sprites of an act's town for `scene` (an mxl_scene.Scene of that act; its window is used, centre is
+    only kept for the old signature). Each frame: the NPC's layers drawn over the scene's palette indices with the
+    game's draw modes, what stands in front laid over, lit like the scene."""
+    if scene is None or scene.index is None:
         return []
     with _LOCK:
-        ds1s, _dt1 = S.town_files(data_folder, act)
-        if not ds1s:
-            return []
-        m = S.DS1(R.read(art, ds1s[0]))
         W, H = scene.base.size
-        vx, vy = _window(art, data_folder, act, m, (W, H), centre)
-        pal = S.act_palette(art, act)
-        pr = presets(data_folder, act)
-        npcs = []                                       # (world x, y, monstats row, anim)
-        for typ, oid, x, y in m.objects:
-            if typ != 1 or not 0 <= oid < len(pr) or pr[oid] is None:
-                continue
-            ox, oy = S._sub_px(x, y)
+        vx, vy = scene.window
+        npcs = []                                       # (world y, monstats row, window box, (frames, masks), fps)
+        for _name, _tok, mid, (ox, oy) in town_presets(art, data_folder, act):
             if not (vx - 256 < ox < vx + W + 256 and vy - 64 < oy < vy + H + 384):
                 continue
-            a = _anim_cached(art, data_folder, act, pal, pr[oid])
-            if a:
-                npcs.append((ox, oy, pr[oid], a))
-        if not npcs:
-            return []
-        flat = S._flat(pal)
-        front_all = _front_items(art, data_folder, act, m, flat, pal)
-        front_all += [(oy, 3, (a[0][0], a[1], a[2]), ox, oy) for ox, oy, _mid, a in npcs]
-        tcache = {}
+            a = _layers_cached(art, data_folder, mid)
+            if not a:
+                continue
+            frames, (bx0, by0, bx1, by1), fps = a
+            px, py = ox + bx0 - vx, oy + by0 - vy
+            if px + bx1 - bx0 <= 0 or py + by1 - by0 <= 0 or px >= W or py >= H:
+                continue
+            bg = scene.index.crop((px, py, px + bx1 - bx0, py + by1 - by0))
+            comp = [S.compose(bg, fl, scene.tables) for fl in frames]
+            npcs.append((oy, mid, (px, py), comp, fps))
         out = []
         ms = _rows(data_folder, 'monstats.bin')
-        for ox, oy, mid, (frames, fx, fy, fps) in npcs:
-            px, py = ox + fx - vx, oy + fy - vy
-            fw, fh = frames[0].size
-            x0, y0, x1, y1 = max(0, px), max(0, py), min(W, px + fw), min(H, py + fh)
+        for n, (oy, mid, (px, py), comp, fps) in enumerate(npcs):
+            fw, fh = comp[0][0].size
+            box = (max(0, px), max(0, py), min(W, px + fw), min(H, py + fh))
+            x0, y0, x1, y1 = box
             if x1 <= x0 or y1 <= y0:
                 continue
-            from PIL import Image
-            bx, by = x0 + vx, y0 + vy
-            front = Image.new('RGBA', (x1 - x0, y1 - y0), (0, 0, 0, 0))
-            for k, kind, t, wx, wy in sorted(front_all, key=lambda d: (d[0], d[1])):
-                if (k, kind) <= (oy, 2) or (kind == 3 and (wx, wy) == (ox, oy)):
-                    continue                            # behind (or itself); objects at the same depth: behind
-                if kind >= 2:
-                    im, ix, iy = t
-                    S._paste(front, im, wx + ix - bx, wy + iy - by)
-                else:
-                    tx0, ty0, tx1, ty1 = t.bbox()
-                    if wx + tx1 <= bx or wx + tx0 >= bx + front.width or wy + ty1 <= by or wy + ty0 >= by + front.height:
-                        continue
-                    got = tcache.get(id(t))
-                    if got is None:
-                        got = tcache[id(t)] = S._tile_image(t, flat)
-                    im, ix, iy = got
-                    S._paste(front, im, wx + ix - bx, wy + iy - by)
+            fi, fm = scene.front(box, oy, 2)            # objects at the same depth: behind
+            for k, (oy2, _m, (qx, qy), comp2, _f) in enumerate(npcs):
+                if k != n and (oy2, k) > (oy, n):       # NPCs standing lower: in front
+                    fi.paste(comp2[0][0], (qx - x0, qy - y0), comp2[0][1])
+                    fm.paste(255, (qx - x0, qy - y0), comp2[0][1])
             fr = []
-            for im in frames:
-                f = im.crop((x0 - px, y0 - py, x1 - px, y1 - py))
-                f.alpha_composite(front)
-                fr.append(f)
+            for ci, cm, (bm, bs) in comp:
+                c = (x0 - px, y0 - py, x1 - px, y1 - py)
+                ci, cm, bm = ci.crop(c), cm.crop(c), bm.crop(c)
+                ci.paste(fi, (0, 0), fm)
+                bm.paste(0, (0, 0), fm)
+                fr.append(scene.lit(S.to_rgba(ci, cm, scene.pal), (x0, y0), (bm, bs.crop(c))))
             tok = S._s(ms[mid][0x10:0x14])
             out.append({'pos': (x0, y0), 'frames': fr, 'fps': fps, 'token': tok, 'monstats': mid,
                         'name': NAMES.get(tok.upper(), tok)})
