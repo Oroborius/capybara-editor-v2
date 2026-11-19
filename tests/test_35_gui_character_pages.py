@@ -1278,10 +1278,12 @@ def attack_and_other_skills_have_an_icon_on_the_stat_screen():
     """Page 1's skill frames and names: Attack (skill 0, outside every skill tree; icons-shared.dc6) and a class skill both
     get an icon (Attack had none: the frame stayed empty)."""
     cw = start('stats')
+    T.eq(cw._sk_name(0), 'Attack', "Attack's name (no entry in the collector's skill names: was 'hidden #0')")
     scr = cw.statscreen
+    if scr is None:
+        T.skip('this theme has no game stat screen')
     cls = cw.st_sim.cls
     T.check(scr._skill_icon(cls, 0) is not None, 'Attack has an icon')
-    T.eq(cw._sk_name(0), 'Attack', "Attack's name (no entry in the collector's skill names: was 'hidden #0')")
     own = next((sid for sid, lv in cw.st_sim.skill_levels().items() if lv), None)
     if own is not None:
         T.check(scr._skill_icon(cls, own) is not None, f'class skill {own} has an icon')
