@@ -93,4 +93,31 @@ def act1_scene():
     print(f'act 1 scene: {secs:.1f} s, {len(sc.sprites)} animated objects')
 
 
+@T.test
+def lighting():
+    import mxl_scene as S
+    art, folder = setup()
+    sc = S.scene(art, folder, 1, (512, 384))
+    lm = sc.light
+    T.check(lm is not None and lm.size == (512, 384), 'light map')
+    ax, ay = sc.anchor
+    T.check(lm.getpixel((ax, ay)) > 200, f'bright at the anchor ({lm.getpixel((ax, ay))})')
+    T.eq(lm.getpixel((2, 2)), S.AMBIENT, 'dark far from any light')
+    near = sum(sc.base.getpixel((ax + dx, ay + dy))[k] for dx in (-8, 0, 8) for dy in (-4, 0, 4) for k in range(3))
+    ys = [y for y in (0, 383)]
+    far = sum(sc.base.getpixel((x, y))[k] for x in (0, 8, 16) for y in ys for k in range(3)) * 9 // 6
+    T.check(far < near, f'far pixels darker than near ones ({far} < {near})')
+    # a light-emitting object (a torch: Lit0-7) brightens its surroundings beyond the ambient darkness
+    lights = S.light_map((512, 384), (-999, -999), [(100, 100, 250)])
+    T.check(lights.getpixel((100, 100)) > S.AMBIENT + 100 and lights.getpixel((500, 380)) == S.AMBIENT,
+            'object light pool')
+    T.check(any(S.object_light(r) for r in S._objects(folder)[1]), 'objects.bin rows with a light radius')
+    # glow layers: black adds nothing, bright covers
+    from PIL import Image
+    im = Image.new('RGBA', (2, 1), (0, 0, 0, 255))
+    im.putpixel((1, 0), (250, 200, 100, 255))
+    S._glow(im)
+    T.check(im.getpixel((0, 0))[3] == 0 and im.getpixel((1, 0))[3] > 200, 'additive-like glow alpha')
+
+
 T.main(globals())
