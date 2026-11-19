@@ -3002,6 +3002,7 @@ def run():
     import mxl_he_theme                    # the Hero-Editor look for every window - outermost (walks what others build)
     mxl_he_theme.install(mxl_gui.App)      # (in the dark look it repaints with mxl_d2_theme's palette)
     mxl_d2_theme.install_toggle(mxl_gui.App)
+    import mxl_itemlib; mxl_itemlib.install()   # More » Item library... (+ right-click Add to library...)
     import mxl_toolbar                     # the top bar at every width: what does not fit goes into "More"
     mxl_toolbar.install(mxl_gui.App)
     import mxl_lang; mxl_lang.install(mxl_gui.App)   # live language switch: the editor's own texts follow
