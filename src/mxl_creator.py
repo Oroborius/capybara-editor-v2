@@ -561,6 +561,27 @@ class Creator:
         data.key('x')                                      # builds data._bykey
         self.rw_list = [i for i, (n, runes, ok, ex) in enumerate(data.runewords)
                         if runes and self.t.rw_complete[i] and n in data._bykey]
+        try:
+            data._sn_string_tags_fn = self.orange_effect_tags    # the attribute picker's orange-text labels
+        except Exception:
+            pass
+
+    def orange_effect_tags(self):
+        """{string id: tag} for the orange-text stats' picker (375/377/378/385): what the text DOES - the
+        effect stats the game's own rows pair with it ('effect: Demon Blood aura'), or 'display only' when
+        the text is the whole thing."""
+        tags = {}
+        for t in self.orange_texts():
+            disp = t.get('display') or {}
+            if disp.get('id') not in (375, 377, 378, 385) or disp.get('param') is None:
+                continue
+            fx = [e.get('label') for e in (t.get('effects') or []) + (t.get('hidden') or []) if e.get('label')]
+            old = tags.get(disp['param'])
+            if fx:
+                tags[disp['param']] = 'effect: ' + ', '.join(dict.fromkeys(fx))[:70]
+            elif old is None:
+                tags[disp['param']] = 'display only'
+        return tags
 
     # ---- catalogs
     def base_name(self, code):

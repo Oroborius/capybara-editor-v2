@@ -201,6 +201,10 @@ def _string_names(data, bits):
     if bits in cache:
         return cache[bits]
     out = []
+    try:                                     # what each text does (the Creator's orange-text sources)
+        tags = data._sn_string_tags_fn()
+    except Exception:
+        tags = {}
     for i in STRING_IDS:
         if i >= 1 << bits:
             break
@@ -209,7 +213,10 @@ def _string_names(data, bits):
         lines = [ln.strip() for ln in text.split('\n') if ln.strip()]
         if lines:
             n = ' / '.join(lines)
-            out.append((n if len(n) <= 120 else n[:117] + '...', i))
+            n = n if len(n) <= 120 else n[:117] + '...'
+            if i in tags:
+                n = f'[{tags[i]}] {n}'
+            out.append((n, i))
     cache[bits] = out
     return out
 

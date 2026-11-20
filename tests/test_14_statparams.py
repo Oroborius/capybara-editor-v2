@@ -195,6 +195,15 @@ def orange_text_params_are_picked_by_text():
         T.check('Tenacity' in name, f'string 11861 offered as {name!r}')
         T.eq(SN.param_value(E.data, sid, name), 11861, 'picked text -> string id')
         T.eq(SN.param_name(E.data, sid, 11861), name, 'string id -> text')
+    import mxl_creator
+    mxl_creator.Creator(E.data)                          # registers what each text does
+    E.data.__dict__.pop('_sn_param_choices', None)
+    E.data.__dict__.pop('_sn_string_names', None)
+    names = [n for n, _v in SN.param_choices(E.data, 375)]
+    fx = [n for n in names if n.startswith('[effect: ')]
+    T.check(len(fx) > 5, f'only {len(fx)} orange texts tagged with their effect')
+    T.check(any(n.startswith('[display only] ') for n in names), 'no orange text tagged display only')
+    print('  e.g.', fx[0][:110])
 
 
 @T.test
