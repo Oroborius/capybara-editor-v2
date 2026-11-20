@@ -252,11 +252,16 @@ def extract(game_dir, out, progress=None, icons=True):
         import mxl_gfx
         items = os.path.join(tmp, 'items')
         os.makedirs(items, exist_ok=True)
-        mxl_gfx.extract_icons(game_dir, mxl_data.Data(tmp), items, progress=progress)
+        o_open = mxl_gfx.open_archives
+        mxl_gfx.open_archives = _open_stack                # the folder's own stack, only for this extraction
         try:
-            mxl_gfx.extract_ui(game_dir, items)
-        except Exception:
-            pass
+            mxl_gfx.extract_icons(game_dir, mxl_data.Data(tmp), items, progress=progress)
+            try:
+                mxl_gfx.extract_ui(game_dir, items)
+            except Exception:
+                pass
+        finally:
+            mxl_gfx.open_archives = o_open
     with open(os.path.join(tmp, 'install.json'), 'w', encoding='utf-8') as f:
         json.dump({'game_dir': game_dir, 'fingerprint': _fingerprint(game_dir),
                    'files': sorted(files)}, f, indent=1)
@@ -280,12 +285,21 @@ def install():
     info = detect(game_dir)
     if info['kind'] == 'median':                      # a Median folder chosen as "other folder": today's path
         return None
+    if info['kind'] != 'd2' or not info['supported']:
+        # never a dead start: the editor opens as Median XL, the Game profile dialog can choose another folder
+        _log(f'game profile: {game_dir} is not a supported game folder ({info}): Median XL mode')
+        return None
     pid = profile_id(game_dir, info)
     root = os.path.join(paths.USER_DIR, 'profiles', pid)
     data_dir = os.path.join(root, 'data')
+    try:
+        if not data_ok(game_dir, data_dir):
+            _log(f'game profile {pid}: extracting tables and icons from {game_dir}')
+            extract(game_dir, data_dir)
+    except Exception as err:
+        _log(f'game profile {pid}: extraction failed ({type(err).__name__}: {err}): Median XL mode')
+        return None
     _state = dict(info, game_dir=game_dir, id=pid, root=root, data_dir=data_dir)
-    if info['kind'] is None or not info['supported']:
-        _log(f'game profile: {game_dir} is not a supported game folder ({info})')
     paths.DATA_DIR = data_dir
     paths.ICONS_DIR = os.path.join(data_dir, 'items')
     _patch_settings(game_dir)
@@ -293,9 +307,8 @@ def install():
     _patch_gfx()
     _patch_install()
     _patch_art()
-    if not data_ok(game_dir, data_dir):
-        _log(f'game profile {pid}: extracting tables and icons from {game_dir}')
-        extract(game_dir, data_dir)
+    _patch_savecheck()
+    _patch_pages()
     _log(f'game profile {pid}: data {data_dir}')
     return _state
 
@@ -343,15 +356,56 @@ def _patch_format():
 
 def _patch_gfx():
     """The collector's icon reader opens medianxl-*.mpq + lower-case base names: the folder's stack instead."""
-    import mpq
     import mxl_gfx
+    mxl_gfx.open_archives = _open_stack
 
-    def open_archives(game_dir):
-        return _open([p for p in archive_order(game_dir)
-                      if not os.path.basename(p).lower().startswith(('d2music', 'd2xmusic', 'd2video', 'd2xvideo',
-                                                                     'd2speech', 'd2xtalk', 'd2sfx'))])
-    mxl_gfx.open_archives = open_archives
-    _ = mpq
+
+_NO_DATA = ('d2music', 'd2xmusic', 'd2video', 'd2xvideo', 'd2speech', 'd2xtalk', 'd2sfx')
+
+
+def _open_stack(game_dir):
+    """The folder's archives that hold tables / art, highest priority first (sound / video archives left out)."""
+    return _open([p for p in archive_order(game_dir) if not os.path.basename(p).lower().startswith(_NO_DATA)])
+
+
+def _patch_pages():
+    """The Mercenary page maps the save's mercenary type through the Median hireling rows; with vanilla rows
+    (classic + expansion rows share ids) the shown type differs from the file's and a SAVE without edits rewrote
+    it. Here the page is dirty only when its values changed since it was built (phase 2: vanilla hireling rows)."""
+    try:
+        import mxl_merc
+    except Exception:
+        return
+    P = mxl_merc.MercPage
+    o_init, o_dirty = P.__init__, P.dirty
+
+    def __init__(self, *a, **k):
+        o_init(self, *a, **k)
+        try:
+            self._profile_base = self.values()
+        except Exception:
+            self._profile_base = None
+
+    def dirty(self):
+        base = getattr(self, '_profile_base', None)
+        try:
+            if base is not None and self.values() == base:
+                return False
+        except Exception:
+            pass
+        return o_dirty(self)
+    P.__init__, P.dirty = __init__, dirty
+
+
+def _patch_savecheck():
+    """mxl_savecheck re-reads every written file with mxlsave, a Median XL parser (Sigma tables, 95 skill
+    bytes): in a folder profile it is not asked (phase 2: a vanilla mode for mxlsave); the collector's own
+    write-verify-backup path stays."""
+    try:
+        import mxl_savecheck
+    except Exception:
+        return
+    mxl_savecheck.mode = lambda *a, **k: 'off'
 
 
 def _patch_install():
@@ -383,8 +437,10 @@ def _patch_install():
 
 
 def _patch_art():
-    """Art (panels, fonts, palettes) from the folder's MPQ stack, its cache in the profile's folder; with
-    'Use vanilla UI theme' the base archives come first for every UI file."""
+    """Art (panels, fonts, palettes, sprites) from the folder's MPQ stack, cached in the profile's folder (its
+    own cache per "Use vanilla UI theme" state, renewed when the folder's archives change). With that setting the
+    UI files (data\\global\\ui, fonts, palettes) come from the base archives first (d2data / d2exp / patch_d2),
+    the folder's own art when they have none; items, sprites and everything else stay the folder's."""
     try:
         import mxl_d2look_art as A
     except Exception:
@@ -392,16 +448,39 @@ def _patch_art():
     o_init = A.Art.__init__
 
     def __init__(self, game_dir, theme, cache_root):
-        o_init(self, game_dir, theme, os.path.join(_state['root'], 'ui_art') if _state else cache_root)
+        if _state:
+            cache_root = os.path.join(_state['root'], 'ui_art-vanilla' if vanilla_ui_theme() else 'ui_art')
+        o_init(self, game_dir, theme, cache_root)
     A.Art.__init__ = __init__
+    o_stamp = A.Art.stamp
+
+    def stamp(self):
+        if not _state:
+            return o_stamp(self)
+        import glob
+        import shutil
+        st = hashlib.sha1(json.dumps(_fingerprint(self.game_dir), sort_keys=True).encode()).hexdigest()
+        os.makedirs(self.cache, exist_ok=True)
+        p = os.path.join(self.cache, 'stamp.txt')
+        try:
+            old = open(p).read()
+        except OSError:
+            old = None
+        if old != st:
+            for f in glob.glob(os.path.join(self.cache, '*.png')):
+                try:
+                    os.remove(f)
+                except OSError:
+                    pass
+            shutil.rmtree(os.path.join(self.cache, 'raw'), ignore_errors=True)
+            with open(p, 'w') as fh:
+                fh.write(st)
+    A.Art.stamp = stamp
 
     def mpqs(self):
         if self._mpqs is None:
-            order = archive_order(self.game_dir)
-            if vanilla_ui_theme():
-                base = base_archives(self.game_dir)
-                order = base + [p for p in order if p not in base]
-            self._mpqs = A._Archives(order)
+            self._mpqs = A._Archives([p for p in archive_order(self.game_dir)
+                                      if not os.path.basename(p).lower().startswith(_NO_DATA)])
         return self._mpqs
     A.Art.mpqs = mpqs
 
@@ -410,6 +489,17 @@ def _patch_art():
             self._base_mpqs = [m for m in map(A._archive, base_archives(self.game_dir)) if m is not None]
         return self._base_mpqs
     A.Art.base_mpqs = base_mpqs
+    o_read = A.Art.read
+    ui = ('data\\global\\ui\\', 'data\\local\\font\\', 'data\\global\\palette\\')
+
+    def read(self, name):
+        if _state and vanilla_ui_theme() and name.lower().startswith(ui):
+            try:
+                return self.read_base(name)
+            except A.ArtError:
+                pass
+        return o_read(self, name)
+    A.Art.read = read
 
 
 # ---------------------------------------------------------------------------------------------------- menu

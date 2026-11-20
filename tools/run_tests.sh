@@ -65,7 +65,7 @@ if [ -z "${MXL_TEST_SAVE_DIR3:-}" ]; then
 fi
 export CAPY_SRC_SAVES3="$MXL_TEST_SAVE_DIR3"
 # nothing of the caller's session reaches the application
-unset MXL_USER_DIR MXL_SAVE_DIR MXL_EXIT_AFTER MXL_THEME MXL_UI_SCALE || true
+unset MXL_USER_DIR MXL_SAVE_DIR MXL_EXIT_AFTER MXL_THEME MXL_UI_SCALE MXL_GAME MXL_GAME_DIR || true
 
 quick=0
 for a in "$@"; do

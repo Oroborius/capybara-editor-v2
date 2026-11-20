@@ -135,7 +135,7 @@ def main():
         results = os.path.join(work, 'results.jsonl')
         e = dict(os.environ, CAPY_TMP=work, CAPY_RESULTS=results, CAPY_ONLY=','.join(n for n, _i in grp),
                  CAPY_VARIANT=variant, CAPY_REPO=capytest.REPO, PYTHONDONTWRITEBYTECODE='1', PYTHONUNBUFFERED='1')
-        for k in ('MXL_USER_DIR', 'MXL_SAVE_DIR', 'MXL_EXIT_AFTER', 'MXL_THEME', 'MXL_UI_SCALE'):
+        for k in ('MXL_USER_DIR', 'MXL_SAVE_DIR', 'MXL_EXIT_AFTER', 'MXL_THEME', 'MXL_UI_SCALE', 'MXL_GAME', 'MXL_GAME_DIR'):
             e.pop(k, None)
         e.update(env)
         if mode != 'engine':
