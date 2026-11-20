@@ -201,4 +201,53 @@ def mock_samples_open_and_save_byte_identical():
     T.eq(bad, [], 'mock samples')
 
 
+@T.test
+def save_folder_detection_on_fake_trees():
+    """Only fake folders in the test's own tmp (never a real prefix's users folder)."""
+    import mxl_profile as P
+    base = T.guard(os.path.join(T.tmp(), 'fakeprefix'), 'fake prefix')
+    game = os.path.join(base, 'drive_c', 'Program Files (x86)', 'Diablo II')
+    os.makedirs(game)
+    T.eq(P.save_dir(game), None, 'nothing to find')
+    os.makedirs(os.path.join(game, 'Save'))
+    T.eq(P.save_dir(game), os.path.join(game, 'Save'), "the game folder's Save")
+    pub = os.path.join(base, 'drive_c', 'users', 'Public', 'Saved Games', 'Diablo II')
+    me = os.path.join(base, 'drive_c', 'users', 'someone', 'Saved Games', 'Diablo II')
+    os.makedirs(pub)
+    os.makedirs(me)
+    T.eq(P.save_dir(game), me, "the prefix's user Saved Games (Public last)")
+    old = {k: os.environ.get(k) for k in ('MXL_SAVE_DIR', 'MXL_SAVE_DIR_AUTO')}
+    try:
+        os.environ['MXL_SAVE_DIR'] = os.path.join(base, 'explicit')
+        os.environ.pop('MXL_SAVE_DIR_AUTO', None)
+        T.eq(P._use_save_dir(game), None, 'MXL_SAVE_DIR given by the user wins')
+        os.environ['MXL_SAVE_DIR_AUTO'] = '1'
+        T.eq((P._use_save_dir(game), os.environ['MXL_SAVE_DIR']), (me, me), "the launcher's guess is replaced")
+    finally:
+        for k, v in old.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+
+@T.test
+def game_folder_change_extracts_into_its_own_profile():
+    """(last: it moves the active profile) Another folder of the same game -> another profile id and data folder;
+    the first one stays."""
+    E = engine()
+    import mxl_profile as P
+    first = dict(P.active())
+    link = os.path.join(T.guard(T.tmp(), 'tmp'), 'other-d2')
+    os.symlink(GAME, link)
+    d = P.rebind(link)
+    T.check(d is not None and P.active()['id'] != first['id'], f"new profile id: {P.active()['id']}")
+    T.eq(E.paths.DATA_DIR, d, 'paths.DATA_DIR follows')
+    P.extract(link, d, icons=False)
+    T.check(P.data_ok(link, d), 'tables extracted into the new profile')
+    T.check(P.data_ok(GAME, first['data_dir']), "the first profile's data is untouched")
+    T.eq(P.rebind(link), None, 'same folder again: nothing to do')
+    P.rebind(GAME)
+
+
 T.main(globals())

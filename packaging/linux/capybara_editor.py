@@ -89,6 +89,7 @@ def setup_env():
         save = find_save_dir()
         if save:
             os.environ['MXL_SAVE_DIR'] = save
+            os.environ['MXL_SAVE_DIR_AUTO'] = '1'      # a guess: a game profile may use its game's save folder
 
 
 def setup_xft():

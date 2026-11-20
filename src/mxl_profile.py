@@ -123,6 +123,48 @@ def detect(game_dir):
     return {'kind': 'd2', 'version': ver, 'mods': mods, 'supported': sup}
 
 
+def save_dir(game_dir, home=None):
+    """Where the game in game_dir keeps its characters (only detected - nothing is read here): a Wine prefix's
+    drive_c/users/<user>/Saved Games/Diablo II (1.14x; 'Public' last), the Windows user's Saved Games\Diablo II,
+    else the game folder's own Save folder (1.13d and older). None when none exists."""
+    import glob
+    if not game_dir:
+        return None
+    parts = os.path.abspath(game_dir).split(os.sep)
+    low = [p.lower() for p in parts]
+    if 'drive_c' in low:
+        root = os.sep.join(parts[:low.index('drive_c') + 1]) or os.sep
+        found = [f for f in sorted(glob.glob(os.path.join(glob.escape(root), 'users', '*', 'Saved Games',
+                                                          'Diablo II'))) if os.path.isdir(f)]
+        found.sort(key=lambda f: os.path.basename(os.path.dirname(os.path.dirname(f))).lower() == 'public')
+        if found:
+            return found[0]
+    if os.name == 'nt':
+        p = os.path.join(home or os.path.expanduser('~'), 'Saved Games', 'Diablo II')
+        if os.path.isdir(p):
+            return p
+    p = os.path.join(game_dir, 'Save')
+    if os.path.isdir(p):
+        return p
+    try:
+        q = next((os.path.join(game_dir, f) for f in os.listdir(game_dir) if f.lower() == 'save'), None)
+    except OSError:
+        q = None
+    return q if q and os.path.isdir(q) else None
+
+
+def _use_save_dir(game_dir):
+    """MXL_SAVE_DIR set by the user wins; the Linux launcher's own guess (the Median XL save folder,
+    MXL_SAVE_DIR_AUTO=1) or none is replaced by the profile game's save folder."""
+    if os.environ.get('MXL_SAVE_DIR') and not os.environ.get('MXL_SAVE_DIR_AUTO'):
+        return None
+    d = save_dir(game_dir)
+    if d:
+        os.environ['MXL_SAVE_DIR'] = d
+        os.environ['MXL_SAVE_DIR_AUTO'] = '1'
+    return d
+
+
 def profile_id(game_dir, info):
     h = hashlib.sha1(os.path.normcase(os.path.abspath(game_dir)).encode('utf-8', 'replace')).hexdigest()[:8]
     return f"{info['kind']}-{info['version'] or 'unknown'}-{h}"
@@ -300,6 +342,7 @@ def install():
         _log(f'game profile {pid}: extraction failed ({type(err).__name__}: {err}): Median XL mode')
         return None
     _state = dict(info, game_dir=game_dir, id=pid, root=root, data_dir=data_dir)
+    _state['save_dir'] = _use_save_dir(game_dir)
     paths.DATA_DIR = data_dir
     paths.ICONS_DIR = os.path.join(data_dir, 'items')
     _patch_settings(game_dir)
@@ -555,10 +598,12 @@ def _patch_install():
     GI = gi.GameInstall
 
     def check_data(self, startup=False, *a, **k):
+        moved = _rebind(self)
         if not data_ok(self.game_dir, self.data_dir):
             extract(self.game_dir, self.data_dir)
-            if not startup and self.on_rebuilt:
-                self.on_rebuilt()
+            moved = True
+        if moved and not startup and self.on_rebuilt:
+            self.on_rebuilt()
         return True
     GI.check_data = check_data
 
@@ -568,6 +613,41 @@ def _patch_install():
             self.label.configure(text=f"Diablo II {_state.get('version') or '?'}"
                                  + (f" + {', '.join(mods)}" if mods else ''))
     GI.show_game = show_game
+
+
+def rebind(game_dir):
+    """The active profile follows a new game folder ("Game folder..." button): its id, root and data folder are
+    the new folder's (kind + version + folder hash), so the tables are extracted next to - never over - the old
+    folder's. Returns the new data folder, or None when the folder is not a supported D2 folder or did not change."""
+    import sys
+    import paths
+    if _state is None or not game_dir:
+        return None
+    info = detect(game_dir)
+    if info['kind'] != 'd2' or not info['supported']:
+        return None
+    pid = profile_id(game_dir, info)
+    if pid == _state.get('id') and os.path.normcase(game_dir) == os.path.normcase(_state.get('game_dir') or ''):
+        return None
+    root = os.path.join(paths.USER_DIR, 'profiles', pid)
+    data_dir = os.path.join(root, 'data')
+    _state.update(info, game_dir=game_dir, id=pid, root=root, data_dir=data_dir)
+    paths.DATA_DIR = data_dir
+    paths.ICONS_DIR = os.path.join(data_dir, 'items')
+    for name in ('mxl_gui', 'mxl_inv_gui'):
+        mod = sys.modules.get(name)
+        for attr, val in (('DATA_DIR', data_dir), ('ICONS_DIR', paths.ICONS_DIR)):
+            if mod is not None and hasattr(mod, attr):
+                setattr(mod, attr, val)
+    _log(f'game profile {pid}: game folder {game_dir}, data {data_dir}')
+    return data_dir
+
+
+def _rebind(gi):
+    d = rebind(getattr(gi, 'game_dir', None))
+    if d:
+        gi.data_dir = d
+    return bool(d)
 
 
 def _patch_art():
