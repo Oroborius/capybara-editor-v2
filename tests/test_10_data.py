@@ -179,8 +179,6 @@ def audit_open_data_items():
 
 # what the audit may list as a property of the game's data ('i' lines), and why it is no editor defect
 GAME_DATA = {
-    'game data: state without a name in any table (no skill sets it, no buff icon)':
-        'states.bin has no name strings; the editor shows #N',
     "game data: mod value outside the stat's save range (the creator stores the nearest value)":
         'the table asks for more than the save bits hold; Creator.roll narrows the range',
     'game data: enabled row without any mod (quest / reagent items)':

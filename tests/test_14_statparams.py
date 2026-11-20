@@ -182,6 +182,22 @@ def every_state_and_skill_row_is_named():
 
 
 @T.test
+def orange_text_params_are_picked_by_text():
+    """The orange-text stats (description function 31: the param IS a string index) offer the texts of the
+    patchstring range by name; a picked text stores its string id and names it back."""
+    E = T.engine()
+    import mxl_statnames as SN
+    for sid in (375, 377, 378):
+        T.eq(SN.param_kind(sid), 'named', f'stat {sid}: param kind')
+        ch = SN.param_choices(E.data, sid)
+        T.check(len(ch) > 1000, f'stat {sid}: only {len(ch)} texts offered')
+        name = next(n for n, v in ch if v == 11861)
+        T.check('Tenacity' in name, f'string 11861 offered as {name!r}')
+        T.eq(SN.param_value(E.data, sid, name), 11861, 'picked text -> string id')
+        T.eq(SN.param_name(E.data, sid, 11861), name, 'string id -> text')
+
+
+@T.test
 def named_choices_name_real_rows():
     """The other enumerations taken from tables: monsters are rows of the monster table, mystic orbs rows of
     mysticorbs.bin, skills rows of the skills table that fit the stat's skill field."""

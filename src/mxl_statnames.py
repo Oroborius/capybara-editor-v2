@@ -92,7 +92,8 @@ def generic_label(sid):
     return (param_spec(sid) or {}).get('label')
 
 
-_NAMED = ('state', 'monster', 'orb', 'montype', 'element', 'attribute')
+_NAMED = ('state', 'monster', 'orb', 'montype', 'element', 'attribute', 'string')
+STRING_IDS = range(10000, 20000)    # the orange texts (description function 31) are patchstring.tbl entries
 
 
 def param_kind(sid):
@@ -188,7 +189,29 @@ def _field_choices(data, spec, field):
                 if n and BUFFALO not in str(n).upper() and i < (1 << bits)]
     if kind == 'orb':
         return _orb_names(data)
+    if kind == 'string':
+        return _string_names(data, bits)
     return []
+
+
+def _string_names(data, bits):
+    """[(text, string id)] for a param that IS a string index (the orange-text stats 375 / 377 / 378 / 385):
+    every non-empty entry of the patchstring range (where Median keeps all of them), one line per text."""
+    cache = data.__dict__.setdefault('_sn_string_names', {})
+    if bits in cache:
+        return cache[bits]
+    out = []
+    for i in STRING_IDS:
+        if i >= 1 << bits:
+            break
+        t = data.strings.get(i)
+        text = _clean(t[1] if isinstance(t, tuple) and len(t) > 1 else t or '')
+        lines = [ln.strip() for ln in text.split('\n') if ln.strip()]
+        if lines:
+            n = ' / '.join(lines)
+            out.append((n if len(n) <= 120 else n[:117] + '...', i))
+    cache[bits] = out
+    return out
 
 
 def param_choices(data, sid):
