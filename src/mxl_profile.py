@@ -309,6 +309,8 @@ def install():
     _patch_art()
     _patch_savecheck()
     _patch_pages()
+    _patch_text()
+    _patch_grids()
     _log(f'game profile {pid}: data {data_dir}')
     return _state
 
@@ -400,6 +402,133 @@ def _patch_pages():
             pass
         return o_dirty(self)
     P.__init__, P.dirty = __init__, dirty
+
+
+def skill_tab_text(data, param, value):
+    """Stat 188 (+n to a class skill tab) the way the game writes it (descfunc 14): param = class * 8 + tab, the
+    tab's string from charstats (StrSkillTab1-3) and the class's StrClassOnly. None when the row is unknown."""
+    import struct
+    cls, tab = (param or 0) >> 3, (param or 0) & 7
+    try:
+        row = data._rows('charstats')[cls]
+        ids = struct.unpack_from('<4H', row, 84)      # StrSkillTab1, 2, 3, StrClassOnly (D2-Development-Kit layout)
+    except Exception:
+        return None
+    if tab > 2:
+        return None
+
+    def text(i):
+        t = data.strings.get(i)
+        return (t[1] if isinstance(t, tuple) else t) or ''
+    fmt = text(ids[tab])
+    if not fmt:
+        return None
+    try:
+        line = fmt.replace('%d', str(value), 1) if '%d' in fmt else f'+{value} {fmt}'
+    except Exception:
+        return None
+    only = text(ids[3])
+    return f'{line} {only}' if only else line
+
+
+def _patch_text():
+    """Stat lines with the vanilla game's own strings: stat 188 (skill tab) through charstats instead of the
+    raw itemstatcost string ('+%d to Javelin and Spear Skills' for every tab)."""
+    try:
+        import mxl_stat_text as M
+    except Exception:
+        return
+    o_lines = M.stat_lines
+
+    def stat_lines(stats, data, *a, **k):
+        tabs = [s for s in stats or () if isinstance(s, dict) and s.get('id') == 188]
+        if not tabs:
+            return o_lines(stats, data, *a, **k)
+        rest = [s for s in stats if not (isinstance(s, dict) and s.get('id') == 188)]
+        out = list(o_lines(rest, data, *a, **k)) if rest else []
+        try:
+            prio = data.isc[188]['prio']
+            hi = [s for s in rest if (data.isc.get(s.get('id')) or {}).get('prio', 0) > prio]
+            at = len(o_lines(hi, data, *a, **k)) if hi else 0
+        except Exception:
+            at = 0
+        prio_on = k.get('prio', a[2] if len(a) > 2 else False)
+        new, seen = [], set()
+        for s in tabs:
+            t = skill_tab_text(data, s.get('param'), s.get('value'))
+            if t and t not in seen:
+                seen.add(t)
+                ln = (getattr(M, 'BLUE', '3'), t, [], [])
+                new.append(((data.isc[188]['prio'],) + ln) if prio_on else ln)
+        return out[:at] + new + out[at:]
+    stat_lines.__wrapped__ = o_lines
+    M.stat_lines = stat_lines
+    for name in ('mxl_tooltip', 'mxl_statparse', 'mxl_catalog_tooltip'):
+        mod = __import__('sys').modules.get(name)
+        if mod is not None and getattr(mod, 'stat_lines', None) is o_lines:
+            mod.stat_lines = stat_lines
+
+
+def grid_sizes(data_dir):
+    """{'inv': (w, h), 'stash': (w, h), 'stash_classic': (w, h), 'cube': (w, h)} from the profile's inventory.bin
+    (gridX / gridY at 16 / 17 of each 240-byte row; rows: 0 Amazon ... 8 Bank Page 1, 9 Transmogrify Box,
+    12 Big Bank Page 1, 14 Druid, 15 Assassin - the low-resolution rows)."""
+    import struct
+    out = {'inv': (10, 4), 'stash': (6, 8), 'stash_classic': (6, 4), 'cube': (3, 4)}
+    try:
+        with open(os.path.join(data_dir, 'inventory.bin'), 'rb') as f:
+            b = f.read()
+        n = struct.unpack_from('<I', b)[0]
+        rs = (len(b) - 4) // n
+
+        def grid(i):
+            r = b[4 + i * rs:4 + (i + 1) * rs]
+            return (r[16], r[17]) if 0 < r[16] < 32 and 0 < r[17] < 32 else None
+        cls = [grid(i) for i in (0, 1, 2, 3, 4, 14, 15) if i < n]
+        cls = [g for g in cls if g]
+        if cls:
+            out['inv'] = (max(g[0] for g in cls), max(g[1] for g in cls))
+        for key, i in (('stash_classic', 8), ('cube', 9), ('stash', 12)):
+            if i < n and grid(i):
+                out[key] = grid(i)
+    except (OSError, ValueError, ZeroDivisionError, struct.error, IndexError):
+        pass
+    return out
+
+
+def belt_rows(data, code):
+    """Rows (of 4) of a belt item: armor.bin 'belt' (offset 304) -> belts.bin numboxes (offset 4) / 4; 4 when
+    unknown (D2-Development-Kit layouts)."""
+    import struct
+    try:
+        folder = data.folder
+        with open(os.path.join(folder, 'armor.bin'), 'rb') as f:
+            a = f.read()
+        n = struct.unpack_from('<I', a)[0]
+        rs = (len(a) - 4) // n
+        for i in range(n):
+            r = a[4 + i * rs:4 + (i + 1) * rs]
+            if r[128:132].decode('latin1').strip() == code.strip():
+                with open(os.path.join(folder, 'belts.bin'), 'rb') as f:
+                    bb = f.read()
+                m = struct.unpack_from('<I', bb)[0]
+                brs = (len(bb) - 4) // m
+                k = r[304]
+                return max(1, min(4, bb[4 + k * brs + 4] // 4)) if k < m else 4
+    except Exception:
+        pass
+    return 4
+
+
+def _patch_grids():
+    """Inventory grid of the profile's game (vanilla 10 x 4, not Median's 15 x 10), from inventory.bin."""
+    import sys
+    g = grid_sizes(_state['data_dir'])
+    _state['grids'] = g
+    for name in ('mxl_char', 'mxl_inv_gui', 'mxl_char_gui'):
+        mod = sys.modules.get(name) if name != 'mxl_char' else __import__('mxl_char')
+        if mod is not None:
+            mod.INV_W, mod.INV_H = g['inv']
 
 
 def _patch_savecheck():

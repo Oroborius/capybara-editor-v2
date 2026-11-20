@@ -131,6 +131,21 @@ def vanilla_save_without_edits_is_byte_identical():
         E.MC.Character(path, E.data)                       # still reads
 
 
+@T.test
+def vanilla_skill_tab_line_and_grids():
+    """Stat 188 with the game's charstats strings per param (not the raw '+%d to Javelin and Spear Skills');
+    grid sizes from inventory.bin."""
+    E = engine()
+    T.eq([x[1] for x in E.tip.stat_lines([dict(id=188, param=8 * 3 + 1, value=3)], E.data)],
+         ['+3 to Offensive Auras (Paladin Only)'], 'stat 188 line (Paladin tab 2)')
+    T.eq([x[1] for x in E.tip.stat_lines([dict(id=188, param=2, value=1)], E.data)],
+         ['+1 to Javelin and Spear Skills (Amazon Only)'], 'stat 188 line (Amazon tab 3)')
+    import mxl_profile
+    g = mxl_profile.grid_sizes(E.paths.DATA_DIR)
+    T.eq((g['inv'], g['stash'], g['stash_classic'], g['cube']), ((10, 4), (6, 8), (6, 4), (3, 4)), 'grids')
+    T.eq((E.MC.INV_W, E.MC.INV_H), (10, 4), 'mxl_char inventory size')
+
+
 def _mock_dir():
     cands = [os.environ.get('MXL_TEST_MOCK_SAVES', ''), os.path.join(T.REPO, '.cache', 'samples', 'mock')]
     if os.sep + '.claude' + os.sep + 'worktrees' + os.sep in T.REPO:
@@ -150,6 +165,7 @@ def mock_samples_open_and_save_byte_identical():
     shutil.copytree(src, dst)
     files = sorted(glob.glob(os.path.join(dst, '*.d2s')) + glob.glob(os.path.join(dst, 'clones', '*.d2s')))
     T.check(len(files) >= 38, f'{len(files)} mock samples')
+    import mxl_save
     bad = []
     for path in files:
         name = os.path.relpath(path, dst)
@@ -158,6 +174,7 @@ def mock_samples_open_and_save_byte_identical():
             ch = E.MC.Character(path, E.data)
             for e in list(ch.items) + list(ch.merc_items or []):
                 E.tip.item_tooltip(e.it, E.data)
+            mxl_save.load_character(path, E.data)          # the main window's reader (character list)
             if bytes(ch.build()) != before:
                 bad.append(f'{name}: rebuilt bytes differ')
                 continue
