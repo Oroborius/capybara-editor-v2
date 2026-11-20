@@ -166,6 +166,11 @@ class _W:
         return self.v.to_bytes((self.pos + 7) // 8, 'little')
 
 
+# Folder profiles (vanilla D2) only, set by mxl_profile: a stat list that ends before 'if' (hacked clone saves)
+# keeps the bytes in between as they are. Median XL: False, unchanged.
+STATS_LENIENT = False
+
+
 def _csv(data):
     """{stat: (param bits, value bits)} of the character stats (itemstatcost CSvParam / CSvBits)."""
     if not hasattr(data, '_csv_widths'):
@@ -506,8 +511,14 @@ class Character:
             stats.append([sid, p, br.read(vb)])
         self.stats = stats
         p = gf + 2 + (br.pos + 7) // 8
+        self.stats_extra = b''                         # bytes between the stat list's end and 'if' (hacked saves)
         if b[p:p + 2] != b'if':
-            raise FormatError(T('ch.err.no_skills', "skills ('if') not found after the stats"))
+            q = b.find(b'if', p, p + 2048) if STATS_LENIENT else -1
+            if q < 0:
+                raise FormatError(T('ch.err.no_skills', "skills ('if') not found after the stats"))
+            self.stats_extra, p = bytes(b[p:q]), q
+        if STATS_LENIENT:                              # padding bits of a hacked stat list: kept while unedited
+            self._stats_orig = ([list(x) for x in stats], bytes(b[gf + 2:p - len(self.stats_extra)]))
         # one byte per class skill: skill levels 74, 77 side by side spell 'JM' (the item list's marker), so the
         # section's end is its length; the search is only the fallback when that length does not fit the file
         jm = p + 2 + class_skill_count(d, b[0x28]) if b[0x28] < 7 else -1
@@ -559,7 +570,11 @@ class Character:
                 w.write(pb, p or 0)
             w.write(vb, v)
         w.write(9, 0x1FF)
-        out += b'gf' + w.bytes() + self.skills
+        sb = w.bytes()
+        orig = getattr(self, '_stats_orig', None)
+        if orig is not None and [list(x) for x in self.stats] == orig[0]:
+            sb = orig[1]
+        out += b'gf' + sb + getattr(self, 'stats_extra', b'') + self.skills
         out += b'JM' + struct.pack('<H', len(self.items)) + b''.join(e.blob for e in self.items)
         out += self.corpse
         if self.has_jf:

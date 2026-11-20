@@ -64,7 +64,113 @@ def raw_of(it):
     return getattr(it, '_raw', None)
 
 
+# Folder profiles (vanilla D2) only, set by mxl_profile: player ears, and items whose stat list does not fit the
+# game tables (hacked "clone" characters written with another itemstatcost) are kept as opaque items - header
+# fields shown, bytes kept as they are - instead of the whole file failing to open. Median XL: False, unchanged.
+LENIENT = False
+
+
+def _ear(it, br, blob):
+    """Player ear (flag bit 16): class 3 bits, level 7 bits, name of 7-bit chars ending with 0; no item code."""
+    ear = (br.read(3), br.read(7))
+    s = ''
+    for _ in range(16):
+        c = br.read(7)
+        if not c:
+            break
+        s += chr(c)
+    it.ear = ear + (s,)                               # (class, level, name): an attribute, not an item field
+    it['code'] = 'ear '
+    it['name'] = f"{s}'s Ear" if s else 'Ear'
+    it['socketed_count'] = 0
+    it['has_sockets'] = False
+    _keep_raw(it, blob, br)
+    return it, br
+
+
+def _ends_with_terminator(blob, end):
+    """True when the bits just before byte `end` (after the zero padding) are a stat list end (0x1FF)."""
+    if end < 4:
+        return False
+    v = int.from_bytes(bytes(blob[max(2, end - 4):end]), 'little')
+    n = 8 * min(4, end - 2)
+    k = n - v.bit_length()
+    if v == 0 or k >= 8:
+        return False
+    return (v >> (n - k - 9)) & 0x1FF == 0x1FF if n - k >= 9 else False
+
+
+def _opaque_end(blob, data, start_bit):
+    """Byte offset (in blob, 'JM' at 0) where an item whose stats cannot be read ends: the first later 'JM' that
+    follows a stat-list end (0x1FF + zero padding) and starts an item header of the same item version (or the
+    corpse list after the last item)."""
+    b = bytes(blob)
+    ver = int.from_bytes(b[2:8], 'little') >> 32 & 0x3FF
+    i = 2 + start_bit // 8
+    while True:
+        i = b.find(b'JM', i)
+        if i < 0:
+            raise mxl_format.FormatError('item stats do not fit the game tables')
+        same = int.from_bytes(b[i + 2:i + 8].ljust(6, b'\0'), 'little') >> 32 & 0x3FF == ver
+        if _ends_with_terminator(b, i) and (same or b[i + 4:i + 6] in (b'jf', b'JM')):   # or the corpse list
+            return i
+        i += 1
+
+
+def _trailing(blob, it, br):
+    """Hacked saves may hold bytes after an item's last field (an ear name with junk after its end): the game
+    finds the next item at its 'JM'. The item keeps those bytes (byte-identical save) when no 'JM' / 'kf' / end
+    of file follows its end."""
+    end = 2 + (br.pos + 7) // 8
+    b = blob[end:end + 2]
+    if len(b) < 2 or bytes(b) in (b'JM', b'kf'):
+        return it, br
+    nxt = bytes(blob[end:end + 4096]).find(b'JM')
+    if nxt > 0:
+        br.pos = (end + nxt - 2) * 8
+        _keep_raw(it, blob, br)
+    return it, br
+
+
 def parse_item(blob, data):
+    try:
+        it, br = _parse_item(blob, data)
+        return _trailing(blob, it, br) if LENIENT else (it, br)
+    except mxl_format.FormatError:
+        if not LENIENT:
+            raise
+    br = BitReader(blob[2:])
+    flags = br.read(32)
+    it = Item()
+    it['identified'] = bool(flags >> 4 & 1)
+    it['has_sockets'] = bool(flags >> 11 & 1)
+    it['ethereal'] = bool(flags >> 22 & 1)
+    it['version'] = br.read(10)
+    it['location'] = br.read(3)
+    it['equipped'] = br.read(4)
+    it['_pos_bit'] = br.pos
+    it['x'] = br.read(4)
+    it['y'] = br.read(4)
+    it['panel'] = br.read(3)
+    it['code'] = ''.join(chr(br.read(8)) for _ in range(4))
+    try:
+        it['name'] = data.base(it['code']).name
+    except Exception:
+        it['name'] = it['code'].strip()
+    it['stats'] = []
+    it['socketed_count'] = br.read(3)
+    if not flags >> 21 & 1:
+        it['id'] = br.read(32)
+        it['ilvl'] = br.read(7)
+        it['quality'] = mxl_format.QUALITY.get(br.read(4), 'unknown')
+    it.opaque = True                                  # stats not readable with these tables: never re-encoded
+    end = _opaque_end(blob, data, br.pos)
+    br.pos = (end - 2) * 8
+    _keep_raw(it, blob, br)
+    return it, br
+
+
+def _parse_item(blob, data):
     expect(blob, 0, b'JM')
     br = BitReader(blob[2:])
     it = Item()
@@ -82,6 +188,8 @@ def parse_item(blob, data):
     it['x'] = br.read(4)
     it['y'] = br.read(4)
     it['panel'] = br.read(3)
+    if LENIENT and flags >> 16 & 1:
+        return _ear(it, br, blob)
     code = ''.join(chr(br.read(8)) for _ in range(4))
     it['code'] = code
     base = data.base(code)

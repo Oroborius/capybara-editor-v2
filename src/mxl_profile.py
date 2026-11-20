@@ -352,6 +352,11 @@ def _patch_format():
             importlib.import_module(name).SET_UNIQUE_ID_BITS = 12
         except Exception:
             pass
+    for name, attr in (('mxl_format_fix', 'LENIENT'), ('mxl_char', 'STATS_LENIENT')):
+        try:                                           # ears, opaque items, junk before 'if' (hacked clone saves)
+            setattr(importlib.import_module(name), attr, True)
+        except Exception:
+            pass
 
 
 def _patch_gfx():

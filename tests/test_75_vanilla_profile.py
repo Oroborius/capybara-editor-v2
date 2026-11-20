@@ -131,4 +131,44 @@ def vanilla_save_without_edits_is_byte_identical():
         E.MC.Character(path, E.data)                       # still reads
 
 
+def _mock_dir():
+    cands = [os.environ.get('MXL_TEST_MOCK_SAVES', ''), os.path.join(T.REPO, '.cache', 'samples', 'mock')]
+    if os.sep + '.claude' + os.sep + 'worktrees' + os.sep in T.REPO:
+        cands.append(os.path.join(T.REPO.split(os.sep + '.claude' + os.sep)[0], '.cache', 'samples', 'mock'))
+    return next((c for c in cands if c and glob.glob(os.path.join(c, '*.d2s'))), None)
+
+
+@T.test
+def mock_samples_open_and_save_byte_identical():
+    """The Mock Mode characters (vanilla d2s 96, extreme stats, 40 charms, auras on items): COPIES open, every
+    item gets a tooltip, and a SAVE without edits leaves each file byte-identical."""
+    E = engine()
+    src = _mock_dir()
+    if not src:
+        T.skip('no mock samples (.cache/samples/mock)')
+    dst = T.guard(os.path.join(T.tmp(), 'vmock'), 'mock copies')
+    shutil.copytree(src, dst)
+    files = sorted(glob.glob(os.path.join(dst, '*.d2s')) + glob.glob(os.path.join(dst, 'clones', '*.d2s')))
+    T.check(len(files) >= 38, f'{len(files)} mock samples')
+    bad = []
+    for path in files:
+        name = os.path.relpath(path, dst)
+        before = T.read(path)
+        try:
+            ch = E.MC.Character(path, E.data)
+            for e in list(ch.items) + list(ch.merc_items or []):
+                E.tip.item_tooltip(e.it, E.data)
+            if bytes(ch.build()) != before:
+                bad.append(f'{name}: rebuilt bytes differ')
+                continue
+            ch.save(backup=False)
+            if T.read(path) != before:
+                bad.append(f'{name}: file changed by SAVE')
+                continue
+            E.MC.Character(path, E.data)
+        except Exception as err:
+            bad.append(f'{name}: {type(err).__name__}: {err}')
+    T.eq(bad, [], 'mock samples')
+
+
 T.main(globals())
