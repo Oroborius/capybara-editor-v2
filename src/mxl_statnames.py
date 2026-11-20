@@ -203,7 +203,7 @@ def param_choices(data, sid):
         return cache[sid]
     spec = param_spec(sid) or {}
     if kind in ('skill', 'skill_only'):
-        out = skill_names_sorted(data, sid, hidden=bool(spec.get('hidden_skills')))
+        out = skill_names_sorted(data, sid, hidden=True)     # every skill row: named first, then derived
     elif kind == 'class':
         out = [(n, i) for i, n in enumerate(_classes())]
     else:
@@ -483,7 +483,9 @@ def hidden_skill_name(data, sk):
         try:
             states = [v for v in (struct.unpack_from('<H', r, off)[0] for off in STATE_COLS) if 0 < v < 0xFFFF]
             icons = _state_icon_names(data)
-            what = next((icons[v] for v in states if v in icons), '')
+            import mxl_rownames as RN
+            what = RN.vanilla_names(data, 'skills').get(sk) or next((icons[v] for v in states if v in icons), '')
+            what = what or RN.skill_derived(data, sk) or ''
             if not what:
                 passive = [v for v in struct.unpack_from('<5h', r, 0x98) if v >= 0]
                 aura = [v for v in struct.unpack_from('<6h', r, 0x54) if v >= 0]
@@ -502,12 +504,7 @@ def hidden_skill_name(data, sk):
                 if mon < len(names) and names[mon] and BUFFALO not in str(names[mon]).upper():
                     what = 'Summon: ' + str(names[mon]).replace('\n', ' ').strip()
             if not what:                     # nothing nameable: at least what kind of row it is
-                missiles = [v for v in struct.unpack_from('<4H', r, 0x46) + struct.unpack_from('<4H', r, 0xE8)
-                            if 0 < v < 0xFFFF]
-                if states:
-                    what = 'Unnamed effect'
-                elif missiles:
-                    what = 'Unnamed missile skill'
+                what = RN.skill_fallback(data, sk) or ''
         except Exception:
             what = ''
         name = f"{what or 'Unnamed skill'} (hidden #{sk})"
@@ -748,36 +745,18 @@ def state_name(data, sid):
 
 
 def _state_row_names(data):
-    """{state id: name} from the state's own row, for states no skill column and no buff icon names (e.g.
-    505 'voidtouched', set by a cube recipe): its 'skill' column (+56, the skill's name), else its overlay
-    (overlay1 +2, castoverlay +10: the overlay.bin row's file name, +2, 64 bytes). Field offsets from
-    D2-Development-Kit, MIT (layouts/mxl/states.json, overlay.json)."""
+    """{state id: name} for every row of the states table except 0, for states no skill column and no buff icon
+    names (e.g. 505 'voidtouched', set by a cube recipe): the naming chain of D2-Development-Kit (MIT) in
+    mxl_rownames - vanilla key, the skills that use it, its own skill (+56), overlay (+2 / +10), missile (+58),
+    the items / stats that use it, else its flags."""
     m = getattr(data, '_sn_state_rows', None)
     if m is not None:
         return m
     m = {}
     try:
-        try:
-            ovl = [r[2:66].split(b'\0', 1)[0].decode('latin-1').strip() for r in data._rows('overlay')]
-        except Exception:
-            ovl = []
-        for sid, r in enumerate(data._rows('states')):
-            if sid == 0 or len(r) < 60:
-                continue
-            n = None
-            sk = struct.unpack_from('<H', r, 56)[0]
-            if 0 < sk < 0xFFFF:
-                try:
-                    n = data.skill_names.get(sk) or skilldesc_name(data, sk)
-                except Exception:
-                    n = None
-            for off in (2, 10):
-                if n:
-                    break
-                o = struct.unpack_from('<H', r, off)[0]
-                if 0 < o < len(ovl) and ovl[o]:
-                    n = ovl[o]
-            m[sid] = n or f'State {sid}'
+        import mxl_rownames as RN
+        for sid in range(1, len(RN.rows(data, 'states'))):
+            m[sid] = RN.state_full(data, sid) or f'State {sid}'
     except Exception:
         m = {}
     data._sn_state_rows = m

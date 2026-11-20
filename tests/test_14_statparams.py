@@ -155,6 +155,33 @@ def offered_states_are_rows_of_the_states_table():
 
 
 @T.test
+def every_state_and_skill_row_is_named():
+    """Stat 98 offers every state and the skill stats every skill row, named by the D2-Development-Kit chain
+    (vanilla key, linked rows, users) - the kit's dump names ~875 of 967 states and ~2600 of 3018 skills;
+    only the rest get a description of the row itself ('aura state', 'Druid skill, func 17/0')."""
+    E = T.engine()
+    import mxl_statnames as SN
+    import mxl_rownames as RN
+    n_states = len(E.data._rows('states'))
+    states = SN.state_names_sorted(E.data)
+    T.eq(len(states), n_states - 1, 'states offered (every row but 0)')
+    T.check(not any(n.startswith('State ') for n, _v in states), 'a state is still named "State N"')
+    T.check(len(RN.vanilla_names(E.data, 'states')) > 100, 'vanilla state keys')
+    T.eq(SN.state_name(E.data, 1), 'freeze', 'state 1: its vanilla key')
+    plain = [v for n, v in states if n.split(' (#')[0] == RN.state_fallback(E.data, v)]
+    T.check(len(plain) < 130, f'{len(plain)} states named only by their flags')
+    n_skills = len(E.data._rows('skills'))
+    skills = SN.skill_names_sorted(E.data, hidden=True)
+    T.check(len(skills) >= n_skills - 2, f'{len(skills)} of {n_skills} skills offered')
+    T.check(len({n for n, _k in skills}) == len(skills), 'skill names are unique')
+    plain = [k for n, k in skills if ' skill, func ' in n]
+    T.check(len(plain) < 600, f'{len(plain)} skills named only by their row')
+    T.check(len(SN.param_choices(E.data, 197)) > 2000, 'stat 197 offers the hidden skills too')
+    for n, k in skills[::97]:
+        T.eq(SN.skill_id(E.data, n), k, f'skill name {n!r} round trip')
+
+
+@T.test
 def named_choices_name_real_rows():
     """The other enumerations taken from tables: monsters are rows of the monster table, mystic orbs rows of
     mysticorbs.bin, skills rows of the skills table that fit the stat's skill field."""
