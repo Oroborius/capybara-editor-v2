@@ -543,6 +543,7 @@ class CreatorWindow:
             self.copies_spin = ttk.Spinbox(rowc, from_=1, to=100, textvariable=self.copies, width=4)
             self.copies_spin.pack(side='left')
             self._copies_widgets = [self.copies_spin]
+            D2.button(rowc, T('cr.btn.fill_containers', 'All containers'), self.fill_containers).pack(side='left', padx=(6, 0))
         ttk.Label(rowp, text=T('cr.stash_page', 'Stash page')).pack(side='left', padx=(4, 0))
         self.page_current, self.page_first = T('cr.page.current', 'Current page'), T('cr.page.first_free', 'First free')
         self.page = tk.StringVar(value=self.page_current)
@@ -2791,6 +2792,42 @@ class CreatorWindow:
             self.edit_item = app.selected
             if self.edit_item is None:
                 self.top.destroy()
+
+    def fill_containers(self, *_a):
+        """One of every container / cluster / barrel / crate / vessel (Quantity 1000) on the next adjacent
+        empty stash pages - written only when such a run of empty pages exists; undoable like a create."""
+        app = self.app
+        title = T('cr.title.creator', 'Item Creator')
+        if not app.path:
+            messagebox.showerror(title, T('cr.open_stash', 'Open a stash in the main window first.'), parent=self.top)
+            return
+        try:
+            from mxl_creator import plan_container_fill
+            plan = plan_container_fill(self.cr, parse_stash(app.path, self.data), mxl_save.STASH_PAGES)
+            if plan is None:
+                messagebox.showinfo(title, T('cr.fill.no_pages', 'Not enough adjacent empty stash pages for all '
+                                                                 'containers: nothing was added.'), parent=self.top)
+                return
+            bak = edit_stash(app.path, self.data, insert=plan, backup=app.needs_backup(app.path))
+            import mxl_undo
+            mxl_undo.record(app, 'create', spots=[(p, x, y) for p, x, y, _b in plan])
+        except (EditError, FormatError, OSError, CreateError) as e:
+            messagebox.showerror(title, str(e), parent=self.top)
+            return
+        app.backup_made(app.path, bak)
+        page, x, y = plan[0][:3]
+        _reload_main(app, (page, x, y))
+        try:
+            app.notebook.select(page)
+        except tk.TclError:
+            pass
+        pages = sorted({p for p, _x, _y, _b in plan})
+        msg = T('cr.fill.done', '{n} containers added on page(s) {first}-{last}', n=len(plan),
+                first=pages[0] + 1, last=pages[-1] + 1)
+        if bak:
+            msg += T('cr.backup', ' - backup: {file}', file=os.path.basename(bak))
+        app.status.configure(text=msg)
+        self.set_status(msg)
 
     def _pages(self, first):
         p = self.page.get()

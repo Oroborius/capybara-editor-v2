@@ -119,6 +119,47 @@ class StoreError(CreateError):
     """A value the save format cannot hold (too many bits)."""
 
 
+def container_codes(data):
+    """Every container / cluster / barrel / crate / shrine vessel base (what is_vessel covers), in code order."""
+    return sorted(c for c, b in data.bases.items() if b.kind == 'misc' and is_vessel(data, c))
+
+
+def plan_container_fill(cr, items, pages):
+    """One of every container (see container_codes), each a fresh game-default item at Quantity 1000, placed
+    on the first run of adjacent EMPTY stash pages that holds them all (pages filled in order, so the pages
+    used are adjacent). items: the stash's parsed items; pages: number of stash pages.
+    [(page, x, y, blob)] or None when no such run of empty pages exists (then nothing is to be written)."""
+    import mxl_save
+    d = cr.data
+    blobs = []
+    for code in container_codes(d):
+        blob, _rec = cr.build(cr.new_spec('normal', code))
+        blobs.append(bytes(blob))
+    used = {it['page'] for it in items}
+    start = 0
+    while start < pages:
+        if start in used:
+            start += 1
+            continue
+        end = start
+        while end + 1 < pages and end + 1 not in used:
+            end += 1
+        run = list(range(start, end + 1))
+        rest, out = [], []
+        for blob in blobs:
+            new = mxl_save.blob_item(blob, d)
+            spot = mxl_save.free_spot(rest, new, d, run)
+            if spot is None:
+                break
+            new['page'], new['x'], new['y'] = spot
+            rest.append(new)
+            out.append((spot[0], spot[1], spot[2], blob))
+        if len(out) == len(blobs):
+            return out
+        start = end + 1
+    return None
+
+
 class Problem(str):
     """A legit-check message (in the chosen language) that remembers its stat id."""
 
@@ -808,6 +849,43 @@ class Creator:
 
     # ---- corruption (Median XL Sigma: Sacred / Angelic gear and jewelry + Corrupted Crystal in the cube; a
     # "not revealed yet" corruption is cubed with an Oil of Craft, its hidden roll 1-10000 picks the outcome)
+    def reagent_stats(self, code):
+        """The stats the game gives a fresh Median XL reagent (gem cluster, rune container, shrine vessel,
+        barrel, crate, catalyst...): the mods of the cube recipe that MAKES it - the first enabled cubemain
+        row with this base as a normal-quality output (any of the 3 outputs) that does not take the base
+        itself as an input (those rows refill it). E.g. Ruby Gem + Oil of Craft -> Ruby Cluster with
+        'ac-hth' (Quantity, stat 501) and 'dmg-slash' (stat 377 = the display text: param = string index of
+        "Shields: Fire Resist +30% ..."). [] for every other base (no recipe, or the recipe has no mods)."""
+        cache = self.__dict__.setdefault('_reagent_stats', None)
+        if cache is None:
+            d = self.data
+            cache = self._reagent_stats = {}
+            n_idx = len(d.item_index)
+            for r in _rows(d, 'cubemain'):
+                if len(r) < 0x4C + 3 * 0x54 or not r[0]:
+                    continue
+                ins = set()
+                for k in range(min(r[16], 7)):
+                    fl, it, _q = self._cube_input(r, k)
+                    if not fl & 2 and 0 <= it < n_idx:
+                        ins.add(d.item_index[it])
+                for slot in range(3):
+                    o = 0x4C + 0x54 * slot
+                    _fl, widx, _wid, post, _qty, btype = struct.unpack_from('<HHHBBB', r, o)
+                    if btype != 0xFC or not 0 <= widx < n_idx or post not in (0, QUALITY_ID['normal']):
+                        continue
+                    out = d.item_index[widx]
+                    if out in cache or out in ins or d.base(out).kind != 'misc':
+                        continue
+                    mods = []
+                    for j in range(5):
+                        p, pa, lo, hi, _ch = struct.unpack_from('<iHhhH', r, o + 24 + 12 * j)
+                        if 0 <= p < len(d.props):
+                            mods.append((p, pa, lo, hi))
+                    if mods:
+                        cache[out] = [s for s in merge_stats(mods_stats(mods, d, 'min')) if d.isc[s['id']]['bits']]
+        return [dict(s) for s in cache.get(code, ())]
+
     def _cube_input(self, r, k):
         fl, item, _iid, q, qty = struct.unpack_from('<HHHBB', r, 0x14 + 8 * k)
         return fl, item, q
@@ -1647,7 +1725,8 @@ class Creator:
         # simple (compact) misc items are saved without a stat list; one is chosen only when its own stat
         # list is empty (unrestricted editing adds stats through a full record instead)
         simple = bool(t.get('compact')) and q == 'normal' and b.kind == 'misc' and not spec.get('extra')
-        if is_cluster_container(code):
+        fresh = [] if spec.get('_from_item') else self.reagent_stats(code)
+        if is_cluster_container(code) or fresh:
             simple = False       # the game stores clusters / containers / vessels with their stat list (Quantity:)
         flags = FLAG_IDENTIFIED | FLAG_ALWAYS
         if simple:
@@ -1697,6 +1776,9 @@ class Creator:
         own = [s for m in mods if m.source.split(':')[0] != 'rw' for s in m.stats(d)]
         rw = [s for m in mods if m.source.split(':')[0] == 'rw' for s in m.stats(d)]
         own += [dict(x) for x in spec.get('extra') or []]              # kept as they were on an edited item
+        if fresh:                    # a new reagent: what the game's own making recipe puts on it (display text...)
+            have = {(s['id'], s.get('param')) for s in own}
+            own += [s for s in fresh if (s['id'], s.get('param')) not in have]
         own = [s for s in merge_stats(own) if d.isc[s['id']]['bits']]
         if is_vessel(d, code) and not spec.get('_from_item'):
             own = stats_with_cluster_quantity(own)   # a fresh vessel / barrel / crate starts full (Quantity: 1000);
