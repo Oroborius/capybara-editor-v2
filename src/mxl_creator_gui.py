@@ -3165,6 +3165,7 @@ def run():
     import mxl_itemlib; mxl_itemlib.install()   # More » Item library... (+ right-click Add to library...)
     import mxl_toolbar                     # the top bar at every width: what does not fit goes into "More"
     mxl_toolbar.install(mxl_gui.App)
+    import mxl_mock_gui; mxl_mock_gui.install(mxl_gui.App)   # folder profiles: "Mock Mode" toggle + Mock tab
     import mxl_lang; mxl_lang.install(mxl_gui.App)   # live language switch: the editor's own texts follow
     import mxl_app_icon
     mxl_app_icon.install(mxl_gui.App)

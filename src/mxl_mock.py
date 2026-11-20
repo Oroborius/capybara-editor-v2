@@ -1297,3 +1297,90 @@ def write_new(raw, folder, name):
     with open(path, 'xb') as f:
         f.write(rename_raw(raw, name))
     return path
+
+
+# ============================================================================================ item crafting
+# Mock items carry arbitrary stats (no legit-only rule in Mock Mode). One line per stat: "<stat> [param] <value>"
+# or the short forms below; '#' starts a comment.
+SHORT = {'mana': 9, 'life': 7, 'mana%': 77, 'life%': 76, 'regen%': 27, 'dr': 34, 'dr%': 36, 'dtm': 114,
+         'str/lvl': 220, 'dmg': 111, 'ias': 93, 'cb': 136, 'ow': 135, 'str': 0, 'dex': 2, 'vit': 3, 'ene': 1,
+         'abscold/lvl': 234, 'absfire/lvl': 235, 'abslight/lvl': 236, 'coldmast': 331}
+AURA_KEYS = {n.lower().replace(' aura', '').replace(' ', ''): k for k, n in AURA_NAMES.items()}
+CRAFT_BASES = {'charm': ('cm1 ', 1), 'jewel': ('jew ', 2)}       # code, lists (jewel: magic + runeword list)
+
+
+def parse_lines(text, isc=_vanilla_isc):
+    """Stat lines from text. Forms: '9 223', '151 99 31' (stat param value), 'mana 223', 'aura prayer 31',
+    'ctc_attack stun 63 10' (195 / 198 / 201: skill level chance), 'skill smite 63' (97). A blank line or
+    '--' starts the next list (jewels: the runeword list). Raises PlanError with the line number."""
+    lists, cur = [], []
+    for n, raw in enumerate(text.splitlines(), 1):
+        s = raw.split('#')[0].strip().lower()
+        if not s or s == '--':
+            if cur:
+                lists.append(cur)
+                cur = []
+            continue
+        w = s.split()
+        try:
+            if w[0] == 'aura':
+                line = (151, AURA_KEYS[w[1].replace('_', '')], int(w[2]))
+            elif w[0] in ('ctc_attack', 'ctc_hit', 'ctc_struck'):
+                sk = {'stun': STUN, 'delirium': DELIRIUM}.get(w[1]) or int(w[1])
+                line = ({'ctc_attack': 195, 'ctc_hit': 198, 'ctc_struck': 201}[w[0]], (sk << 6) | int(w[2]),
+                        int(w[3]))
+            elif w[0] == 'skill':
+                sk = {'smite': SMITE, 'prayer': PRAYER, 'bo': BATTLE_ORDERS}.get(w[1]) or int(w[1])
+                line = (97, sk, int(w[2]))
+            else:
+                sid = SHORT[w[0]] if w[0] in SHORT else int(w[0])
+                line = (sid, int(w[1]), int(w[2])) if len(w) == 3 else (sid, None, int(w[1]))
+            bits, add, par = isc(line[0])
+            if not bits:
+                raise PlanError(f'line {n}: stat {line[0]} cannot be saved on an item')
+            if not -add <= line[2] <= (1 << bits) - 1 - add:
+                raise PlanError(f'line {n}: {line[2]} out of range ({-add} to {(1 << bits) - 1 - add})')
+            if par and line[1] is None or not par and line[1] is not None:
+                raise PlanError(f'line {n}: stat {line[0]} {"needs" if par else "takes no"} parameter')
+            if line[1] is not None and not 0 <= line[1] < (1 << par):
+                raise PlanError(f'line {n}: parameter out of range')
+        except (KeyError, IndexError, ValueError):
+            raise PlanError(f'line {n}: cannot read {raw.strip()!r}')
+        cur.append(line)
+    if cur:
+        lists.append(cur)
+    return lists
+
+
+def craft_item(base, lists, x=0, y=0, seed=None, isc=_vanilla_isc):
+    """Bytes of one crafted inventory item (superior small charm, or a jewel with a second, runeword list)."""
+    code, n = CRAFT_BASES[base]
+    if len(lists) > n:
+        raise PlanError(f'a {base} has {n} stat list(s), {len(lists)} given')
+    lists = list(lists) + [[]] * (n - len(lists))
+    rng = random.Random(seed)
+    rec = dict(flags=FLAG_IDENTIFIED | FLAG_ALWAYS | (FLAG_RUNEWORD if n == 2 else 0), version=ITEM_VERSION,
+               location=0, equipped=0, x=x, y=y, panel=1, code=code, socketed_count=0, id=rng.getrandbits(32),
+               ilvl=90, quality=3, image=0, auto_affix=None, subquality=1, realm_bit=0, runeword_id=0xFFFF,
+               lists=[lists[0]], rw_list=lists[1] if n == 2 else None)
+    return encode_item(rec, isc)
+
+
+def free_cell(ch, data, w=10, h=4):
+    """First free 1 x 1 cell (x, y) of the character's inventory, or None."""
+    used = set()
+    for e in ch.items:
+        it = e.it
+        if it.get('location') == 0 and it.get('panel') == 1:
+            try:
+                bw, bh = data.base(it.get('code')).size
+            except Exception:
+                bw = bh = 1
+            for i in range(bw):
+                for j in range(bh):
+                    used.add((it.get('x', 0) + i, it.get('y', 0) + j))
+    for y in range(h):
+        for x in range(w):
+            if (x, y) not in used:
+                return x, y
+    return None
