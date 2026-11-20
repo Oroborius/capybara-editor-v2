@@ -153,12 +153,19 @@ def save_dir(game_dir, home=None):
     return q if q and os.path.isdir(q) else None
 
 
-def _use_save_dir(game_dir):
+def _use_save_dir(game_dir, root=None):
     """MXL_SAVE_DIR set by the user wins; the Linux launcher's own guess (the Median XL save folder,
-    MXL_SAVE_DIR_AUTO=1) or none is replaced by the profile game's save folder."""
+    MXL_SAVE_DIR_AUTO=1) or none is replaced by the profile game's save folder. When that game has none, an empty
+    folder of the profile (root/saves) - never the Median XL saves (the collector's own default)."""
     if os.environ.get('MXL_SAVE_DIR') and not os.environ.get('MXL_SAVE_DIR_AUTO'):
         return None
     d = save_dir(game_dir)
+    if not d and root:
+        d = os.path.join(root, 'saves')
+        try:
+            os.makedirs(d, exist_ok=True)
+        except OSError:
+            pass
     if d:
         os.environ['MXL_SAVE_DIR'] = d
         os.environ['MXL_SAVE_DIR_AUTO'] = '1'
@@ -342,7 +349,7 @@ def install():
         _log(f'game profile {pid}: extraction failed ({type(err).__name__}: {err}): Median XL mode')
         return None
     _state = dict(info, game_dir=game_dir, id=pid, root=root, data_dir=data_dir)
-    _state['save_dir'] = _use_save_dir(game_dir)
+    _state['save_dir'] = _use_save_dir(game_dir, root)
     paths.DATA_DIR = data_dir
     paths.ICONS_DIR = os.path.join(data_dir, 'items')
     _patch_settings(game_dir)
@@ -474,36 +481,123 @@ def skill_tab_text(data, param, value):
     return f'{line} {only}' if only else line
 
 
+def _fix_isc(data):
+    """Vanilla itemstatcost rows the collector renders without their value: 17 / 18 (descfunc 3, descval 0 -
+    the game prints them through its own Enhanced Damage line) become '+N% <text>' (descfunc 4, value first)."""
+    if getattr(data, '_profile_isc', False):
+        return
+    for sid in (17, 18):
+        try:
+            c = data.isc[sid]
+            if c.get('func') == 3 and not c.get('val'):
+                c['func'], c['val'] = 4, 1
+        except Exception:
+            pass
+    try:
+        data._profile_isc = True
+    except Exception:
+        pass
+
+
+def aura_text(data, param, value):
+    """Stat 151 (descfunc 16): 'Level %d %s Aura When Equipped' with the level (value) and skill (param) name."""
+    try:
+        fmt = data.isc[151]['pos']
+    except Exception:
+        fmt = 'Level %d %s Aura When Equipped'
+    nm = (data.skill_names.get(param) if isinstance(data.skill_names, dict) else None) or f'skill {param}'
+    if '%d' in fmt and '%s' in fmt:
+        return fmt.replace('%d', str(value), 1).replace('%s', str(nm), 1)
+    return f'Level {value} {nm} Aura When Equipped'
+
+
+def _string(data, key, prefer_newline=False):
+    """Text of a string key: the later table's (patch > expansion > classic, the game's order); with
+    prefer_newline the item-display variant (it ends with a newline) when the tables hold several."""
+    hits = [(i, v[1]) for i, v in data.strings.items() if isinstance(v, tuple) and v[0] == key and v[1]]
+    hits.sort(key=lambda h: (prefer_newline and not h[1].endswith('\n'), -h[0]))   # later tables win
+    return hits[0][1] if hits else None
+
+
+def _ed_text(data):
+    return (_string(data, 'strModEnhancedDamage', True) or 'Enhanced Damage').strip()
+
+
+def repair_text(data, value):
+    """Descfunc 11 (stat 252): 'Repairs 1 durability in N seconds' (N = 100 / value), or per second from 100 up."""
+    v = int(value or 0)
+    if v <= 0:
+        return None
+    if v >= 100:
+        fmt = data.isc[252]['pos'] if '%d' in str(data.isc[252]['pos']) else 'Repairs %d durability per second'
+        return fmt.replace('%d', str(v // 100), 1)
+    fmt = _string(data, 'ModStre9u') or 'Repairs %d durability in %d seconds'
+    return fmt.replace('%d', '1', 1).replace('%d', str(max(1, 100 // v)), 1)
+
+
 def _patch_text():
-    """Stat lines with the vanilla game's own strings: stat 188 (skill tab) through charstats instead of the
-    raw itemstatcost string ('+%d to Javelin and Spear Skills' for every tab)."""
+    """Stat lines with the vanilla game's own strings / descfuncs:
+    - 188 (skill tab) through charstats, not the raw '+%d to Javelin and Spear Skills' for every tab;
+    - 151 (aura when equipped) with its level and skill name, not 'Level %d %s Aura When Equipped';
+    - 17 / 18 with their value; equal ones as the game's single '+N% Enhanced Damage' line;
+    - 252 (descfunc 11) as 'Repairs 1 durability in N seconds';
+    - no 'damage per Strength / Dexterity' lines under the weapon damage (Median XL's use of the string keys
+      charmontohit1X / 2X, which are 'Average chance %s will hit you: %d%%' in the vanilla tables).
+    The '(B:.. + J:..)' breakdowns stay: B = the item, J = a socketed jewel (G / R gems / runes), the editor's own."""
     try:
         import mxl_stat_text as M
     except Exception:
         return
+    try:
+        import mxl_tooltip
+        mxl_tooltip.DMG_BONUS = ()
+    except Exception:
+        pass
     o_lines = M.stat_lines
+    OWN = (188, 151, 252)
+
+    def own_text(data, st):
+        if st.get('id') == 188:
+            return skill_tab_text(data, st.get('param'), st.get('value'))
+        if st.get('id') == 252:
+            return repair_text(data, st.get('value'))
+        return aura_text(data, st.get('param'), st.get('value'))
 
     def stat_lines(stats, data, *a, **k):
-        tabs = [s for s in stats or () if isinstance(s, dict) and s.get('id') == 188]
-        if not tabs:
-            return o_lines(stats, data, *a, **k)
-        rest = [s for s in stats if not (isinstance(s, dict) and s.get('id') == 188)]
-        out = list(o_lines(rest, data, *a, **k)) if rest else []
-        try:
-            prio = data.isc[188]['prio']
-            hi = [s for s in rest if (data.isc.get(s.get('id')) or {}).get('prio', 0) > prio]
-            at = len(o_lines(hi, data, *a, **k)) if hi else 0
-        except Exception:
-            at = 0
+        _fix_isc(data)
+        stats = list(stats or ())
+        mine = [x for x in stats if isinstance(x, dict) and x.get('id') in OWN]
+        rest = [x for x in stats if not (isinstance(x, dict) and x.get('id') in OWN)]
+        out = list(o_lines(rest, data, *a, **k)) if rest or not mine else []
         prio_on = k.get('prio', a[2] if len(a) > 2 else False)
-        new, seen = [], set()
-        for s in tabs:
-            t = skill_tab_text(data, s.get('param'), s.get('value'))
-            if t and t not in seen:
-                seen.add(t)
-                ln = (getattr(M, 'BLUE', '3'), t, [], [])
-                new.append(((data.isc[188]['prio'],) + ln) if prio_on else ln)
-        return out[:at] + new + out[at:]
+        ti = 2 if prio_on else 1                          # index of the text in a line tuple
+        v17 = {x.get('value') for x in rest if isinstance(x, dict) and x.get('id') == 17}
+        v18 = {x.get('value') for x in rest if isinstance(x, dict) and x.get('id') == 18}
+        if len(v17) == 1 and v17 == v18:                   # the game's one line for equal min / max
+            v = next(iter(v17))
+            ends = (str(data.isc[17]['pos']).strip(), str(data.isc[18]['pos']).strip())
+            hits = [i for i, ln in enumerate(out) if str(ln[ti]).startswith(f'+{v}% ')
+                    and str(ln[ti]).endswith(ends)]
+            if len(hits) == 2:
+                ln = list(out[hits[0]])
+                ln[ti] = f'+{v}% {_ed_text(data)}'
+                out[hits[0]] = tuple(ln)
+                del out[hits[1]]
+        seen = []
+        for st in sorted(mine, key=lambda x: -(data.isc.get(x['id']) or {}).get('prio', 0)):
+            t = own_text(data, st)
+            if not t or t in seen:
+                continue
+            pr = (data.isc.get(st['id']) or {}).get('prio', 0)
+            hi = [x for x in rest if (data.isc.get(x.get('id')) or {}).get('prio', 0) > pr]
+            try:
+                at = (len(o_lines(hi, data, *a, **k)) if hi else 0) + len(seen)
+            except Exception:
+                at = len(seen)
+            seen.append(t)
+            ln = (getattr(M, 'BLUE', '3'), t, [], [])
+            out.insert(min(at, len(out)), ((pr,) + ln) if prio_on else ln)
+        return out
     stat_lines.__wrapped__ = o_lines
     M.stat_lines = stat_lines
     for name in ('mxl_tooltip', 'mxl_statparse', 'mxl_catalog_tooltip'):

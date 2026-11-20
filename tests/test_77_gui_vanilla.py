@@ -29,7 +29,8 @@ def _saves():
     if not os.path.isdir(dst):
         os.makedirs(dst)
         for f in glob.glob(os.path.join(v, '*.d2s')) + [os.path.join(m, 'clones', 'clone-59.d2s'),
-                                                       os.path.join(m, 'clones', 'clone-26.d2s')]:
+                                                       os.path.join(m, 'clones', 'clone-26.d2s'),
+                                                       os.path.join(m, 'clones', 'clone-35.d2s')]:
             shutil.copy(f, dst)
     return dst
 
@@ -92,6 +93,18 @@ def mock_character_opens():
     cw = _open('clone-26')
     T.check(cw.ch is not None and cw.ch.name.lower() == 'clone-26', 'hacked clone character opened')
     T.check(any(getattr(e.it, 'ear', None) for e in cw.ch.items), 'player ears read')
+
+
+@T.test
+def extreme_characters_open_clean():
+    """Mana / life near the stat maximum, junk after the stat list: the window shows them with nothing pending
+    (a SAVE without edits writes nothing new)."""
+    if _S is None:
+        T.skip('no vanilla install / samples')
+    for name in ('clone-35', 'clone-59'):
+        cw = _open(name)
+        T.check(cw.ch is not None and cw.ch.name.lower() == name.lower(), f'{name} opened')
+        T.check(not cw.dirty(), f'{name}: nothing pending after loading')
 
 
 T.main(globals())

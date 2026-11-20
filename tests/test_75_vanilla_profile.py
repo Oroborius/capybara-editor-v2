@@ -179,14 +179,17 @@ def mock_samples_open_and_save_byte_identical():
     files = sorted(glob.glob(os.path.join(dst, '*.d2s')) + glob.glob(os.path.join(dst, 'clones', '*.d2s')))
     T.check(len(files) >= 38, f'{len(files)} mock samples')
     import mxl_save
-    bad = []
+    bad, raw = [], set()
     for path in files:
         name = os.path.relpath(path, dst)
         before = T.read(path)
         try:
             ch = E.MC.Character(path, E.data)
             for e in list(ch.items) + list(ch.merc_items or []):
-                E.tip.item_tooltip(e.it, E.data)
+                for ln in E.tip.item_tooltip(e.it, E.data):
+                    t = _text(ln)
+                    if '%d' in t or '%s' in t:            # a vanilla string shown unformatted
+                        raw.add(t)
             mxl_save.load_character(path, E.data)          # the main window's reader (character list)
             if bytes(ch.build()) != before:
                 bad.append(f'{name}: rebuilt bytes differ')
@@ -199,6 +202,7 @@ def mock_samples_open_and_save_byte_identical():
         except Exception as err:
             bad.append(f'{name}: {type(err).__name__}: {err}')
     T.eq(bad, [], 'mock samples')
+    T.eq(sorted(raw), [], 'tooltip lines with an unformatted %d / %s')
 
 
 @T.test
@@ -209,6 +213,18 @@ def save_folder_detection_on_fake_trees():
     game = os.path.join(base, 'drive_c', 'Program Files (x86)', 'Diablo II')
     os.makedirs(game)
     T.eq(P.save_dir(game), None, 'nothing to find')
+    old0 = {k: os.environ.get(k) for k in ('MXL_SAVE_DIR', 'MXL_SAVE_DIR_AUTO')}
+    try:
+        os.environ.update(MXL_SAVE_DIR=os.path.join(base, 'median-guess'), MXL_SAVE_DIR_AUTO='1')
+        empty = P._use_save_dir(game, os.path.join(base, 'profile'))
+        T.eq((empty, os.environ['MXL_SAVE_DIR']), (os.path.join(base, 'profile', 'saves'),) * 2,
+             "nothing found: the profile's empty folder, not the launcher's Median XL guess")
+    finally:
+        for k, v in old0.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
     os.makedirs(os.path.join(game, 'Save'))
     T.eq(P.save_dir(game), os.path.join(game, 'Save'), "the game folder's Save")
     pub = os.path.join(base, 'drive_c', 'users', 'Public', 'Saved Games', 'Diablo II')

@@ -103,27 +103,31 @@ def _ends_with_terminator(blob, end):
 def _opaque_end(blob, data, start_bit):
     """Byte offset (in blob, 'JM' at 0) where an item whose stats cannot be read ends: the first later 'JM' that
     follows a stat-list end (0x1FF + zero padding) and starts an item header of the same item version (or the
-    corpse list after the last item)."""
+    corpse list after the last item, or the 'jf' / 'kf' section after a corpse / mercenary list's last item)."""
     b = bytes(blob)
     ver = int.from_bytes(b[2:8], 'little') >> 32 & 0x3FF
     i = 2 + start_bit // 8
     while True:
-        i = b.find(b'JM', i)
-        if i < 0:
+        hits = [k for k in (b.find(b'JM', i), b.find(b'jf', i), b.find(b'kf', i)) if k >= 0]
+        if not hits:
             raise mxl_format.FormatError('item stats do not fit the game tables')
-        same = int.from_bytes(b[i + 2:i + 8].ljust(6, b'\0'), 'little') >> 32 & 0x3FF == ver
-        if _ends_with_terminator(b, i) and (same or b[i + 4:i + 6] in (b'jf', b'JM')):   # or the corpse list
-            return i
+        i = min(hits)
+        if _ends_with_terminator(b, i):
+            if b[i:i + 2] != b'JM':
+                return i
+            same = int.from_bytes(b[i + 2:i + 8].ljust(6, b'\0'), 'little') >> 32 & 0x3FF == ver
+            if same or b[i + 4:i + 6] in (b'jf', b'JM'):     # or the corpse list after the last item
+                return i
         i += 1
 
 
 def _trailing(blob, it, br):
     """Hacked saves may hold bytes after an item's last field (an ear name with junk after its end): the game
-    finds the next item at its 'JM'. The item keeps those bytes (byte-identical save) when no 'JM' / 'kf' / end
+    finds the next item at its 'JM'. The item keeps those bytes (byte-identical save) when no 'JM' / 'jf' / 'kf' / end
     of file follows its end."""
     end = 2 + (br.pos + 7) // 8
     b = blob[end:end + 2]
-    if len(b) < 2 or bytes(b) in (b'JM', b'kf'):
+    if len(b) < 2 or bytes(b) in (b'JM', b'kf', b'jf'):
         return it, br
     nxt = bytes(blob[end:end + 4096]).find(b'JM')
     if nxt > 0:
