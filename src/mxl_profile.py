@@ -374,6 +374,13 @@ def _patch_install():
         return True
     GI.check_data = check_data
 
+    def show_game(self, *a, **k):                      # top bar: "Diablo II 1.14d", not "Median XL ?"
+        if getattr(self, 'label', None) is not None and _state:
+            mods = [m for m in _state.get('mods', [])]
+            self.label.configure(text=f"Diablo II {_state.get('version') or '?'}"
+                                 + (f" + {', '.join(mods)}" if mods else ''))
+    GI.show_game = show_game
+
 
 def _patch_art():
     """Art (panels, fonts, palettes) from the folder's MPQ stack, its cache in the profile's folder; with
