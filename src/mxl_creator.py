@@ -958,6 +958,8 @@ class Creator:
             mods = self._cube_mods(r)
             if not mods:
                 continue
+            chances = [struct.unpack_from('<iHhhH', r, 0x4C + 24 + 12 * j)[4] for j in range(5)
+                       if 0 <= struct.unpack_from('<i', r, 0x4C + 24 + 12 * j)[0] < len(d.props)]
             ins = [struct.unpack_from('<HHHBB', r, 0x14 + 8 * k) for k in range(min(r[16], 7))]
             if not ins:
                 continue
@@ -968,7 +970,7 @@ class Creator:
                 conds.append((op, param, e[5], value))
             if e[1]:
                 conds.append((e[1], e[2], e[4], e[3]))
-            out.append(dict(row=i, first=ins[0][:4], inputs=ins[1:], conds=conds, mods=mods))
+            out.append(dict(row=i, first=ins[0][:4], inputs=ins[1:], conds=conds, mods=mods, chances=chances))
         self._inplace = out
         return out
 
@@ -1062,8 +1064,7 @@ class Creator:
             except Exception:
                 pass
         if fl & 2:
-            tc = d.itypes[item][0] if 0 <= item < len(d.itypes) else item
-            nm = T('cr.tog.any_type', 'any {t}', t=str(tc).strip())
+            nm = T('cr.tog.any_type', 'any {t}', t=self.type_name(item))
         elif 0 <= item < len(d.item_index):
             nm = self.display_name(d.item_index[item]) or d.item_index[item].strip()
         else:
@@ -1071,6 +1072,18 @@ class Creator:
         if q and q in QUALITY_NAME and not fl & 0x40:
             nm += f' ({QUALITY_NAME[q]})'
         return f'{nm} x{qty}' if qty > 1 else nm
+
+    def type_name(self, t):
+        """Name of item type row t: "Shield (shie)"; mxl_rownames.itemtype_name (vanilla itemtypes.txt names, else
+        the one base item of that type), else its code."""
+        d = self.data
+        code = str(d.itypes[t][0]).strip() if 0 <= t < len(d.itypes) else str(t)
+        try:
+            import mxl_rownames
+            nm = mxl_rownames.itemtype_name(d, t, self.display_name)
+        except Exception:
+            nm = None
+        return f'{nm} ({code})' if nm and nm.lower() != code.lower() else code
 
     def recipe_texts(self, rec):
         """{'inputs': [names of inputs 2+], 'conds': [plain words], 'changes': [plain words]} of an in-place recipe."""
@@ -1099,14 +1112,21 @@ class Creator:
                 conds.append(T('cr.tog.cond_other', 'game condition op {op} ({p}, {v}) (not checked)',
                                op=op, p=sid, v=value))
         changes = []
-        for sid, pa, v in self.recipe_deltas(rec):
-            lab = self.stat_label(sid, pa)
-            flag = sid in (98, 375, 377, 378, 385)          # a state / an orange text: on or off
-            if flag:
-                changes.append(T('cr.tog.removes', 'removes {stat}', stat=lab) if v < 0 else
-                               T('cr.tog.adds', 'adds {stat}', stat=lab))
-            else:
-                changes.append(f'{v:+d} {lab}')
+        chances = rec.get('chances') or []
+        parts = [(dict(rec, mods=[m]), chances[j] if j < len(chances) else 0) for j, m in enumerate(rec['mods'])] \
+            if len(chances) == len(rec['mods']) and any(0 < c < 100 for c in chances) else [(rec, 0)]
+        for one, chance in parts:                    # a mod with its own chance column: "(20% chance)"
+            for sid, pa, v in self.recipe_deltas(one):
+                lab = self.stat_label(sid, pa)
+                flag = sid in (98, 375, 377, 378, 385)      # a state / an orange text: on or off
+                if flag:
+                    txt = (T('cr.tog.removes', 'removes {stat}', stat=lab) if v < 0 else
+                           T('cr.tog.adds', 'adds {stat}', stat=lab))
+                else:
+                    txt = f'{v:+d} {lab}'
+                if 0 < chance < 100:
+                    txt += ' ' + T('cr.tog.mod_chance', '({n}% chance)', n=chance)
+                changes.append(txt)
         lo = self.recipe_deltas(rec, 'min')
         if lo != self.recipe_deltas(rec):
             changes.append(T('cr.tog.rolled', '(rolled; Apply uses the highest roll)'))

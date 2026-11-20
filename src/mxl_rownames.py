@@ -374,3 +374,68 @@ def state_full(data, st):
 def skill_full(data, sk):
     """Name of a skill without a display name of its own: derived, else from its row; None if no such row."""
     return skill_derived(data, sk) or skill_fallback(data, sk)
+
+
+# The "ItemType" column of vanilla itemtypes.txt (1.10-1.14d; not in itemtypes.bin): code -> name.
+ITEMTYPE_NAMES = {
+    'shie': 'Shield', 'tors': 'Armor', 'gold': 'Gold', 'bowq': 'Bow Quiver', 'xboq': 'Crossbow Quiver',
+    'play': 'Player Body Part', 'herb': 'Herb', 'poti': 'Potion', 'ring': 'Ring', 'elix': 'Elixir',
+    'amul': 'Amulet', 'char': 'Charm', 'boot': 'Boots', 'glov': 'Gloves', 'book': 'Book', 'belt': 'Belt',
+    'gem': 'Gem', 'torc': 'Torch', 'scro': 'Scroll', 'scep': 'Scepter', 'wand': 'Wand', 'staf': 'Staff',
+    'bow': 'Bow', 'axe': 'Axe', 'club': 'Club', 'swor': 'Sword', 'hamm': 'Hammer', 'knif': 'Knife',
+    'spea': 'Spear', 'pole': 'Polearm', 'xbow': 'Crossbow', 'mace': 'Mace', 'helm': 'Helm',
+    'tpot': 'Missile Potion', 'ques': 'Quest', 'body': 'Body Part', 'key': 'Key', 'tkni': 'Throwing Knife',
+    'taxe': 'Throwing Axe', 'jave': 'Javelin', 'weap': 'Weapon', 'mele': 'Melee Weapon',
+    'miss': 'Missile Weapon', 'thro': 'Throwing Weapon', 'comb': 'Combo Weapon', 'armo': 'Any Armor',
+    'shld': 'Any Shield', 'misc': 'Miscellaneous', 'sock': 'Socket Filler', 'seco': 'Second Hand',
+    'rod': 'Staves And Rods', 'misl': 'Missile', 'blun': 'Blunt', 'jewl': 'Jewel', 'clas': 'Class Specific',
+    'amaz': 'Amazon Item', 'barb': 'Barbarian Item', 'necr': 'Necromancer Item', 'pala': 'Paladin Item',
+    'sorc': 'Sorceress Item', 'assn': 'Assassin Item', 'drui': 'Druid Item', 'h2h': 'Hand to Hand',
+    'orb': 'Orb', 'head': 'Voodoo Heads', 'ashd': 'Auric Shields', 'phlm': 'Primal Helm', 'pelt': 'Pelt',
+    'cloa': 'Cloak', 'rune': 'Rune', 'circ': 'Circlet', 'hpot': 'Healing Potion', 'mpot': 'Mana Potion',
+    'rpot': 'Rejuvenation Potion', 'spot': 'Stamina Potion', 'apot': 'Antidote Potion',
+    'wpot': 'Thawing Potion', 'scha': 'Small Charm', 'mcha': 'Medium Charm', 'lcha': 'Large Charm',
+    'abow': 'Amazon Bow', 'aspe': 'Amazon Spear', 'ajav': 'Amazon Javelin', 'h2h2': 'Hand to Hand 2',
+    'mboq': 'Magic Bow Quiver', 'mxbq': 'Magic Crossbow Quiver', 'gem0': 'Chipped Gem', 'gem1': 'Flawed Gem',
+    'gem2': 'Standard Gem', 'gem3': 'Flawless Gem', 'gem4': 'Perfect Gem', 'gema': 'Amethyst',
+    'gemd': 'Diamond', 'geme': 'Emerald', 'gemr': 'Ruby', 'gems': 'Sapphire', 'gemt': 'Topaz', 'gemz': 'Skull',
+}
+
+
+def itemtype_name(data, t, item_name=None):
+    """Name of itemtypes row t: the vanilla "ItemType" name of its code, else - a mod's own type - the name of
+    the one base item of that type (item_name(code) gives a base item's shown name), else None."""
+    try:
+        code = str(data.itypes[t][0]).strip()
+    except (IndexError, TypeError, AttributeError):
+        return None
+    if not code:
+        return None
+    if code.lower() in ITEMTYPE_NAMES:
+        return ITEMTYPE_NAMES[code.lower()]
+    c = _cache(data)
+    if 'itype_bases' not in c:
+        by = {}
+        try:
+            for bc in data.item_index:
+                b = data.base(bc)
+                for tt in (getattr(b, 'type', None), getattr(b, 'type2', None)):
+                    if tt:
+                        by.setdefault(tt, []).append(bc)
+        except Exception:
+            pass
+        c['itype_bases'] = by
+    bases = c['itype_bases'].get(t) or []
+    try:
+        names = [(item_name(b) if item_name else data.base(b).name) or '' for b in bases]
+    except Exception:
+        return None
+    names = [re.sub(r'\xffc.', '', n).strip() for n in names if n]
+    if len(names) == 1:
+        return names[0]
+    if names:                                   # the words every base item of the type shares: "Essence"
+        sets = [set(n.split()) for n in names]
+        common = [w for w in names[0].split() if all(w in s for s in sets) and w.lower() not in ('of', 'the', 'a', '-')]
+        if common:
+            return ' '.join(common)
+    return None

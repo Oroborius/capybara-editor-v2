@@ -81,4 +81,25 @@ def nephalem_key_charges():
     T.check(cr.recipe_texts(rec)['changes'], 'changes described')
 
 
+@T.test
+def type_names_and_mod_chances():
+    """An item-type input is named ("any Shield (shie)", not "any shie"); a mod with a chance column below 100
+    says so ("(20% chance)")."""
+    E = T.engine()
+    cr = E.cr
+    import mxl_rownames
+    shie = next(i for i, t in enumerate(E.data.itypes) if str(t[0]).strip() == 'shie')
+    T.eq(cr.type_name(shie), 'Shield (shie)', 'vanilla type name')
+    T.eq(mxl_rownames.itemtype_name(E.data, shie), 'Shield', 'rownames')
+    recs = cr.inplace_recipes()
+    typed = [x for x in recs if x['first'][0] & 2 or any(i[0] & 2 for i in x['inputs'])]
+    named = [t for x in typed for t in cr.recipe_texts(x)['inputs'] if t.startswith('any ')]
+    T.check(named and sum('(' in t for t in named) * 2 >= len(named), f'type inputs named: {sorted(set(named))[:8]}')
+    chancy = [x for x in recs if any(0 < c < 100 for c in x.get('chances') or ())]
+    T.check(chancy, 'recipes with a mod chance')
+    for x in chancy[:20]:
+        T.check(any('% chance)' in c for c in cr.recipe_texts(x)['changes']), f"recipe {x['row']}: {cr.recipe_texts(x)}")
+    T.check(all(len(x['chances']) == len(x['mods']) for x in recs), 'one chance per mod')
+
+
 T.main(globals())

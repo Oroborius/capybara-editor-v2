@@ -2180,7 +2180,7 @@ class CreatorWindow:
         return r + 1
 
     # ----------------------------------------------- toggles / upgrades (edit mode)
-    TOGGLES_SHOWN = 40
+    TOGGLES_FILTER_AT = 8           # more in-place recipes than this: a filter box above the list
 
     def _edit_totals(self):
         """{(stat, param): value} of the edited item as it stands now: the mods, the delta rows, minus deleted keys."""
@@ -2214,12 +2214,9 @@ class CreatorWindow:
                   justify='left', wraplength=self._wrap_w(), font=('Segoe UI', 10, 'bold')).grid(
             row=r, column=0, columnspan=2, sticky='w', pady=(8, 0))
         r += 1
-        wrap = self._wrap_w()
-        for (no, _row), rec in marked[:self.TOGGLES_SHOWN]:
+        entries = []
+        for (no, _row), rec in marked:
             tx = self.cr.recipe_texts(rec)
-            box = ttk.Frame(parent)
-            box.grid(row=r, column=0, columnspan=2, sticky='we', pady=(3, 0))
-            box.columnconfigure(1, weight=1)
             mark = (T('cr.tog.applies', '[applies now]'), T('cr.tog.applies_char', '[applies if the other conditions hold]'),
                     T('cr.tog.not_met', '[condition not met]'))[no]
             lines = [f"{mark}  {T('cr.tog.row', 'recipe {n}', n=rec['row'])}"]
@@ -2228,17 +2225,45 @@ class CreatorWindow:
             if tx['conds']:
                 lines.append(T('cr.tog.if', 'if: {x}', x='; '.join(tx['conds'])))
             lines.append(T('cr.tog.does', 'does: {x}', x='; '.join(tx['changes'])))
-            D2.button(box, T('cr.tog.apply', 'Apply'), lambda x=rec: self.apply_toggle(x), 6).grid(
-                row=0, column=0, sticky='nw', padx=(0, 4))
-            lab = ttk.Label(box, text='\n'.join(lines), justify='left', wraplength=max(wrap - 130, 120))
-            lab.grid(row=0, column=1, sticky='w')
-            lab._wrap_less = True                        # beside its button: _rewrap leaves it to its own fit
-            lab._fit = lambda w=lab: w.configure(wraplength=max(self._wrap_w() - 130, 120))
+            entries.append((rec, '\n'.join(lines)))
+        flt = None
+        if len(entries) > self.TOGGLES_FILTER_AT:        # long: a filter box (every recipe stays reachable)
+            row = ttk.Frame(parent)
+            row.grid(row=r, column=0, columnspan=2, sticky='we', pady=(2, 0))
+            ttk.Label(row, text=T('cr.tog.filter', 'Filter ({n} recipes):', n=len(entries))).pack(side='left')
+            flt = tk.StringVar()
+            ttk.Entry(row, textvariable=flt, width=24).pack(side='left', padx=(4, 0), fill='x', expand=True)
             r += 1
-        if len(marked) > self.TOGGLES_SHOWN:
-            ttk.Label(parent, text=T('cr.tog.more', '... {n} more recipe(s) not shown',
-                                     n=len(marked) - self.TOGGLES_SHOWN)).grid(row=r, column=0, columnspan=2, sticky='w')
-            r += 1
+        lst = ttk.Frame(parent)
+        lst.grid(row=r, column=0, columnspan=2, sticky='we')
+        lst.columnconfigure(0, weight=1)
+        r += 1
+        self._tog_list, self._tog_filter = lst, flt
+
+        def fill(*_a):
+            for w in lst.winfo_children():
+                w.destroy()
+            words = (flt.get() if flt is not None else '').lower().split()
+            k = 0
+            for rec, text in entries:
+                low = text.lower()
+                if any(w not in low for w in words):
+                    continue
+                box = ttk.Frame(lst)
+                box.grid(row=k, column=0, sticky='we', pady=(3, 0))
+                box.columnconfigure(1, weight=1)
+                D2.button(box, T('cr.tog.apply', 'Apply'), lambda x=rec: self.apply_toggle(x), 6).grid(
+                    row=0, column=0, sticky='nw', padx=(0, 4))
+                lab = ttk.Label(box, text=text, justify='left', wraplength=max(self._wrap_w() - 130, 120))
+                lab.grid(row=0, column=1, sticky='w')
+                lab._wrap_less = True                    # beside its button: _rewrap leaves it to its own fit
+                lab._fit = lambda w=lab: w.configure(wraplength=max(self._wrap_w() - 130, 120))
+                k += 1
+            if not k:
+                ttk.Label(lst, text=T('cr.tog.none', 'no recipe matches')).grid(row=0, column=0, sticky='w')
+        fill()
+        if flt is not None:
+            flt.trace_add('write', fill)
         return r
 
     def apply_toggle(self, rec):
