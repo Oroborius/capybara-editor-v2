@@ -2335,7 +2335,10 @@ class CreatorWindow:
             group.update(STAT_GROUPS[lead])
         drop = self.spec.setdefault('_drop', set())
         for sid in sorted(group):
-            keys = {k for k in list(made) + extra_keys if k[0] == sid}
+            # the picked attribute itself goes alone: another line of the same stat with another param (a
+            # second orange text 377, a second skill) is its own attribute and stays; group members go whole
+            keys = {k for k in list(made) + extra_keys if k[0] == sid
+                    and (sid != key[0] or k == key or not (k[1] or key[1]))}
             for k in keys:
                 drop.add(k)
                 e = self._edit_extra(k)
