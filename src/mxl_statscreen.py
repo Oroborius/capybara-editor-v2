@@ -1044,8 +1044,11 @@ def screen_table(data):
             if len(r) != 33:
                 rows = []
                 break
-            page, kind, x, y, sid, color, font, stat, _u, flags, align, _s2, tip, _u2, _u3, cap = \
-                struct.unpack_from('<BIHHHBBhhhhHHHHB', r, 0)
+            # 33-byte rows (D2-Development-Kit, MIT: layouts/mxl/statscreen.json): page, type, x, y, text,
+            # color, font, stat, layer, isBase, isPercent, align (i32), hoverText, min (i32), max (i32)
+            page, kind, x, y, sid, color, font, stat, _layer, is_base, is_pct, align, tip, _min, cap = \
+                struct.unpack_from('<BIHHHBBhhBBiHii', r, 0)
+            flags = is_base | is_pct << 8
             rows.append({'n': n, 'page': page, 'type': kind, 'x': x, 'y': y, 'text': text(sid), 'color': color,
                          'font': SS_FONTS.get(font, 'font6'), 'stat': stat, 'flags': flags, 'align': align,
                          'tip': text(tip), 'cap': cap})
