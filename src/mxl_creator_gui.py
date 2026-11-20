@@ -2997,6 +2997,9 @@ def run():
     mxl_format_fix.install()
     import mxl_speed                  # free place search in one pass over the stash (same answer, ~300x faster)
     mxl_speed.install()
+    import mxl_profile                    # game profile: Median XL (nothing changes) or another D2 game folder
+    mxl_profile.install()                 # (its own data folder; before mxl_gui copies paths.DATA_DIR)
+    mxl_profile.install_menu()
     import mxl_gui
     rename_app(mxl_gui)
     import mxl_d2_theme                   # which look: dark Diablo ('d2', default) or Hero-Editor light ('he')
