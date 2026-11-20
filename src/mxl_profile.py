@@ -376,9 +376,9 @@ def _open_stack(game_dir):
 
 
 def _patch_pages():
-    """The Mercenary page maps the save's mercenary type through the Median hireling rows; with vanilla rows
-    (classic + expansion rows share ids) the shown type differs from the file's and a SAVE without edits rewrote
-    it. Here the page is dirty only when its values changed since it was built (phase 2: vanilla hireling rows)."""
+    """The Mercenary page maps the type through the vanilla expansion hireling rows (mxl_merc.hirelings); as a
+    guard the page is also dirty only when its values changed since it was built (a SAVE without edits never
+    rewrites the mercenary)."""
     try:
         import mxl_merc
     except Exception:

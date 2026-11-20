@@ -146,6 +146,19 @@ def vanilla_skill_tab_line_and_grids():
     T.eq((E.MC.INV_W, E.MC.INV_H), (10, 4), 'mxl_char inventory size')
 
 
+@T.test
+def vanilla_mercenary_types():
+    """The expansion hireling rows (version 100), not the classic ones sharing the ids."""
+    E = engine()
+    import mxl_merc
+    h = mxl_merc.hirelings(E.data)
+    T.eq(sorted(h), list(range(30)), 'LoD hireling ids')
+    T.check('Defiance' in h[7].label() and 'Normal' in h[7].label() and h[7].act == 2, h[7].label())
+    T.check('Might' in h[11].label() and 'Nightmare' in h[11].label(), h[11].label())
+    ch = E.MC.Character(os.path.join(E.saves, 'complex.d2s'), E.data)
+    T.eq(mxl_merc.record(ch)['type'], 11, 'complex.d2s mercenary type')
+
+
 def _mock_dir():
     cands = [os.environ.get('MXL_TEST_MOCK_SAVES', ''), os.path.join(T.REPO, '.cache', 'samples', 'mock')]
     if os.sep + '.claude' + os.sep + 'worktrees' + os.sep in T.REPO:

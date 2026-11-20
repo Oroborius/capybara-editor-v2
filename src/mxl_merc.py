@@ -74,7 +74,24 @@ def hirelings(data):
         desc = data._rows('hiredescext')
     except Exception:
         desc = []
-    for r in data._rows('hireling'):
+    rows = data._rows('hireling')
+    vanilla = False
+    try:
+        import mxl_profile
+        if not mxl_profile.is_median():
+            vanilla = True
+            # vanilla: classic (version 0) and expansion (version 100) rows share the ids; a 1.10+ save names
+            # the expansion row. hiredesc.bin holds the variant names there (Median: hiredescext.bin)
+            if any(struct.unpack_from('<H', r, 0)[0] >= 100 for r in rows):
+                rows = [r for r in rows if struct.unpack_from('<H', r, 0)[0] >= 100]
+            if not desc:
+                try:
+                    desc = data._rows('hiredesc')
+                except Exception:
+                    desc = []
+    except Exception:
+        pass
+    for r in rows:
         hid, cls, act, diff = struct.unpack_from('<4I', r, 4)
         if hid in out:
             continue
@@ -96,7 +113,17 @@ def hirelings(data):
             pass
         if not cls_name or 'BUFFALO' in cls_name:
             cls_name = T(f'merc.class.{act}', ACT_CLASS.get(act, f'class {cls}'))
-        if not variant or 'BUFFALO' in variant:
+        if vanilla:                     # vanilla rows: no variant / class strings; the row's skills tell them apart
+            if 'an evil force' in cls_name.lower():
+                cls_name = T(f'merc.class.{act}', ACT_CLASS.get(act, f'class {cls}'))
+            sk = []
+            for sid in struct.unpack_from('<6I', r, 120):
+                nm = data.skill_names.get(sid) if isinstance(data.skill_names, dict) else None
+                if sid and nm and nm not in sk:
+                    sk.append(_clean(nm if isinstance(nm, str) else str(nm)))
+            if sk:
+                variant = ' / '.join(sk)
+        if not variant or 'BUFFALO' in variant or 'an evil force' in variant.lower():
             variant = cls_name
         out[hid] = Hireling(id=hid, cls=cls, act=act, diff=diff, level=level, exp_per_level=max(1, xpl),
                             names=names, variant=variant, cls_name=cls_name)
