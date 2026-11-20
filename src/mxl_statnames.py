@@ -744,13 +744,55 @@ def state_name(data, sid):
             n = None
         if n and n not in names:
             names.append(n)
-    return ' / '.join(names[:3]) or None
+    return ' / '.join(names[:3]) or _state_row_name(data, sid)
+
+
+def _state_row_names(data):
+    """{state id: name} from the state's own row, for states no skill column and no buff icon names (e.g.
+    505 'voidtouched', set by a cube recipe): its 'skill' column (+56, the skill's name), else its overlay
+    (overlay1 +2, castoverlay +10: the overlay.bin row's file name, +2, 64 bytes). Field offsets from
+    D2-Development-Kit, MIT (layouts/mxl/states.json, overlay.json)."""
+    m = getattr(data, '_sn_state_rows', None)
+    if m is not None:
+        return m
+    m = {}
+    try:
+        try:
+            ovl = [r[2:66].split(b'\0', 1)[0].decode('latin-1').strip() for r in data._rows('overlay')]
+        except Exception:
+            ovl = []
+        for sid, r in enumerate(data._rows('states')):
+            if sid == 0 or len(r) < 60:
+                continue
+            n = None
+            sk = struct.unpack_from('<H', r, 56)[0]
+            if 0 < sk < 0xFFFF:
+                try:
+                    n = data.skill_names.get(sk) or skilldesc_name(data, sk)
+                except Exception:
+                    n = None
+            for off in (2, 10):
+                if n:
+                    break
+                o = struct.unpack_from('<H', r, off)[0]
+                if 0 < o < len(ovl) and ovl[o]:
+                    n = ovl[o]
+            m[sid] = n or f'State {sid}'
+    except Exception:
+        m = {}
+    data._sn_state_rows = m
+    return m
+
+
+def _state_row_name(data, sid):
+    return _state_row_names(data).get(sid)
 
 
 def state_names_sorted(data):
-    """[(state name, state id)] sorted by name, for the state stat's (98) param dropdown."""
+    """[(state name, state id)] sorted by name, for the state stat's (98) param dropdown: every state of
+    the states table (named by its buff icon, the skills that set it, or its own row)."""
     out = []
-    for sid in sorted(set(_state_skills(data)) | set(_state_icon_names(data))):
+    for sid in sorted(set(_state_skills(data)) | set(_state_icon_names(data)) | set(_state_row_names(data))):
         n = state_name(data, sid)
         if n:
             out.append((n, sid))

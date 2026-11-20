@@ -143,6 +143,8 @@ def offered_states_are_rows_of_the_states_table():
         T.check(0 < value < n, f'state {name!r} = {value}: not a row of the states table ({n} rows)')
     T.eq(SN.state_names_sorted(E.data), SN.param_choices(E.data, 98), 'choices of stat 98 = the named states')
     T.eq(SN.state_name(E.data, 0xFFFF), None, 'name of state 65535')
+    T.check(any(v == 505 for _n, v in states), 'state 505 (voidtouched, set by a cube recipe) is not listed')
+    T.eq(SN.state_name(E.data, 505), 'voidtouched', 'name of state 505 (its overlay)')
     T.eq(SN.param_value(E.data, 98, "Dragon's Blessing (#65535)"), None, 'the marker row cannot be picked by name')
     marker = [st for st in SN._state_icon_names(E.data) if st >= n]
     T.eq(marker, [], 'icon rows of states that do not exist')
