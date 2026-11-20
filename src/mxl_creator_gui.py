@@ -1487,6 +1487,7 @@ class CreatorWindow:
             self._slots_drop()
             ttk.Label(inner, text=T('cr.no_variable', 'No variable values: everything on this item is fixed.'),
                       wraplength=self._wrap_w(), justify='left').grid(row=0, column=0, sticky='w')
+            self._toggles(inner, 1)
             return
         r = 0
         if raw_extra and not unr and not table:
@@ -1535,6 +1536,7 @@ class CreatorWindow:
             r = self._orange_text(inner, r)               # unique orange text (display + hidden effect)
         else:
             self._slots_drop()
+        self._toggles(inner, r)
 
     def _spin_commit(self, spin, setter):
         """Commits a spinbox / entry on Return, focus out and the arrows (keeping the keyboard focus).
@@ -2176,6 +2178,93 @@ class CreatorWindow:
         D2.button(box, T('cr.orange.add', '+ Add orange text'), add, 8).grid(row=4, column=1, sticky='w', padx=(4, 2),
                                                                              pady=(2, 0))
         return r + 1
+
+    # ----------------------------------------------- toggles / upgrades (edit mode)
+    TOGGLES_SHOWN = 40
+
+    def _edit_totals(self):
+        """{(stat, param): value} of the edited item as it stands now: the mods, the delta rows, minus deleted keys."""
+        tot = dict(self._edit_made())
+        for e in self.spec.get('extra') or []:
+            k = (e['id'], e.get('param'))
+            tot[k] = tot.get(k, 0) + e['value']
+        for k in self.spec.get('_drop') or ():
+            tot.pop(k, None)
+        return {(k[0], k[1] or None): v for k, v in tot.items() if v}
+
+    def _toggles(self, parent, r):
+        """The cube recipes that change this item in place (output 'useitem'): inputs, condition, changes, and an
+        Apply button that makes exactly those stat changes to the edited item (Replace item writes them, undoable)."""
+        if self.edit_item is None:
+            return r
+        sp = self.spec
+        try:
+            recs = self.cr.inplace_for(sp.get('code'), sp.get('quality'), sp.get('row'))
+        except Exception:
+            return r
+        if not recs:
+            return r
+        tot = self._edit_totals()
+        def rank(x):
+            if not self.cr.recipe_applies(x, tot):
+                return 2
+            return 1 if any(op not in self.cr.ITEM_OPS for op, *_r in x['conds']) else 0
+        marked = sorted(((rank(x), x['row']), x) for x in recs)
+        ttk.Label(parent, text=T('cr.tog.title', 'Toggles / upgrades (cube recipes that change this item)'),
+                  justify='left', wraplength=self._wrap_w(), font=('Segoe UI', 10, 'bold')).grid(
+            row=r, column=0, columnspan=2, sticky='w', pady=(8, 0))
+        r += 1
+        wrap = self._wrap_w()
+        for (no, _row), rec in marked[:self.TOGGLES_SHOWN]:
+            tx = self.cr.recipe_texts(rec)
+            box = ttk.Frame(parent)
+            box.grid(row=r, column=0, columnspan=2, sticky='we', pady=(3, 0))
+            box.columnconfigure(1, weight=1)
+            mark = (T('cr.tog.applies', '[applies now]'), T('cr.tog.applies_char', '[applies if the other conditions hold]'),
+                    T('cr.tog.not_met', '[condition not met]'))[no]
+            lines = [f"{mark}  {T('cr.tog.row', 'recipe {n}', n=rec['row'])}"]
+            lines.append(T('cr.tog.with', 'with: {x}', x=', '.join(tx['inputs']) if tx['inputs'] else
+                           T('cr.tog.alone', '(the item alone)')))
+            if tx['conds']:
+                lines.append(T('cr.tog.if', 'if: {x}', x='; '.join(tx['conds'])))
+            lines.append(T('cr.tog.does', 'does: {x}', x='; '.join(tx['changes'])))
+            D2.button(box, T('cr.tog.apply', 'Apply'), lambda x=rec: self.apply_toggle(x), 6).grid(
+                row=0, column=0, sticky='nw', padx=(0, 4))
+            lab = ttk.Label(box, text='\n'.join(lines), justify='left', wraplength=max(wrap - 130, 120))
+            lab.grid(row=0, column=1, sticky='w')
+            lab._wrap_less = True                        # beside its button: _rewrap leaves it to its own fit
+            lab._fit = lambda w=lab: w.configure(wraplength=max(self._wrap_w() - 130, 120))
+            r += 1
+        if len(marked) > self.TOGGLES_SHOWN:
+            ttk.Label(parent, text=T('cr.tog.more', '... {n} more recipe(s) not shown',
+                                     n=len(marked) - self.TOGGLES_SHOWN)).grid(row=r, column=0, columnspan=2, sticky='w')
+            r += 1
+        return r
+
+    def apply_toggle(self, rec):
+        """Make one in-place recipe's stat changes to the edited item through the delta rows (pending until
+        Replace item, which records the undo step)."""
+        old = self._edit_totals()
+        new = self.cr.recipe_result(rec, old)
+        changed = 0
+        for key in set(old) | set(new):
+            if old.get(key, 0) == new.get(key, 0):
+                continue
+            changed += 1
+            if key in new:
+                if self.route_target(key, new[key]) is None:
+                    self.set_extra_delta(key, new[key] - self._edit_made().get(key, 0))
+            else:
+                # the stat leaves the item (a state / an orange text switched off): only this key
+                self.spec.setdefault('_drop', set()).add(key)
+                e = self._edit_extra(key)
+                if e is not None:
+                    self.spec['extra'].remove(e)
+                self._take_over(key)
+        self.render_mods()
+        self.refresh()
+        self.set_status(T('cr.tog.applied', 'recipe {n} applied: {c} stat(s) changed - Replace item to write it',
+                          n=rec['row'], c=changed))
 
     # ----------------------------------------------- the item's own stats (edit mode)
     def _edit_made(self):

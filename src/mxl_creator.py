@@ -929,6 +929,189 @@ class Creator:
                 out.append((p, pa, lo, hi))
         return out
 
+    # ---- toggles / upgrades: cube recipes whose output is 'useitem' (input 1 itself, changed in place). Their
+    # condition (cubemain op / param / value, plus cubemainext layer and a second op2 / param2 / value2 / layer2)
+    # is tested on input 1's stats; their mods add stats (negative values take them away). E.g. Vial of Elder
+    # Blood + Token of Absolution: "state 505 >= 1" -> state 505 -1 and the bottom text "(visual aura toggled off)";
+    # the paired row does the reverse. Op meanings from D2-Development-Kit (MIT), data/columns/cubemain.json.
+    ITEM_OPS = {15: '>=', 16: '<=', 17: '!=', 18: '=', 19: '>=', 20: '<=', 21: '!=', 22: '=',
+                23: '>=', 24: '<=', 25: '!=', 26: '='}
+    CHAR_OPS = {3: '>=', 4: '<=', 5: '!=', 6: '=', 7: '>=', 8: '<=', 9: '!=', 10: '=',
+                11: '>=', 12: '<=', 13: '!=', 14: '='}
+
+    def inplace_recipes(self):
+        """Every enabled cube row whose output is input 1 modified in place ('useitem', output type 0xFE) and
+        that has mods: [{'row', 'first': (flags, item, unique/set id, quality), 'inputs': [(flags, item, id,
+        quality, qty)] of inputs 2+, 'conds': [(op, param, layer, value)], 'mods': [(prop, param, min, max)]}]."""
+        cache = self.__dict__.get('_inplace')
+        if cache is not None:
+            return cache
+        d = self.data
+        try:
+            ext = _rows(d, 'cubemainext')
+        except OSError:
+            ext = []
+        out = []
+        for i, r in enumerate(_rows(d, 'cubemain')):
+            if len(r) < 0x4C + 0x54 or not r[0] or r[0x4C + 8] != 0xFE:
+                continue
+            mods = self._cube_mods(r)
+            if not mods:
+                continue
+            ins = [struct.unpack_from('<HHHBB', r, 0x14 + 8 * k) for k in range(min(r[16], 7))]
+            if not ins:
+                continue
+            conds = []
+            op, param, value = r[4], *struct.unpack_from('<ii', r, 8)
+            e = struct.unpack_from('<iiiiii', ext[i]) if i < len(ext) and len(ext[i]) >= 24 else (0,) * 6
+            if op:
+                conds.append((op, param, e[5], value))
+            if e[1]:
+                conds.append((e[1], e[2], e[4], e[3]))
+            out.append(dict(row=i, first=ins[0][:4], inputs=ins[1:], conds=conds, mods=mods))
+        self._inplace = out
+        return out
+
+    def inplace_for(self, code, quality=None, row=None):
+        """The in-place recipes whose input 1 is this item: its base code, its unique / set row (the cube input
+        holds row + 1) or one of its item types; the input's quality must match when it names one."""
+        if not code:
+            return []
+        d = self.data
+        types = self.types_of(code)
+        qid = QUALITY_ID.get(quality)
+        out = []
+        for rec in self.inplace_recipes():
+            fl, item, iid, q = rec['first']
+            if q and q != qid:
+                continue
+            if fl & 0x40 and iid and (row is None or iid - 1 != row or quality not in ('unique', 'set')):
+                continue
+            if fl & 2:
+                if item not in types:
+                    continue
+            elif not (0 <= item < len(d.item_index) and d.item_index[item] == code):
+                continue
+            out.append(rec)
+        return out
+
+    @staticmethod
+    def _cmp(a, how, b):
+        return {'>=': a >= b, '<=': a <= b, '!=': a != b, '=': a == b}[how]
+
+    def recipe_applies(self, rec, totals):
+        """True if the recipe's item conditions hold for the item's stats {(stat, param or None): value} (a missing
+        stat counts as 0). Character / chance / date conditions are not checked here (see recipe_texts)."""
+        for op, sid, layer, value in rec['conds']:
+            how = self.ITEM_OPS.get(op)
+            if how is None:
+                continue
+            if not self._cmp(totals.get((sid, layer or None), 0), how, value):
+                return False
+        return True
+
+    def recipe_deltas(self, rec, how='max'):
+        """[(stat, param or None, delta)] the recipe's mods make (at the mods' max, or min)."""
+        mods = [(p, pa, hi if how == 'max' else lo, hi if how == 'max' else lo) for p, pa, lo, hi in rec['mods']]
+        return [(s['id'], s.get('param') or None, s['value'])
+                for s in merge_stats(mods_stats(mods, self.data, 'min')) if s['value']]
+
+    def recipe_result(self, rec, totals, how='max'):
+        """New {(stat, param): value} after the recipe: the deltas added; a stat that ends at 0 or below is gone."""
+        out = dict(totals)
+        for sid, pa, v in self.recipe_deltas(rec, how):
+            nv = out.get((sid, pa), 0) + v
+            if nv > 0 or (nv < 0 and (self.stat_bounds(sid) or (0, 0))[0] < 0):
+                out[(sid, pa)] = nv
+            else:
+                out.pop((sid, pa), None)
+        return out
+
+    def stat_label(self, sid, param=None):
+        """A short name of a stat (orange text stats: their text)."""
+        d = self.data
+        if sid == 98 and param:
+            return T('cr.tog.state', 'state {n}', n=param)
+        if sid in (375, 377, 378, 385) and param:
+            try:
+                txt = d.s(param)
+                if txt:
+                    return '"' + _clean_orange(' / '.join(x.strip() for x in txt.splitlines() if x.strip()))[:80] + '"'
+            except Exception:
+                pass
+        nm = dict(self.stat_choices()).get(sid)
+        if not nm:
+            import mxl_statnames_ext
+            nm = mxl_statnames_ext.fallback_label(sid)
+        if not nm:
+            try:
+                nm = (d.isc[sid].get('name') or '').strip()
+            except (IndexError, KeyError, TypeError, AttributeError):
+                nm = ''
+        nm = nm or f'stat #{sid}'
+        return f'{nm} ({param})' if param else nm
+
+    def _input_name(self, fl, item, iid, q, qty=0):
+        d = self.data
+        if fl & 0x40 and iid:
+            try:
+                src = d.uniques if q == QUALITY_ID['unique'] else d.set_items if q == QUALITY_ID['set'] else None
+                if src is not None:
+                    nm = d.key(src[iid - 1]['name'])
+                    return f'{nm} x{qty}' if qty > 1 else nm
+            except Exception:
+                pass
+        if fl & 2:
+            tc = d.itypes[item][0] if 0 <= item < len(d.itypes) else item
+            nm = T('cr.tog.any_type', 'any {t}', t=str(tc).strip())
+        elif 0 <= item < len(d.item_index):
+            nm = self.display_name(d.item_index[item]) or d.item_index[item].strip()
+        else:
+            nm = f'#{item}'
+        if q and q in QUALITY_NAME and not fl & 0x40:
+            nm += f' ({QUALITY_NAME[q]})'
+        return f'{nm} x{qty}' if qty > 1 else nm
+
+    def recipe_texts(self, rec):
+        """{'inputs': [names of inputs 2+], 'conds': [plain words], 'changes': [plain words]} of an in-place recipe."""
+        ins = [self._input_name(*x) for x in rec['inputs']]
+        conds = []
+        for op, sid, layer, value in rec['conds']:
+            if op in self.ITEM_OPS:
+                part = {15: '', 16: '', 17: '', 18: ''}.get(op, ' (base)' if op < 23 else ' (bonus)')
+                conds.append(T('cr.tog.cond_item', 'when {stat} (stat {sid}){part} {how} {v}',
+                               stat=self.stat_label(sid, layer), sid=sid, part=part, how=self.ITEM_OPS[op], v=value))
+            elif op in self.CHAR_OPS:
+                conds.append(T('cr.tog.cond_char', 'character: {stat} (stat {sid}) {how} {v} (not checked)',
+                               stat=self.stat_label(sid, layer), sid=sid, how=self.CHAR_OPS[op], v=value))
+            elif op == 37:
+                conds.append(T('cr.tog.cond_chance', '{v}% chance', v=value))
+            elif op == 27:
+                conds.append(T('cr.tog.cond_id', 'unique / set id {v}', v=value))
+            elif op in (32, 33):
+                conds.append(T('cr.tog.cond_cstate', 'character has state {p} (not checked)', p=sid) if op == 32 else
+                             T('cr.tog.cond_cnostate', 'character has not state {p} (not checked)', p=sid))
+            elif op in (38, 39, 40, 41):
+                who = T('cr.tog.char', 'character') if op < 40 else T('cr.tog.game', 'game')
+                conds.append(T('cr.tog.cond_flag', '{who} flag {p} set (not checked)', who=who, p=sid) if op % 2 == 0
+                             else T('cr.tog.cond_noflag', '{who} flag {p} not set (not checked)', who=who, p=sid))
+            else:
+                conds.append(T('cr.tog.cond_other', 'game condition op {op} ({p}, {v}) (not checked)',
+                               op=op, p=sid, v=value))
+        changes = []
+        for sid, pa, v in self.recipe_deltas(rec):
+            lab = self.stat_label(sid, pa)
+            flag = sid in (98, 375, 377, 378, 385)          # a state / an orange text: on or off
+            if flag:
+                changes.append(T('cr.tog.removes', 'removes {stat}', stat=lab) if v < 0 else
+                               T('cr.tog.adds', 'adds {stat}', stat=lab))
+            else:
+                changes.append(f'{v:+d} {lab}')
+        lo = self.recipe_deltas(rec, 'min')
+        if lo != self.recipe_deltas(rec):
+            changes.append(T('cr.tog.rolled', '(rolled; Apply uses the highest roll)'))
+        return dict(inputs=ins, conds=conds, changes=changes)
+
     # ---- honorific items (quality 9, 'tempered' in this code; the game's own strings call it "Honorific")
     def honorific_recipes(self):
         """Cube rows whose output is a quality 9 item: magic / rare weapon or armor + Mark of Infusion ->
