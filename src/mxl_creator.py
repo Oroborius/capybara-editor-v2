@@ -1361,7 +1361,7 @@ class Creator:
 
         found = {}      # (stat, param, value) -> {'labels': set(), 'markers': set(), 'effects': set()}
         for rows in (self.uniques_source(), self.set_source(), self.runeword_source(),
-                     self.affix_sources()):
+                     self.affix_sources(), self.cube_source()):
             for row in rows:
                 sts = stats_of(row)
                 disp = [x for x in sts if x[0] in DISPLAY]
@@ -1430,6 +1430,24 @@ class Creator:
     def set_source(self):
         """[mods] of every set-item row."""
         return [r['mods'] for r in self.data.set_items]
+
+    def cube_source(self):
+        """[mods] of every enabled cube recipe output (3 outputs per row): the orange texts and effects the
+        recipes add (the reagents' 377 text, Vial of Elder Blood's text + the 20% voidtouched state 98/505).
+        Mods with a value <= 0 are left out (those rows take a stat away)."""
+        out = []
+        for r in _rows(self.data, 'cubemain'):
+            if len(r) < 0x4C + 3 * 0x54 or not r[0]:
+                continue
+            for slot in range(3):
+                mods = []
+                for j in range(5):
+                    p, pa, lo, _hi, _ch = struct.unpack_from('<iHhhH', r, 0x4C + 0x54 * slot + 24 + 12 * j)
+                    if 0 <= p < len(self.data.props) and lo > 0:
+                        mods.append({'prop': p, 'param': pa, 'min': lo})
+                if mods:
+                    out.append(mods)
+        return out
 
     def runeword_source(self):
         """[mods] of every runeword row."""
