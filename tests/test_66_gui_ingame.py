@@ -14,7 +14,8 @@ import capytest as T
 MODE = 'gui'
 RESET = True
 ALLOW_ERRORS = True
-VARIANTS = {'d2': {'MXL_THEME': 'd2'}, 'he': {'MXL_THEME': 'he'}}
+# the stand-in "Game.exe" holds the files; the real game's memory (if one runs on this machine) is not read here
+VARIANTS = {'d2': {'MXL_THEME': 'd2', 'MXL_INGAME_MEMORY': '0'}, 'he': {'MXL_THEME': 'he', 'MXL_INGAME_MEMORY': '0'}}
 G = T.G
 
 
@@ -233,6 +234,27 @@ def character_save_asks_only_in_game():
     cw.save_progress()
     T.pump(4)
     T.eq(asked(), [], 'SAVE asks although not in game')
+
+
+@T.test
+def player_name_is_read_from_game_memory():
+    """The in-game signal checked on the real game: D2Client + 0x11BBFC is 0 at the menu and the player unit in a
+    game; unit + 0x14 = player data, whose first 16 bytes are the name. Fake memory here."""
+    import mxl_ingame as IG
+    base = IG.D2CLIENT_BASE
+    mem = {}
+
+    def put(addr, data):
+        for i, b in enumerate(data):
+            mem[addr + i] = b
+
+    def read(addr, n):
+        return bytes(mem.get(addr + i, 0) for i in range(n))
+    T.eq(IG._name_at(read, base), None, 'menu: no player unit')
+    put(base + IG.PLAYER_UNIT, (0x132A5B00).to_bytes(4, 'little'))
+    put(0x132A5B00 + 0x14, (0x02946400).to_bytes(4, 'little'))
+    put(0x02946400, b'test-druid\0garbage')
+    T.eq(IG._name_at(read, base), 'test-druid', 'in a game: the name')
 
 
 T.main(globals())

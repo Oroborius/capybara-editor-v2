@@ -106,7 +106,7 @@ def _linux(save_dir):
     return names
 
 
-_win_game = [0.0, False]
+_win_game = [0.0, False, []]
 
 
 def _win_game_running():
@@ -126,20 +126,19 @@ def _win_game_running():
     k32 = ctypes.WinDLL('kernel32', use_last_error=True)
     k32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
     snap = k32.CreateToolhelp32Snapshot(2, 0)                    # TH32CS_SNAPPROCESS
-    found = False
+    pids = []
     try:
         pe = PE()
         pe.dwSize = ctypes.sizeof(PE)
         ok = k32.Process32FirstW(snap, ctypes.byref(pe))
         while ok:
             if pe.szExeFile.lower() in GAME_EXES:
-                found = True
-                break
+                pids.append(pe.th32ProcessID)
             ok = k32.Process32NextW(snap, ctypes.byref(pe))
     finally:
         k32.CloseHandle(snap)
-    _win_game[:] = [now, found]
-    return found
+    _win_game[:] = [now, bool(pids), pids]
+    return bool(pids)
 
 
 def _windows(save_dir, only=None):
@@ -172,6 +171,104 @@ def _windows(save_dir, only=None):
     return names
 
 
+# ------------------------------------------------------------------------------------------- in game: game memory
+# The reliable signal (checked on the real game, 2026-11-19): D2Client.dll (Median XL's is the base game's 1.13c)
+# keeps the player unit at D2Client + 0x11BBFC: 0 at the menu / character select, the unit while in a game; unit
+# + 0x14 is the player data whose first 16 bytes are the character's name. The game does NOT keep the character's
+# files open while playing (it reads them on joining and writes them when it saves), so the file probes below are
+# only a fallback. Reading is a few bytes, never a write.
+PLAYER_UNIT = 0x11BBFC
+USE_MEMORY = os.environ.get('MXL_INGAME_MEMORY', '1') != '0'   # 0: file probes only (tests with a stand-in game)
+D2CLIENT_BASE = 0x6FAB0000                 # the DLL's preferred base, where the game loads it
+
+
+def _name_at(read, base):
+    """The in-game character's name via read(addr, n) -> bytes, or None (not in a game / unreadable)."""
+    unit = int.from_bytes(read(base + PLAYER_UNIT, 4), 'little')
+    if not unit:
+        return None
+    pdata = int.from_bytes(read(unit + 0x14, 4), 'little')
+    if not pdata:
+        return None
+    name = read(pdata, 16).split(b'\0')[0].decode('latin1', 'replace')
+    return name or None
+
+
+def _d2client_base_linux(pid):
+    try:
+        with open(f'/proc/{pid}/maps') as f:
+            for line in f:
+                if line.rstrip().lower().endswith('d2client.dll'):
+                    return int(line.split('-', 1)[0], 16)
+    except OSError:
+        pass
+    return None
+
+
+def _mem_linux():
+    """(names in game, True when at least one game's memory could be read)."""
+    names, readable = set(), False
+    for pid in _processes()[0]:
+        base = _d2client_base_linux(pid)
+        if base is None:
+            continue
+        try:
+            with open(f'/proc/{pid}/mem', 'rb') as f:
+                def read(addr, n):
+                    f.seek(addr)
+                    return f.read(n)
+                n = _name_at(read, base)
+            readable = True
+            if n:
+                names.add(n)
+        except (OSError, ValueError):
+            continue
+    return names, readable
+
+
+def _mem_windows():
+    names, readable = set(), False
+    if not _win_game_running():
+        return names, readable
+    import ctypes
+    from ctypes import wintypes
+    k32 = ctypes.WinDLL('kernel32', use_last_error=True)
+    k32.OpenProcess.restype = wintypes.HANDLE
+    for pid in _win_game[2]:
+        h = k32.OpenProcess(0x0010 | 0x0400, False, pid)            # PROCESS_VM_READ | PROCESS_QUERY_INFORMATION
+        if not h:
+            continue
+        try:
+            def read(addr, n):
+                buf = ctypes.create_string_buffer(n)
+                got = ctypes.c_size_t(0)
+                if not k32.ReadProcessMemory(h, ctypes.c_void_p(addr), buf, n, ctypes.byref(got)) or got.value != n:
+                    raise OSError('ReadProcessMemory failed')
+                return buf.raw
+            if read(D2CLIENT_BASE, 2) != b'MZ':                      # not loaded at its base: unknown, skip
+                continue
+            n = _name_at(read, D2CLIENT_BASE)
+            readable = True
+            if n:
+                names.add(n)
+        except OSError:
+            continue
+        finally:
+            k32.CloseHandle(h)
+    return names, readable
+
+
+def _from_memory(save_dir):
+    """(characters of save_dir in a game, readable) from the game's memory."""
+    if not USE_MEMORY:
+        return set(), False
+    names, readable = _mem_windows() if sys.platform == 'win32' else _mem_linux()
+    if not names:
+        return set(), readable
+    have = {char_of(f).lower() for f in os.listdir(save_dir) if f.lower().endswith('.d2s') and char_of(f)}
+    return {n for n in names if n.lower() in have}, readable
+
+
 def in_game(save_dir, only=None):
     """Names of the characters of save_dir that are in a game now (see the module text). Never raises.
     only: the one character that matters (Windows then probes that character's files alone)."""
@@ -183,12 +280,14 @@ def in_game(save_dir, only=None):
         hit = _cache.get(key)
         if hit is not None and now - hit[0] < TTL:
             return set(hit[1])
-        if sys.platform == 'win32':
-            names = _windows(save_dir, only)
-        elif os.path.isdir('/proc'):
-            names = _linux(save_dir)
-        else:
-            names = set()
+        names, readable = _from_memory(save_dir)
+        if not readable:                    # no game memory readable: the older file probes as a fallback
+            if sys.platform == 'win32':
+                names = _windows(save_dir, only)
+            elif os.path.isdir('/proc'):
+                names = _linux(save_dir)
+            else:
+                names = set()
         _cache[key] = (now, frozenset(names))
         return set(names)
     except Exception:
