@@ -186,7 +186,7 @@ class MockPage:
         self.note.grid(row=r, column=0, columnspan=2, sticky='w')
         r += 1
         o = ttk.LabelFrame(f, text=T('mock.over', 'Overrides (empty = preset)'), padding=3)
-        o.grid(row=r, column=0, columnspan=2, sticky='ew', pady=(4, 0))
+        o.grid(row=r + 1, column=0, columnspan=2, sticky='ew', pady=(4, 0))
         self.ov = {}
         rows = (('mana', T('mock.o.mana', 'Target mana')), ('tk', T('mock.o.tk', 'Telekinesis level')),
                 ('level', T('mock.o.level', 'Character level')), ('damage', T('mock.o.damage', 'Damage (PvP)')),
@@ -220,8 +220,8 @@ class MockPage:
         ttk.Label(o, text=T('mock.o.auras', 'Prayer 31 on every list, sources on the 40 charms; one Meditation '
                                            '(highest without regen roll-over), one Thorns, Oak Sage on the rest.'),
                   wraplength=250, justify='left').grid(row=i, column=0, columnspan=2, sticky='w', pady=(3, 0))
-        self.result = tk.Text(f, width=36, height=7, wrap='word', relief='flat', borderwidth=1)
-        self.result.grid(row=r + 1, column=0, columnspan=2, sticky='ew', pady=(4, 0))
+        self.result = tk.Text(f, width=36, height=5, wrap='word', relief='flat', borderwidth=1)
+        self.result.grid(row=r, column=0, columnspan=2, sticky='ew', pady=(4, 0))
         self._preset_changed()
 
     def _stun_moved(self, v):

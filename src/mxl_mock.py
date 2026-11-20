@@ -46,10 +46,18 @@ CLASS_FIRST_SKILL = (6, 36, 66, 96, 126, 221, 251)
 CLASSES = ('Amazon', 'Sorceress', 'Necromancer', 'Paladin', 'Barbarian', 'Druid', 'Assassin')
 CHARMS = ('cm1 ', 'cm2 ', 'cm3 ')
 # shield base damage used by Smite (armor.txt mindam / maxdam; vanilla 1.10-1.14d)
-SHIELD_DMG = {'buc ': (1, 3), 'sml ': (2, 3), 'lrg ': (3, 4), 'kit ': (2, 5), 'tow ': (1, 5), 'gts ': (2, 6),
-              'spk ': (5, 9), 'xuc ': (4, 8), 'xml ': (7, 14), 'xrg ': (8, 15), 'xit ': (6, 15), 'xow ': (6, 18),
-              'xts ': (10, 20), 'xpk ': (14, 20), 'uuc ': (11, 15), 'uml ': (17, 29), 'urg ': (16, 32),
-              'uit ': (13, 31), 'uow ': (16, 26), 'uts ': (14, 34), 'upk ': (24, 38), 'pa1 ': (2, 6)}
+SHIELD_DMG = {'buc ': (1, 3), 'sml ': (2, 3), 'lrg ': (2, 4), 'kit ': (2, 5), 'tow ': (1, 5), 'gts ': (2, 6),
+              'bsh ': (3, 6), 'spk ': (5, 9), 'xuc ': (8, 12), 'xml ': (7, 14), 'xrg ': (11, 15), 'xit ': (15, 24),
+              'xow ': (10, 17), 'xts ': (12, 16), 'xsh ': (14, 20), 'xpk ': (18, 35), 'pa1 ': (2, 6), 'pa2 ': (2, 8),
+              'pa3 ': (3, 9), 'pa4 ': (4, 10), 'pa5 ': (4, 12), 'uuc ': (16, 30), 'uml ': (17, 29), 'urg ': (14, 32),
+              'uit ': (12, 34), 'uow ': (18, 28), 'uts ': (11, 35), 'ush ': (24, 38), 'upk ': (26, 40),
+              'pa6 ': (12, 16), 'pa7 ': (15, 20), 'pa8 ': (18, 24), 'pa9 ': (20, 28), 'paa ': (24, 32),
+              'pab ': (22, 70), 'pac ': (35, 58), 'pad ': (10, 82), 'pae ': (46, 46), 'paf ': (5, 87)}
+# the smite formula's rounding is unverified [U]: the doc's capped recipe (S6: 45 x str/lvl + 22580 flat, "8388470")
+# comes out 88 over the roll here, so the generator aims at 8388470 and the analyzer warns (not fails) up to
+# SMITE_SLACK over 8388607
+SMITE_TARGET = 8388470
+SMITE_SLACK = 300
 
 # vanilla 1.10-1.14d item save widths (ItemStatCost: save bits, save add, save param bits) of the stats the
 # generator writes; the decoder takes the profile's own table (any stat)
@@ -604,7 +612,7 @@ def analyze(model, side=None):
         f"{', ' + str(sum(t['sources'].get(MEDITATION, {}).values())) + ' source(s)' if med else ''})"
         + ('  ROLL-OVER' if regen > cap else ''), st)
     add('life', 'Life', _num(life), BAD if life >= ROLL else WARN if life > 7900000 else GOOD)
-    st = BAD if sm['max'] > ROLL else GOOD if sm['max'] >= ROLL * 0.95 else WARN
+    st = BAD if sm['max'] > ROLL + SMITE_SLACK else WARN if sm['max'] > ROLL or sm['max'] < ROLL * 0.95 else GOOD
     add('damage', 'Smite damage', f"PvM {sm['min']}-{sm['max']} (lvl {sm['slvl']}, str {sm['strength']}, "
         f"shield {(sm['shield'] or '-').strip()}); PvP after DR {float(pvp):.0f} / cap {float(DMG_CAP_PVP):.0f}",
         st if sm['slvl'] else INFO)
@@ -697,7 +705,8 @@ PRESETS = {
 PRESET_ORDER = ('mock_high', 'mock_mid', 'mock_low', 'prayer_thorner', 'aura_killer', 'funky', 'funky28',
                 'funky26', 'funky24', 'balance_switch', 'mana_lock')
 POSITIONS = {'Host': dict(dtm=500, stun=0), 'HPJ': dict(dtm=420, stun=11), 'LPJ': dict(dtm=330, stun=11)}
-DEFAULTS = dict(cls=1, level=99, position='LPJ', life=7300000, damage=DMG_CAP_PVP, abs_budget=8150)
+DEFAULTS = dict(cls=1, level=99, position='LPJ', life=7300000, damage=Fraction(SMITE_TARGET) * PVP / 2,
+                abs_budget=8150)
 
 # item skeleton: (role, body, code, Sigon's set item id, socketed with 7 jewels)
 GEAR = (('helm', 1, 'ghm ', 36, True), ('armor', 3, 'gth ', 37, True), ('shield', 5, 'tow ', 40, True),
