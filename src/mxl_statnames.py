@@ -759,7 +759,7 @@ def state_name(data, sid):
     names = []
     for i in _state_skills(data).get(sid) or []:
         try:
-            n = data.skill_names.get(i) or skilldesc_name(data, i)
+            n = _own_name(data, i)          # (a skill id is no skilldesc index: no skilldesc_name(i) here)
         except Exception:
             n = None
         if n and n not in names:
