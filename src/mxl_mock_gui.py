@@ -247,7 +247,7 @@ class MockPage:
                     w = ttk.Label(lf, text=T(f'mock.f.{k}', lab))
                     w.grid(row=i, column=0, sticky='w')
                     v = tk.StringVar()
-                    e = ttk.Entry(lf, textvariable=v, width=8)
+                    e = ttk.Entry(lf, textvariable=v, width=7)
                     e.grid(row=i, column=1, sticky='ew', pady=0)
                     _Tip(e, T(f'mock.h.{k}', M.HINTS.get(k, '')))
                 _Tip(w, T(f'mock.h.{k}', M.HINTS.get(k, '')))
@@ -256,17 +256,17 @@ class MockPage:
                 i = len(fields)
                 ttk.Label(lf, text=T('mock.o.class', 'Class')).grid(row=i, column=0, sticky='w')
                 self.cls = tk.StringVar(value=M.CLASSES[1])
-                ttk.Combobox(lf, textvariable=self.cls, values=list(M.CLASSES), state='readonly', width=8).grid(
+                ttk.Combobox(lf, textvariable=self.cls, values=list(M.CLASSES), state='readonly', width=7).grid(
                     row=i, column=1, sticky='ew')
                 ttk.Label(lf, text=T('mock.o.pos', 'Position')).grid(row=i + 1, column=0, sticky='w')
                 self.pos = tk.StringVar(value=M.DEFAULTS['position'])
-                ttk.Combobox(lf, textvariable=self.pos, values=list(M.POSITIONS), state='readonly', width=8).grid(
+                ttk.Combobox(lf, textvariable=self.pos, values=list(M.POSITIONS), state='readonly', width=7).grid(
                     row=i + 1, column=1, sticky='ew')
                 # TK31 mana by the expected enemy aura (high aura -> low mana, low -> high, none / PT -> 1572863)
                 ttk.Label(lf, text=T('mock.o.enemy', 'Enemy aura')).grid(row=i + 2, column=0, sticky='w')
                 self.enemy = tk.StringVar(value='preset')
                 ttk.Combobox(lf, textvariable=self.enemy, values=['preset'] + list(M.ENEMY_AURA_MANA),
-                             state='readonly', width=8).grid(row=i + 2, column=1, sticky='ew')
+                             state='readonly', width=7).grid(row=i + 2, column=1, sticky='ew')
         self._preset_changed()
 
     def toggle_advanced(self):
@@ -379,7 +379,7 @@ class MockPage:
         self.tree = ttk.Treeview(f, columns=('value',), show='tree headings', height=14)
         self.tree.heading('#0', text=T('mock.check', 'Check'))
         self.tree.heading('value', text=T('mock.value', 'Value'))
-        self.tree.column('#0', width=150, stretch=False)
+        self.tree.column('#0', width=130, stretch=False)
         self.tree.column('value', width=300, stretch=True)
         self.tree.grid(row=1, column=0, sticky='nsew')
         sb = ttk.Scrollbar(f, orient='vertical', command=self.tree.yview)
@@ -431,7 +431,7 @@ class MockPage:
         f.columnconfigure(1, weight=1)
         ttk.Label(f, text=T('mock.c.base', 'Item')).grid(row=0, column=0, sticky='w')
         self.base = tk.StringVar(value='charm')
-        ttk.Combobox(f, textvariable=self.base, values=list(M.CRAFT_BASES), state='readonly', width=8).grid(
+        ttk.Combobox(f, textvariable=self.base, values=list(M.CRAFT_BASES), state='readonly', width=7).grid(
             row=0, column=1, sticky='w')
         ttk.Button(f, text=T('mock.c.add', 'Add to the loaded character'), command=self.craft).grid(
             row=0, column=2, sticky='e')

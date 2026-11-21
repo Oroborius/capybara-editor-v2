@@ -539,21 +539,50 @@ def bo_pct(model, t):
     return 35 + 3 * (lv - 1) if lv else 0
 
 
+def pct_fp(v, pct):
+    """The game's percent step on a 1/256 fixed-point value: v + (v // 100) x pct (the hundredth is truncated
+    first). Measured in 1.14d: generated MockHigh 1572480 (the exact product said 1572500.1), FunkyXXX 1048560
+    (said 1048576); clone-63 and the other v // 100-exact funkies stay at 1048576."""
+    return v + (v // 100) * pct
+
+
 def mana_of(model, t, bo=False, energy=False):
     full = all(i in (model['set_ids'][None] | model['set_ids'][t['side']]) for i in SIGON_SET_IDS)
-    base = Fraction(model['base_mana_raw'], 256)
+    v = model['base_mana_raw']
     if energy and model['cls'] < 7:
-        base += model.get('stat_points', 0) * Fraction(MANA_PER_ENERGY[model['cls']])
-    flat = base + t['T'].get(9, 0) + (SET_BONUS if full else 0)
-    return flat * (100 + t['T'].get(77, 0) + (bo_pct(model, t) if bo else 0)) / 100, full
+        v += int(model.get('stat_points', 0) * Fraction(MANA_PER_ENERGY[model['cls']]) * 256)
+    v += 256 * (t['T'].get(9, 0) + (SET_BONUS if full else 0))
+    return Fraction(pct_fp(v, t['T'].get(77, 0) + (bo_pct(model, t) if bo else 0)), 256), full
 
 
 def life_of(model, t, bo=False):
     T = t['T']
     oak = t['aura_lv'].get(OAK, 0)
     vit_life = {0: 3, 1: 2, 2: 2, 3: 3, 4: 4, 5: 2, 6: 3}.get(model['cls'], 2)
-    flat = Fraction(model['base_life_raw'], 256) + T.get(7, 0) + vit_life * T.get(3, 0)
-    return flat * (100 + T.get(76, 0) + oak_pct(oak) + (bo_pct(model, t) if bo else 0)) / 100
+    v = model['base_life_raw'] + 256 * (T.get(7, 0) + vit_life * T.get(3, 0))
+    return Fraction(pct_fp(v, T.get(76, 0) + oak_pct(oak) + (bo_pct(model, t) if bo else 0)), 256)
+
+
+def solve_fp(target, pct, exact):
+    """Smallest fixed-point X with pct_fp(X, pct) == 256 x target (exact) or floor(pct_fp / 256) == target."""
+    T = 256 * Fraction(target)
+    if T.denominator != 1:
+        return None
+    T = int(T)
+    m = 100 + pct
+    if m <= 0:
+        return None
+    q0 = T // m
+    for q in (q0 - 1, q0, q0 + 1):                      # pct_fp(100 q + r) = q m + r, 0 <= r < 100
+        if q < 0:
+            continue
+        r = max(0, T - q * m)
+        if r > 99:
+            continue
+        v = q * m + r
+        if v == T or (not exact and T <= v < T + 256):
+            return 100 * q + r
+    return None
 
 
 def smite_of(model, t):
@@ -809,25 +838,16 @@ class PUnit:
 
 # ---------------------------------------------------------------------------------- integer solvers
 def solve_mana(target, exact, max_lines, base_lo=4096, base_hi_raw=(1 << 21) - 1, extra_pct=0):
-    """Mana = (B + F + 20) x (100 + P) / 100 with base B in 1/256 steps (<= 8191.996), F = sum of +mana lines
+    """Mana = pct_fp(B + 256 (F + 20), P) / 256 with base B in 1/256 steps (<= 8191.996), F = sum of +mana lines
     (<= 223 each), P = sum of mana% lines (<= 53 each), at most max_lines lines of each. exact: the product hits
     the target exactly with an integer base (funky); else floor(mana) == target. Fewest bits, then the base
     nearest 8190. Returns dict(base_raw, flat, pct, mana) or None."""
     best = None
     tgt = Fraction(target)
     for P in range(0, 53 * max_lines + 1):
-        m = 100 + P + extra_pct                            # extra: the Battle Orders %
-        num = 25600 * tgt                                   # X_raw x m = 25600 x mana
-        if exact:
-            if (num / m).denominator != 1:
-                continue
-            X = int(num / m)
-            if X % 256:
-                continue
-        else:
-            X = math.ceil(num / m)
-            if math.floor(Fraction(X * m, 25600)) != tgt:
-                continue
+        X = solve_fp(tgt, P + extra_pct, exact)            # extra: the Battle Orders %
+        if X is None or exact and X % 256:
+            continue
         rest = X - 256 * SET_BONUS                          # B_raw + 256 F
         F = max(0, -(-(rest - base_hi_raw) // 256))
         B = rest - 256 * F
@@ -840,7 +860,7 @@ def solve_mana(target, exact, max_lines, base_lo=4096, base_hi_raw=(1 << 21) - 1
         cost = 17 * -(-F // 223) + 15 * -(-P // 53)
         key = (cost, abs(B - 8190 * 256))
         if best is None or key < best[0]:
-            best = (key, dict(base_raw=B, flat=F, pct=P, mana=Fraction(X * m, 25600)))
+            best = (key, dict(base_raw=B, flat=F, pct=P, mana=Fraction(pct_fp(X, P + extra_pct), 256)))
     return best[1] if best else None
 
 
@@ -872,7 +892,7 @@ def solve_life(target, base_raw, oak_min, oak_max, max_lines, extra_pct=0):
         a = -(-x // 479)
         if a > max_lines:
             continue
-        life = (base + x) * pct / 100
+        life = Fraction(pct_fp(base_raw + 256 * x, pct - 100), 256)       # the game's percent step
         cost = 18 * a + 23 * max(0, -(-L // AURA_LINE_MAX) - oak_min)
         key = (cost + float(target - life) / 2000, cost)
         if best is None or key < best[0]:
@@ -1193,11 +1213,13 @@ def _switch(P):
         mult = 100 + P0 + Pb + o['bo_pct']
         if mult <= 0:
             continue
-        need = math.ceil(25600 * tgt / mult) - X0
-        Fb = max(0, -(-need // 256))
+        X = solve_fp(tgt, mult - 100, False)
+        if X is None:
+            continue
+        Fb = max(0, -(-(X - X0) // 256))
         if Fb > 223 * len(cl):
             continue
-        mb = Fraction((X0 + 256 * Fb) * mult, 25600)
+        mb = Fraction(pct_fp(X0 + 256 * Fb, mult - 100), 256)
         if math.floor(mb) != tgt:
             continue
         key = -(-Fb // 223) * 17 + -(-abs(Pb) // (53 if Pb >= 0 else 10)) * 15
@@ -1374,16 +1396,16 @@ def summary(P, raw=None):
 
 # ---------------------------------------------------------------------------------- generator form fields
 # (group, [(key, label, kind)]): kind 'int' = an entry, 'bool' = a check box; every key is an options() key
-FIELDS = (('Mana / TK', (('tk', 'Telekinesis', 'int'), ('mana', 'Mana (with BO)', 'int'),
-                         ('bo', 'Battle Orders', 'int'), ('level', 'Level', 'int'))),
-          ('Life', (('life', 'Life (with BO)', 'int'), ('oak', 'Oak Sage level', 'int'))),
-          ('Auras & sources', (('prayer', 'Prayer level', 'int'), ('prayer_sources', 'Prayer sources', 'int'),
+FIELDS = (('Mana / TK', (('tk', 'TK', 'int'), ('mana', 'Mana (BO)', 'int'),
+                         ('bo', 'BO level', 'int'), ('level', 'Level', 'int'))),
+          ('Life', (('life', 'Life (BO)', 'int'), ('oak', 'Oak Sage', 'int'))),
+          ('Auras & sources', (('prayer', 'Prayer', 'int'), ('prayer_sources', 'Prayer src', 'int'),
                                ('thorns', 'Thorns', 'int'), ('barbs', 'Barbs', 'int'),
-                               ('med', 'Meditation', 'int'), ('regen', 'Regen % line', 'int'),
-                               ('hf_level', 'Holy Freeze', 'int'), ('hf_sources', 'HF sources', 'int'))),
-          ('Damage / stun', (('damage', 'Smite (PvP)', 'int'), ('stun', 'Stun 0-100', 'int'),
-                             ('deli_attack', f'Delirium att. {DELIRIUM_CHANCE}%', 'int'),
-                             ('deli_strike', f'Delirium hit {DELIRIUM_CHANCE}%', 'int'),
+                               ('med', 'Meditation', 'int'), ('regen', 'Regen %', 'int'),
+                               ('hf_level', 'Holy Freeze', 'int'), ('hf_sources', 'HF src', 'int'))),
+          ('Damage / stun', (('damage', 'Smite PvP', 'int'), ('stun', 'Stun', 'int'),
+                             ('deli_attack', f'Deli att {DELIRIUM_CHANCE}%', 'int'),
+                             ('deli_strike', f'Deli hit {DELIRIUM_CHANCE}%', 'int'),
                              ('dopplezon', 'Dopplezon', 'bool'), ('weapon', 'Weapon', 'bool'))))
 FIELD_KEYS = tuple(k for _, fs in FIELDS for k, _, _ in fs)
 # a short hint per field: unit and range

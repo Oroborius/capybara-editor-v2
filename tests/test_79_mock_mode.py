@@ -75,18 +75,18 @@ def _sample(rel):
     return os.path.join(engine().saves, rel)
 
 
-# (file, side or None = the active one, TK, mana, kind) - mana from docs/review/mock-pi.md 2.5 / 8.2
+# (file, side or None = the active one, TK, mana, kind) - mana with the game's percent step (pct_fp, measured in game)
 REFERENCE = [
     ('clones/clone-41.d2s', None, 30, Fraction(1048576), 'funky'),
     ('clones/clone-60.d2s', None, 30, Fraction(1048576), 'funky'),
-    ('clones/clone-35.d2s', None, 99, '1572845.96', 'good'),
-    ('clones/clone-06.d2s', None, 99, '1572847.19', 'good'),
-    ('clones/clone-36.d2s', None, 31, '1572647.84', 'good'),
-    ('clones/clone-73.d2s', None, 72, '1572587.79', 'good'),
-    ('clones/clone-76.d2s', None, 31, '1572212.12', 'good'),
-    ('clones/clone-28.d2s', None, 30, '3145752.95', 'bad'),
-    ('clone-51.d2s', None, 39, '971806.30', 'bad'),
-    ('clones/clone-20.d2s', None, 53, '1572009.01', 'good'),
+    ('clones/clone-35.d2s', None, 99, '1572835.62', 'good'),
+    ('clones/clone-06.d2s', None, 99, '1572835.22', 'good'),
+    ('clones/clone-36.d2s', None, 31, '1572631.00', 'good'),
+    ('clones/clone-73.d2s', None, 72, '1572581.37', 'good'),
+    ('clones/clone-76.d2s', None, 31, '1572194.27', 'good'),
+    ('clones/clone-28.d2s', None, 30, '3145723.16', 'good'),
+    ('clone-51.d2s', None, 39, '971798.82', 'bad'),
+    ('clones/clone-20.d2s', None, 53, '1572005.77', 'good'),
 ]
 
 
@@ -131,6 +131,23 @@ def _clones2():
     if not files:
         T.skip('no clones2 samples (.cache/samples/mock/clones2)')
     return [f for f in files if T.read(f)[4] == 96]
+
+
+@T.test
+def mana_matches_the_game():
+    """In-game 1.14d max mana (globe, 2026-11-20) of the saves main generated before the fix: MockHigh 1572480
+    (base raw 2096942, +15361 +20, +6571%) and FunkyXXX 1048560 (2096896, +12269 +20, +5020%) - the game takes
+    v + (v // 100) x pct on the 1/256 fixed point, not the exact product (1572500.1 / 1048576)."""
+    M = engine().M
+    T.eq(int(M.pct_fp(2096942 + 256 * (15361 + 20), 6571) // 256), 1572480, 'old MockHigh: 1572480 in game')
+    T.eq(int(M.pct_fp(2096896 + 256 * (12269 + 20), 5020) // 256), 1048560, 'old FunkyXXX: 1048560 in game')
+    T.eq(M.pct_fp(2096640 + 256 * 17410, 3996), 256 * 1048576, 'clone-63: exactly 1048576 in game')
+    for key in ('funky', 'mock_high'):
+        P = M.plan(key, 'Pin')
+        m = P['mana']
+        X = m['base_raw'] + 256 * (m['flat'] + M.SET_BONUS)
+        T.eq(Fraction(M.pct_fp(X, m['pct'] + P['o']['bo_pct']), 256), m['mana'], f'{key}: planned with the game step')
+    T.eq(M.plan('funky', 'Pin')['mana']['mana'], 1048576, 'funky: exactly 1048576 with the game step')
 
 
 @T.test
@@ -242,7 +259,8 @@ def _independent(key, raw, v):
     T.eq(over, [], f'{key}: mxlsave: no item with more jewels than sockets')
     T.check(dz >= 1, f'{key}: mxlsave: Dopplezon line')
     base = next(x.value for x in obj.stats if x.id == 9)
-    mana = (Fraction(base, 256) + F + 20) * (100 + Pc + v['bo_pct'] * (v['mana'] != v['mana_nobo'])) / 100
+    vfp = base + 256 * (F + 20)              # the game's percent step: v + (v // 100) x pct (1/256 fixed point)
+    mana = Fraction(vfp + (vfp // 100) * (Pc + v['bo_pct'] * (v['mana'] != v['mana_nobo'])), 256)
     T.eq(mana, v['mana'], f'{key}: mxlsave mana sum = the analyzer mana')
 
 
