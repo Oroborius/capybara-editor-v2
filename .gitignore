@@ -19,3 +19,4 @@ dist/
 /docs/WORKLOG.md
 /docs/review/
 /docs/statscreen-ref/
+src/build_info.json
