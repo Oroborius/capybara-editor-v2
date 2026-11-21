@@ -365,8 +365,8 @@ SOCKET_SOURCES = ('R', 'G', 'J')
 
 def _install_no_socket_breakdown():
     """The host wrote a source breakdown after every stat a rune / gem / jewel adds to ("Damage +7365 (B:491 +
-    J:491 + ...)"). The user finds it cluttered and the game shows only the total: a stat with a socketed source gets
-    no breakdown (the base / runeword ranges of the other stats stay). Both profiles."""
+    J:491 + ...)"). The user finds it cluttered and the game shows only the total: the rune / gem / jewel entries are
+    left out of the breakdown; the base / runeword entries and their roll ranges stay. Both profiles."""
     import sys
     import mxl_stat_text as st
     orig = st.stat_ranges
@@ -376,8 +376,12 @@ def _install_no_socket_breakdown():
     def stat_ranges(it, data):
         res = orig(it, data)
         try:
-            return {k: v for k, v in res.items()
-                    if not any(isinstance(e, tuple) and e and e[-1] in SOCKET_SOURCES for e in v)}
+            out = {}
+            for k, v in res.items():
+                keep = [e for e in v if not (isinstance(e, tuple) and e and e[-1] in SOCKET_SOURCES)]
+                if keep:
+                    out[k] = keep
+            return out
         except Exception:
             return res
     stat_ranges._no_sock = True

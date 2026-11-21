@@ -187,7 +187,7 @@ def hover_panel_shows_jewel_totals():
         T.check(f'Level {auras[99]} Prayer' in txt, f'{it["code"]}: Prayer level {auras[99]} (parent + jewels): '
                                                    f'{txt[:300]!r}')
         T.check(f'({F.shown_sockets(it)})' in txt, f'{it["code"]}: socket count field + 194 in the panel')
-        T.check('J:' not in txt and '(B:' not in txt, f'{it["code"]}: no source breakdown: {txt[:400]!r}')
+        T.check(not any(x in txt for x in ('J:', 'R:', 'G:')), f'{it["code"]}: no socket sources: {txt[:400]!r}')
         if seen >= 3:
             break
     T.check(seen >= 1, f'socketed items with jewel auras: {seen}')
