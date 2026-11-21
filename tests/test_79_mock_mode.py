@@ -441,5 +441,15 @@ def read_only_clone_stays_read_only_after_an_editor_save():
     T.eq(T.read(p), ch.raw, 'the save went through')
     E.MC.set_read_only(p, False)
 
+@T.test
+def smite_max_and_efficient_modes():
+    """Max smite: max = 8388607 exactly and min = max (+min damage closes the shield spread); efficient: within
+    0.1% of the cap, never over it."""
+    M = engine().M
+    mx = M.plan('mock_high', 'X', smite_max=True)['smite']
+    T.eq((mx['max'], mx['min']), (M.ROLL, M.ROLL), 'max mode: every smite is the cap')
+    ef = M.plan('mock_high', 'X')['smite']
+    T.check(M.ROLL * 0.999 <= ef['max'] <= M.ROLL, f"efficient mode within 0.1%: {ef['max']}")
+
 
 T.main(globals())

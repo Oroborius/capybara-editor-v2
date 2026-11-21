@@ -900,7 +900,7 @@ def solve_life(target, base_raw, oak_min, oak_max, max_lines, extra_pct=0):
     return best[1] if best else None
 
 
-def solve_smite(target_pvm, level, shield, max_lines, base_str=1023, slvl=63):
+def solve_smite(target_pvm, level, shield, max_lines, base_str=1023, slvl=63, mode='efficient'):
     """Max Smite damage = (shield max + sum(+damage lines <= 491)) x (100 + 15 slvl + str%) / 100 <= target,
     str = base + floor(sum(str/lvl lines <= 63) x clvl / 8). Smallest gap, then fewest bits."""
     smin, smax = SHIELD_DMG[shield]
@@ -918,9 +918,15 @@ def solve_smite(target_pvm, level, shield, max_lines, base_str=1023, slvl=63):
         cands.append((target_pvm - hi, cost, S, D, hi, mult))
     if not cands:
         return None
-    cmin = min(c[1] for c in cands)
-    gap, cost, S, D, hi, mult = min((c for c in cands if c[1] <= cmin + 40), key=lambda c: (c[0], c[1]))
-    return dict(str_points=S, dmg=D, max=hi, min=(smin + D) * mult // 100, mult=mult)
+    if mode == 'max':
+        # the largest max under the target, then fewest bits; +min damage closes the shield's min-max spread
+        gap, cost, S, D, hi, mult = min(cands, key=lambda c: (c[0], c[1]))
+        lo_add = smax - smin
+        return dict(str_points=S, dmg=D, max=hi, min=(smax + D) * mult // 100, mult=mult, min_add=lo_add)
+    # efficient: fewest bits among the plans within 0.1% of the target, then the closest
+    near = [c for c in cands if c[4] * 1000 >= target_pvm * 999] or cands
+    gap, cost, S, D, hi, mult = min(near, key=lambda c: (c[1], c[0]))
+    return dict(str_points=S, dmg=D, max=hi, min=(smin + D) * mult // 100, mult=mult, min_add=0)
 
 
 def split(total, per_line):
@@ -960,6 +966,7 @@ def options(preset='mock_high', **over):
     o.setdefault('switch', None)
     o.setdefault('barbs', 0)
     o.setdefault('res', 0)
+    o['smite_max'] = bool(o.get('smite_max', False))
     for k in ('prayer', 'prayer_sources', 'oak', 'med', 'regen'):
         o.setdefault(k, None)                               # None: solved by plan()
     o.setdefault('deli_attack', 63)
@@ -1133,7 +1140,9 @@ def plan(preset='mock_high', name='Mock', **over):
     if over.get('stun') is not None and over.get('damage') is None:
         dmg_target = _damage_from_slider(slider, dmg_target)
     pvm = min(ROLL, math.floor(dmg_target * 2 / PVP))
-    sm = solve_smite(pvm, o['level'], 'tow ', nl)
+    if o.get('smite_max') and over.get('damage') is None:
+        pvm = ROLL                                          # max damage: the exact cap, no safety margin
+    sm = solve_smite(pvm, o['level'], 'tow ', nl, mode='max' if o.get('smite_max') else 'efficient')
     if sm is None:
         raise PlanError('smite target cannot be reached')
     sh = U['shield']
@@ -1149,6 +1158,8 @@ def plan(preset='mock_high', name='Mock', **over):
         s.add(220, v)
     for s, v in zip(free(111), split(sm['dmg'], 491)):
         s.add(111, v)
+    if sm.get('min_add'):
+        free(21)[0].add(21, sm['min_add'])                   # +min damage: every smite rolls the max
     # ---- attack reset: Delirium on attack and on strike at two different levels; stun per the slider
     sh.slots[3].add(195, DELIRIUM_CHANCE, (DELIRIUM << 6) | max(1, min(63, int(o['deli_attack']))))
     sh.slots[3].add(198, DELIRIUM_CHANCE, (DELIRIUM << 6) | max(1, min(63, int(o['deli_strike']))))
@@ -1406,6 +1417,7 @@ FIELDS = (('Mana / TK', (('tk', 'TK', 'int'), ('mana', 'Mana (BO)', 'int'),
           ('Damage / stun', (('damage', 'Smite PvP', 'int'), ('stun', 'Stun', 'int'),
                              ('deli_attack', f'Deli att {DELIRIUM_CHANCE}%', 'int'),
                              ('deli_strike', f'Deli hit {DELIRIUM_CHANCE}%', 'int'),
+                             ('smite_max', 'Max smite', 'bool'),
                              ('dopplezon', 'Dopplezon', 'bool'), ('weapon', 'Weapon', 'bool'))))
 FIELD_KEYS = tuple(k for _, fs in FIELDS for k, _, _ in fs)
 # a short hint per field: unit and range
@@ -1420,6 +1432,7 @@ HINTS = dict(tk='hard TK points 0-99 (31: band 524288, 30: funky 1048576)', mana
              damage='smite PvP damage, at most 713031', stun='0-100: more stun, less smite',
              deli_attack='Delirium on attack, level 1-63',
              deli_strike='Delirium on strike, level 1-63 (not the attack level)',
+             smite_max='on: smite exactly at the cap, every hit the max (thin margin); off: within 0.1% of the cap for the fewest bits',
              dopplezon='NV state Dopplezon on a charm', weapon='a socketed weapon (198 lists)')
 
 
@@ -1433,7 +1446,7 @@ def prefill(preset='mock_high', **over):
     out = {}
     for k in FIELD_KEYS:
         v = solved[k] if k in solved else o.get(k)
-        out[k] = bool(v) if k in ('dopplezon', 'weapon') else int(v or 0)
+        out[k] = bool(v) if k in ('dopplezon', 'weapon', 'smite_max') else int(v or 0)
     return out
 
 
@@ -1443,7 +1456,7 @@ def edited(fields, pre):
     over = {}
     for k in FIELD_KEYS:
         v = fields.get(k)
-        if k in ('dopplezon', 'weapon'):
+        if k in ('dopplezon', 'weapon', 'smite_max'):
             if bool(v) != pre[k]:
                 over[k] = bool(v)
             continue
