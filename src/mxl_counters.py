@@ -599,5 +599,12 @@ class CountersPage:
 
 
 def install(App=None):
+    """Median XL only: vanilla D2 has no signets and no achievement counters (stat 88 / 185 / 186)."""
+    try:
+        import mxl_profile
+        if not mxl_profile.is_median():
+            return
+    except Exception:
+        pass
     import mxl_char_gui
     mxl_char_gui.register_page('counters', T('ch.tab.counters', 'Counters'), CountersPage)

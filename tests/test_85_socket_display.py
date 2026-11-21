@@ -83,6 +83,26 @@ def socket_count_is_field_plus_numsockets():
             T.eq([x for x in T.stats_of(rec) if x[0] == 194], want, f'{it["code"]} edit {change}: 194 line kept')
             T.eq(rec.get('sockets'), it['sockets'], f'{it["code"]} edit {change}: socket field')
         break
+    # vanilla rule (user): up to 7 sockets on weapons, shields, body armor, helms, rings, amulets - not on boots /
+    # belts / gloves; the field keeps the base's count and 194 the rest
+    for code in ('rin ', 'amu ', 'crs ', 'tow ', 'gth ', 'ghm '):
+        T.eq(cr.socket_limit(code, 99), 7, f'{code}: up to 7 sockets')
+    for code in ('hbt ', 'hbl ', 'hgl '):
+        T.eq(cr.socket_limit(code, 99), cr.max_sockets(code, 99), f'{code}: the base\'s sockets only')
+    for e in cw.ch.items:
+        it = e.it
+        if it['code'] != 'rin ' or len(it.get('socketed') or []) != 7:
+            continue
+        spec = cr.spec_from_item(it)
+        T.eq(spec['sockets'], 7, 'ring: sockets in all (field + 194)')
+        T.eq(len(cr.fillers(spec)), 7, 'ring: the 7 jewels listed')
+        spec['sockets'], spec['_kept'] = 5, spec['_kept'][:5]
+        rec, kids = mxl_creator.decode_blob(bytes(cr.build(spec)[0]), cw.data)
+        T.eq(len(kids), 5, 'ring 7 -> 5 sockets: jewels')
+        T.eq((rec.get('sockets') or 0) + sum(v for i, _p, v in T.stats_of(rec) if i == 194), 5, 'ring: field + 194')
+        break
+    else:
+        T.check(False, 'a ring with 7 jewels')
     shot = os.environ.get('CAPY_SHOT_DIR')
     if shot:
         os.system(f'import -window root {os.path.join(shot, "v85.png")} 2>/dev/null')

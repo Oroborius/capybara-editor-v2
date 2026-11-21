@@ -188,6 +188,46 @@ def install_sockets():
     import mxl_tooltip
     if getattr(mxl_tooltip, 'socket_contents', None) is orig:
         mxl_tooltip.socket_contents = socket_contents
+    install_aura_levels()
+
+
+AURA_STAT = 151
+
+
+def merge_auras(stats):
+    """One item_aura (151) line per aura with the levels added: the parent's and every socketed jewel's lines
+    (the game adds them, mxl_mock.totals' aura_lv). The host printed the level of one line only."""
+    out, at = [], {}
+    for s in stats or ():
+        if isinstance(s, dict) and s.get('id') == AURA_STAT:
+            k = s.get('param')
+            if k in at:
+                d = out[at[k]]
+                out[at[k]] = dict(d, value=(d.get('value') or 0) + (s.get('value') or 0))
+                continue
+            at[k] = len(out)
+        out.append(s)
+    return out
+
+
+def install_aura_levels():
+    import sys
+    import mxl_stat_text
+    orig = mxl_stat_text.stat_lines
+    if getattr(orig, '_capy_aura', False):
+        return
+
+    def stat_lines(stats, *a, **k):
+        try:
+            stats = merge_auras(stats)
+        except Exception:
+            pass
+        return orig(stats, *a, **k)
+    stat_lines._capy_aura = True
+    for name in ('mxl_stat_text', 'mxl_tooltip', 'mxl_gui_detail', 'mxl_catalog_tooltip'):
+        m = sys.modules.get(name)
+        if m is not None and getattr(m, 'stat_lines', None) is orig:
+            m.stat_lines = stat_lines
 
 
 # ---------------------------------------------------------------------------------------- main window stash pane

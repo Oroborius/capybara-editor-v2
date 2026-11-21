@@ -736,9 +736,6 @@ def _quality_to(rec, cr, data, code, q, pick=None, pick2=None):
         rec['rare_affixes'] = [None] * 6
     elif q in ('set', 'unique'):
         rec['set_unique_id'] = pick
-        if q == 'set' and rec['flags'] & FLAG_ETHEREAL:   # the game never gives ethereal set items
-            rec['flags'] &= ~FLAG_ETHEREAL
-            rec['_dropped_ethereal'] = True
     # runeword items stay runewords: the flag, its runes and their stats are untouched
 
 
@@ -961,14 +958,14 @@ def _specific_cascade(holder, menu, code, rec, win=None, it=None, e=None):
                            command=lambda: write(lambda r, cr2, d: (
                                r.__setitem__('max_durability', cm['add']), r.pop('durability', None), True)[2],
                                rc('sp.indest_set', '{name}: indestructible', name=_item_name(holder, it, e))))
-        if rec['flags'] & FLAG_ETHEREAL:
-            sp.add_command(label=rc('sp.un_eth', 'Remove ethereal'),
-                           command=lambda: write(lambda r, cr2, d: (_ethereal_to(r, d, code, False) or True),
-                                                 rc('sp.eth_off', '{name}: no longer ethereal', name=_item_name(holder, it, e))))
-        elif rec['quality'] != 'set':
-            sp.add_command(label=rc('sp.eth', 'Make ethereal'),
-                           command=lambda: write(lambda r, cr2, d: (_ethereal_to(r, d, code, True) or True),
-                                                 rc('sp.eth_on', '{name}: ethereal', name=_item_name(holder, it, e))))
+    if rec['flags'] & FLAG_ETHEREAL:
+        sp.add_command(label=rc('sp.un_eth', 'Remove ethereal'),
+                       command=lambda: write(lambda r, cr2, d: (_ethereal_to(r, d, code, False) or True),
+                                             rc('sp.eth_off', '{name}: no longer ethereal', name=_item_name(holder, it, e))))
+    else:                                         # any item can be ethereal
+        sp.add_command(label=rc('sp.eth', 'Make ethereal'),
+                       command=lambda: write(lambda r, cr2, d: (_ethereal_to(r, d, code, True) or True),
+                                             rc('sp.eth_on', '{name}: ethereal', name=_item_name(holder, it, e))))
     if rec.get('socketed_count', 0) == 0:
         ms = cr.max_sockets(code, rec['ilvl'])
         if ms > 0 and not rec['flags'] & FLAG_SOCKETED:

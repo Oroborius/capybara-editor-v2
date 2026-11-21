@@ -5,6 +5,8 @@
 - the Library main tab (More » "Item library..." selects it): the list (icon, name, folder, base) with a search box; "Place a copy" puts a copy on
   the stash page shown (else the first page with room) through the collector's safe writer (edit_stash: verified
   write, backup policy) and records it for Ctrl+Z; Rename / Delete edit the entry.
+Each entry records its game (game_tag: 'median' / 'd2-1.14d'); the list shows the current game's only (entries
+without a tag were made in Median XL; an entry whose base the game's tables do not know is left out too).
 This is not the collector's old library.json (a record of found uniques, removed in V2): other file, other folder.
 A copy keeps the item's bytes as they are, the same as Duplicate does.
 """
@@ -42,6 +44,43 @@ def load():
         return []
 
 
+def game_tag():
+    """The game an entry belongs to: 'median', or 'd2-<version>' (+ '+mod' names) for a folder profile.
+    Not the profile id: that one holds a hash of the folder path, which changes when the game is moved."""
+    try:
+        import mxl_profile
+        st = mxl_profile.active()
+    except Exception:
+        st = None
+    if not st:
+        return 'median'
+    tag = f"{st.get('kind') or 'd2'}-{st.get('version') or 'unknown'}"
+    mods = st.get('mods') or []
+    return tag + ''.join('+' + str(m).lower() for m in mods)
+
+
+def entry_game(entry):
+    """The game of an entry; the ones made before the tag existed were made in Median XL."""
+    return entry.get('game') or 'median'
+
+
+def for_game(entries, data=None, tag=None):
+    """The entries of the current game: its tag, and (with data) a base code the game's tables know."""
+    tag = tag or game_tag()
+    out = []
+    for e in entries:
+        if entry_game(e) != tag:
+            continue
+        if data is not None:
+            try:
+                if e.get('code') not in data.bases:
+                    continue
+            except Exception:
+                pass
+        out.append(e)
+    return out
+
+
 def _save(entries):
     p = os.path.join(folder(), INDEX)
     tmp = p + '.tmp'
@@ -74,7 +113,8 @@ def add(blob, name, data, code=None):
         file = f'{stem}_{k}.d2i'
     with open(os.path.join(d, file), 'wb') as f:
         f.write(blob)
-    entry = dict(file=file, name=nm, folder=fo, code=code or it['code'], added=time.strftime('%Y-%m-%d %H:%M'))
+    entry = dict(file=file, name=nm, folder=fo, code=code or it['code'], added=time.strftime('%Y-%m-%d %H:%M'),
+                 game=game_tag())
     entries = load()
     entries.append(entry)
     _save(entries)
@@ -297,7 +337,8 @@ class LibraryWindow:
         self.rows = {}
         folders = {}
         first = None
-        for e in sorted(search(load(), self.q.get()), key=lambda e: (e.get('folder', '').lower(), e['name'].lower())):
+        mine = for_game(load(), getattr(self.app, 'data', None))        # this game's entries only
+        for e in sorted(search(mine, self.q.get()), key=lambda e: (e.get('folder', '').lower(), e['name'].lower())):
             parent = ''
             fo = e.get('folder', '')
             if fo:

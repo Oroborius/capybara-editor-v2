@@ -324,4 +324,30 @@ def noop_edit_of_sample_items_is_byte_identical():
     T.eq(bad_bytes, 0, f'items whose bytes change in a no-op edit (of {n}; record fields that differ: {why})')
 
 
+@T.test
+def any_item_can_be_ethereal():
+    """User (2026-11-21): any item can be ethereal - charms, jewels, rings, amulets, set items too. The creator
+    no longer refuses it; the flag reads back from the built bytes."""
+    E = T.engine()
+    cr = E.cr
+    done = []
+    for code in ('rin ', 'amu ', 'jew ', 'cm1 '):
+        if code not in E.data.bases:
+            continue
+        spec = cr.new_spec('normal', code)
+        spec['ethereal'] = True
+        blob, rec = cr.build(spec)
+        T.check(rec['flags'] & E.C.FLAG_ETHEREAL, f'{code}: ethereal flag built')
+        it = E.save.blob_item(bytes(blob), E.data)
+        T.check(it.get('ethereal'), f'{code}: ethereal read back')
+        done.append(code)
+    T.check(len(done) >= 3, f'bases tried: {done}')
+    for i, _name, _u in cr.set_items():
+        spec = cr.new_spec('set', None, i)
+        spec['ethereal'] = True
+        _blob, rec = cr.build(spec)
+        T.check(rec['flags'] & E.C.FLAG_ETHEREAL, 'set item: ethereal flag built')
+        break
+
+
 T.main(globals())

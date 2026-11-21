@@ -339,6 +339,100 @@ def _install_socket_display():
         if isinstance(v, (list, tuple)) and any(x is sec for x in v):
             nv = [section_sockets if x is sec else x for x in v]
             setattr(mxl_tooltip, k, type(v)(nv) if isinstance(v, tuple) else nv)
+    _swap_in_defaults(mxl_tooltip, sec, section_sockets)
+
+
+def _swap_in_defaults(mod, old, new):
+    """item_tooltip(it, data, char, sections=(...)): the section table is the function's default argument, so
+    patching the module name alone left the tooltip with the host's section ("Socketed (3)" with 7 jewels)."""
+    for v in list(vars(mod).values()):
+        dfl = getattr(v, '__defaults__', None)
+        if not callable(v) or not dfl:
+            continue
+        nd, hit = [], False
+        for x in dfl:
+            if isinstance(x, (list, tuple)) and any(y is old for y in x):
+                x = type(x)(new if y is old else y for y in x)
+                hit = True
+            nd.append(x)
+        if hit:
+            v.__defaults__ = tuple(nd)
+
+
+# ---------------------------------------------------------------------------------------- source breakdowns
+SOCKET_SOURCES = ('R', 'G', 'J')
+
+
+def _install_no_socket_breakdown():
+    """The host wrote a source breakdown after every stat a rune / gem / jewel adds to ("Damage +7365 (B:491 +
+    J:491 + ...)"). The user finds it cluttered and the game shows only the total: a stat with a socketed source gets
+    no breakdown (the base / runeword ranges of the other stats stay). Both profiles."""
+    import sys
+    import mxl_stat_text as st
+    orig = st.stat_ranges
+    if getattr(orig, '_no_sock', False):
+        return
+
+    def stat_ranges(it, data):
+        res = orig(it, data)
+        try:
+            return {k: v for k, v in res.items()
+                    if not any(isinstance(e, tuple) and e and e[-1] in SOCKET_SOURCES for e in v)}
+        except Exception:
+            return res
+    stat_ranges._no_sock = True
+    for name in ('mxl_stat_text', 'mxl_tooltip', 'mxl_gui_detail', 'mxl_catalog_tooltip'):
+        m = sys.modules.get(name)
+        if m is not None and getattr(m, 'stat_ranges', None) is orig:
+            m.stat_ranges = stat_ranges
+
+
+# ---------------------------------------------------------------------------------------- by-time stats
+# itemstatcost op 6 ("by time"), descfunc 17 / 18: the 22 saved bits are 2 bits time of day, 10 bits the start and
+# 10 bits the end value (d2s format notes; low bits first). The host printed the raw number ("+4194303 Absorbs Cold
+# Damage"); the game prints the value and "(Increases Near Dawn)" etc. Periods 0-3: day, dusk, night, dawn.
+TIME_KEYS = ('ModStre9e', 'ModStre9g', 'ModStre9d', 'ModStre9f')
+TIME_DEFAULT = ('(Increases During Daytime)', '(Increases Near Dusk)', '(Increases During Nighttime)',
+                '(Increases Near Dawn)')
+
+
+def bytime_parts(v):
+    """(period, start, end) of a by-time stat value."""
+    v = int(v or 0)
+    return v & 3, (v >> 2) & 1023, (v >> 12) & 1023
+
+
+def bytime_text(c, v, data):
+    period, lo, hi = bytime_parts(v)
+    try:
+        when = data.key(TIME_KEYS[period]) or TIME_DEFAULT[period]
+    except Exception:
+        when = TIME_DEFAULT[period]
+    desc = (c.get('pos') or c.get('desc') or '').strip()
+    pct = '%' if c.get('func') == 18 else ''
+    num = f'+{hi}{pct}' if lo == hi else f'+{min(lo, hi)}{pct} to {max(lo, hi)}{pct}'
+    return f'{num} {desc} {when}'.strip()
+
+
+def is_bytime(c):
+    return bool(c) and c.get('op') == 6 and c.get('func') in (17, 18)
+
+
+def _install_bytime_text():
+    import mxl_stat_text as st
+    orig = st._stat_text
+    if getattr(orig, '_bytime', False):
+        return
+
+    def _stat_text(s, c, v, p, s1, data, *rest):
+        try:
+            if is_bytime(c):
+                return bytime_text(c, v, data)
+        except Exception:
+            pass
+        return orig(s, c, v, p, s1, data, *rest)
+    _stat_text._bytime = True
+    st._stat_text = _stat_text
 
 
 def install():
@@ -362,8 +456,16 @@ def install():
     except Exception:
         pass
     try:
+        _install_no_socket_breakdown()    # no "(B:491 + J:491 + ...)" after the stats sockets add to
+    except Exception:
+        pass
+    try:
         import mxl_statnames              # names for the skills without a skilldesc string ("skill #2064")
         mxl_statnames.install()
+    except Exception:
+        pass
+    try:
+        _install_bytime_text()            # by-time stats: "+1023 Absorbs Cold Damage (Increases Near Dawn)"
     except Exception:
         pass
     try:

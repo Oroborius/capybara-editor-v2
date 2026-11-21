@@ -503,6 +503,16 @@ FALLBACK = {
 }
 
 
+MEDIAN_ONLY = frozenset((88, 185, 186))     # achievement data, Signets of Learning / Skill used: not in vanilla D2
+
+
 def fallback_label(sid):
-    """The known name of a stat the game displays no text for, or None."""
+    """The known name of a stat the game displays no text for, or None (vanilla: no Median-only names)."""
+    if sid in MEDIAN_ONLY:
+        try:
+            import mxl_profile
+            if not mxl_profile.is_median():
+                return None
+        except Exception:
+            pass
     return FALLBACK.get(sid)

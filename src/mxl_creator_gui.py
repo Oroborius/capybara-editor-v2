@@ -1052,7 +1052,7 @@ class CreatorWindow:
                         if a['group'] not in groups:
                             spec[key].append(i)
                             groups.add(a['group'])
-        ms = cr.max_sockets(code, ilvl)
+        ms = cr.socket_limit(code, ilvl)
         if q != 'runeword':
             spec['sockets'] = ms if spec.get('max_sockets') else min(spec.get('sockets') or 0, ms)
             spec['sockets'] = max(spec['sockets'], cr.innate_sockets(spec))   # the innate's sockets (Angelic...)
@@ -1066,8 +1066,6 @@ class CreatorWindow:
         b = self.data.base(code)
         if b.stack_max is not None and not spec.get('quantity'):
             spec['quantity'] = b.stack_max
-        if spec.get('ethereal') and (q == 'set' or b.kind not in ('weapons', 'armor')):
-            spec['ethereal'] = False
         n_img = cr.image_count(code)
         if n_img and spec.get('image') is None:
             spec['image'] = 0
@@ -1172,11 +1170,10 @@ class CreatorWindow:
             combo(T('cr.superior', 'Superior'), vals, self.sup_label(spec['superior']) if spec.get('superior') is not None else NONE,
                   lambda i, sup=sup: self.set_field('superior', None if i == 0 else sup[i - 1]))
         spin(T('cr.item_level', 'Item level'), cr.min_ilvl(spec), MAX_ILVL, spec['ilvl'], lambda v: self.set_field('ilvl', v))
-        if b.kind in ('weapons', 'armor') and q != 'set':
-            rr = row(T('cr.ethereal', 'Ethereal'))
-            ev = tk.BooleanVar(value=spec['ethereal'])
-            ttk.Checkbutton(f, variable=ev, command=lambda ev=ev: self.set_field('ethereal', ev.get())).grid(row=rr, column=1, sticky='w')
-        ms = cr.max_sockets(code, spec['ilvl'])
+        rr = row(T('cr.ethereal', 'Ethereal'))          # any item can be ethereal (charms, jewels, rings ... too)
+        ev = tk.BooleanVar(value=spec['ethereal'])
+        ttk.Checkbutton(f, variable=ev, command=lambda ev=ev: self.set_field('ethereal', ev.get())).grid(row=rr, column=1, sticky='w')
+        ms = cr.socket_limit(code, spec['ilvl'])
         if q == 'runeword':
             rr = row(T('cr.sockets', 'Sockets'))
             ttk.Label(f, text=T('cr.rw_sockets', '{n} (runes socketed automatically)', n=spec['sockets'])).grid(row=rr, column=1, sticky='w')
@@ -2610,7 +2607,7 @@ class CreatorWindow:
     def set_sockets(self, n):
         if self.spec is None:
             return
-        ms = self.cr.max_sockets(self.spec['code'], self.spec['ilvl'])
+        ms = self.cr.socket_limit(self.spec['code'], self.spec['ilvl'])
         self.spec['max_sockets'] = bool(ms) and n == ms
         self.set_field('sockets', n)
 
@@ -2619,7 +2616,7 @@ class CreatorWindow:
             return
         self.spec['max_sockets'] = bool(on)
         if on:
-            self.spec['sockets'] = self.cr.max_sockets(self.spec['code'], self.spec['ilvl'])
+            self.spec['sockets'] = self.cr.socket_limit(self.spec['code'], self.spec['ilvl'])
         self.prepare_defaults(self.spec)
         self.fill_new_rolls()
         self.render_options()

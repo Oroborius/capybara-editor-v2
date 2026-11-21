@@ -10,7 +10,7 @@ Rules used (from the game's code and tables):
 - uniques: 15-bit unique row, durability x3 (capped at 255);
 - magic: 11-bit prefix/suffix = affix row + 1; rare: names (8+8 bits), up to 3 prefixes + 3 suffixes;
 - runewords: 16-bit id = string-table index of the runeword name key, runes socketed as children;
-- ethereal (not on set items): stored defense x3/2, max durability /2 + 1;
+- ethereal (any item, any quality): stored defense x3/2, max durability /2 + 1;
 - armor with Enhanced Defense: base defense = max + 1;
 - stats are saved sorted by (stat, param), same stat+param from several mods are added together.
 """
@@ -360,14 +360,15 @@ def encode_item(rec, data):
 
 
 NUM_SOCKETS = 194          # item_numsockets: an affix's "sock" property ("Innate" of Angelic gear: +6) is turned into
-                           # real sockets by the game (capped at the item's maximum), never kept as a stat
+                           # real sockets by the game (capped at the item's maximum), never kept as a stat - except
+                           # the vanilla sockets beyond the save field (Creator.socket_split: marked sockets=True)
 
 
 def build_blob(rec, children, data):
     """Item bytes followed by its socketed items (format of a stash entry)."""
     for k in ('stats', 'stats_runeword'):
         if rec.get(k):
-            rec[k] = [s for s in rec[k] if s['id'] != NUM_SOCKETS]
+            rec[k] = [s for s in rec[k] if s['id'] != NUM_SOCKETS or s.get('sockets')]
     out = encode_item(rec, data)
     for i, ch in enumerate(children):
         ch = dict(ch, location=LOC_SOCKETED, equipped=0, x=i, y=0, panel=0)
@@ -657,6 +658,41 @@ class Creator:
         ms = self.t.itype[b.type]['maxsock']
         cap = ms[0] if ilvl <= 25 else ms[1] if ilvl <= 40 else ms[2]
         return min(b.max_sockets, cap)
+
+    # vanilla (folder profile): the user's rule - up to 7 sockets on weapons, shields, body armor, helms, rings and
+    # amulets (not boots / belts / gloves). The save's socket field keeps the base's count (the game clamps it) and
+    # item_numsockets (194) gives the rest, as the mock clones do (mxl_mock.MAX_SOCKETS / SOCKET_FIELD).
+    VANILLA_SOCKET_TYPES = frozenset(('weap', 'shld', 'tors', 'helm', 'ring', 'amul'))
+    VANILLA_MAX_SOCKETS = 7
+
+    @staticmethod
+    def _vanilla():
+        try:
+            import mxl_profile
+            return not mxl_profile.is_median()
+        except Exception:
+            return False
+
+    def socket_limit(self, code, ilvl):
+        """Most sockets the editor offers: the base's (max_sockets) in Median, up to 7 on the vanilla rule's types."""
+        ms = self.max_sockets(code, ilvl)
+        if not self._vanilla() or code not in self.data.bases:
+            return ms
+        try:
+            ok = bool(self.type_codes(code) & self.VANILLA_SOCKET_TYPES)
+        except Exception:
+            ok = False
+        return max(ms, self.VANILLA_MAX_SOCKETS) if ok else ms
+
+    def socket_split(self, spec):
+        """(save field, item_numsockets 194) for spec['sockets'] in all: the field up to the base's sockets (or the
+        edited item's own field), the rest as stat 194. Median: (sockets, 0)."""
+        n = spec.get('sockets') or 0
+        if not self._vanilla() or spec.get('quality') == 'runeword' or spec.get('code') not in self.data.bases:
+            return n, 0
+        cap = max(self.max_sockets(spec['code'], spec['ilvl']), spec.get('_sock_field') or 0)
+        f = min(n, cap)
+        return f, n - f
 
     def image_count(self, code):
         b = self.data.base(code)
@@ -1863,12 +1899,10 @@ class Creator:
         ilvl = spec['ilvl']
         if not self.min_ilvl(spec) <= ilvl <= MAX_ILVL:
             raise CreateError(T('cr.err.ilvl', 'item level must be {lo} to {hi}', lo=self.min_ilvl(spec), hi=MAX_ILVL))
-        if spec['ethereal'] and (q == 'set' or b.kind not in ('weapons', 'armor')):
-            raise CreateError(T('cr.err.eth', 'only non-set weapons and armor can be ethereal'))
         qq = 'normal' if q == 'runeword' else q
         if qq in ('normal', 'superior', 'magic', 'rare') and not self.can_have_quality(code, qq):
             raise CreateError(T('cr.err.quality', '{base} cannot be {quality}', base=b.name, quality=T(f'cr.quality.{qq}', qq)))
-        ms = self.max_sockets(code, ilvl)
+        ms = self.socket_limit(code, ilvl) if q != 'runeword' else self.max_sockets(code, ilvl)
         if spec['sockets'] > ms:
             raise CreateError(T('cr.err.max_sockets', '{base} can have at most {n} socket(s) at item level {ilvl}', base=b.name, n=ms, ilvl=ilvl))
         if len(spec['socketed']) > spec['sockets']:
@@ -2029,6 +2063,11 @@ class Creator:
             own = [s for s in own if (s['id'], s.get('param')) not in spec['_drop']]
         if '_keep_zero' in spec:              # edited item: a stat its mods give but the item had not cancels out
             own = [s for s in own if s['value'] or (s['id'], s.get('param')) in spec['_keep_zero']]
+        field, n194 = self.socket_split(spec)
+        if self._vanilla() and q != 'runeword':         # the sockets beyond the field: item_numsockets (194)
+            own = [s for s in own if s['id'] != 194]
+            if n194 and d.isc[194]['bits']:
+                own.append(dict(id=NUM_SOCKETS, param=None, value=n194, sockets=True))   # kept by build_blob
         rec['stats'] = own
         if q == 'runeword':
             rw += [dict(x) for x in spec.get('extra_rw') or []]
@@ -2062,7 +2101,7 @@ class Creator:
         if b.stack_max is not None:
             rec['quantity'] = spec.get('quantity') or 1
         if spec['sockets'] or spec.get('_socket_flag'):
-            rec['sockets'] = spec['sockets']
+            rec['sockets'] = field
         children = []
         if q == 'runeword':
             runes = [d.item_index[r] for r in d.runewords[spec['row']][1]]
@@ -2230,7 +2269,7 @@ class Creator:
                 # the socket fillers were changed: the new ones, and the original socketed items the spec cannot
                 # name (jewels and other items with a stat list of their own) that were not taken out
                 new = [decode_item(x, d)[0] for x in nkids]
-                room = max(len(new), out.get('sockets', 0) if out['flags'] & FLAG_SOCKETED else 0)
+                room = max(len(new), spec.get('sockets', 0) if out['flags'] & FLAG_SOCKETED else 0)
                 both = (new + keep)[:max(room, len(new))]
             kids = []
             for x, k in enumerate(both):
@@ -2316,7 +2355,7 @@ class Creator:
         return spec
 
     def _mark_max_sockets(self, spec):
-        ms = self.max_sockets(spec['code'], spec['ilvl']) if spec.get('code') in self.data.bases else 0
+        ms = self.socket_limit(spec['code'], spec['ilvl']) if spec.get('code') in self.data.bases else 0
         spec['max_sockets'] = bool(ms) and spec.get('sockets') == ms and spec.get('quality') != 'runeword'
 
     def _spec_from_item(self, it):
@@ -2462,6 +2501,13 @@ class Creator:
         spec['extra'] = extra
         spec['_keep_zero'] = {k for k, v in have.items() if v == 0}
         spec['_from_item'] = True
+        if self._vanilla() and spec['quality'] != 'runeword':
+            # sockets in all = the save field + item_numsockets (194, see socket_split); build() writes 194 again
+            spec['_sock_field'] = it.get('sockets') or 0
+            spec['sockets'] = spec['_sock_field'] + sum(v for k, v in have.items() if k[0] == 194)
+            spec['extra'] = [x for x in extra if x['id'] != 194]
+            spec['_extra_kept'] = {k for k in spec['_extra_kept'] if k[0] != 194}
+            spec['_keep_zero'] = {k for k in spec['_keep_zero'] if k[0] != 194}
         return spec
 
     def _find_craft(self, it, spec):
