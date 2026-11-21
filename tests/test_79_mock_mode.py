@@ -458,8 +458,8 @@ def size_tricks_and_bulk_lines():
     """The clones' size tricks (editor-tricks.txt): socketed jewels normal quality without the picture field,
     charms superior without it (a q2 no-picture jewel round-trips byte for byte, the editor reads it back); the
     room under the size budget is filled with target-neutral bulk lines on charms and jewels (replenish life on
-    every list; absorb by time, or resist by level on a Host); one line per stat per list; every preset ends
-    within 300 bytes under the budget."""
+    every list; absorb by time, or resist by level on a Host); the target lines (life, +mana) go on the charms
+    first; one line per stat per list; every preset ends within 300 bytes under the budget."""
     E = engine()
     M = E.M
     isc, base = M.isc_from_data(E.data), M.base_from_data(E.data)
@@ -486,6 +486,8 @@ def size_tricks_and_bulk_lines():
                     T.check(sl.has(74), f'{key}: {u.name}: replenish life bulk line')
             if u.kind == 'charm':
                 T.check(u.slots[0].has(230 if host else 288), f'{key}: {u.name}: {"res" if host else "abs"} bulk')
+                T.check(u.slots[0].has(7) and (P['o']['switch'] or u.slots[0].has(9)),
+                        f'{key}: {u.name}: the life / +mana lines sit on the charms first')
         path = M.write_new(raw, folder, 'Bulk')
         ch = E.MC.Character(path, E.data)
         q = set()

@@ -1088,9 +1088,14 @@ def plan(preset='mock_high', name='Mock', **over):
     mana = solve_mana(o['mana'], o['exact'], nl, extra_pct=o['bo_pct'])
     if mana is None:
         raise PlanError(f"mana {o['mana']} cannot be hit {'exactly ' if o['exact'] else ''}on {nl} lists")
-    order = sorted(lists, key=lambda s: (s.unit.code != 'tow ' and (s.unit.parent is None or
-                                                                     s.unit.parent.code != 'tow '),
-                                         s.unit.kind == 'charm'))      # the shield and its jewels first
+    # the bulk lines (mana, life, str/lvl, damage: totals fixed by the targets) go on the charms first, then the
+    # jewels, then the gear, like the clones (user: "build the bulk from mana% balanced with +223 mana lines" and
+    # "you're not adding bulk stats to jewels/charms"); a weapon switch keeps the mana on the shield and its jewels
+    # first (side B re-tunes the shield copy)
+    pref = sorted(lists, key=lambda s: {'charm': 0, 'jewel': 1}.get(s.unit.kind, 2))
+    order = pref if not o['switch'] else sorted(
+        lists, key=lambda s: (s.unit.code != 'tow ' and (s.unit.parent is None or s.unit.parent.code != 'tow '),
+                              s.unit.kind == 'charm'))      # the shield and its jewels first
     for s, v in zip(order, split(mana['flat'], 223)):
         s.add(9, v)
     for s, v in zip(order, split(mana['pct'], 53)):
@@ -1114,7 +1119,7 @@ def plan(preset='mock_high', name='Mock', **over):
     life = solve_life(o['life'], (1 << 21) - 1, oak_lo, oak_hi, nl, extra_pct=o['bo_pct'])
     if life is None:
         raise PlanError(f"life {o['life']} cannot be reached")
-    for s, v in zip(lists, split(life['flat'], 479)):
+    for s, v in zip(pref, split(life['flat'], 479)):
         s.add(7, v)
     # ---- aura levels
     plan_auras = [(OAK, life['oak'], 'cover', ('cover',))]
@@ -1173,7 +1178,7 @@ def plan(preset='mock_high', name='Mock', **over):
         sh.slots[2 + 3 * i].add(97, v, BATTLE_ORDERS)
 
     def free(sid):
-        return [s for s in lists if not s.has(sid)]
+        return [s for s in pref if not s.has(sid)]
 
     for s, v in zip(free(220), split(sm['str_points'], 63)):
         s.add(220, v)
