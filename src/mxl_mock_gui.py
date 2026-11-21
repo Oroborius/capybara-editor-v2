@@ -209,6 +209,12 @@ class MockPage:
         ttk.Combobox(o, textvariable=self.pos, values=list(M.POSITIONS), state='readonly', width=10).grid(
             row=i, column=1, sticky='ew', pady=1)
         i += 1
+        # TK31 mana by the expected enemy aura (high aura -> low mana, low -> high, none / PT -> 1572863)
+        ttk.Label(o, text=T('mock.o.enemy', 'Enemy aura')).grid(row=i, column=0, sticky='w')
+        self.enemy = tk.StringVar(value='preset')
+        ttk.Combobox(o, textvariable=self.enemy, values=['preset'] + list(M.ENEMY_AURA_MANA), state='readonly',
+                     width=10).grid(row=i, column=1, sticky='ew', pady=1)
+        i += 1
         ttk.Label(o, text=T('mock.o.stun', 'Stability <-> Stun')).grid(row=i, column=0, sticky='w')
         self.stun = tk.IntVar(value=-1)
         self.stun_lbl = ttk.Label(o, text=T('mock.o.stun_auto', 'preset'))
@@ -217,8 +223,9 @@ class MockPage:
         self.stun_scale = sc
         self.stun_lbl.grid(row=i + 1, column=1, sticky='w')
         i += 2
-        ttk.Label(o, text=T('mock.o.auras', 'Prayer 31 on every list, sources on the 40 charms; one Meditation '
-                                           '(highest without regen roll-over), one Thorns, Oak Sage on the rest.'),
+        ttk.Label(o, text=T('mock.o.auras', 'Prayer 31 on every list, sources on the 40 charms; Holy Freeze '
+                                           'sources on gear jewels; one Meditation (highest without regen '
+                                           'roll-over), one Thorns, Oak Sage on the rest; NV Dopplezon on a charm.'),
                   wraplength=250, justify='left').grid(row=i, column=0, columnspan=2, sticky='w', pady=(3, 0))
         self.result = tk.Text(f, width=36, height=5, wrap='word', relief='flat', borderwidth=1)
         self.result.grid(row=r, column=0, columnspan=2, sticky='ew', pady=(4, 0))
@@ -251,6 +258,8 @@ class MockPage:
             o['damage'] = min(o['damage'], int(M.DMG_CAP_PVP))
         o['cls'] = M.CLASSES.index(self.cls.get()) if self.cls.get() in M.CLASSES else 1
         o['position'] = self.pos.get() or None
+        if self.enemy.get() in M.ENEMY_AURA_MANA:
+            o['enemy_aura'] = self.enemy.get()
         if self.stun.get() >= 0:
             o['stun'] = self.stun.get()
         return o

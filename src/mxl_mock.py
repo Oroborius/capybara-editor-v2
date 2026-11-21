@@ -40,6 +40,7 @@ AURA_NAMES = {PRAYER: 'Prayer', HOLY_FIRE: 'Holy Fire', THORNS: 'Thorns', HOLY_F
 STACKING = {THORNS, MEDITATION, BARBS, OAK}
 
 SMITE, STUN, DELIRIUM, BATTLE_ORDERS = 97, 139, 350, 149
+DOPPLEZON = 63                      # NV state Dopplezon: item stat 98 (state), param 63, value 1 (reference clone-05)
 SOR_FIRST_SKILL = 36                # Sorceress class skills 36..65 (30 bytes of the 'if' section)
 TELEKINESIS, WARMTH, ENERGY_SHIELD = 43, 37, 58
 CLASS_FIRST_SKILL = (6, 36, 66, 96, 126, 221, 251)
@@ -63,11 +64,11 @@ SMITE_SLACK = 300
 VANILLA_ISC = {0: (8, 32, 0), 1: (7, 32, 0), 2: (7, 32, 0), 3: (7, 32, 0), 7: (9, 32, 0), 9: (8, 32, 0),
                21: (6, 0, 0), 22: (7, 0, 0), 27: (8, 0, 0), 34: (6, 0, 0), 36: (8, 0, 0), 39: (8, 50, 0),
                41: (8, 50, 0), 43: (8, 50, 0), 45: (8, 50, 0), 76: (6, 10, 0), 77: (6, 10, 0), 93: (7, 20, 0),
-               97: (6, 0, 9), 99: (7, 20, 0), 107: (3, 0, 9), 111: (9, 20, 0), 114: (6, 0, 0), 135: (7, 0, 0),
-               136: (7, 0, 0), 142: (7, 0, 0), 144: (7, 0, 0), 148: (7, 0, 0), 151: (5, 0, 9), 195: (7, 0, 16),
-               198: (7, 0, 16), 220: (6, 0, 0), 230: (6, 0, 0), 231: (6, 0, 0), 232: (6, 0, 0), 233: (6, 0, 0),
-               234: (6, 0, 0), 235: (6, 0, 0), 236: (6, 0, 0), 329: (9, 50, 0), 330: (9, 50, 0),
-               331: (9, 50, 0)}
+               97: (6, 0, 9), 98: (1, 0, 8), 99: (7, 20, 0), 107: (3, 0, 9), 111: (9, 20, 0), 114: (6, 0, 0),
+               135: (7, 0, 0), 136: (7, 0, 0), 142: (7, 0, 0), 144: (7, 0, 0), 148: (7, 0, 0), 151: (5, 0, 9),
+               194: (4, 0, 0), 195: (7, 0, 16), 198: (7, 0, 16), 220: (6, 0, 0), 230: (6, 0, 0), 231: (6, 0, 0),
+               232: (6, 0, 0), 233: (6, 0, 0), 234: (6, 0, 0), 235: (6, 0, 0), 236: (6, 0, 0), 329: (9, 50, 0),
+               330: (9, 50, 0), 331: (9, 50, 0)}
 GROUPS = {17: (18,), 48: (49,), 50: (51,), 52: (53,), 54: (55, 56), 57: (58, 59)}   # written as one line
 PER_LEVEL = {216, 217, 220, 221, 222, 223, 224, 230, 231, 232, 233, 234, 235, 236, 238}   # value x clvl / 8
 
@@ -411,6 +412,7 @@ def model_from_character(ch, size=None):
 
     set_ids = {'A': set(), 'B': set(), None: set()}
     shields = {}
+    excess = 0
     for e in ch.items:
         it = e.it
         code = it.get('code', '')
@@ -422,14 +424,17 @@ def model_from_character(ch, size=None):
                 set_ids[side].add(it.get('set_unique_id'))
             if it.get('equipped') in (4, 5, 11, 12) and code in SHIELD_DMG:
                 shields[side] = code
-            for j, s in enumerate(it.get('socketed') or []):
+            kids = it.get('socketed') or []
+            cap = (it.get('sockets') or 0) + sum(s['value'] for s in it.get('stats', []) if s['id'] == 194)
+            excess += max(0, len(kids) - cap)
+            for j, s in enumerate(kids[:cap]):          # the game drops children beyond the socket count
                 units.append(Unit('jewel', f'{nm}/{j}', lists_of(s), side))
         elif it.get('location') == 0 and it.get('panel') == 1 and code in CHARMS:
             units.append(Unit('charm', f"{code.strip()}@{it.get('x')},{it.get('y')}", lists_of(it)))
     return dict(name=ch.name, cls=cls, level=st.get(12, 0), active_weapon=struct.unpack_from('<I', head, 0x10)[0],
                 base_str=st.get(0, 0), base_ene=st.get(1, 0), base_vit=st.get(3, 0),
                 base_mana_raw=st.get(9, 0), base_life_raw=st.get(7, 0), skills=sk, units=units, set_ids=set_ids,
-                shields=shields, size=size if size is not None else len(ch.raw))
+                shields=shields, size=size if size is not None else len(ch.raw), excess_jewels=excess)
 
 
 def wrap32(x):
@@ -652,6 +657,15 @@ def analyze(model, side=None):
         add('delirium', 'Delirium attack reset', ', '.join(f"{'att' if k == 195 else 'hit'} {c}% L{l}"
                                                             for k, l, c in deli),
             GOOD if len(deli) >= 2 and len(lv) >= 2 else WARN)
+    dz = sum(1 for u in t['units'] for sid, p, x in u.lines() if sid == 98 and p == DOPPLEZON and x)
+    v['dopplezon'] = dz
+    add('dopplezon', 'NV state Dopplezon (state 63)', f'{dz} line(s)' if dz else 'missing (needed with the '
+        'Delirium attack reset)', GOOD if dz else WARN)
+    ex = model.get('excess_jewels', 0)
+    v['excess_jewels'] = ex
+    if ex:
+        add('sockets', 'Socketed jewels', f'{ex} jewel(s) beyond the socket count (save field + item_numsockets): '
+            'the game drops them, their stats are not counted', BAD)
     add('lists', 'Stat lists', str(t['lists']), GOOD if t['lists'] <= 198 else WARN)
     add('size', 'File size', f"{model['size']} bytes", GOOD if model['size'] < FILE_LIMIT else BAD)
     return dict(values=v, checks=C)
@@ -680,11 +694,12 @@ PRESETS = {
                      res=30000, note='TK31 "1.31" mana (off-screen 4194288), +res'),
     'mock_low': dict(label='Mock Low', tk=31, mana=1211974, hf_sources=7, hf_level=3000, thorns=3981, res=30000,
                      note='TK31 low mana 1.21M, +res'),
-    'prayer_thorner': dict(label='Prayer/Thorner', tk=31, mana=1572500, hf_sources=0, hf_level=0, thorns=3981,
-                           barbs=3100, note='P/T: Thorns 3981 + Barbs 3100 (capped return), no holy aura, max absorb'),
-    'aura_killer': dict(label='Aura Killer', tk=31, mana=1310719, hf_sources=27, hf_level=3000, hf_cap=True,
-                        thorns=3981, res=30000, note='27 Holy Freeze sources (7 jewels + 20 charms) at the '
-                                                     'per-source cap, fewer Prayer sources'),
+    'prayer_thorner': dict(label='Prayer/Thorner', tk=31, mana=1572863, hf_sources=0, hf_level=0, thorns=3981,
+                           barbs=3100, note='P/T: 1572863 (the PT mana: no enemy aura), Thorns 3981 + Barbs 3100 '
+                                            '(capped return), no holy aura, max absorb'),
+    'aura_killer': dict(label='Aura Killer', tk=31, mana=1211974, hf_sources=28, hf_level=3000, hf_cap=True,
+                        thorns=3981, res=30000, note='reference clone-05 layout: 28 Holy Freeze sources on gear '
+                                                     'jewels at ~8.32M per source, all 40 charms Prayer'),
     'funky': dict(label='Funky (TK30)', tk=30, mana=1048576, exact=True, hf_sources=7, hf_level=3000,
                   thorns=3981, stun=100, note='perfect funky: exactly 1048576.000 at TK30 (q even: stable)'),
     'funky28': dict(label='Funky TK28', tk=28, mana=2097152, exact=True, hf_sources=7, hf_level=3000, thorns=3981,
@@ -697,12 +712,15 @@ PRESETS = {
     'balance_switch': dict(label='Balance switch', tk=31, mana=1572500, mana_b=1211974, hf_sources=7,
                            hf_level=3000, thorns=3981, switch='balance',
                            note='side A High 1.5725M (stun shield), weapon switch to side B Low 1.21M (no stun)'),
-    'mana_lock': dict(label='Mana lock', tk=30, mana=1048576, exact=True, hf_sources=7, hf_level=3000,
-                      thorns=3981, switch='lock', note='TK30: side A just below the funky zero, weapon switch '
-                                                       '(+1 mana line) to side B exactly 1048576'),
 }
 PRESET_ORDER = ('mock_high', 'mock_mid', 'mock_low', 'prayer_thorner', 'aura_killer', 'funky', 'funky28',
-                'funky26', 'funky24', 'balance_switch', 'mana_lock')
+                'funky26', 'funky24', 'balance_switch')
+# user (2026-11-20): TK31 mocks sit between 1.21M and 1.57M; the mana is picked by the enemy's aura: high aura ->
+# low mana, low aura -> high mana (to push the enemy's mana to the zero), no aura (a PT, not PTA) -> 1572863
+ENEMY_AURA_MANA = {'none': 1572863, 'low': 1572500, 'mid': 1310719, 'high': 1211974}
+TK31_RANGE = (1210000, 1572863)
+# reference clone-05 / clone-41: Holy Freeze ~8.31-8.32M PvM per source (never at the roll point itself)
+HF_SOURCE_TARGET = 8320000
 POSITIONS = {'Host': dict(dtm=500, stun=0), 'HPJ': dict(dtm=420, stun=11), 'LPJ': dict(dtm=330, stun=11)}
 DEFAULTS = dict(cls=1, level=99, position='LPJ', life=7300000, damage=Fraction(SMITE_TARGET) * PVP / 2,
                 abs_budget=8150)
@@ -713,6 +731,10 @@ GEAR = (('helm', 1, 'ghm ', 36, True), ('armor', 3, 'gth ', 37, True), ('shield'
         ('gloves', 10, 'hgl ', 35, False), ('boots', 9, 'hbt ', 38, False), ('belt', 8, 'hbl ', 39, False))
 WEAPON = ('weapon', 4, 'crs ', 36, True)
 SOCKET_FIELD = {'ghm ': 2, 'gth ': 3, 'tow ': 3, 'crs ': 6}
+# the game only keeps as many socketed children as the item has sockets: the save field PLUS item_numsockets (194)
+# lines. Every reference mock writes 194 = 8 on the first list of each socketed item (amulet / rings: field 0-1);
+# without it the 7 jewels of the amulet / rings (and 4-5 of helm / armor / shield) were lost in game.
+SOCKET_STAT = 8
 JEWELS = 7
 CHARM_COUNT = 40
 AURA_LINE_MAX = 31
@@ -882,6 +904,12 @@ def options(preset='mock_high', **over):
     o['level'] = max(99, min(127, int(o['level'])))
     o['tk'] = max(0, min(99, int(o['tk'])))
     o['cls'] = int(o['cls'])
+    ea = o.get('enemy_aura')
+    if ea:
+        if ea not in ENEMY_AURA_MANA:
+            raise PlanError(f'enemy aura {ea!r}: one of {", ".join(ENEMY_AURA_MANA)}')
+        if o['tk'] >= 31 and not o['exact']:
+            o['mana'] = ENEMY_AURA_MANA[ea]
     w = (1 << 19) * max(32 - o['tk'], 1)
     if Fraction(o['mana']).denominator == 1 and o['mana'] % w == 0 and (o['mana'] // w) % 2 == 1:
         o['exact'] = True                                   # a funky zero needs the exact product
@@ -905,6 +933,16 @@ def plan(preset='mock_high', name='Mock', **over):
     """The whole character as data: units with their stat lists, header values, targets and the expected
     analyzer results. Raises PlanError when a target cannot be hit on the list budget."""
     o = options(preset, **over)
+    if not o['exact']:
+        for key in ('mana', 'mana_b'):
+            m = o.get(key)
+            if m is None:
+                continue
+            if o['tk'] >= 31 and not TK31_RANGE[0] <= m <= TK31_RANGE[1]:
+                raise PlanError(f'{key} {m}: TK31 mocks sit in {TK31_RANGE[0]}-{TK31_RANGE[1]}')
+            if o['tk'] == 30 and m < 2097153:
+                raise PlanError(f'{key} {m}: at TK30 skip the first negative band (the rolling zero 1048576 is '
+                                'a protective barrier): use 2097153-3145727')
     rng = random.Random(f'{name}/{preset}/{sorted((k, str(v)) for k, v in o.items())}')
     units = []
     gear = list(GEAR) + ([WEAPON] if o['weapon'] else [])
@@ -920,10 +958,13 @@ def plan(preset='mock_high', name='Mock', **over):
     # ---- aura roles: Holy Freeze sources on the shield's jewels (then charms), one Meditation, one Thorns,
     # one Barbs source; every other gear item / jewel is an Oak Sage "cover" (stacking: one aura)
     H = max(0, int(o['hf_sources'])) if o['hf_level'] else 0
-    for j in range(min(H, JEWELS)):
-        U[f'shield/{j}'].role = 'hf'
-    for c in charms[:max(0, H - JEWELS)]:
-        c.role = 'hf'
+    # Holy Freeze sources on gear jewels (shield first), like the reference clone-05; charms stay Prayer
+    hf_jewels = [u for r in ('shield', 'helm', 'armor', 'amulet', 'ring1', 'ring2', 'weapon')
+                 for u in units if u.kind == 'jewel' and u.parent.name == r]
+    if H > len(hf_jewels):
+        raise PlanError(f'{H} Holy Freeze sources: at most {len(hf_jewels)} (gear jewels; charms stay Prayer)')
+    for u in hf_jewels[:H]:
+        u.role = 'hf'
     U['gloves'].role = 'med'
     U['boots'].role = 'thorns'
     if o['barbs']:
@@ -967,8 +1008,8 @@ def plan(preset='mock_high', name='Mock', **over):
         plan_auras.append((HOLY_FREEZE, int(o['hf_level']), 'hf', ('hf', 'med', 'barbs', 'cover')))
         if o['hf_cap']:
             base = Fraction(holy_freeze_dmg(int(o['hf_level']), True))
-            hf_mast = max(0, math.floor((Fraction(ROLL) / base - 1) * 100))
-            while base * (100 + hf_mast) / 100 > ROLL:
+            hf_mast = max(0, math.floor((Fraction(HF_SOURCE_TARGET) / base - 1) * 100))
+            while base * (100 + hf_mast) / 100 > HF_SOURCE_TARGET:
                 hf_mast -= 1
     if o['thorns']:
         plan_auras.append((THORNS, int(o['thorns']), 'thorns', ('thorns', 'hf', 'med', 'barbs', 'cover')))
@@ -1032,6 +1073,8 @@ def plan(preset='mock_high', name='Mock', **over):
         s.add(sid, v)
     for s in lists:
         s.add(34, 63)
+    # ---- NV state Dopplezon (state 63) on one charm: with the Delirium reset it steadies and speeds the attack
+    charms[0].slots[0].add(98, 1, DOPPLEZON)
     # ---- resist by level (+res presets) up to the off-screen resist target
     if o['res']:
         per = 63 * o['level'] // 8
@@ -1063,50 +1106,42 @@ def _switch(P):
         for s, cs in zip(u.slots, c.slots):
             cs.lines = list(s.lines)
     cl = [s for u in copies for s in u.slots]
-    if o['switch'] == 'lock':
-        # side A one mana below side B on the shield; the swap copy keeps the solved (funky) value
-        s = next(x for x in sh.slots if x.has(9))
-        s.lines = [(a, p, v - 1 if a == 9 and k == 0 else v)
-                   for k, (a, p, v) in enumerate(sorted(s.lines, key=lambda x: x[0] != 9))]
-        P['side_a_mana'] = (P['mana']['mana'] * 25600 - 256 * (100 + P['mana']['pct'])) / 25600
-        P['side_b'] = dict(mana=P['mana']['mana'])
-    else:
-        # side B: other +mana / mana% on the copy (its 20 lists) so floor(mana B) == mana_b; no stun lines
-        for s in cl:
-            s.lines = [x for x in s.lines if not (x[0] in (195, 198) and x[1] >> 6 == STUN)]
-        Fs = sum(v for s in cl for a, p, v in s.lines if a == 9)
-        Ps = sum(v for s in cl for a, p, v in s.lines if a == 77)
-        m = P['mana']
-        X0 = m['base_raw'] + 256 * (m['flat'] - Fs + SET_BONUS)
-        P0 = m['pct'] - Ps
-        tgt = Fraction(o['mana_b'])
-        best = None
-        for Pb in range(-10 * len(cl), 53 * len(cl) + 1):
-            mult = 100 + P0 + Pb
-            if mult <= 0:
-                continue
-            need = math.ceil(25600 * tgt / mult) - X0
-            Fb = max(0, -(-need // 256))
-            if Fb > 223 * len(cl):
-                continue
-            mb = Fraction((X0 + 256 * Fb) * mult, 25600)
-            if math.floor(mb) != tgt:
-                continue
-            key = -(-Fb // 223) * 17 + -(-abs(Pb) // (53 if Pb >= 0 else 10)) * 15
-            if best is None or key < best[0]:
-                best = (key, Fb, Pb, mb)
-        if best is None:
-            raise PlanError(f"side B mana {o['mana_b']} cannot be hit on the switch shield")
-        _, Fb, Pb, mb = best
-        for s in cl:
-            s.lines = [x for x in s.lines if x[0] not in (9, 77)]
-        for s, v in zip(cl, split(Fb, 223)):
-            s.lines.append((9, None, v))
-        vals = split(Pb, 53) if Pb >= 0 else [-x for x in split(-Pb, 10)]
-        for s, v in zip(cl, vals):
-            s.lines.append((77, None, v))
-        P['side_b'] = dict(mana=mb)
-        P['side_a_mana'] = P['mana']['mana']
+    # side B: other +mana / mana% on the copy (its 20 lists) so floor(mana B) == mana_b; no stun lines
+    for s in cl:
+        s.lines = [x for x in s.lines if not (x[0] in (195, 198) and x[1] >> 6 == STUN)]
+    Fs = sum(v for s in cl for a, p, v in s.lines if a == 9)
+    Ps = sum(v for s in cl for a, p, v in s.lines if a == 77)
+    m = P['mana']
+    X0 = m['base_raw'] + 256 * (m['flat'] - Fs + SET_BONUS)
+    P0 = m['pct'] - Ps
+    tgt = Fraction(o['mana_b'])
+    best = None
+    for Pb in range(-10 * len(cl), 53 * len(cl) + 1):
+        mult = 100 + P0 + Pb
+        if mult <= 0:
+            continue
+        need = math.ceil(25600 * tgt / mult) - X0
+        Fb = max(0, -(-need // 256))
+        if Fb > 223 * len(cl):
+            continue
+        mb = Fraction((X0 + 256 * Fb) * mult, 25600)
+        if math.floor(mb) != tgt:
+            continue
+        key = -(-Fb // 223) * 17 + -(-abs(Pb) // (53 if Pb >= 0 else 10)) * 15
+        if best is None or key < best[0]:
+            best = (key, Fb, Pb, mb)
+    if best is None:
+        raise PlanError(f"side B mana {o['mana_b']} cannot be hit on the switch shield")
+    _, Fb, Pb, mb = best
+    for s in cl:
+        s.lines = [x for x in s.lines if x[0] not in (9, 77)]
+    for s, v in zip(cl, split(Fb, 223)):
+        s.lines.append((9, None, v))
+    vals = split(Pb, 53) if Pb >= 0 else [-x for x in split(-Pb, 10)]
+    for s, v in zip(cl, vals):
+        s.lines.append((77, None, v))
+    P['side_b'] = dict(mana=mb)
+    P['side_a_mana'] = P['mana']['mana']
     P['units'] += copies
 
 
@@ -1192,7 +1227,8 @@ def _item_records(P):
         rec = dict(flags=f, version=ITEM_VERSION, location=1, equipped=u.body, x=0, y=0, panel=0, code=u.code,
                    socketed_count=len(kids), id=rng.getrandbits(32), ilvl=90, quality=5, image=None,
                    auto_affix=None, set_unique_id=u.set_id, realm_bit=0, defense_raw=10, max_durability=0,
-                   sockets=SOCKET_FIELD.get(u.code, 0), set_mask=31, lists=[u.slots[0].lines],
+                   sockets=SOCKET_FIELD.get(u.code, 0), set_mask=31,
+                   lists=[([(194, None, SOCKET_STAT)] if kids else []) + u.slots[0].lines],
                    set_lists=[s.lines for s in u.slots[1:6]])
         grp = [rec]
         for j, k in enumerate(kids):
@@ -1243,7 +1279,7 @@ def expected(P):
     """What the analyzer should report for the generated file (the plan's targets)."""
     o = P['o']
     mana = P.get('side_a_mana', P['mana']['mana'])
-    return dict(mana=mana, exact=o['exact'] and o['switch'] != 'lock',
+    return dict(mana=mana, exact=o['exact'],
                 tk=o['tk'], regen=P['regen']['total'], regen_cap=regen_cap(mana), life=P['life']['life'],
                 smite_max=P['smite']['max'], pvm=P['pvm'], sources=dict(P['expect_sources']),
                 side_b=P.get('side_b'), stun=P['stun'])
