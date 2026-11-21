@@ -248,9 +248,12 @@ class SummaryPanel:
             n = sum(1 for r in rows if r[0] == sec)
             heads[sec] = t.insert('', 'end', text=T(f'mock.sec.{sec}', sec), values=(f'{n}',), open=True,
                                   tags=('section',))
-        for sec, label, text, st in rows:
+        for r in rows:
+            sec, label, text, st = r[:4]
             mark = {M.GOOD: '✔ ', M.WARN: '! ', M.BAD: '✖ '}.get(st, '  ')
-            t.insert(heads[sec], 'end', text=mark + label, values=(text,), tags=(st,))
+            i = t.insert(heads[sec], 'end', text=mark + label, values=(text,), tags=(st,))
+            for g, names in (r[4] if len(r) > 4 else ()):      # every active source, by item (folded)
+                t.insert(i, 'end', text='   ' + g, values=(names,))
         if self.on_change:
             self.on_change(self.side.get(), self.bo.get())
         return rows
@@ -325,6 +328,7 @@ class MockPage:
         gnb = self.groups = ttk.Notebook(left, style='Mock.TNotebook')
         gnb.grid(row=5, column=0, columnspan=3, sticky='nsew', pady=(2, 0))
         self.ov, self.pre, self.err, self.src = {}, {}, {}, {}
+        self.touched, self._filling = set(), False        # the fields the user changed (the rest stay solved)
         self.field_tab = {}
         bg = _bg(left)
         for gi, (group, fields) in enumerate(M.FIELDS):
@@ -352,6 +356,7 @@ class MockPage:
                 e.grid(row=i, column=2, sticky='w')
                 self.ov[k], self.err[k] = v, e
                 self.field_tab[k] = gi
+                v.trace_add('write', lambda *_a, k=k: self._touch(k))
         self.summary = SummaryPanel(right, title=T('mock.sum.plan', 'Summary of the plan'))
         self.summary.frame.pack(fill='both', expand=True)
         self._preset_changed()
@@ -368,6 +373,19 @@ class MockPage:
             self.name.set(self._auto_name)
         self.reset_fields()
 
+    def _touch(self, k):
+        if not self._filling:
+            self.touched.add(k)
+
+    def _fill(self, values, keys):
+        self._filling = True
+        try:
+            for key in keys:
+                v = self.ov[key]
+                v.set(values[key] if isinstance(v, tk.BooleanVar) else str(values[key]))
+        finally:
+            self._filling = False
+
     def reset_fields(self):
         """Every field back to the preset's values (then a Check)."""
         try:
@@ -375,12 +393,13 @@ class MockPage:
         except M.PlanError as e:
             self._show_errors({'': str(e)})
             return
-        for key, v in self.ov.items():
-            v.set(self.pre[key] if isinstance(v, tk.BooleanVar) else str(self.pre[key]))
+        self.touched.clear()
+        self._fill(self.pre, self.ov)
         self.check()
 
     def form(self):
-        return {k: v.get() for k, v in self.ov.items()}
+        """The fields the user changed (the others are solved by the plan and repainted after a Check)."""
+        return {k: v.get() for k, v in self.ov.items() if k in self.touched}
 
     def _show_errors(self, errs):
         for k, e in self.err.items():
@@ -403,6 +422,11 @@ class MockPage:
         if errs:
             return None
         self.over = over
+        if over:                    # the solved fields follow the edits (Meditation / Oak after a mana change ...)
+            try:
+                self._fill(M.prefill(self.key(), **over), [k for k in self.ov if k not in self.touched])
+            except M.PlanError:
+                pass
         for k, n in M.sources_of(P).items():               # the source count next to each aura field
             if not self.err[k].cget('text'):
                 self.err[k].configure(text=T('mock.src', '{n} source(s)', n=n), foreground='')

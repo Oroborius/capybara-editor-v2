@@ -1091,6 +1091,11 @@ def _damage_from_slider(s, target):
     return target - (target - lo) * (s - 30) / 70
 
 
+# stats the proven clones keep on a gear item's own (magic) list or on a charm, never on a set list or a jewel
+# (where.py survey of 29 clones: OW / CB / DS, DR%, absorb %, curse res, dodge, CBF, ITD, NV IAS 100% there; IAS,
+# FRW, FHR, target defense mostly there); the user: "some stats do not function on set or runeword lists"
+MAGIC_ONLY = {93, 96, 99, 105, 67, 68, 109, 116, 135, 136, 141, 35, 36, 142, 143, 144, 145, 146, 147, 148, 149, 338,
+              339, 340, 153, 115, 238, 39, 41, 43, 45}
 _AURA_KEY = {OAK: 'oak', BARBS: 'barbs', MEDITATION: 'med', HOLY_FREEZE: 'hf_level', THORNS: 'thorns'}
 
 
@@ -1254,9 +1259,12 @@ def plan(preset='mock_high', name='Mock', **over):
         return [s for s in pref if s.ok(sid, param)]
 
     def put(sid, values, param=None, gear_first=True):
-        """values over the lists without that line, the least full first (gear and jewels before charms)."""
+        """values over the lists without that line, the least full first (gear and jewels before charms); the
+        clones' one-line stats (MAGIC_ONLY) only on a gear item's own (magic) list or a charm."""
         for v in values:
             c = free(sid, param)
+            if sid in MAGIC_ONLY:
+                c = [x for x in c if x.unit.kind == 'charm' or x.unit.kind == 'gear' and x.idx == 0]
             if not c:
                 raise PlanError(f'stat {sid}: no list with room ({LINE_CAP} lines each)')
             c.sort(key=lambda x: ((x.unit.kind == 'charm') if gear_first else 0, x.count()))
@@ -1671,6 +1679,23 @@ def profile_missing(model, role, side=None):
     return [k for k in CLONE_PROFILE[role]['always'] if not ct.get(k, (0, 0))[1]]
 
 
+def source_groups(names):
+    """Source unit names grouped by item: [(item, short text, [every unit name])]; the charms as one group."""
+    out = {}
+    for nm in names:
+        g = 'charms' if nm.startswith('cm') else nm.split('/')[0]
+        out.setdefault(g, []).append(nm)
+    res = []
+    for g, L in out.items():
+        if g == 'charms':
+            res.append((f'{len(L)} charm(s)', '', L))
+            continue
+        jw = [x for x in L if '/' in x]
+        txt = ('(item' + (f' + {len(jw)} jewel(s))' if jw else ')')) if g in L else f'({len(jw)} jewel(s))'
+        res.append((g, txt, L))
+    return res
+
+
 def summary_rows(model, side=None, bo=False, role=None):
     """The summary panel: [(section, label, text, status)] for one weapon side (only its active items count):
     caps (mana band, off-screen, regen, smite, aura damage, size, lines), every active aura with its level and
@@ -1686,10 +1711,11 @@ def summary_rows(model, side=None, bo=False, role=None):
             rows.append(('Caps', lab, txt, st))
     for aid in sorted(set(t['aura_lv']) | set(t['sources'])):
         n = sum(t['sources'].get(aid, {}).values())
-        names = t['source_units'].get(aid, [])
+        groups = source_groups(t['source_units'].get(aid, []))
         rows.append(('Auras', AURA_NAMES.get(aid, str(aid)), f"level {t['aura_lv'].get(aid, 0)}, {n} source(s)"
-                     + (': ' + ', '.join(names[:12]) + (' ...' if len(names) > 12 else '') if names else
-                        ' (passive levels only)'), status.get(f'aura_{aid}', (0, 0, INFO))[2] if n else INFO))
+                     + (': ' + ', '.join(f'{g} {d}'.strip() for g, d, _ in groups) if groups else
+                        ' (passive levels only)'), status.get(f'aura_{aid}', (0, 0, INFO))[2] if n else INFO,
+                     tuple((g, ', '.join(x)) for g, _, x in groups)))
     lvl = model['level']
     ct = category_totals(model, side)
     for cat, items in CATEGORIES:

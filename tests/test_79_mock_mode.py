@@ -575,7 +575,8 @@ def plan_model_matches_the_written_save():
     T.check({'Caps', 'Auras', 'Defenses', 'Speeds', 'Damage', 'Life / mana', 'Clone profile'} <= sect,
             f'summary sections {sorted(sect)}')
     hf = next(r for r in rows if r[0] == 'Auras' and r[1] == 'Holy Freeze')
-    T.check('7 source(s)' in hf[2] and 'tow@5/0' in hf[2], f'Holy Freeze row lists its sources: {hf[2]}')
+    T.check('7 source(s)' in hf[2] and 'tow@5 (7 jewel(s))' in hf[2], f'Holy Freeze row groups its sources: {hf[2]}')
+    T.eq(hf[4], (('tow@5', ', '.join(f'tow@5/{j}' for j in range(7))),), 'every active source listed')
 
 
 @T.test

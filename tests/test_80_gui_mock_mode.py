@@ -125,6 +125,10 @@ def toggle_tab_analyzer_generator_crafter():
     T.eq(page.over, {'ias': -121}, 'only the edited field is passed on')
     T.check(any(r[1] == 'IAS' and r[2].startswith('-121') for r in _rows(page.summary.tree)), 'IAS -121 in the summary')
     # a bad value: the message sits next to its field, nothing is generated
+    page.ov['position'].set('Host')                     # a solved field follows the edit (DTM 500 on a Host)
+    T.check(page.check() is not None, 'Check with Host')
+    T.eq((page.ov['dtm'].get(), page.ov['ias'].get()), ('500', '-121'), 'DTM re-solved, the edited IAS kept')
+    page.ov['position'].set('LPJ')
     page.ov['level'].set('140')
     T.check(page.check() is None, 'level 140 refused')
     T.check('99-127' in page.err['level'].cget('text'), f"message next to the field: {page.err['level'].cget('text')}")
