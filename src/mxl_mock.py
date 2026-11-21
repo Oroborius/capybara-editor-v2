@@ -53,10 +53,9 @@ SHIELD_DMG = {'buc ': (1, 3), 'sml ': (2, 3), 'lrg ': (2, 4), 'kit ': (2, 5), 't
               'uit ': (12, 34), 'uow ': (18, 28), 'uts ': (11, 35), 'ush ': (24, 38), 'upk ': (26, 40),
               'pa6 ': (12, 16), 'pa7 ': (15, 20), 'pa8 ': (18, 24), 'pa9 ': (20, 28), 'paa ': (24, 32),
               'pab ': (22, 70), 'pac ': (35, 58), 'pad ': (10, 82), 'pae ': (46, 46), 'paf ': (5, 87)}
-# the smite formula's rounding is unverified [U]: the doc's capped recipe (S6: 45 x str/lvl + 22580 flat, "8388470")
-# comes out 88 over the roll here, so the generator aims at 8388470 and the analyzer warns (not fails) up to
-# SMITE_SLACK over 8388607
-SMITE_TARGET = 8388470
+# user (2026-11-20): the smite cap is 8388607 before any penalty / reduction; the generator aims at it (never over)
+# and the analyzer warns (not fails) up to SMITE_SLACK over it, since the in-game rounding is unverified
+SMITE_TARGET = ROLL
 SMITE_SLACK = 300
 
 # vanilla 1.10-1.14d item save widths (ItemStatCost: save bits, save add, save param bits) of the stats the
