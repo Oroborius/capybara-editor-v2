@@ -2,7 +2,11 @@
 personal stash (panel 5), Horadric Cube (panel 4) and belt (location 2), in the game's grid sizes from the
 profile's inventory.bin (stash 6 x 8 in LoD 1.10-1.14d, 6 x 4 for a classic character; cube 3 x 4) and belts.bin
 (rows of the equipped belt). Shown, not edited: hovering an item shows it in the preview panel. Median XL keeps
-its own stash files: install() registers nothing there."""
+its own stash files: install() registers nothing there.
+
+Also in folder profiles only: the main window's stash pane shows the same personal stash (read-only, no page
+tabs, no shared stash: the game has neither), and the item stats count the runeword list of socketed jewels
+(the game adds both lists of a jewel to its parent)."""
 import tkinter as tk
 from tkinter import ttk
 
@@ -151,6 +155,180 @@ def install():
         mxl_inv_gui.D2 = _NoSigma(mxl_inv_gui.D2)
     except Exception as err:
         print('vanilla inventory panel:', err)
+    try:
+        install_sockets()
+    except Exception as err:
+        print('vanilla socket stats:', err)
+    try:
+        import mxl_gui
+        install_main(mxl_gui.App)
+    except Exception as err:
+        print('vanilla main stash:', err)
+
+
+# ---------------------------------------------------------------------------------------- socketed jewels
+def install_sockets():
+    """mxl_stat_text.socket_contents gave a socketed jewel's magic list only; a vanilla (mock) jewel often carries
+    a runeword list too, which the game adds to the parent as well. One entry per child (mxl_edit's owners)."""
+    import mxl_stat_text
+    orig = mxl_stat_text.socket_contents
+    if getattr(orig, '_capy_rw', False):
+        return
+
+    def socket_contents(it, data):
+        out = orig(it, data)
+        res = []
+        for sub, src, stats in out:
+            rw = sub.get('stats_runeword') if src == 'J' else None
+            res.append((sub, src, list(stats) + list(rw)) if rw else (sub, src, stats))
+        return res
+    socket_contents._capy_rw = True
+    mxl_stat_text.socket_contents = socket_contents
+    import mxl_tooltip
+    if getattr(mxl_tooltip, 'socket_contents', None) is orig:
+        mxl_tooltip.socket_contents = socket_contents
+
+
+# ---------------------------------------------------------------------------------------- main window stash pane
+def stash_view(ch, data):
+    """(cols, rows, [item dict]) of the character's personal stash for the main window's grid: copies with
+    page 0 (the collector's grid draws one page); items outside the grid are left out (the Character window's
+    page lists them)."""
+    _k, _t, cols, rows, entries = containers(ch, data)[0]
+    items = []
+    for e in entries:
+        it = e.it
+        try:
+            w, h = data.base(it['code']).size
+        except Exception:
+            w, h = 1, 1
+        x, y = it.get('x', 0), it.get('y', 0)
+        if 0 <= x and 0 <= y and x + w <= cols and y + h <= rows:
+            items.append(dict(it, page=0))
+    return cols, rows, items
+
+
+def install_main(App):
+    """The main window's stash pane in a folder profile: the character file's own stash (panel 5) in the game's
+    grid (6 x 8, classic 6 x 4), no page tabs and no Character / Shared buttons, no '.stash not found'. Read-only:
+    app.path stays None, so every stash writer of the editor (moves, menus, undo, drops) finds no stash file;
+    clicking an item shows it in the detail panel."""
+    import os
+    import mxl_gui
+    import mxl_profile
+    g = (mxl_profile.active() or {}).get('grids') or {}
+    mxl_gui.COLS, mxl_gui.ROWS = g.get('stash') or (6, 8)
+    mxl_gui.NB_PAGES = 1
+    o_build, o_click, o_status, o_watch = App._build, App.on_click, App.show_status, App.watch_files
+
+    def _build(self):
+        o_build(self)
+        try:
+            self.notebook.master.pack_forget()        # page tabs 1..10 and Character / Shared stash
+            self.van_title = ttk.Label(self.canvas.master, text='')
+            self.van_title.pack(side='top', anchor='w', before=self.canvas)
+        except Exception as err:
+            print('vanilla main stash:', err)
+
+    def open_view(self, keep_page=False):
+        cf = self.character_file()
+        if not cf:
+            return
+        try:
+            mxl_gui.settings.put('last_character', self.char_combo.get())
+        except Exception:
+            pass
+        old = self.selected
+        self.path, self.char_file = None, cf
+        self.van_sig = mxl_gui.file_signature(cf)
+        items, err, cols, rows = [], None, mxl_gui.COLS, mxl_gui.ROWS
+        if os.path.exists(cf):
+            try:
+                import mxl_char
+                cols, rows, items = stash_view(mxl_char.Character(cf, self.data), self.data)
+            except Exception as e:
+                err = f'{type(e).__name__}: {e}'
+            try:
+                self.char, self.char_error = mxl_gui.load_character(cf, self.data), None
+            except Exception as e:
+                self.char, self.char_error = None, f'{type(e).__name__}: {e}'
+        else:
+            self.char, self.char_error = None, None
+        self.van_error = err
+        self.icons.clear()
+        self.items = items
+        self.selected = None
+        if keep_page and old is not None:
+            self.selected = next((i for i in items if (i['x'], i['y'], i['code']) ==
+                                  (old.get('x'), old.get('y'), old.get('code'))), None)
+        if (cols, rows) != (mxl_gui.COLS, mxl_gui.ROWS):
+            mxl_gui.COLS, mxl_gui.ROWS = cols, rows
+            fit = getattr(self, 'fit', None)
+            try:
+                if fit is not None:
+                    fit.plan = None
+                    fit.update()
+                else:
+                    self.canvas.configure(width=cols * self.cell + 1, height=rows * self.cell + 1)
+            except Exception:
+                pass
+        try:
+            self.van_title.configure(text=T('van.main_stash', 'Stash ({cols} x {rows}) - shown, not edited here',
+                                            cols=cols, rows=rows))
+        except Exception:
+            pass
+        self.root.title(mxl_gui.tr('app.title_file', file=os.path.basename(cf)))
+        self.draw_grid()
+        self.set_detail(self.selected)
+        self.show_status()
+
+    def show_status(self):
+        if self.path or not self.char_file:
+            return o_status(self)
+        try:
+            self.count_total.configure(text=mxl_gui.tr('count.stash', n=len(self.items)))
+            self.count_page.configure(text='')
+            ch = self.char
+            txt = None
+            try:
+                import mxl_status_attr
+                txt = mxl_status_attr.status_text(self)
+            except Exception:
+                pass
+            if not txt and ch:
+                txt = mxl_gui.tr('status.char', name=ch['name'], cls=mxl_gui.CLASSES[ch['cls']], level=ch['level'],
+                                 str=ch['strength'], dex=ch['dexterity'])
+            elif not txt:
+                txt = mxl_gui.tr('status.char_error', error=self.char_error) if self.char_error else ''
+            self.char_label.configure(text=txt)
+            self.status.configure(text=getattr(self, 'van_error', None) or T('van.main_hint', 'Click an item to see it'))
+        except Exception as err:
+            print('vanilla main stash status:', err)
+
+    def on_click(self, ev):
+        o_click(self, ev)
+        self.drag = None                              # read-only: no move, no drop into the character
+
+    def watch_files(self):
+        try:                                          # the character file changed on disk (the game, a save)
+            if self.drag is None and self.char_combo.get():
+                cf = self.character_file()
+                if cf != self.char_file or mxl_gui.file_signature(cf) != getattr(self, 'van_sig', None):
+                    self.open_view(keep_page=True)
+        except Exception:
+            pass
+        o_watch(self)
+
+    App._build, App.open_view, App.show_status = _build, open_view, show_status
+    App.on_click, App.watch_files = on_click, watch_files
+    import mxl_rc_menu                                # its stash menu edits the stash file: none here
+    o_menu = mxl_rc_menu._stash_menu
+
+    def _stash_menu(app, ev):
+        if app.path is None:
+            return None
+        return o_menu(app, ev)
+    mxl_rc_menu._stash_menu = _stash_menu
 
 
 class _NoSigma:

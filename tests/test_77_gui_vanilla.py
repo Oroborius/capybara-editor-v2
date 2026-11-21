@@ -87,6 +87,44 @@ def vanilla_inventory_and_containers():
 
 
 @T.test
+def main_window_stash_is_the_character_stash():
+    """The main window's stash pane: the character file's personal stash in the game's grid, no page tabs / shared
+    stash buttons, no '.stash not found'; read-only (app.path None: no stash writer runs); a click shows the item."""
+    if _S is None:
+        T.skip('no vanilla install / samples')
+    import types
+    import mxl_char
+    import mxl_vanilla_pages as VP
+    app = G.app
+    cw = _open('complex')
+    T.pump(10)
+    T.check(app.path is None, f'no stash file: {app.path}')
+    T.check(not app.notebook.master.winfo_ismapped(), 'page tabs / shared stash buttons hidden')
+    ch = mxl_char.Character(app.character_file(), app.data)
+    cols, rows, want = VP.stash_view(ch, app.data)
+    T.eq((cols, rows), (6, 8), 'stash grid')
+    T.check(len(want) > 0, 'the sample has stash items')
+    T.eq(len(app.items), len(want), 'stash items shown')
+    T.eq(sorted((i['x'], i['y'], i['code']) for i in app.items), sorted((i['x'], i['y'], i['code']) for i in want),
+         'same items')
+    c = app.cell
+    T.eq((int(app.canvas.cget('width')), int(app.canvas.cget('height'))), (cols * c + 1, rows * c + 1), 'canvas size')
+    T.check('.stash' not in app.status.cget('text'), f'status: {app.status.cget("text")!r}')
+    it = app.items[0]
+    ev = types.SimpleNamespace(x=it['x'] * c + c // 2, y=it['y'] * c + c // 2, x_root=0, y_root=0, widget=app.canvas)
+    app.on_click(ev)
+    T.pump(4)
+    T.check(app.panel.item is it, 'clicked item shown in the detail panel')
+    T.check(app.drag is None, 'no drag from the read-only stash')
+    shot = os.environ.get('CAPY_SHOT_DIR')
+    if shot:
+        import mxl_tabs
+        mxl_tabs._state['nb'].select(mxl_tabs._state['pages']['Stash'])
+        T.pump(10)
+        os.system(f'import -window root {os.path.join(shot, "v77c.png")} 2>/dev/null')
+
+
+@T.test
 def mock_character_opens():
     if _S is None:
         T.skip('no vanilla install / samples')

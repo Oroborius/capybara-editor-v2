@@ -88,4 +88,39 @@ def socket_count_is_field_plus_numsockets():
         os.system(f'import -window root {os.path.join(shot, "v85.png")} 2>/dev/null')
 
 
+
+@T.test
+def jewel_runeword_lists_count_in_totals():
+    """A mock jewel carries a magic list and often a runeword list; the game adds both to the parent (mxl_mock's
+    model, 'jewels 30+30'). The item stats shown (tooltip totals) count both lists of every socketed jewel."""
+    if _S is None:
+        T.skip('no vanilla install / clone samples')
+    import mxl_tooltip
+    G.app.select_character('clone-99', G.app.view.get())
+    G.app.open_view(keep_page=True)
+    T.pump(20, 0.02)
+    cw = T.chartab()
+    seen = 0
+    for e in cw.ch.items:
+        it = e.it
+        kids = it.get('socketed') or []
+        if not any(k.get('stats_runeword') for k in kids):
+            continue
+        seen += 1
+        want = {}
+        for src in [it.get('stats') or [], it.get('stats_runeword') or []] + \
+                [k.get(n) or [] for k in kids for n in ('stats', 'stats_runeword')]:
+            for s in src:
+                want[(s['id'], s.get('param'))] = want.get((s['id'], s.get('param')), 0) + s['value']
+        got = {}
+        for s in mxl_tooltip.all_stats(it, cw.data):
+            got[(s['id'], s.get('param'))] = got.get((s['id'], s.get('param')), 0) + s['value']
+        T.eq(got, want, f'{it["code"]}: totals with the jewels\' two lists')
+        dmg = sum(v for (i, _p), v in want.items() if i == 111)
+        if dmg:
+            txt = ' '.join(t for L in mxl_tooltip.item_tooltip(it, cw.data, None) for _c, t in L)
+            T.check(f'+{dmg}' in txt, f'{it["code"]} tooltip shows damage +{dmg}: {txt[:200]!r}')
+    T.check(seen >= 3, f'items with jewel runeword lists: {seen}')
+
+
 T.main(globals())
