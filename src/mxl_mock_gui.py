@@ -245,6 +245,7 @@ class MockPage:
         if not cur or cur == getattr(self, '_auto_name', None) or cur == 'MockHigh':
             self._auto_name = ''.join(c for c in p['label'] if c.isalpha())[:15]     # the preset's name
             self.name.set(self._auto_name)
+        self.pos.set(p.get('position', M.DEFAULTS['position']))
         self.stun.set(-1)
         self.stun_lbl.configure(text=T('mock.o.stun_auto', 'preset'))
 

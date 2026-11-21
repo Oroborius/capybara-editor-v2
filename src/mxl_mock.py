@@ -54,10 +54,11 @@ SHIELD_DMG = {'buc ': (1, 3), 'sml ': (2, 3), 'lrg ': (2, 4), 'kit ': (2, 5), 't
               'uit ': (12, 34), 'uow ': (18, 28), 'uts ': (11, 35), 'ush ': (24, 38), 'upk ': (26, 40),
               'pa6 ': (12, 16), 'pa7 ': (15, 20), 'pa8 ': (18, 24), 'pa9 ': (20, 28), 'paa ': (24, 32),
               'pab ': (22, 70), 'pac ': (35, 58), 'pad ': (10, 82), 'pae ': (46, 46), 'paf ': (5, 87)}
-# user (2026-11-20): the smite cap is 8388607 before any penalty / reduction; the generator aims at it (never over)
-# and the analyzer warns (not fails) up to SMITE_SLACK over it, since the in-game rounding is unverified
-SMITE_TARGET = ROLL
-SMITE_SLACK = 300
+# user (2026-11-20): the smite cap is 8388607 before any penalty / reduction; one point over rolls over and deals 1
+# (as bad as no damage), so the analyzer scores > 8388607 BAD. The in-game rounding is unverified (Equilibrium's
+# README 713029.5 PvP is ~113 PvM under our formula), so the generator aims SMITE_SLACK under the cap.
+SMITE_SLACK = 100
+SMITE_TARGET = ROLL - SMITE_SLACK
 
 # vanilla 1.10-1.14d item save widths (ItemStatCost: save bits, save add, save param bits) of the stats the
 # generator writes; the decoder takes the profile's own table (any stat)
@@ -433,7 +434,8 @@ def model_from_character(ch, size=None):
             units.append(Unit('charm', f"{code.strip()}@{it.get('x')},{it.get('y')}", lists_of(it)))
     return dict(name=ch.name, cls=cls, level=st.get(12, 0), active_weapon=struct.unpack_from('<I', head, 0x10)[0],
                 base_str=st.get(0, 0), base_ene=st.get(1, 0), base_vit=st.get(3, 0),
-                base_mana_raw=st.get(9, 0), base_life_raw=st.get(7, 0), skills=sk, units=units, set_ids=set_ids,
+                base_mana_raw=st.get(9, 0), base_life_raw=st.get(7, 0), stat_points=st.get(4, 0), skills=sk,
+                units=units, set_ids=set_ids,
                 shields=shields, size=size if size is not None else len(ch.raw), excess_jewels=excess)
 
 
@@ -526,19 +528,32 @@ def totals(model, side=None):
                 lists=nlists)
 
 
-def mana_of(model, t):
+# in game, before the duel (the clones' "how to use": shift-click the 1023 attributes into Energy, cast BO + ES)
+MANA_PER_ENERGY = (Fraction(3, 2), 2, 2, Fraction(3, 2), 1, 2, Fraction(7, 4))   # charstats ManaPerMagic / 4
+
+
+def bo_pct(model, t):
+    """Battle Orders max life / mana %: 35 + 3 per level after the first; the clones2 top-band manas fit an
+    effective level of at most 99 (clone-45, clone-67, clone-52: two 63 lines -> 99, not 126)."""
+    lv = min(99, t['nonclass'].get(BATTLE_ORDERS, 0) + (model['skills'].get(BATTLE_ORDERS, 0)))
+    return 35 + 3 * (lv - 1) if lv else 0
+
+
+def mana_of(model, t, bo=False, energy=False):
     full = all(i in (model['set_ids'][None] | model['set_ids'][t['side']]) for i in SIGON_SET_IDS)
     base = Fraction(model['base_mana_raw'], 256)
+    if energy and model['cls'] < 7:
+        base += model.get('stat_points', 0) * Fraction(MANA_PER_ENERGY[model['cls']])
     flat = base + t['T'].get(9, 0) + (SET_BONUS if full else 0)
-    return flat * (100 + t['T'].get(77, 0)) / 100, full
+    return flat * (100 + t['T'].get(77, 0) + (bo_pct(model, t) if bo else 0)) / 100, full
 
 
-def life_of(model, t):
+def life_of(model, t, bo=False):
     T = t['T']
     oak = t['aura_lv'].get(OAK, 0)
     vit_life = {0: 3, 1: 2, 2: 2, 3: 3, 4: 4, 5: 2, 6: 3}.get(model['cls'], 2)
     flat = Fraction(model['base_life_raw'], 256) + T.get(7, 0) + vit_life * T.get(3, 0)
-    return flat * (100 + T.get(76, 0) + oak_pct(oak)) / 100
+    return flat * (100 + T.get(76, 0) + oak_pct(oak) + (bo_pct(model, t) if bo else 0)) / 100
 
 
 def smite_of(model, t):
@@ -546,7 +561,8 @@ def smite_of(model, t):
     T, lvl = t['T'], model['level']
     shield = model['shields'].get(t['side']) or model['shields'].get(None)
     smin, smax = SHIELD_DMG.get(shield, (0, 0))
-    slvl = t['nonclass'].get(SMITE, 0) + (model['skills'].get(SMITE, 0))
+    # effective level at most 99, like BO (bo_pct): clone-45' two Smite 63 lines give a capped 8382830, not 8462500
+    slvl = min(99, t['nonclass'].get(SMITE, 0) + (model['skills'].get(SMITE, 0)))
     strength = model['base_str'] + T.get(0, 0) + T.get(220, 0) * lvl // 8
     mult = 100 + 15 * slvl + strength
     lo = (smin + T.get(111, 0) + T.get(21, 0)) * mult // 100
@@ -557,20 +573,21 @@ def smite_of(model, t):
 GOOD, WARN, BAD, INFO = 'good', 'warn', 'bad', 'info'
 
 
-def analyze(model, side=None):
+def analyze(model, side=None, bo=False, energy=False):
     """Computed values and colour-coded checks of a character model: dict(values, checks=[(key, label, text,
     status)]). Covers mana band / funky, TK ratio, off-screen, regen vs roll-over, life, smite vs cap, aura
-    sources and levels, Prayer heal / drain vs regen, stun vs stability, lists and file size."""
+    sources and levels, Prayer heal / drain vs regen, stun vs stability, lists and file size. bo / energy: the
+    in-game values after casting Battle Orders / spending the unspent attribute points on Energy."""
     t = totals(model, side)
     T = t['T']
     tk = model['skills'].get(TELEKINESIS, 0) if model['cls'] == 1 else 0
-    mana, full = mana_of(model, t)
+    mana, full = mana_of(model, t, bo, energy)
     b = band_info(mana, tk)
     warmth = warmth_pct(model['skills'].get(WARMTH, 0) if model['cls'] == 1 else 0)
     med = t['aura_lv'].get(MEDITATION, 0)
     regen = T.get(27, 0) + warmth + (meditation_pct(med) if med and MEDITATION in t['sources'] else 0)
     cap = regen_cap(mana)
-    life = life_of(model, t)
+    life = life_of(model, t, bo)
     sm = smite_of(model, t)
     pvp = Fraction(sm['max']) * PVP / 2
     prayer_lv = t['aura_lv'].get(PRAYER, 0)
@@ -609,6 +626,14 @@ def analyze(model, side=None):
         + ('' if model['cls'] == 1 else ' (TK / ES need a Sorceress)'), INFO if model['cls'] == 1 else WARN)
     add('offscreen', 'Off-screen mana', _num(b['offscreen']), GOOD if b['offscreen'] > 0 or b['funky'] else BAD)
     add('setbonus', 'Sigon full set (+20 mana)', 'yes' if full else 'no', INFO)
+    bp, pts = bo_pct(model, t), model.get('stat_points', 0)
+    v.update(bo_pct=bp, stat_points=pts)
+    if (bp and not bo) or (pts and not energy):
+        m2, _ = mana_of(model, t, True, True)
+        b2 = band_info(m2, tk)
+        st2 = 'funky' if b2['funky'] else f"good band {b2['band']}" if b2['good'] else f"BAD band {b2['band']}"
+        add('ingame', 'After BO + Energy', f'{_num(m2)} ({st2}) with BO +{bp}% and {pts} attribute(s) in Energy '
+            '(the clones: "cast BO, shift-click the attributes into Energy")', INFO)
     st = GOOD if regen <= cap else BAD
     if st == GOOD and cap - regen > max(300, cap // 20):
         st = WARN
@@ -616,7 +641,7 @@ def analyze(model, side=None):
         f"{', ' + str(sum(t['sources'].get(MEDITATION, {}).values())) + ' source(s)' if med else ''})"
         + ('  ROLL-OVER' if regen > cap else ''), st)
     add('life', 'Life', _num(life), BAD if life >= ROLL else WARN if life > 7900000 else GOOD)
-    st = BAD if sm['max'] > ROLL + SMITE_SLACK else WARN if sm['max'] > ROLL or sm['max'] < ROLL * 0.95 else GOOD
+    st = BAD if sm['max'] > ROLL else WARN if sm['max'] < ROLL * 0.95 else GOOD
     add('damage', 'Smite damage', f"PvM {sm['min']}-{sm['max']} (lvl {sm['slvl']}, str {sm['strength']}, "
         f"shield {(sm['shield'] or '-').strip()}); PvP after DR {float(pvp):.0f} / cap {float(DMG_CAP_PVP):.0f}",
         st if sm['slvl'] else INFO)
@@ -712,9 +737,18 @@ PRESETS = {
     'balance_switch': dict(label='Balance switch', tk=31, mana=1572500, mana_b=1211974, hf_sources=7,
                            hf_level=3000, thorns=3981, switch='balance',
                            note='side A High 1.5725M (stun shield), weapon switch to side B Low 1.21M (no stun)'),
+    # clones2 (README): clone-104 / clone-87 "mid mana" P/T 1377236 (TK31): 40 Prayer charms, Thorns
+    # 4278 + Barbs 4154 (ours 3100: the room left at 31 per line), no holy aura, no stun
+    'pt_mid': dict(label='P/T Mid', tk=31, mana=1377236, hf_sources=0, hf_level=0, thorns=4278, barbs=3100, stun=0,
+                   note='clone-104 mid-mana Prayer/Thorner: 1377236, Thorns 4278 + Barbs 3100, no holy aura, '
+                        'no stun'),
+    # clone-45 / clone-09 / clone-32 hosts: high mana, Host position (DTM 500, no stun), Thorns + Barbs
+    'host': dict(label='Host', tk=31, mana=1572500, position='Host', hf_sources=7, hf_level=3100, thorns=4278,
+                 barbs=3100, note='Host (clone-45 / clone-09 / clone-32): high mana, no stun, 7 Holy Freeze '
+                                  '3100, Thorns 4278 + Barbs 3100'),
 }
 PRESET_ORDER = ('mock_high', 'mock_mid', 'mock_low', 'prayer_thorner', 'aura_killer', 'funky', 'funky28',
-                'funky26', 'funky24', 'balance_switch')
+                'funky26', 'funky24', 'balance_switch', 'pt_mid', 'host')
 # user (2026-11-20): TK31 mocks sit between 1.21M and 1.57M; the mana is picked by the enemy's aura: high aura ->
 # low mana, low aura -> high mana (to push the enemy's mana to the zero), no aura (a PT, not PTA) -> 1572863
 ENEMY_AURA_MANA = {'none': 1572863, 'low': 1572500, 'mid': 1310719, 'high': 1211974}
@@ -722,7 +756,8 @@ TK31_RANGE = (1210000, 1572863)
 # reference clone-05 / clone-41: Holy Freeze ~8.31-8.32M PvM per source (never at the roll point itself)
 HF_SOURCE_TARGET = 8320000
 POSITIONS = {'Host': dict(dtm=500, stun=0), 'HPJ': dict(dtm=420, stun=11), 'LPJ': dict(dtm=330, stun=11)}
-DEFAULTS = dict(cls=1, level=99, position='LPJ', life=7300000, damage=Fraction(SMITE_TARGET) * PVP / 2,
+# level 127: every well-described clones2 mock (per-level stats give 127/8 per point)
+DEFAULTS = dict(cls=1, level=127, position='LPJ', life=7300000, damage=Fraction(SMITE_TARGET) * PVP / 2,
                 abs_budget=8150)
 
 # item skeleton: (role, body, code, Sigon's set item id, socketed with 7 jewels)

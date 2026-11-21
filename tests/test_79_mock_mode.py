@@ -114,14 +114,57 @@ def analyzer_matches_the_research_numbers():
           sum(v['sources']['Meditation'].values())), (7, 1, 1), 'clone-90: 7 Holy Freeze, 1 Thorns, 1 Meditation')
     T.check(v['regen'] <= v['regen_cap'], 'clone-90: regen under the roll-over cap')
     T.check(v['smite']['max'] <= E.M.ROLL, 'clone-90: smite under the roll')
-    # socket capacity = save field + item_numsockets (194) lines; every clone has room for its jewels,
-    # clone-74 puts 7 jewels in 1-socket rings / amulet (21 beyond the count: not counted, scored bad)
+    # socket capacity = save field + item_numsockets (194) lines, settled by clones2: the proven clones size 194 as
+    # 7 - field (clone-03, clone-06, clone-80, clone-37 ...) or 15 and never overfill; only the
+    # undescribed clone-82 (11) and clone-74 (7 jewels in 1-socket rings / amulet: 21) do (scored bad)
     for rel in ('clones/clone-41.d2s', 'clones/clone-60.d2s', 'clones/clone-05.d2s', 'clone-90.d2s'):
         T.eq(_analyze(_sample(rel))[1]['excess_jewels'], 0, f'{rel}: every jewel fits its sockets')
     a, m, _ = _analyze(_sample('clone-74.d2s'))
     T.eq(m['excess_jewels'], 21, 'clone-74: 21 jewels beyond the socket count')
     T.check(any(c[0] == 'sockets' and c[3] == E.M.BAD for c in a['checks']), 'clone-74: scored bad')
     T.eq(_analyze(_sample('clones/clone-05.d2s'))[0]['values']['dopplezon'], 1, 'clone-05: Dopplezon line')
+
+
+def _clones2():
+    d = os.path.join(engine().saves, 'clones2')
+    files = sorted(glob.glob(os.path.join(d, '*.d2s')) + glob.glob(os.path.join(d, '*', '*.d2s')))
+    if not files:
+        T.skip('no clones2 samples (.cache/samples/mock/clones2)')
+    return [f for f in files if T.read(f)[4] == 96]
+
+
+@T.test
+def clones2_settle_sockets_funky_bo_and_smite():
+    """The clan-channel clones (clones2): jewels fit field + 194, the TK30 funkies sit at 1048576 / -8388608,
+    BO (effective level <= 99) lifts the high sides to the top of band 2, a smite over 8388607 is bad."""
+    E = engine()
+    M = E.M
+    over = {}
+    for f in _clones2():
+        n = _analyze(f)[1]['excess_jewels']
+        if n:
+            over[os.path.basename(f)] = n
+    T.eq(over, {'clone-82.d2s': 11, 'clone-74.d2s': 21}, 'clones2: only clone-82 / Pompeliusz overfill')
+    for n in ('clone-63', 'clone-69', 'clone-99', 'clone-65'):
+        b = _analyze(_sample(f'clones2/{n}.d2s'))[0]['values']['band']
+        T.eq((b['funky'], b['stable'], b['offscreen']), (True, True, -8388608), f'{n}: TK30 funky zero')
+    m = _analyze(_sample('clones2/clone-63.d2s'))[1]
+    T.check(not M.analyze(m, energy=True)['values']['band']['funky'],
+            'clone-63: spending its 1023 attributes on Energy would break the funky')
+    for n, side in (('clone-45', None), ('clone-02', 'A'), ('clone-93', None), ('clone-32', None),
+                    ('clone-53', 'A'), ('clone-77', 'B')):
+        a, m, _ = _analyze(_sample(f'clones2/{n}.d2s'), side)
+        g = M.analyze(m, side, bo=True, energy=True)['values']
+        T.check(a['values']['mana'] < 1500000 and 1571000 <= g['mana'] <= 1572863,
+                f"{n}: BO + Energy lift {float(a['values']['mana']):.0f} to {float(g['mana']):.0f} (top of band 2)")
+        T.check(any(c[0] == 'ingame' for c in a['checks']), f'{n}: the in-game BO / Energy value is shown')
+    a, m, _ = _analyze(_sample('clones2/clone-45.d2s'))
+    T.check(a['values']['smite']['slvl'] == 99 and a['values']['smite']['max'] <= M.ROLL,
+            'clone-45: Smite 63 + 63 counts as level 99 (capped smite)')
+    m['units'].append(M.Unit('charm', 'extra', [[(111, None, 491)]]))
+    a = M.analyze(m)
+    T.check(a['values']['smite']['max'] > M.ROLL and
+            any(c[0] == 'damage' and c[3] == M.BAD for c in a['checks']), 'a smite over 8388607 is bad (rolls to 1)')
 
 
 @T.test
@@ -266,7 +309,7 @@ def overrides_hit_their_targets():
     E = engine()
     M = E.M
     folder = _gen_dir()
-    cases = [('mock_high', dict(mana=1572863)), ('mock_high', dict(level=127, position='Host')),
+    cases = [('mock_high', dict(mana=1572863)), ('mock_high', dict(level=99, position='Host')),
              ('mock_mid', dict(tk=32, life=6800000)), ('funky', dict(stun=0)), ('mock_low', dict(stun=60)),
              ('mock_high', dict(hf_sources=3, thorns=2500))]
     for key, over in cases:
