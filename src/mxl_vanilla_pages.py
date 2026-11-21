@@ -153,6 +153,7 @@ def install():
     try:                       # main window inventory: the standard D2 screen, not Median's 15 x 10 panel art
         import mxl_inv_gui
         mxl_inv_gui.D2 = _NoSigma(mxl_inv_gui.D2)
+        _native_cover(mxl_inv_gui)
     except Exception as err:
         print('vanilla inventory panel:', err)
     try:
@@ -331,15 +332,79 @@ def install_main(App):
     mxl_rc_menu._stash_menu = _stash_menu
 
 
+# The game's own inventory screen at its native size (invchar6.dc6, 320 x 432: paperdoll + the 10 x 4 grid +
+# gold box), instead of Median XL's 512 x 704 layout (the paperdoll x1.6 over mirror-tiled stone for a 15 x 10
+# grid: "a smeared mess" with the 10 x 4 grid of the base game). Positions in native panel pixels: the grid and
+# the boxes from inventory.bin (row 0: grid 339,255 - panel 320,0; cells 29 = the editor's ART_CELL), the gold box
+# and the I / II tabs measured on the art.
+NATIVE_SCALE = 1.6                  # Median layout pixels per native pixel (mxl_d2look.GEAR_D2 & co.)
+NATIVE_PANEL = (320, 432)
+NATIVE_GRID = (18, 254)
+NATIVE_GOLD_BTN = (25, 390)         # goldbtn.dc6 (19 x 19) centred in the small box at 17,383 (34 x 34)
+NATIVE_GOLD = (111, 400)            # left end of the amount: the long part of the gold box (106-198, y 390-410)
+
+
+def _n(v):
+    return int(round(v / NATIVE_SCALE))
+
+
+class _NativeArt:
+    """The character art with char_panel_d2() = the game's whole inventory screen, unscaled."""
+
+    def __init__(self, art):
+        self._art = art
+
+    def char_panel_d2(self):
+        a = self._art
+
+        def build():
+            import mxl_d2ui_dc6 as DC6
+            fr = DC6.dc6_frames(a.read_base('data\\global\\ui\\PANEL\\invchar6.dc6'))
+            return DC6.compose(fr[4:8], a.pal(), 2)
+        return a._cached('panel-d2-character-native', build)
+
+    def __getattr__(self, name):
+        return getattr(self._art, name)
+
+
+def _native_cover(inv):
+    """The mercenary view's stone patches (mxl_inv_gui D2_COVER_*) in native pixels."""
+    for name in ('D2_COVER_SRC',):
+        v = getattr(inv, name, None)
+        if isinstance(v, dict):
+            setattr(inv, name, {k: tuple(_n(x) for x in xy) for k, xy in v.items()})
+    for name in ('D2_COVER_WSET',):
+        v = getattr(inv, name, None)
+        if isinstance(v, tuple):
+            setattr(inv, name, tuple(tuple(_n(x) for x in r) for r in v))
+    if isinstance(getattr(inv, 'D2_COVER_WSET_SRC', None), tuple):
+        inv.D2_COVER_WSET_SRC = tuple(_n(x) for x in inv.D2_COVER_WSET_SRC)
+    for name in ('D2_COVER_MARGIN', 'D2_COVER_FADE', 'D2_COVER_WSET_FADE'):
+        if isinstance(getattr(inv, name, None), int):
+            setattr(inv, name, max(2, _n(getattr(inv, name))))
+
+
 class _NoSigma:
     """mxl_d2look as mxl_inv_gui sees it in a folder profile: active() (Median XL's own inventory panel) is
-    False, so the panel is the standard Diablo II character screen with the game's grid size."""
+    False, so the panel is the standard Diablo II character screen, at the game's own size and layout."""
 
     def __init__(self, mod):
         self._mod = mod
+        self.PANEL_W, self.PANEL_H = NATIVE_PANEL
+        self.GEAR_D2 = {k: tuple(_n(v) for v in box) for k, box in mod.GEAR_D2.items()}
+        self.GEAR_D2_INSET = 2
+        self.CHAR_GRID = NATIVE_GRID
+        self.CHAR_GOLD_BTN = NATIVE_GOLD_BTN
+        self.CHAR_GOLD = NATIVE_GOLD
+        self.WSET_TABS_D2 = {k: tuple(tuple(_n(v) for v in xy) for xy in t) for k, t in mod.WSET_TABS_D2.items()}
+        self.WSET_TAB_D2 = tuple(_n(v) for v in mod.WSET_TAB_D2)
 
     def active(self):
         return False
+
+    def char_art(self):
+        a = self._mod.char_art()
+        return _NativeArt(a) if a is not None else None
 
     def __getattr__(self, name):
         return getattr(self._mod, name)
