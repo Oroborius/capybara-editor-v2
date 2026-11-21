@@ -264,6 +264,29 @@ def _parse_item(blob, data):
     return it, br
 
 
+def _install_no_picture_icon():
+    """An item of a type with picture variants (jewels, charms, rings, amulets) whose save has no picture field
+    (the mock clones' size trick) is drawn by the game with its first variant; the host fell back to the base's own
+    inv file (1.14d: the jewel's is the perfect diamond 'invgswe', the small charm's no charm at all)."""
+    import mxl_gfx
+    orig = mxl_gfx.base_icon_name
+    if getattr(orig, '_no_pic', False):
+        return
+
+    def base_icon_name(it, data):
+        if it.get('image') is None:
+            try:
+                t = data.base(it['code']).type
+                var = data.itype_gfx[t] if 0 <= t < len(data.itype_gfx) else []
+                if var and var[0]:
+                    return var[0]
+            except Exception:
+                pass
+        return orig(it, data)
+    base_icon_name._no_pic = True
+    mxl_gfx.base_icon_name = base_icon_name
+
+
 def install():
     if getattr(mxl_format, '_sigma_fix', False):
         return
@@ -274,6 +297,10 @@ def install():
         nc = getattr(mxl_tooltip, 'NAME_COLOR', None)
         if isinstance(nc, dict) and 'crafted' in nc:
             nc.setdefault(TEMPERED, nc['crafted'])
+    except Exception:
+        pass
+    try:
+        _install_no_picture_icon()        # no-picture jewels / charms (mock clones): first variant, not the base file
     except Exception:
         pass
     try:

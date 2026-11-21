@@ -156,7 +156,31 @@ class PreviewHost(DetailHost):
 
     @property
     def char(self):
-        return self.app.char
+        return self.app.char or loaded_char(self.app)
+
+
+_CHAR_CACHE = {}
+
+
+def loaded_char(app):
+    """The selected character as the collector's dict, read from its .d2s when the app has none: the host only sets
+    app.char together with a character's .stash file, which a vanilla save folder has not (1.14d: per-level item
+    stats were shown at level 1). Cached by path and file time; None when nothing fits."""
+    try:
+        import mxl_gui
+        name = app.char_combo.get().strip()
+        folder = getattr(app, 'save_dir', None) or getattr(mxl_gui, 'SAVE_DIR', None)
+        if not name or not folder:
+            return None
+        path = os.path.join(folder, name + '.d2s')
+        key = (path, os.path.getmtime(path))
+        if key not in _CHAR_CACHE:
+            from mxl_save import load_character
+            _CHAR_CACHE.clear()
+            _CHAR_CACHE[key] = load_character(path, app.data)
+        return _CHAR_CACHE[key]
+    except Exception:
+        return None
 
 
 def clean(name):
