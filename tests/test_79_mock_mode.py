@@ -64,11 +64,11 @@ def engine():
     return _E
 
 
-def _analyze(path, side=None):
+def _analyze(path, side=None, bo=False):
     E = engine()
     ch = E.MC.Character(path, E.data)
     m = E.M.model_from_character(ch)
-    return E.M.analyze(m, side), m, ch
+    return E.M.analyze(m, side, bo=bo), m, ch
 
 
 def _sample(rel):
@@ -242,14 +242,15 @@ def _independent(key, raw, v):
     T.eq(over, [], f'{key}: mxlsave: no item with more jewels than sockets')
     T.check(dz >= 1, f'{key}: mxlsave: Dopplezon line')
     base = next(x.value for x in obj.stats if x.id == 9)
-    mana = (Fraction(base, 256) + F + 20) * (100 + Pc) / 100
+    mana = (Fraction(base, 256) + F + 20) * (100 + Pc + v['bo_pct'] * (v['mana'] != v['mana_nobo'])) / 100
     T.eq(mana, v['mana'], f'{key}: mxlsave mana sum = the analyzer mana')
 
 
 def _check_generated(key, raw, P, path):
     E = engine()
     M = E.M
-    a, m, ch = _analyze(path)
+    bo = P['o']['bo'] > 0                   # the targets are the BO'd values (cast before the duel)
+    a, m, ch = _analyze(path, bo=bo)
     T.eq(bytes(ch.build()), T.read(path), f'{key}: the editor re-builds the same bytes')
     import mxl_save
     mxl_save.load_character(path, E.data)
@@ -269,6 +270,8 @@ def _check_generated(key, raw, P, path):
             T.check(M.TK31_RANGE[0] <= v['mana'] < M.TK31_RANGE[1] + 1, f'{key}: TK31 mock range 1.21M-1572863')
     T.eq((v['regen'], v['regen_cap']), (exp['regen'], exp['regen_cap']), f'{key}: regen')
     T.check(v['regen'] <= v['regen_cap'] and v['regen_cap'] - v['regen'] < 25, f'{key}: regen at the cap')
+    v0 = M.analyze(m)['values']             # BO not (yet) cast: a higher cap, regen stays under it
+    T.check(v0['regen'] <= v0['regen_cap'], f'{key}: regen under the cap without BO too')
     T.check(exp['pvm'] - 400 <= v['smite']['max'] <= exp['pvm'] <= M.ROLL, f"{key}: smite {v['smite']['max']}")
     T.check(abs(v['life'] - P['o']['life']) < 2000 and v['life'] < M.ROLL, f"{key}: life {float(v['life'])}")
     srcs = {k: sum(x.values()) for k, x in v['sources'].items()}
@@ -284,9 +287,9 @@ def _check_generated(key, raw, P, path):
     lv = {x[1] for x in v['delirium']}
     T.check(len(v['delirium']) == 2 and len(lv) == 2, f'{key}: Delirium on attack + strike at two levels')
     if exp['side_b']:
-        b = M.analyze(m, 'B')['values']
+        b = M.analyze(m, 'B', bo=bo)['values']
         T.eq(b['mana'], exp['side_b']['mana'], f'{key}: side B mana')
-        T.eq([c for c in M.analyze(m, 'B')['checks'] if c[3] == M.BAD], [], f'{key}: side B checks')
+        T.eq([c for c in M.analyze(m, 'B', bo=bo)['checks'] if c[3] == M.BAD], [], f'{key}: side B checks')
         T.eq(int(b['mana']), P['o']['mana_b'], f'{key}: side B on-screen mana')
         T.check(M.TK31_RANGE[0] <= b['mana'] < M.TK31_RANGE[1] + 1, f'{key}: side B in the TK31 mock range')
         T.eq(b['stun'], [], f'{key}: side B without stun')
@@ -317,7 +320,7 @@ def overrides_hit_their_targets():
         path = M.write_new(raw, folder, 'Over')
         _check_generated(f'{key} {over}', raw, P, path)
     raw, P = M.generate('mock_high', 'Over', mana=1572863)
-    a, _, _ = _analyze(M.write_new(raw, folder, 'Over'))
+    a, _, _ = _analyze(M.write_new(raw, folder, 'Over'), bo=True)
     T.eq(a['values']['band']['to_roll'] < 1, True, '1572863: the top of the good band')
     raw, P = M.generate('mock_high', 'Over', position='Host')
     T.eq(P['stun'], 0, 'Host: no stun')
@@ -342,6 +345,40 @@ def overrides_hit_their_targets():
     P = M.plan('aura_killer', 'AK')
     T.check(all(u.role == 'prayer' for u in P['units'] if u.kind == 'charm'), 'Aura Killer: every charm Prayer')
     T.eq(P['expect_sources'][M.HOLY_FREEZE], 28, 'Aura Killer: 28 Holy Freeze sources on gear jewels')
+
+
+@T.test
+def form_prefill_battle_orders_and_edited_fields():
+    """The generator form: every field prefilled with the preset's values, only edited fields reach plan(); BO 99
+    (the clones' convention) is in the targets, BO 0 gives a mock without BO."""
+    E = engine()
+    M = E.M
+    for key in M.PRESET_ORDER:
+        pre = M.prefill(key)
+        o = M.options(key)
+        T.eq({k: pre[k] for k in ('tk', 'mana', 'thorns', 'barbs', 'hf_sources', 'bo')},
+             {k: int(o[k]) for k in ('tk', 'mana', 'thorns', 'barbs', 'hf_sources', 'bo')}, f'{key}: prefill')
+        T.eq(M.edited(dict(pre), pre), {}, f'{key}: an untouched form overrides nothing')
+    pre = M.prefill('host')
+    T.eq((pre['bo'], pre['prayer_sources'], pre['prayer'], pre['deli_attack'], pre['deli_strike']),
+         (99, 40, 5518, 63, 62), 'host: BO 99, 40 Prayer charms, Prayer 5518, Delirium 63 / 62')
+    form = dict(pre, thorns='2500', prayer_sources='35', prayer=str(5000), dopplezon=False, deli_strike='61')
+    over = M.edited(form, pre)
+    T.eq(over, dict(thorns=2500, prayer_sources=35, prayer=5000, dopplezon=False, deli_strike=61), 'edited fields')
+    folder = _gen_dir()
+    raw, P = M.generate('host', 'Form', **over)
+    a, m, _ = _analyze(M.write_new(raw, folder, 'Form'), bo=True)
+    v = a['values']
+    T.eq((v['aura_levels']['Thorns'], v['prayer_level'], v['sources']['Prayer'], v['dopplezon']),
+         (2500, 5000, {'charm': 35}, 0), 'the edited fields reach the save')
+    T.eq(sorted(lv for _, lv, _ in v['delirium']), [61, 63], 'Delirium levels as edited')
+    T.check('lists 178/198' in M.plan_line(P, raw) and f'{len(raw)}/8191 bytes' in M.plan_line(P, raw), 'plan line')
+    T.eq(v['bo_pct'], 35 + 3 * 98, 'BO 99 on the shield: +329%')
+    T.eq(int(v['mana']), 1572500, 'host: 1572500 WITH BO')
+    T.check(any(c[0] == 'mana_nobo' for c in a['checks']), 'the analyzer shows the mana without BO too')
+    raw, P = M.generate('mock_high', 'NoBo', bo=0)
+    a, m, _ = _analyze(M.write_new(raw, folder, 'NoBo'))
+    T.eq((a['values']['bo_pct'], int(a['values']['mana'])), (0, 1572500), 'BO 0: no BO line, mana without BO')
 
 
 @T.test

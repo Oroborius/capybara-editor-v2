@@ -627,13 +627,16 @@ def analyze(model, side=None, bo=False, energy=False):
     add('offscreen', 'Off-screen mana', _num(b['offscreen']), GOOD if b['offscreen'] > 0 or b['funky'] else BAD)
     add('setbonus', 'Sigon full set (+20 mana)', 'yes' if full else 'no', INFO)
     bp, pts = bo_pct(model, t), model.get('stat_points', 0)
-    v.update(bo_pct=bp, stat_points=pts)
+    v.update(bo_pct=bp, stat_points=pts, mana_nobo=mana_of(model, t)[0])
     if (bp and not bo) or (pts and not energy):
         m2, _ = mana_of(model, t, True, True)
         b2 = band_info(m2, tk)
         st2 = 'funky' if b2['funky'] else f"good band {b2['band']}" if b2['good'] else f"BAD band {b2['band']}"
         add('ingame', 'After BO + Energy', f'{_num(m2)} ({st2}) with BO +{bp}% and {pts} attribute(s) in Energy '
             '(the clones: "cast BO, shift-click the attributes into Energy")', INFO)
+    if bo and bp:
+        m0, _ = mana_of(model, t)
+        add('mana_nobo', 'Mana without BO', f'{_num(m0)} (the mana above counts BO +{bp}%)', INFO)
     st = GOOD if regen <= cap else BAD
     if st == GOOD and cap - regen > max(300, cap // 20):
         st = WARN
@@ -664,8 +667,9 @@ def analyze(model, side=None, bo=False, energy=False):
         add('aura_passive', 'Passive aura levels', ', '.join(f'{AURA_NAMES.get(k, k)} {x}' for k, x in
                                                              sorted(passive.items())), INFO)
     if hf_lv:
-        add('hf', 'Holy Freeze per source', f'{hf_dmg:.0f}-{hf_top:.0f} PvM x {hf_src} source(s)',
-            BAD if hf_dmg > ROLL else WARN if hf_top > ROLL else GOOD)
+        add('hf', 'Holy Freeze per source', f'{hf_dmg:.0f}-{hf_top:.0f} PvM x {hf_src} source(s); PvP max '
+            f'{hf_top * 0.17:.0f} of cap {ROLL * 0.17:.0f}',
+            BAD if hf_top > ROLL else GOOD)      # user: aura damage caps like smite (x 0.17 PvP, no DR%)
     if prayer_src:
         add('prayer', 'Prayer per second', f'heal {heal_s:.0f}, drain {drain_s:.0f} vs regen {regen_s:.0f} mana/s',
             GOOD if drain_s < regen_s else WARN)
@@ -772,6 +776,7 @@ SOCKET_FIELD = {'ghm ': 2, 'gth ': 3, 'tow ': 3, 'crs ': 6}
 SOCKET_STAT = 8
 JEWELS = 7
 CHARM_COUNT = 40
+DELIRIUM_CHANCE = 127               # chance % of both Delirium lines (attack reset)
 AURA_LINE_MAX = 31
 
 
@@ -803,7 +808,7 @@ class PUnit:
 
 
 # ---------------------------------------------------------------------------------- integer solvers
-def solve_mana(target, exact, max_lines, base_lo=4096, base_hi_raw=(1 << 21) - 1):
+def solve_mana(target, exact, max_lines, base_lo=4096, base_hi_raw=(1 << 21) - 1, extra_pct=0):
     """Mana = (B + F + 20) x (100 + P) / 100 with base B in 1/256 steps (<= 8191.996), F = sum of +mana lines
     (<= 223 each), P = sum of mana% lines (<= 53 each), at most max_lines lines of each. exact: the product hits
     the target exactly with an integer base (funky); else floor(mana) == target. Fewest bits, then the base
@@ -811,7 +816,7 @@ def solve_mana(target, exact, max_lines, base_lo=4096, base_hi_raw=(1 << 21) - 1
     best = None
     tgt = Fraction(target)
     for P in range(0, 53 * max_lines + 1):
-        m = 100 + P
+        m = 100 + P + extra_pct                            # extra: the Battle Orders %
         num = 25600 * tgt                                   # X_raw x m = 25600 x mana
         if exact:
             if (num / m).denominator != 1:
@@ -855,12 +860,12 @@ def solve_regen(mana, warmth_lvl):
     return dict(cap=cap, med=med, pct=r, total=w + meditation_pct(med) + r)
 
 
-def solve_life(target, base_raw, oak_min, oak_max, max_lines):
+def solve_life(target, base_raw, oak_min, oak_max, max_lines, extra_pct=0):
     """Life = (base + sum(+life lines <= 479)) x (100 + Oak Sage %) / 100 <= target, fewest bits, nearest."""
     best = None
     base = Fraction(base_raw, 256)
     for L in range(oak_min, oak_max + 1):
-        pct = 100 + oak_pct(L)
+        pct = 100 + oak_pct(L) + extra_pct
         x = math.floor(Fraction(target) * 100 / pct - base)
         if x < 0:
             continue
@@ -935,6 +940,15 @@ def options(preset='mock_high', **over):
     o.setdefault('switch', None)
     o.setdefault('barbs', 0)
     o.setdefault('res', 0)
+    for k in ('prayer', 'prayer_sources', 'oak', 'med', 'regen'):
+        o.setdefault(k, None)                               # None: solved by plan()
+    o.setdefault('deli_attack', 63)
+    o.setdefault('deli_strike', 62)
+    o.setdefault('dopplezon', True)
+    # Battle Orders cast before the duel (clones2 convention: BO 63 + 36 = 99, mana tuned WITH BO): mana and life
+    # targets are the BO'd values; 0 = no BO line
+    o['bo'] = max(0, min(99, int(o.get('bo', 99))))
+    o['bo_pct'] = 35 + 3 * (o['bo'] - 1) if o['bo'] else 0
     o['stun'] = max(0, min(100, int(o['stun'])))
     o['level'] = max(99, min(127, int(o['level'])))
     o['tk'] = max(0, min(99, int(o['tk'])))
@@ -987,7 +1001,8 @@ def plan(preset='mock_high', name='Mock', **over):
         if sock:
             for j in range(JEWELS):
                 units.append(PUnit('jewel', f'{role}/{j}', 2, 'cover', parent=g, side=g.side))
-    charms = [PUnit('charm', f'charm{i}', 1, 'prayer') for i in range(CHARM_COUNT)]
+    nps = CHARM_COUNT if o['prayer_sources'] is None else max(0, min(CHARM_COUNT, int(o['prayer_sources'])))
+    charms = [PUnit('charm', f'charm{i}', 1, 'prayer' if i < nps else 'cover') for i in range(CHARM_COUNT)]
     units += charms
     U = {u.name: u for u in units}
     # ---- aura roles: Holy Freeze sources on the shield's jewels (then charms), one Meditation, one Thorns,
@@ -1008,11 +1023,20 @@ def plan(preset='mock_high', name='Mock', **over):
     nl = len(lists)
     by_role = lambda *roles: [s for s in lists if s.unit.role in roles]
     # ---- Prayer 31 on EVERY list (178 x 31 = 5518); sources only where nothing higher sits (the charms)
-    for s in lists:
-        s.add(151, AURA_LINE_MAX, PRAYER)
+    if o['prayer'] is None:
+        for s in lists:
+            s.add(151, AURA_LINE_MAX, PRAYER)
+    else:                                   # a total Prayer level: the source charms first, then the other lists
+        total = int(o['prayer'])
+        srcs = [u.slots[0] for u in charms if u.role == 'prayer']
+        n = max(len(srcs), -(-total // AURA_LINE_MAX))
+        if total < len(srcs) or n > nl:
+            raise PlanError(f'Prayer {total}: {len(srcs)} sources need {len(srcs)}-{AURA_LINE_MAX * nl} levels')
+        for s, v in zip(srcs + [s for s in lists if s not in srcs], spread(total, n) if n else []):
+            s.add(151, v, PRAYER)
     cover_units = [u for u in units if u.role == 'cover']
     # ---- mana
-    mana = solve_mana(o['mana'], o['exact'], nl)
+    mana = solve_mana(o['mana'], o['exact'], nl, extra_pct=o['bo_pct'])
     if mana is None:
         raise PlanError(f"mana {o['mana']} cannot be hit {'exactly ' if o['exact'] else ''}on {nl} lists")
     order = sorted(lists, key=lambda s: (s.unit.code != 'tow ' and (s.unit.parent is None or
@@ -1024,10 +1048,21 @@ def plan(preset='mock_high', name='Mock', **over):
         s.add(77, v)
     # ---- regen: Warmth 99 + ONE Meditation source + one regen% remainder line
     warmth = 99 if o['cls'] == 1 else 0
+    # against the mana the mock fights with (BO'd): the highest mana has the lowest roll-over cap, so the regen
+    # stays under the cap before BO is cast too
     rg = solve_regen(mana['mana'], warmth)
+    if o['med'] is not None or o['regen'] is not None:     # the user's Meditation level / regen% line
+        med = rg['med'] if o['med'] is None else max(0, int(o['med']))
+        pct = rg['pct'] if o['regen'] is None else max(0, min(255, int(o['regen'])))
+        rg = dict(rg, med=med, pct=pct, total=warmth_pct(warmth) + (meditation_pct(med) if med else 0) + pct)
     # ---- life: +479 lines + Oak Sage on the cover units
     oak_lists = by_role('cover')
-    life = solve_life(o['life'], (1 << 21) - 1, len(cover_units), len(oak_lists) * AURA_LINE_MAX, nl)
+    oak_lo, oak_hi = len(cover_units), len(oak_lists) * AURA_LINE_MAX
+    if o['oak'] is not None:
+        if not oak_lo <= int(o['oak']) <= oak_hi:
+            raise PlanError(f"Oak Sage {o['oak']}: {oak_lo}-{oak_hi} on {len(cover_units)} sources")
+        oak_lo = oak_hi = int(o['oak'])
+    life = solve_life(o['life'], (1 << 21) - 1, oak_lo, oak_hi, nl, extra_pct=o['bo_pct'])
     if life is None:
         raise PlanError(f"life {o['life']} cannot be reached")
     for s, v in zip(lists, split(life['flat'], 479)):
@@ -1083,7 +1118,8 @@ def plan(preset='mock_high', name='Mock', **over):
     sh = U['shield']
     sh.slots[0].add(97, 63, SMITE)
     sh.slots[1].add(97, 63, PRAYER)
-    sh.slots[2].add(97, 63, BATTLE_ORDERS)
+    for i, v in enumerate(split(o['bo'], 63)):              # non-class BO (cast before the duel)
+        sh.slots[2 + 3 * i].add(97, v, BATTLE_ORDERS)
 
     def free(sid):
         return [s for s in lists if not s.has(sid)]
@@ -1093,8 +1129,8 @@ def plan(preset='mock_high', name='Mock', **over):
     for s, v in zip(free(111), split(sm['dmg'], 491)):
         s.add(111, v)
     # ---- attack reset: Delirium on attack and on strike at two different levels; stun per the slider
-    sh.slots[3].add(195, 127, (DELIRIUM << 6) | 63)
-    sh.slots[3].add(198, 127, (DELIRIUM << 6) | 62)
+    sh.slots[3].add(195, DELIRIUM_CHANCE, (DELIRIUM << 6) | max(1, min(63, int(o['deli_attack']))))
+    sh.slots[3].add(198, DELIRIUM_CHANCE, (DELIRIUM << 6) | max(1, min(63, int(o['deli_strike']))))
     stun = _stun_from_slider(slider)
     if stun:
         sh.slots[4].add(195, stun, (STUN << 6) | 63)
@@ -1109,7 +1145,8 @@ def plan(preset='mock_high', name='Mock', **over):
     for s in lists:
         s.add(34, 63)
     # ---- NV state Dopplezon (state 63) on one charm: with the Delirium reset it steadies and speeds the attack
-    charms[0].slots[0].add(98, 1, DOPPLEZON)
+    if o['dopplezon']:
+        charms[0].slots[0].add(98, 1, DOPPLEZON)
     # ---- resist by level (+res presets) up to the off-screen resist target
     if o['res']:
         per = 63 * o['level'] // 8
@@ -1152,7 +1189,7 @@ def _switch(P):
     tgt = Fraction(o['mana_b'])
     best = None
     for Pb in range(-10 * len(cl), 53 * len(cl) + 1):
-        mult = 100 + P0 + Pb
+        mult = 100 + P0 + Pb + o['bo_pct']
         if mult <= 0:
             continue
         need = math.ceil(25600 * tgt / mult) - X0
@@ -1332,6 +1369,79 @@ def summary(P, raw=None):
     if raw is not None:
         out.append(f'{len(raw)} bytes')
     return out
+
+
+# ---------------------------------------------------------------------------------- generator form fields
+# (group, [(key, label, kind)]): kind 'int' = an entry, 'bool' = a check box; every key is an options() key
+FIELDS = (('Mana / TK', (('tk', 'Telekinesis', 'int'), ('mana', 'Mana (with BO)', 'int'),
+                         ('bo', 'Battle Orders', 'int'), ('level', 'Level', 'int'))),
+          ('Life', (('life', 'Life (with BO)', 'int'), ('oak', 'Oak Sage level', 'int'))),
+          ('Auras & sources', (('prayer', 'Prayer level', 'int'), ('prayer_sources', 'Prayer sources', 'int'),
+                               ('thorns', 'Thorns', 'int'), ('barbs', 'Barbs', 'int'),
+                               ('med', 'Meditation', 'int'), ('regen', 'Regen % line', 'int'),
+                               ('hf_level', 'Holy Freeze', 'int'), ('hf_sources', 'HF sources', 'int'))),
+          ('Damage / stun', (('damage', 'Smite (PvP)', 'int'), ('stun', 'Stun 0-100', 'int'),
+                             ('deli_attack', f'Delirium att. {DELIRIUM_CHANCE}%', 'int'),
+                             ('deli_strike', f'Delirium hit {DELIRIUM_CHANCE}%', 'int'),
+                             ('dopplezon', 'Dopplezon', 'bool'), ('weapon', 'Weapon', 'bool'))))
+FIELD_KEYS = tuple(k for _, fs in FIELDS for k, _, _ in fs)
+# a short hint per field: unit and range
+HINTS = dict(tk='hard TK points 0-99 (31: band 524288, 30: funky 1048576)', mana='max mana after BO; TK31 '
+             '1210000-1572863', bo='BO level cast before the duel, 0-99 (0 = none; % = 35 + 3 per level)',
+             level='character level 99-127', life='max life after BO, under 8388607',
+             oak='Oak Sage total level (life %)',
+             prayer='total Prayer level (31 per list = 5518)', prayer_sources='Prayer charms 0-40',
+             thorns='Thorns total level', barbs='Barbs total level', med='Meditation level (mana regen)',
+             regen='mana regen % line 0-255', hf_level='Holy Freeze total level',
+             hf_sources='Holy Freeze sources 0-42',
+             damage='smite PvP damage, at most 713031', stun='0-100: more stun, less smite',
+             deli_attack='Delirium on attack, level 1-63',
+             deli_strike='Delirium on strike, level 1-63 (not the attack level)',
+             dopplezon='NV state Dopplezon on a charm', weapon='a socketed weapon (198 lists)')
+
+
+def prefill(preset='mock_high', **over):
+    """The preset's actual values for every form field (the ones plan() solves taken from its plan)."""
+    o = options(preset, **over)
+    P = plan(preset, 'Mock', **over)
+    pr = sum(v for s in P['lists'] for sid, p, v in s.lines if sid == 151 and p == PRAYER)
+    solved = dict(oak=P['life']['oak'], med=P['regen']['med'], regen=P['regen']['pct'], prayer=pr,
+                  prayer_sources=P['expect_sources'].get(PRAYER, 0), stun=o['stun'])
+    out = {}
+    for k in FIELD_KEYS:
+        v = solved[k] if k in solved else o.get(k)
+        out[k] = bool(v) if k in ('dopplezon', 'weapon') else int(v or 0)
+    return out
+
+
+def edited(fields, pre):
+    """options() overrides from the form: only the fields that differ from the prefill (the others stay solved
+    by plan(), so changing the mana re-solves Meditation / Oak). Raises PlanError on a non-number."""
+    over = {}
+    for k in FIELD_KEYS:
+        v = fields.get(k)
+        if k in ('dopplezon', 'weapon'):
+            if bool(v) != pre[k]:
+                over[k] = bool(v)
+            continue
+        s = str(v if v is not None else '').strip()
+        if not s:
+            continue
+        try:
+            n = int(float(s))
+        except ValueError:
+            raise PlanError(f'{k}: {s!r} is not a number')
+        if n != pre[k]:
+            over[k] = n
+    return over
+
+
+def plan_line(P, raw):
+    """One line about a plan: mana and band, off-screen mana, lists used of the 198 the game keeps, bytes."""
+    b = band_info(P.get('side_a_mana', P['mana']['mana']), P['o']['tk'])
+    st = 'funky' if b['funky'] else 'good' if b['good'] else 'BAD'
+    return (f"mana {_num(P['mana']['mana'])} ({st}), off-screen {_num(b['offscreen'])}, lists {len(P['lists'])}/198, "
+            f"{len(raw)}/{FILE_LIMIT - 1} bytes")
 
 
 # ---------------------------------------------------------------------------------- names and writing

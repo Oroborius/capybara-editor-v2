@@ -68,6 +68,12 @@ def toggle_tab_analyzer_generator_crafter():
     rows = [page.tree.item(i) for i in page.tree.get_children()]
     T.check(any('Mana' in r['text'] and '1438462' in r['values'][0] for r in rows), 'mana row of clone-90')
     T.check(any(r['tags'] and r['tags'][0] == 'good' for r in rows), 'colour tags')
+    # ---- the prefilled fields under "Advanced" (collapsed by default) and the Check line
+    T.check(not page.adv_open, 'Advanced collapsed by default')
+    page.toggle_advanced()
+    T.pump(5, 0.02)
+    T.eq(page.ov['thorns'].get(), str(M.prefill('mock_high')['thorns']), 'fields prefilled with the preset')
+    T.check(page.check() is not None and 'bytes' in page.plan_lbl.cget('text'), 'Check: the plan line')
     shot = os.environ.get('CAPY_SHOT_DIR')
     if shot:
         import mxl_tabs
