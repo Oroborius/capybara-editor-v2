@@ -1,19 +1,23 @@
 """Mock Mode in the main window (folder profiles only, e.g. vanilla Diablo II 1.14d; Median XL looks as before).
 
 A small "Mock Mode" toggle at the very right of the top bar switches the mode (kept in the settings as
-'mock_mode'). While it is on, a "Mock" tab offers:
-- Generator: preset + name + Generate (optional overrides: mana, TK, class, level, position, Stun <-> Stability,
-  damage target, life, aura plan). The result is a NEW .d2s in the profile's save folder (asked first, never
-  overwrites; a free name is chosen);
-- Analyzer: the computed values of the loaded character with colour-coded checks (per weapon side);
+'mock_mode'). While it is on, a "Mock" tab offers three sub tabs:
+- Generator: preset + name + a big Generate button; every user-changeable stat as a prefilled field (spin boxes,
+  check boxes, combo boxes) in groups (tabs on the left, each a scroll area): Mana / TK, Life / regen, Auras (with
+  the source count next to each aura), Damage, Stun / Delirium, Defenses, Speeds, NV / switch. Check (and
+  Generate) validates the form, shows problems next to their fields and fills the summary panel on the right.
+  Generate writes a NEW .d2s in the profile's save folder without a question (never overwrites: a free name);
+- Analyzer: the checks and the same summary panel for the loaded character;
 - Item crafter: a small charm / jewel with arbitrary stat lines added to the loaded character's inventory
   (asked first; the editor's safe writer with a backup).
-The engine is mxl_mock (no GUI there)."""
+The summary panel (SummaryPanel) shows ONE weapon switch (A / B, weapon slots I / II): the other switch's items
+count nothing. The engine is mxl_mock (no GUI there)."""
 import os
 import tkinter as tk
 from tkinter import messagebox, ttk
 
 import mxl_mock as M
+import mxl_scroll
 from mxl_lang import T
 
 TAB = 'Mock'
@@ -166,227 +170,46 @@ def _int(s, what):
         raise M.PlanError(T('mock.err.number', '{what}: a whole number', what=what))
 
 
-class MockPage:
-    """The Mock tab: Generator | Analyzer, Item crafter below the analyzer."""
+SECTION_ORDER = ('Checks', 'Caps', 'Auras', 'Defenses', 'Speeds', 'Damage', 'Life / mana', 'Skills / states',
+                 'Clone profile')
+SIDE_LABEL = {'A': 'A (weapon I)', 'B': 'B (weapon II)'}
 
-    def __init__(self, app, host):
-        self.app, self.host = app, host
-        try:
-            host.title(TAB)
-        except Exception:
-            pass
-        outer = ttk.Frame(host, padding=4)
-        outer.pack(fill='both', expand=True)
-        outer.columnconfigure(1, weight=1)
-        outer.rowconfigure(0, weight=1)
-        self._generator(ttk.LabelFrame(outer, text=T('mock.gen', 'Generator'), padding=4))
-        right = ttk.Frame(outer)
-        right.grid(row=0, column=1, sticky='nsew', padx=(4, 0))
-        right.rowconfigure(0, weight=1)
-        right.columnconfigure(0, weight=1)
-        self._analyzer(ttk.LabelFrame(right, text=T('mock.ana', 'Analyzer'), padding=4))
-        self._crafter(ttk.LabelFrame(right, text=T('mock.craft', 'Item crafter'), padding=4))
-        host.bind('<Map>', lambda e: self.analyze() if e.widget is host else None, add='+')
 
-    # ------------------------------------------------------------------ generator
-    def _generator(self, f):
-        f.grid(row=0, column=0, sticky='nsw')
-        self.labels = {M.PRESETS[k]['label']: k for k in M.PRESET_ORDER}
-        self.preset = tk.StringVar(value=M.PRESETS['mock_high']['label'])
-        self.name = tk.StringVar(value='MockHigh')
-        r = 0
-        ttk.Label(f, text=T('mock.preset', 'Preset')).grid(row=r, column=0, sticky='w')
-        cb = ttk.Combobox(f, textvariable=self.preset, values=list(self.labels), state='readonly', width=18)
-        cb.grid(row=r, column=1, sticky='ew', pady=1)
-        cb.bind('<<ComboboxSelected>>', lambda e: self._preset_changed())
-        r += 1
-        ttk.Label(f, text=T('mock.name', 'Name')).grid(row=r, column=0, sticky='w')
-        ttk.Entry(f, textvariable=self.name, width=18).grid(row=r, column=1, sticky='ew', pady=1)
-        r += 1
-        # the simple path: preset, name, Generate; the prefilled fields wait under "Advanced"
-        self.gen_btn = ttk.Button(f, text=T('mock.generate', 'Generate'), command=self.generate)
-        self.gen_btn.grid(row=r, column=0, columnspan=2, sticky='ew', pady=(3, 3), ipady=6)
-        r += 1
-        # read-only: the game cannot save the clone (gaining xp at level 127 resets it to 99); the editor keeps
-        # the flag when it saves
-        self.read_only = tk.BooleanVar(value=True)
-        ttk.Checkbutton(f, text=T('mock.readonly', 'Read-only (keeps level 127: the game cannot save it)'),
-                        variable=self.read_only).grid(row=r, column=0, columnspan=2, sticky='w')
-        r += 1
-        self.note = ttk.Label(f, text='', wraplength=300, justify='left')
-        self.note.grid(row=r, column=0, columnspan=2, sticky='w')
-        r += 1
-        self.result = tk.Text(f, width=40, height=3, wrap='word', relief='flat', borderwidth=1)
-        self.result.grid(row=r, column=0, columnspan=2, sticky='ew', pady=(2, 2))
-        r += 1
-        self.adv_open = False
-        self.adv_btn = ttk.Button(f, text=T('mock.adv', 'Advanced') + ' >', command=self.toggle_advanced)
-        self.adv_btn.grid(row=r, column=0, columnspan=2, sticky='w')
-        r += 1
-        adv = self.adv = ttk.Frame(f)
-        self._adv_row = r
-        bf = ttk.Frame(adv)
-        bf.grid(row=0, column=0, columnspan=2, sticky='ew')
-        bf.columnconfigure(0, weight=1)
-        bf.columnconfigure(1, weight=1)
-        ttk.Button(bf, text=T('mock.check', 'Check'), command=self.check).grid(row=0, column=0, sticky='ew')
-        ttk.Button(bf, text=T('mock.reset', 'Reset to preset'), command=self.reset_fields).grid(
-            row=0, column=1, sticky='ew', padx=(2, 0))
-        self.plan_lbl = ttk.Label(adv, text='', wraplength=300, justify='left')
-        self.plan_lbl.grid(row=1, column=0, columnspan=2, sticky='w')
-        # every options() field, prefilled with the preset's values (the solved ones from its plan); only the
-        # fields the user changes are passed on, the rest stay solved by plan()
-        g = ttk.Frame(adv)
-        g.grid(row=2, column=0, columnspan=2, sticky='ew', pady=(2, 0))
-        self.ov, self.pre = {}, {}
-        for gi, (group, fields) in enumerate(M.FIELDS):
-            lf = ttk.LabelFrame(g, text=T(f'mock.g{gi}', group), padding=2)
-            # three columns (fits 800 x 600): Mana / TK | Life over Damage / stun | Auras & sources
-            row, col, span = {0: (0, 0, 2), 1: (0, 1, 1), 2: (0, 2, 2), 3: (1, 1, 1)}.get(gi, (gi, 0, 1))
-            lf.grid(row=row, column=col, rowspan=span, sticky='nsew', padx=1, pady=1)
-            for i, (k, lab, kind) in enumerate(fields):
-                if kind == 'bool':
-                    v = tk.BooleanVar()
-                    w = ttk.Checkbutton(lf, text=T(f'mock.f.{k}', lab), variable=v)
-                    w.grid(row=i, column=0, columnspan=2, sticky='w')
-                else:
-                    w = ttk.Label(lf, text=T(f'mock.f.{k}', lab))
-                    w.grid(row=i, column=0, sticky='w')
-                    v = tk.StringVar()
-                    e = ttk.Entry(lf, textvariable=v, width=7)
-                    e.grid(row=i, column=1, sticky='ew', pady=0)
-                    _Tip(e, T(f'mock.h.{k}', M.HINTS.get(k, '')))
-                _Tip(w, T(f'mock.h.{k}', M.HINTS.get(k, '')))
-                self.ov[k] = v
-            if gi == 0:                  # class, position and enemy aura with the mana fields
-                i = len(fields)
-                ttk.Label(lf, text=T('mock.o.class', 'Class')).grid(row=i, column=0, sticky='w')
-                self.cls = tk.StringVar(value=M.CLASSES[1])
-                ttk.Combobox(lf, textvariable=self.cls, values=list(M.CLASSES), state='readonly', width=7).grid(
-                    row=i, column=1, sticky='ew')
-                ttk.Label(lf, text=T('mock.o.pos', 'Position')).grid(row=i + 1, column=0, sticky='w')
-                self.pos = tk.StringVar(value=M.DEFAULTS['position'])
-                ttk.Combobox(lf, textvariable=self.pos, values=list(M.POSITIONS), state='readonly', width=7).grid(
-                    row=i + 1, column=1, sticky='ew')
-                # TK31 mana by the expected enemy aura (high aura -> low mana, low -> high, none / PT -> 1572863)
-                ttk.Label(lf, text=T('mock.o.enemy', 'Enemy aura')).grid(row=i + 2, column=0, sticky='w')
-                self.enemy = tk.StringVar(value='preset')
-                ttk.Combobox(lf, textvariable=self.enemy, values=['preset'] + list(M.ENEMY_AURA_MANA),
-                             state='readonly', width=7).grid(row=i + 2, column=1, sticky='ew')
-        self._preset_changed()
+def _bg(w):
+    try:
+        return ttk.Style(w).lookup('TFrame', 'background') or None
+    except tk.TclError:
+        return None
 
-    def toggle_advanced(self):
-        self.adv_open = not self.adv_open
-        if self.adv_open:                   # the fields take the result box's room (800 x 600)
-            self.result.grid_remove()
-            self.adv.grid(row=self._adv_row, column=0, columnspan=2, sticky='ew')
-        else:
-            self.adv.grid_remove()
-            self.result.grid()
-        self.adv_btn.configure(text=T('mock.adv', 'Advanced') + (' v' if self.adv_open else ' >'))
 
-    def _preset_changed(self):
-        k = self.labels.get(self.preset.get(), 'mock_high')
-        p = M.PRESETS[k]
-        self.note.configure(text=p.get('note', ''))
-        cur = self.name.get()
-        if not cur or cur == getattr(self, '_auto_name', None) or cur == 'MockHigh':
-            self._auto_name = ''.join(c for c in p['label'] if c.isalpha())[:15]     # the preset's name
-            self.name.set(self._auto_name)
-        self.pos.set(p.get('position', M.DEFAULTS['position']))
-        self.enemy.set('preset')
-        self.reset_fields()
+class SummaryPanel:
+    """Total stats of ONE weapon switch (the other switch's items count nothing): caps (mana band / off-screen,
+    regen, smite, aura damage, file size, lines per list), every active aura with its level, number of sources
+    and the sources themselves, the category totals and the clone-profile check. Used by the Generator (the
+    plan, no file) and the Analyzer (the loaded character)."""
 
-    def reset_fields(self):
-        """Every field back to the preset's values."""
-        k = self.labels.get(self.preset.get(), 'mock_high')
-        try:
-            self.pre = M.prefill(k)
-        except M.PlanError as e:
-            self.plan_lbl.configure(text=str(e))
-            return
-        for key, v in self.ov.items():
-            v.set(self.pre[key] if isinstance(v, tk.BooleanVar) else str(self.pre[key]))
-        self.plan_lbl.configure(text='')
-
-    def overrides(self):
-        o = M.edited({k: v.get() for k, v in self.ov.items()}, self.pre)
-        if 'damage' in o:
-            o['damage'] = min(o['damage'], int(M.DMG_CAP_PVP))
-        o['cls'] = M.CLASSES.index(self.cls.get()) if self.cls.get() in M.CLASSES else 1
-        o['position'] = self.pos.get() or None
-        if self.enemy.get() in M.ENEMY_AURA_MANA:
-            o['enemy_aura'] = self.enemy.get()
-            o.pop('mana', None)
-        return o
-
-    def check(self):
-        """The plan line for the fields as they are (not recomputed on every key stroke)."""
-        key = self.labels.get(self.preset.get(), 'mock_high')
-        try:
-            raw, P = M.generate(key, self.name.get().strip() or 'Mock', **self.overrides())
-        except M.PlanError as e:
-            self.plan_lbl.configure(text=str(e))
-            return None
-        self.plan_lbl.configure(text=M.plan_line(P, raw))
-        return raw, P
-
-    def generate(self):
-        root = self.app.root
-        key = self.labels.get(self.preset.get(), 'mock_high')
-        name = self.name.get().strip()
-        try:
-            if not M.valid_name(name):
-                raise M.PlanError(T('mock.err.name', 'Name: 2 to 15 letters (A-Z), at most one - or _, not at the '
-                                                     'start or the end'))
-            raw, P = M.generate(key, name, **self.overrides())
-            folder = getattr(self.app, 'save_dir', None) or os.environ.get('MXL_SAVE_DIR')
-            if not folder:
-                raise M.PlanError(T('mock.err.folder', 'No save folder.'))
-            free = M.free_name(folder, name)
-            if not messagebox.askyesno(T('mock.title', 'Mock Mode'),
-                                       T('mock.ask', 'Write the NEW character {file} into\n{folder}?\n'
-                                                     '(Nothing is overwritten.)', file=free + '.d2s', folder=folder),
-                                       parent=root):
-                return
-            path = M.write_new(raw, folder, free, read_only=self.read_only.get())
-        except (M.PlanError, OSError) as e:
-            messagebox.showerror(T('mock.title', 'Mock Mode'), str(e), parent=root)
-            return
-        self.last = path
-        txt = [T('mock.written', 'Written: {file}', file=os.path.basename(path))] + M.summary(P, raw)
-        self.result.delete('1.0', 'end')
-        self.result.insert('end', '\n'.join(txt))
-        self.plan_lbl.configure(text=txt[0] + ': ' + M.plan_line(P, raw))
-        try:
-            self.app.select_character(os.path.splitext(os.path.basename(path))[0], self.app.view.get())
-        except Exception as e:
-            print('mock: new character not selected:', e)
-        self.analyze()
-
-    # ------------------------------------------------------------------ analyzer
-    def _analyzer(self, f):
-        f.grid(row=0, column=0, sticky='nsew')
+    def __init__(self, parent, on_change=None, title=None):
+        self.on_change = on_change
+        self.model, self.role, self.extra = None, None, None
+        f = self.frame = ttk.LabelFrame(parent, text=title or T('mock.sum', 'Summary'), padding=2)
         f.columnconfigure(0, weight=1)
         f.rowconfigure(1, weight=1)
         top = ttk.Frame(f)
-        top.grid(row=0, column=0, sticky='ew')
-        ttk.Button(top, text=T('mock.analyze', 'Analyze'), command=self.analyze).pack(side='left')
-        self.side = tk.StringVar(value='')
-        self.side_box = ttk.Combobox(top, textvariable=self.side, values=[], state='readonly', width=12)
-        self.side_box.pack(side='left', padx=4)
-        self.side_box.bind('<<ComboboxSelected>>', lambda e: self.analyze(keep_side=True))
-        # the clones' convention: mana / life are tuned with Battle Orders cast (shown both ways)
-        self.bo_cast = tk.BooleanVar(value=True)
-        ttk.Checkbutton(top, text=T('mock.bocast', 'BO cast'), variable=self.bo_cast,
-                        command=lambda: self.analyze(keep_side=True)).pack(side='left')
-        self.who = ttk.Label(top, text='')
-        self.who.pack(side='left', padx=4)
-        self.tree = ttk.Treeview(f, columns=('value',), show='tree headings', height=14)
-        self.tree.heading('#0', text=T('mock.check', 'Check'))
-        self.tree.heading('value', text=T('mock.value', 'Value'))
-        self.tree.column('#0', width=130, stretch=False)
-        self.tree.column('value', width=300, stretch=True)
+        top.grid(row=0, column=0, columnspan=2, sticky='ew')
+        ttk.Label(top, text=T('mock.switch', 'Switch')).pack(side='left')
+        self.side = tk.StringVar(value='A')
+        self.side_btn = {}
+        for s in ('A', 'B'):
+            b = ttk.Radiobutton(top, text=SIDE_LABEL[s], value=s, variable=self.side, command=self.render)
+            b.pack(side='left', padx=(2, 0))
+            self.side_btn[s] = b
+        # the clones' convention: mana / life are tuned with Battle Orders cast
+        self.bo = tk.BooleanVar(value=True)
+        ttk.Checkbutton(top, text=T('mock.bocast', 'BO cast'), variable=self.bo, command=self.render).pack(
+            side='left', padx=(6, 0))
+        self.tree = ttk.Treeview(f, columns=('value',), show='tree', height=12, selectmode='browse')
+        self.tree.column('#0', width=175, stretch=False)
+        self.tree.column('value', width=220, stretch=True)
         self.tree.grid(row=1, column=0, sticky='nsew')
         sb = ttk.Scrollbar(f, orient='vertical', command=self.tree.yview)
         sb.grid(row=1, column=1, sticky='ns')
@@ -394,6 +217,275 @@ class MockPage:
         for st, col in COLORS.items():
             if col:
                 self.tree.tag_configure(st, foreground=col)
+        self.tree.tag_configure('section', font=('TkDefaultFont', 9, 'bold'))
+
+    def show(self, model, role=None, extra=None, side=None):
+        """model: mxl_mock model; extra(side, bo) -> [(section, label, text, status)] shown first (the analyzer's
+        checks)."""
+        self.model, self.role, self.extra = model, role, extra
+        if side:
+            self.side.set(side)
+        act = 'B' if model and model.get('active_weapon') else 'A'
+        for s, b in self.side_btn.items():
+            b.configure(text=SIDE_LABEL[s] + (' *' if s == act else ''))
+        self.render()
+
+    def rows(self):
+        if self.model is None:
+            return []
+        side, bo = self.side.get(), self.bo.get()
+        out = list(self.extra(side, bo)) if self.extra else []
+        return out + M.summary_rows(self.model, side, bo=bo, role=self.role)
+
+    def render(self):
+        t = self.tree
+        t.delete(*t.get_children())
+        rows = self.rows()
+        heads = {}
+        for sec in SECTION_ORDER + tuple(r[0] for r in rows):
+            if sec in heads or not any(r[0] == sec for r in rows):
+                continue
+            n = sum(1 for r in rows if r[0] == sec)
+            heads[sec] = t.insert('', 'end', text=T(f'mock.sec.{sec}', sec), values=(f'{n}',), open=True,
+                                  tags=('section',))
+        for r in rows:
+            sec, label, text, st = r[:4]
+            mark = {M.GOOD: '✔ ', M.WARN: '! ', M.BAD: '✖ '}.get(st, '  ')
+            i = t.insert(heads[sec], 'end', text=mark + label, values=(text,), tags=(st,))
+            for g, names in (r[4] if len(r) > 4 else ()):      # every active source, by item (folded)
+                t.insert(i, 'end', text='   ' + g, values=(names,))
+        if self.on_change:
+            self.on_change(self.side.get(), self.bo.get())
+        return rows
+
+
+class MockPage:
+    """The Mock tab: Generator | Analyzer | Item crafter (a notebook of its own: fits 800 x 600)."""
+
+    def __init__(self, app, host):
+        self.app, self.host = app, host
+        self.last = None
+        try:
+            host.title(TAB)
+        except Exception:
+            pass
+        nb = self.nb = ttk.Notebook(host)
+        nb.pack(fill='both', expand=True, padx=2, pady=2)
+        g, a, c = (ttk.Frame(nb, padding=2) for _ in range(3))
+        nb.add(g, text=T('mock.gen', 'Generator'))
+        nb.add(a, text=T('mock.ana', 'Analyzer'))
+        nb.add(c, text=T('mock.craft', 'Item crafter'))
+        self._analyzer(a)
+        self._crafter(c)
+        self._generator(g)
+        host.bind('<Map>', lambda e: self.analyze() if e.widget is host else None, add='+')
+
+    # ------------------------------------------------------------------ generator
+    def _generator(self, f):
+        f.columnconfigure(0, weight=1)
+        f.rowconfigure(0, weight=1)
+        pw = ttk.PanedWindow(f, orient='horizontal')
+        pw.grid(row=0, column=0, sticky='nsew')
+        left = ttk.Frame(pw)
+        right = ttk.Frame(pw)
+        pw.add(left, weight=1)
+        pw.add(right, weight=1)
+        left.columnconfigure(1, weight=1)
+        left.rowconfigure(5, weight=1)
+        self.labels = {M.PRESETS[k]['label']: k for k in M.PRESET_ORDER}
+        self.preset = tk.StringVar(value=M.PRESETS['mock_high']['label'])
+        self.name = tk.StringVar(value='MockHigh')
+        ttk.Label(left, text=T('mock.preset', 'Preset')).grid(row=0, column=0, sticky='w')
+        cb = ttk.Combobox(left, textvariable=self.preset, values=list(self.labels), state='readonly', width=16)
+        cb.grid(row=0, column=1, sticky='ew', pady=1)
+        cb.bind('<<ComboboxSelected>>', lambda e: self._preset_changed())
+        ttk.Label(left, text=T('mock.name', 'Name')).grid(row=1, column=0, sticky='w')
+        ttk.Entry(left, textvariable=self.name, width=16).grid(row=1, column=1, sticky='ew', pady=1)
+        self.gen_btn = ttk.Button(left, text=T('mock.generate', 'Generate'), command=self.generate)
+        self.gen_btn.grid(row=0, column=2, rowspan=2, sticky='nsew', padx=(4, 0), ipadx=10, ipady=4)
+        # read-only: the game cannot save the clone (gaining xp at level 127 resets it to 99); the editor keeps
+        # the flag when it saves
+        bar = ttk.Frame(left)
+        bar.grid(row=2, column=0, columnspan=3, sticky='ew')
+        self.read_only = tk.BooleanVar(value=True)
+        ttk.Checkbutton(bar, text=T('mock.readonly', 'Read-only'), variable=self.read_only).pack(side='left')
+        _Tip(bar.winfo_children()[0], T('mock.h.readonly', 'keeps level 127: the game cannot save the clone'))
+        ttk.Button(bar, text=T('mock.check', 'Check'), command=self.check).pack(side='right')
+        ttk.Button(bar, text=T('mock.reset2', 'Reset'), command=self.reset_fields).pack(side='right', padx=(0, 2))
+        self.note = ttk.Label(left, text='', wraplength=360, justify='left')
+        self.note.grid(row=3, column=0, columnspan=3, sticky='w')
+        self.status = ttk.Label(left, text='', wraplength=360, justify='left')
+        self.status.grid(row=4, column=0, columnspan=3, sticky='w')
+        # the two text lines wrap at the pane's width (800 x 600: about 280 px)
+        left.bind('<Configure>', lambda e: [w.configure(wraplength=max(150, e.width - 8))
+                                            for w in (self.note, self.status)], add='+')
+        # the fields: one tab per group (tabs on the left side), each a scroll area
+        st = ttk.Style(left)
+        try:
+            st.configure('Mock.TNotebook', tabposition='wn')
+        except tk.TclError:
+            pass
+        gnb = self.groups = ttk.Notebook(left, style='Mock.TNotebook')
+        gnb.grid(row=5, column=0, columnspan=3, sticky='nsew', pady=(2, 0))
+        self.ov, self.pre, self.err, self.src = {}, {}, {}, {}
+        self.touched, self._filling = set(), False        # the fields the user changed (the rest stay solved)
+        self.field_tab = {}
+        bg = _bg(left)
+        for gi, (group, fields) in enumerate(M.FIELDS):
+            sc = mxl_scroll.Scrolled(gnb, bg=bg, horizontal=False)
+            gnb.add(sc, text=T(f'mock.g{gi}', group))
+            box = ttk.Frame(sc.inner, padding=2)
+            box.pack(fill='both', expand=True)
+            box.columnconfigure(2, weight=1)
+            for i, (k, lab, kind, extra) in enumerate(fields):
+                hint = T(f'mock.h.{k}', M.HINTS.get(k, ''))
+                if kind == 'bool':
+                    v = tk.BooleanVar()
+                    w = ttk.Checkbutton(box, text=T(f'mock.f.{k}', lab), variable=v)
+                    w.grid(row=i, column=0, columnspan=2, sticky='w', pady=1)
+                else:
+                    ttk.Label(box, text=T(f'mock.f.{k}', lab)).grid(row=i, column=0, sticky='w')
+                    v = tk.StringVar()
+                    if kind == 'choice':
+                        w = ttk.Combobox(box, textvariable=v, values=list(extra), state='readonly', width=9)
+                    else:
+                        w = ttk.Spinbox(box, textvariable=v, from_=extra[0], to=extra[1], increment=1, width=9)
+                    w.grid(row=i, column=1, sticky='w', pady=1, padx=(2, 2))
+                _Tip(w, hint)
+                e = ttk.Label(box, text='', foreground=COLORS[M.BAD], wraplength=170, justify='left')
+                e.grid(row=i, column=2, sticky='w')
+                self.ov[k], self.err[k] = v, e
+                self.field_tab[k] = gi
+                v.trace_add('write', lambda *_a, k=k: self._touch(k))
+        self.summary = SummaryPanel(right, title=T('mock.sum.plan', 'Summary of the plan'))
+        self.summary.frame.pack(fill='both', expand=True)
+        self._preset_changed()
+
+    def key(self):
+        return self.labels.get(self.preset.get(), 'mock_high')
+
+    def _preset_changed(self):
+        p = M.PRESETS[self.key()]
+        self.note.configure(text=p.get('note', ''))
+        cur = self.name.get()
+        if not cur or cur == getattr(self, '_auto_name', None) or cur == 'MockHigh':
+            self._auto_name = ''.join(c for c in p['label'] if c.isalpha())[:15]     # the preset's name
+            self.name.set(self._auto_name)
+        self.reset_fields()
+
+    def _touch(self, k):
+        if not self._filling:
+            self.touched.add(k)
+
+    def _fill(self, values, keys):
+        self._filling = True
+        try:
+            for key in keys:
+                v = self.ov[key]
+                v.set(values[key] if isinstance(v, tk.BooleanVar) else str(values[key]))
+        finally:
+            self._filling = False
+
+    def reset_fields(self):
+        """Every field back to the preset's values (then a Check)."""
+        try:
+            self.pre = M.prefill(self.key())
+        except M.PlanError as e:
+            self._show_errors({'': str(e)})
+            return
+        self.touched.clear()
+        self._fill(self.pre, self.ov)
+        self.check()
+
+    def form(self):
+        """The fields the user changed (the others are solved by the plan and repainted after a Check)."""
+        return {k: v.get() for k, v in self.ov.items() if k in self.touched}
+
+    def _show_errors(self, errs):
+        for k, e in self.err.items():
+            e.configure(text=errs.get(k, ''))
+        if errs:
+            k = next(iter(errs))
+            if k in self.field_tab:                         # the first problem's group comes to the front
+                try:
+                    self.groups.select(self.field_tab[k])
+                except tk.TclError:
+                    pass
+            lab = next((f[1] for _, fs in M.FIELDS for f in fs if f[0] == k), '')
+            self.status.configure(text=(f'{lab}: ' if lab else '') + errs[k], foreground=COLORS[M.BAD])
+
+    def check(self):
+        """The plan of the fields as they are: problems next to their fields, the summary on the right (not
+        recomputed on every key stroke)."""
+        over, raw, P, errs = M.validate(self.key(), self.form(), self.pre)
+        self._show_errors(errs)
+        if errs:
+            return None
+        self.over = over
+        if over:                    # the solved fields follow the edits (Meditation / Oak after a mana change ...)
+            try:
+                self._fill(M.prefill(self.key(), **over), [k for k in self.ov if k not in self.touched])
+            except M.PlanError:
+                pass
+        for k, n in M.sources_of(P).items():               # the source count next to each aura field
+            if not self.err[k].cget('text'):
+                self.err[k].configure(text=T('mock.src', '{n} source(s)', n=n), foreground='')
+        self.status.configure(text=M.plan_line(P, raw), foreground='')
+        side = 'A' if not P.get('side_b') else self.summary.side.get()
+        self.summary.show(M.model_from_plan(P, raw), M.PRESET_ROLE[self.key()], side=side)
+        return raw, P
+
+    def overrides(self):
+        return M.edited(self.form(), self.pre)
+
+    def generate(self):
+        """A NEW .d2s in the save folder (never overwrites: a free name is chosen), no question asked."""
+        name = self.name.get().strip()
+        if not M.valid_name(name):
+            self._show_errors({'': T('mock.err.name', 'Name: 2 to 15 letters (A-Z), at most one - or _, not at '
+                                                       'the start or the end')})
+            return None
+        r = self.check()
+        if r is None:
+            return None
+        key = self.key()
+        try:
+            raw, P = M.generate(key, name, **self.over)
+            folder = getattr(self.app, 'save_dir', None) or os.environ.get('MXL_SAVE_DIR')
+            if not folder:
+                raise M.PlanError(T('mock.err.folder', 'No save folder.'))
+            path = M.write_new(raw, folder, M.free_name(folder, name), read_only=self.read_only.get())
+        except (M.PlanError, OSError) as e:
+            self._show_errors({'': str(e)})
+            return None
+        self.last = path
+        self.status.configure(text=T('mock.written', 'Written: {file}', file=os.path.basename(path)) + '  '
+                              + M.plan_line(P, raw), foreground=COLORS[M.GOOD])
+        self.summary.show(M.model_from_plan(P, raw), M.PRESET_ROLE[key])
+        try:
+            self.app.select_character(os.path.splitext(os.path.basename(path))[0], self.app.view.get())
+        except Exception as e:
+            print('mock: new character not selected:', e)
+        self.analyze()
+        return path
+
+    # ------------------------------------------------------------------ analyzer
+    def _analyzer(self, f):
+        f.columnconfigure(0, weight=1)
+        f.rowconfigure(1, weight=1)
+        top = ttk.Frame(f)
+        top.grid(row=0, column=0, sticky='ew')
+        ttk.Button(top, text=T('mock.analyze', 'Analyze'), command=self.analyze).pack(side='left')
+        self.role = tk.StringVar(value='mock')
+        ttk.Label(top, text=T('mock.role', 'Compare with')).pack(side='left', padx=(6, 2))
+        rb = ttk.Combobox(top, textvariable=self.role, values=list(M.CLONE_PROFILE), state='readonly', width=6)
+        rb.pack(side='left')
+        rb.bind('<<ComboboxSelected>>', lambda e: self.analyze(keep_side=True))
+        self.who = ttk.Label(top, text='')
+        self.who.pack(side='left', padx=4)
+        self.ana = SummaryPanel(f, title=T('mock.sum.char', 'Loaded character'))
+        self.ana.frame.grid(row=1, column=0, sticky='nsew')
+        self.tree = self.ana.tree
 
     def _character(self):
         try:
@@ -406,7 +498,6 @@ class MockPage:
         return path, mxl_char.Character(path, self.app.data)
 
     def analyze(self, keep_side=False):
-        self.tree.delete(*self.tree.get_children())
         try:
             path, ch = self._character()
         except Exception as e:
@@ -416,24 +507,19 @@ class MockPage:
             self.who.configure(text=T('mock.nochar', 'no character loaded'))
             return None
         m = M.model_from_character(ch)
-        sides = M.sides(m)
-        labels = [T('mock.side', 'side {s}', s=s) + (' *' if i == 0 else '') for i, s in enumerate(sides)]
-        self.side_box.configure(values=labels)
-        side = sides[0]
-        if keep_side and self.side.get() in labels:
-            side = sides[labels.index(self.side.get())]
-        self.side.set(labels[sides.index(side)])
-        a = M.analyze(m, side, bo=self.bo_cast.get())
+        side = self.ana.side.get() if keep_side else M.sides(m)[0]
         self.who.configure(text=f'{ch.name} ({os.path.basename(path)})')
-        for key, label, text, st in a['checks']:
-            mark = {M.GOOD: '✔ ', M.WARN: '! ', M.BAD: '✖ '}.get(st, '  ')
-            self.tree.insert('', 'end', text=mark + label, values=(text,), tags=(st,))
-        self.report = a
-        return a
+
+        def checks(sd, bo):
+            a = M.analyze(m, sd, bo=bo)
+            self.report = a
+            return [('Checks', lab, txt, st) for _, lab, txt, st in a['checks']]
+
+        self.ana.show(m, self.role.get(), extra=checks, side=side)
+        return self.report
 
     # ------------------------------------------------------------------ item crafter
     def _crafter(self, f):
-        f.grid(row=1, column=0, sticky='ew', pady=(4, 0))
         f.columnconfigure(1, weight=1)
         ttk.Label(f, text=T('mock.c.base', 'Item')).grid(row=0, column=0, sticky='w')
         self.base = tk.StringVar(value='charm')
@@ -441,8 +527,9 @@ class MockPage:
             row=0, column=1, sticky='w')
         ttk.Button(f, text=T('mock.c.add', 'Add to the loaded character'), command=self.craft).grid(
             row=0, column=2, sticky='e')
-        self.lines = tk.Text(f, width=40, height=5, wrap='none', relief='flat', borderwidth=1)
-        self.lines.grid(row=1, column=0, columnspan=3, sticky='ew', pady=(2, 0))
+        self.lines = tk.Text(f, width=40, height=12, wrap='none', relief='flat', borderwidth=1)
+        self.lines.grid(row=1, column=0, columnspan=3, sticky='nsew', pady=(2, 0))
+        f.rowconfigure(1, weight=1)
         self.lines.insert('end', 'aura prayer 31\nmana 223\nmana% 53\ndr 63\n')
         ttk.Label(f, text=T('mock.c.help', "One line per stat: 'stat [param] value', 'mana 223', 'aura prayer 31', "
                                            "'ctc_attack stun 63 10', 'skill smite 63'; '--' starts the jewel's "
