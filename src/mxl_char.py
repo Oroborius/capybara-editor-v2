@@ -8,6 +8,7 @@ items when hired) and the golem ('kf'). File size @0x08 and checksum @0x0C are r
 """
 import json
 import os
+import stat
 import random
 import shutil
 import struct
@@ -1163,12 +1164,18 @@ class Character:
         if on_disk is not None and on_disk != self.raw:
             raise CharError(T('ch.err.changed', 'the character file changed on disk since it was read (game or another '
                               'window): it has been reloaded, try again'))
+        ro = is_read_only(self.path)          # a read-only character (mock clones: the game cannot add xp and
+        if ro:                                # reset level 127 to 99) is written and made read-only again
+            set_read_only(self.path, False)
         try:
             bak = commit_file(self.path, content, verify, backup)
         except EditError as e:
             raise CharError(str(e))
         except OSError as e:
             raise write_error(self.path, e)
+        finally:
+            if ro:
+                set_read_only(self.path, True)
         self.raw = content
         self.parse(content)
         return bak
@@ -1179,6 +1186,23 @@ class Character:
 
     def set_header_u32(self, off, value):
         struct.pack_into('<I', self.head, off, value)
+
+
+def is_read_only(path):
+    """True when the file exists and is read-only (Windows attribute / no write bit)."""
+    try:
+        return not (os.stat(path).st_mode & stat.S_IWUSR)
+    except OSError:
+        return False
+
+
+def set_read_only(path, on):
+    """Sets or clears the read-only flag (os.chmod maps to the Windows read-only attribute). Never raises."""
+    try:
+        m = os.stat(path).st_mode
+        os.chmod(path, (m & ~(stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH)) if on else (m | stat.S_IWUSR))
+    except OSError:
+        pass
 
 
 # ------------------------------------------------------------------ the collector's character reader

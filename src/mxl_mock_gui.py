@@ -207,6 +207,12 @@ class MockPage:
         self.gen_btn = ttk.Button(f, text=T('mock.generate', 'Generate'), command=self.generate)
         self.gen_btn.grid(row=r, column=0, columnspan=2, sticky='ew', pady=(3, 3), ipady=6)
         r += 1
+        # read-only: the game cannot save the clone (gaining xp at level 127 resets it to 99); the editor keeps
+        # the flag when it saves
+        self.read_only = tk.BooleanVar(value=True)
+        ttk.Checkbutton(f, text=T('mock.readonly', 'Read-only (keeps level 127: the game cannot save it)'),
+                        variable=self.read_only).grid(row=r, column=0, columnspan=2, sticky='w')
+        r += 1
         self.note = ttk.Label(f, text='', wraplength=300, justify='left')
         self.note.grid(row=r, column=0, columnspan=2, sticky='w')
         r += 1
@@ -343,7 +349,7 @@ class MockPage:
                                                      '(Nothing is overwritten.)', file=free + '.d2s', folder=folder),
                                        parent=root):
                 return
-            path = M.write_new(raw, folder, free)
+            path = M.write_new(raw, folder, free, read_only=self.read_only.get())
         except (M.PlanError, OSError) as e:
             messagebox.showerror(T('mock.title', 'Mock Mode'), str(e), parent=root)
             return

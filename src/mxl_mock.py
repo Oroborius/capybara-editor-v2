@@ -1501,13 +1501,17 @@ def rename_raw(raw, name):
     return bytes(b)
 
 
-def write_new(raw, folder, name):
-    """Writes a NEW <name>.d2s (the name made free first; exclusive create, never overwrites): the path."""
+def write_new(raw, folder, name, read_only=False):
+    """Writes a NEW <name>.d2s (the name made free first; exclusive create, never overwrites): the path.
+    read_only: mark it read-only, so the game cannot save it (xp at level 127 resets it to 99)."""
     os.makedirs(folder, exist_ok=True)
     name = free_name(folder, name)
     path = os.path.join(folder, name + '.d2s')
     with open(path, 'xb') as f:
         f.write(rename_raw(raw, name))
+    if read_only:
+        import stat
+        os.chmod(path, os.stat(path).st_mode & ~(stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH))
     return path
 
 

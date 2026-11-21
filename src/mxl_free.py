@@ -114,10 +114,16 @@ def _free_character_save():
             # the backup keeps what was there
             _log(log, 'character file changed on disk since it was read - written anyway (mxl_free): %s',
                  self.path)
+        ro = mxl_char.is_read_only(self.path)      # a read-only mock clone: written, then read-only again
+        if ro:
+            mxl_char.set_read_only(self.path, False)
         try:
             bak = commit_file(self.path, content, verify, backup)
-        except OSError as e:          # read-only / held open / disk full: a CharError the windows show in a box
+        except OSError as e:          # held open / disk full: a CharError the windows show in a box
             raise mxl_char.write_error(self.path, e)
+        finally:
+            if ro:
+                mxl_char.set_read_only(self.path, True)
         self.raw = content
         self.parse(content)
         return bak

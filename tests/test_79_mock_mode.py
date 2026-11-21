@@ -423,4 +423,23 @@ def new_files_never_overwrite():
             pass
 
 
+
+
+@T.test
+def read_only_clone_stays_read_only_after_an_editor_save():
+    """Mock clones are made read-only (the game cannot save them: xp at level 127 resets it to 99); a save from
+    the editor writes the file and makes it read-only again."""
+    E = engine()
+    folder = T.guard(os.path.join(T.tmp(), 'mockro'), 'read-only test folder')
+    os.makedirs(folder)
+    raw, _ = E.M.generate('mock_high', 'Ro')
+    p = E.M.write_new(raw, folder, 'Ro', read_only=True)
+    T.check(E.MC.is_read_only(p), 'the new clone is read-only')
+    ch = E.MC.Character(p, E.data)
+    ch.save(backup=False)
+    T.check(E.MC.is_read_only(p), 'still read-only after the editor saved it')
+    T.eq(T.read(p), ch.raw, 'the save went through')
+    E.MC.set_read_only(p, False)
+
+
 T.main(globals())
