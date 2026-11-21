@@ -80,26 +80,70 @@ def _download(url, dest, progress=None):
 
 
 def install_windows(rel, progress=None):
-    """Unpacks the release next to the current folder; returns the new exe's path."""
+    """Downloads and unpacks the release into a staging folder next to the install; returns (staged folder, helper)
+    where the helper (a .cmd in %TEMP%) waits for this process to end, moves the current folder aside as
+    "<folder>.previous" (one backup kept), moves the new one into its place (or copies over it when a file is
+    locked), and starts the editor again from the same path: shortcuts keep working."""
     import zipfile
-    here = os.path.dirname(os.path.abspath(sys.executable))
+    import tempfile
+    exe = os.path.abspath(sys.executable)
+    here = os.path.dirname(exe)
     parent = os.path.dirname(here)
-    dest = os.path.join(parent, f"MXL Capybara Editor V2 {rel['tag']}")
-    tmp = os.path.join(parent, f".capybara-update-{rel['tag']}.zip")
+    stage = os.path.join(parent, f".capybara-update-{rel['tag']}")
+    tmp = stage + '.zip'
     _download(rel['assets'][WIN_ASSET], tmp, progress)
     try:
+        import shutil
+        shutil.rmtree(stage, ignore_errors=True)
         with zipfile.ZipFile(tmp) as z:
-            z.extractall(dest)
+            z.extractall(stage)
     finally:
         try:
             os.remove(tmp)
         except OSError:
             pass
-    exe = next((os.path.join(r, f) for r, _d, fs in os.walk(dest) for f in fs
-                if f.lower().endswith('.exe') and 'capybara' in f.lower()), None)
-    if not exe:
-        raise OSError(f'no exe in the downloaded release ({dest})')
-    return exe
+    new = next((r for r, _d, fs in os.walk(stage) if os.path.basename(exe) in fs), None)
+    if not new:
+        raise OSError(f'no {os.path.basename(exe)} in the downloaded release')
+    helper = os.path.join(tempfile.gettempdir(), f"capybara-update-{rel['tag']}.cmd")
+    with open(helper, 'w', encoding='utf-8', newline='\r\n') as f:
+        f.write(WIN_HELPER.format(pid=os.getpid(), old=here, new=new, stage=stage, exe=os.path.basename(exe)))
+    return new, helper
+
+
+WIN_HELPER = """@echo off
+chcp 65001 >NUL
+setlocal
+set "OLD={old}"
+set "NEW={new}"
+set "STAGE={stage}"
+set "EXE={exe}"
+:wait
+tasklist /FI "PID eq {pid}" 2>NUL | find "{pid}" >NUL
+if not errorlevel 1 (
+  ping -n 2 127.0.0.1 >NUL
+  goto wait
+)
+ping -n 2 127.0.0.1 >NUL
+if exist "%OLD%.previous" rmdir /s /q "%OLD%.previous"
+move "%OLD%" "%OLD%.previous" >NUL 2>NUL
+if errorlevel 1 goto copy
+move "%NEW%" "%OLD%" >NUL 2>NUL
+if not errorlevel 1 goto start
+move "%OLD%.previous" "%OLD%" >NUL 2>NUL
+:copy
+robocopy "%NEW%" "%OLD%" /E /R:3 /W:1 /NFL /NDL /NJH /NJS >NUL
+:start
+start "" /D "%OLD%" "%OLD%\\%EXE%"
+rmdir /s /q "%STAGE%" >NUL 2>NUL
+(goto) 2>NUL & del "%~f0"
+"""
+
+
+def launch_windows_helper(helper):
+    import subprocess
+    flags = 0x00000008 | 0x00000200 | 0x08000000      # DETACHED_PROCESS | NEW_PROCESS_GROUP | NO_WINDOW
+    subprocess.Popen(['cmd', '/c', helper], creationflags=flags, close_fds=True)
 
 
 def install_appimage(rel, progress=None):
@@ -112,7 +156,59 @@ def install_appimage(rel, progress=None):
     return target
 
 
-def run(app):
+SETTING_SEEN = 'update_seen_tag'
+
+
+def _seen():
+    try:
+        import settings
+        return settings.get(SETTING_SEEN)
+    except Exception:
+        return None
+
+
+def _set_seen(tag):
+    try:
+        import settings
+        settings.put(SETTING_SEEN, tag)
+    except Exception:
+        pass
+
+
+def startup_check(app, delay_ms=4000):
+    """A few seconds after start, a quiet check in the background: when a newer release is out that this user was
+    not shown before, the update window opens for it. Offline / errors: nothing at all."""
+    import queue
+    q = queue.Queue()
+
+    def work():
+        try:
+            rel = latest_release(timeout=8)
+            if newer(rel['tag'], current_tag()) and rel['tag'] != _seen():
+                q.put(rel)
+        except Exception:
+            pass
+
+    def poll(n=0):
+        try:
+            rel = q.get_nowait()
+        except queue.Empty:
+            if n < 150:
+                app.root.after(200, poll, n + 1)
+            return
+        _set_seen(rel['tag'])
+        run(app, rel)
+
+    def go():
+        threading.Thread(target=work, daemon=True).start()
+        app.root.after(200, poll)
+    try:
+        app.root.after(delay_ms, go)
+    except Exception:
+        pass
+
+
+def run(app, rel=None):
     import tkinter as tk
     from tkinter import ttk, messagebox
     root = getattr(app, 'root', None) or tk._default_root
@@ -164,8 +260,9 @@ def run(app):
             ttk.Button(btns, text=T('upd.close', 'Close'), command=w.destroy).pack(side='right')
             return
         how = mode()
-        what = {'windows': T('upd.how_win', 'It will be unpacked next to this folder and started; this window closes. '
-                                           'Your settings and saves are kept.'),
+        what = {'windows': T('upd.how_win', 'The editor closes, is replaced in this same folder (the old version is '
+                                           'kept as a backup next to it) and starts again. Your settings and saves '
+                                           'are kept.'),
                 'appimage': T('upd.how_app', 'This AppImage file is replaced and the editor restarts. '
                                              'Your settings and saves are kept.'),
                 'browser': T('upd.how_web', 'The download page opens in your browser.')}[how]
@@ -194,7 +291,7 @@ def run(app):
 
         def work():
             try:
-                path = (install_windows if how == 'windows' else install_appimage)(rel, prog)
+                path = install_windows(rel, prog) if how == 'windows' else install_appimage(rel, prog)
                 ui(done, path, None)
             except Exception as e:
                 ui(done, None, e)
@@ -208,32 +305,45 @@ def run(app):
             return
         try:
             import mxl_log
-            mxl_log.log.info('update installed: %s -> %s', state['rel']['tag'], path)
+            mxl_log.log.info('update downloaded: %s -> %s', state['rel']['tag'], path)
         except Exception:
             pass
-        import subprocess
         try:
-            subprocess.Popen([path], cwd=os.path.dirname(path))
+            if isinstance(path, tuple):                    # Windows: the helper swaps the folder once we are gone
+                launch_windows_helper(path[1])
+            else:
+                import subprocess
+                subprocess.Popen([path], cwd=os.path.dirname(path), start_new_session=True)
         except OSError as e:
-            messagebox.showinfo(title, T('upd.start_by_hand', 'Installed. Start it from:\n{path}\n({error})',
-                                         path=path, error=e), parent=w)
-        try:
-            root.destroy()
-        except tk.TclError:
-            pass
+            messagebox.showinfo(title, T('upd.start_by_hand', 'Downloaded. Start it from:\n{path}\n({error})',
+                                         path=path[0] if isinstance(path, tuple) else path, error=e), parent=w)
+            return
+        msg.configure(text=T('upd.restarting', 'Restarting with {tag}...', tag=state['rel']['tag']))
+        w.after(400, lambda: root.destroy())
 
     def check():
         try:
             ui(checked, latest_release(), None)
         except Exception as e:
             ui(checked, None, e)
-    threading.Thread(target=check, daemon=True).start()
+    if rel is not None:                       # the startup check found it already
+        ui(checked, rel, None)
+    else:
+        threading.Thread(target=check, daemon=True).start()
     return w
 
 
-def install():
+def install(App=None):
     try:
         import mxl_toolbar
         mxl_toolbar.add_entry(lambda: T('upd.menu', 'Check for updates...'), run)
     except Exception:
         pass
+    if App is None or os.environ.get('MXL_NO_UPDATE_CHECK'):
+        return
+    o_build = App._build
+
+    def _build(self):
+        o_build(self)
+        startup_check(self)
+    App._build = _build

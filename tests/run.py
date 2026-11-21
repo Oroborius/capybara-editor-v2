@@ -140,6 +140,7 @@ def main():
         e.update(env)
         if mode != 'engine':
             e['WAYLAND_DISPLAY'] = 'fake'        # the launcher then fixes the UI scale at 1 (no xrdb guess)
+        e['MXL_NO_UPDATE_CHECK'] = '1'           # no network: the quiet update check at start stays off
         t0 = time.time()
         with open(os.path.join(work, 'output.txt'), 'wb') as out:
             try:
