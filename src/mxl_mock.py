@@ -803,6 +803,9 @@ SOCKET_FIELD = {'ghm ': 2, 'gth ': 3, 'tow ': 3, 'crs ': 6}
 # lines. Every reference mock writes 194 = 8 on the first list of each socketed item (amulet / rings: field 0-1);
 # without it the 7 jewels of the amulet / rings (and 4-5 of helm / armor / shield) were lost in game.
 SOCKET_STAT = 8
+# user (2026-11-20): D2 supports up to 7 sockets without crashing on weapons, shields, body armor, helms, rings and
+# amulets (not boots / belts / gloves): socketed gear gets the save field at 7 (= JEWELS), no extra 194 line
+MAX_SOCKETS = 7
 JEWELS = 7
 CHARM_COUNT = 40
 DELIRIUM_CHANCE = 127               # chance % of both Delirium lines (attack reset)
@@ -1333,8 +1336,8 @@ def _item_records(P):
         rec = dict(flags=f, version=ITEM_VERSION, location=1, equipped=u.body, x=0, y=0, panel=0, code=u.code,
                    socketed_count=len(kids), id=rng.getrandbits(32), ilvl=90, quality=5, image=None,
                    auto_affix=None, set_unique_id=u.set_id, realm_bit=0, defense_raw=10, max_durability=0,
-                   sockets=SOCKET_FIELD.get(u.code, 0), set_mask=31,
-                   lists=[([(194, None, SOCKET_STAT)] if kids else []) + u.slots[0].lines],
+                   sockets=MAX_SOCKETS if kids else SOCKET_FIELD.get(u.code, 0), set_mask=31,
+                   lists=[u.slots[0].lines],
                    set_lists=[s.lines for s in u.slots[1:6]])
         grp = [rec]
         for j, k in enumerate(kids):
