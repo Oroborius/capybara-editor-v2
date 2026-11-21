@@ -114,6 +114,14 @@ def analyzer_matches_the_research_numbers():
           sum(v['sources']['Meditation'].values())), (7, 1, 1), 'clone-90: 7 Holy Freeze, 1 Thorns, 1 Meditation')
     T.check(v['regen'] <= v['regen_cap'], 'clone-90: regen under the roll-over cap')
     T.check(v['smite']['max'] <= E.M.ROLL, 'clone-90: smite under the roll')
+    # socket capacity = save field + item_numsockets (194) lines; every clone has room for its jewels,
+    # clone-74 puts 7 jewels in 1-socket rings / amulet (21 beyond the count: not counted, scored bad)
+    for rel in ('clones/clone-41.d2s', 'clones/clone-60.d2s', 'clones/clone-05.d2s', 'clone-90.d2s'):
+        T.eq(_analyze(_sample(rel))[1]['excess_jewels'], 0, f'{rel}: every jewel fits its sockets')
+    a, m, _ = _analyze(_sample('clone-74.d2s'))
+    T.eq(m['excess_jewels'], 21, 'clone-74: 21 jewels beyond the socket count')
+    T.check(any(c[0] == 'sockets' and c[3] == E.M.BAD for c in a['checks']), 'clone-74: scored bad')
+    T.eq(_analyze(_sample('clones/clone-05.d2s'))[0]['values']['dopplezon'], 1, 'clone-05: Dopplezon line')
 
 
 @T.test
@@ -154,6 +162,47 @@ def _gen_dir():
     return d
 
 
+_MS = []
+
+
+def _independent(key, raw, v):
+    """The independent parser mxlsave: no structural problem; every socketed child fits the item's socket
+    count (save field + item_numsockets lines, as in the reference mocks: the game drops the rest); Dopplezon
+    present; the mana sum recomputed from its own parse (active side, inventory charms) equals the analyzer's."""
+    E = engine()
+    if not _MS:
+        import mxl_savecheck
+        ms = mxl_savecheck.lib()
+        _MS.append(ms.Tables(E.data.folder))
+    from mxlsave.check import check_bytes
+    obj, problems = check_bytes(raw, 'd2s', _MS[0])
+    T.eq(problems, [], f'{key}: mxlsave finds no problem')
+    side = (5, 4) if v['side'] == 'A' else (11, 12)
+    F, Pc, dz, over = 0, 0, 0, []
+    units = []
+    for it in obj.items:
+        if it.location == 1 and (it.equipped not in (4, 5, 11, 12) or it.equipped in side):
+            cap = (it.sockets or 0) + sum(x.value for x in it.stats if x.id == 194)
+            if len(it.socketed) > cap:
+                over.append(it.code)
+            units.append([it.stats] + list(it.set_stats.values()))
+            for k in it.socketed[:cap]:
+                units.append([k.stats] + ([k.runeword_stats] if k.runeword_stats is not None else []))
+        elif it.location == 0 and it.panel == 1 and it.code in ('cm1 ', 'cm2 ', 'cm3 '):
+            units.append([it.stats])
+    for lists in units:
+        for L in lists:
+            for x in L:
+                F += x.value if x.id == 9 else 0
+                Pc += x.value if x.id == 77 else 0
+                dz += 1 if x.id == 98 and x.param == 63 and x.value else 0
+    T.eq(over, [], f'{key}: mxlsave: no item with more jewels than sockets')
+    T.check(dz >= 1, f'{key}: mxlsave: Dopplezon line')
+    base = next(x.value for x in obj.stats if x.id == 9)
+    mana = (Fraction(base, 256) + F + 20) * (100 + Pc) / 100
+    T.eq(mana, v['mana'], f'{key}: mxlsave mana sum = the analyzer mana')
+
+
 def _check_generated(key, raw, P, path):
     E = engine()
     M = E.M
@@ -172,8 +221,9 @@ def _check_generated(key, raw, P, path):
     else:
         T.eq(v['mana'], exp['mana'], f'{key}: mana as planned')
         T.check(v['band']['good'] and not v['band']['funky'], f'{key}: good band')
-        if P['o']['switch'] != 'lock':
-            T.eq(int(v['mana']), int(P['o']['mana']), f'{key}: on-screen mana = the target')
+        T.eq(int(v['mana']), int(P['o']['mana']), f'{key}: on-screen mana = the target')
+        if exp['tk'] >= 31:
+            T.check(M.TK31_RANGE[0] <= v['mana'] < M.TK31_RANGE[1] + 1, f'{key}: TK31 mock range 1.21M-1572863')
     T.eq((v['regen'], v['regen_cap']), (exp['regen'], exp['regen_cap']), f'{key}: regen')
     T.check(v['regen'] <= v['regen_cap'] and v['regen_cap'] - v['regen'] < 25, f'{key}: regen at the cap')
     T.check(exp['pvm'] - 400 <= v['smite']['max'] <= exp['pvm'] <= M.ROLL, f"{key}: smite {v['smite']['max']}")
@@ -184,18 +234,19 @@ def _check_generated(key, raw, P, path):
     T.eq(v['sources'].get('Prayer'), {'charm': exp['sources'][M.PRAYER]}, f'{key}: Prayer sources only on charms')
     T.eq(v['prayer_level'], 31 * v['lists'], f'{key}: Prayer 31 on every list')
     T.eq(v['lists'], 198 if P['o']['weapon'] else 178, f'{key}: lists')
-    T.check(len(raw) == v['size'] < M.FILE_LIMIT, f'{key}: {len(raw)} bytes')
+    T.check(len(raw) == v['size'] <= 8191, f'{key}: {len(raw)} bytes (the game loads at most 8191)')
+    T.eq(v['excess_jewels'], 0, f'{key}: every jewel fits the socket count (field + item_numsockets)')
+    T.check(v['dopplezon'] >= 1, f'{key}: NV state Dopplezon (stat 98, state 63)')
+    _independent(key, raw, v)
     lv = {x[1] for x in v['delirium']}
     T.check(len(v['delirium']) == 2 and len(lv) == 2, f'{key}: Delirium on attack + strike at two levels')
     if exp['side_b']:
         b = M.analyze(m, 'B')['values']
         T.eq(b['mana'], exp['side_b']['mana'], f'{key}: side B mana')
         T.eq([c for c in M.analyze(m, 'B')['checks'] if c[3] == M.BAD], [], f'{key}: side B checks')
-        if P['o']['switch'] == 'lock':
-            T.check(b['band']['funky'] and b['band']['stable'], f'{key}: side B locks on the funky zero')
-        else:
-            T.eq(int(b['mana']), P['o']['mana_b'], f'{key}: side B on-screen mana')
-            T.eq(b['stun'], [], f'{key}: side B without stun')
+        T.eq(int(b['mana']), P['o']['mana_b'], f'{key}: side B on-screen mana')
+        T.check(M.TK31_RANGE[0] <= b['mana'] < M.TK31_RANGE[1] + 1, f'{key}: side B in the TK31 mock range')
+        T.eq(b['stun'], [], f'{key}: side B without stun')
 
 
 @T.test
@@ -234,6 +285,20 @@ def overrides_hit_their_targets():
         T.check(False, 'TK24 funky on 178 lists must be refused (no exact product)')
     except M.PlanError:
         pass
+    for over in (dict(tk=30, mana=1572863), dict(mana=1100000), dict(hf_sources=60)):
+        try:
+            M.plan('mock_high', 'Over', **over)
+            T.check(False, f'{over} must be refused (TK30 first band / outside the TK31 range / HF on charms)')
+        except M.PlanError:
+            pass
+    T.check('mana_lock' not in M.PRESETS and 'mana_lock' not in M.PRESET_ORDER, 'Mana lock preset removed')
+    for aura, mana in M.ENEMY_AURA_MANA.items():
+        raw, P = M.generate('mock_high', 'Over', enemy_aura=aura)
+        T.eq(int(P['mana']['mana']), mana, f'enemy aura {aura}: mana {mana}')
+    T.eq(M.PRESETS['prayer_thorner']['mana'], 1572863, 'P/T (no enemy aura): 1572863')
+    P = M.plan('aura_killer', 'AK')
+    T.check(all(u.role == 'prayer' for u in P['units'] if u.kind == 'charm'), 'Aura Killer: every charm Prayer')
+    T.eq(P['expect_sources'][M.HOLY_FREEZE], 28, 'Aura Killer: 28 Holy Freeze sources on gear jewels')
 
 
 @T.test
