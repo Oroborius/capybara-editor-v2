@@ -1,7 +1,8 @@
 """Mock Mode engine (src/mxl_mock.py) in the vanilla profile: the analyzer on reference mock saves matches the
 research numbers (docs/review/mock-pi.md 2.5 / 8.2), the vanilla item codec gives every sample item back byte for
 byte, and every preset generates a NEW save that re-opens in the editor and that the analyzer scores as hitting
-its targets (mana band / funky, regen at the cap, smite at the damage cap, aura sources as planned, < 8192 bytes).
+its targets (mana band / funky, regen at the cap, smite at the damage cap, aura sources as planned, < 8192 bytes)
+and uses the clones' size tricks with bulk lines up to the size budget.
 
 Fixtures: the vanilla install and the mock samples (see test 75; copies only). Skipped without them."""
 import glob
@@ -450,6 +451,48 @@ def smite_max_and_efficient_modes():
     T.eq((mx['max'], mx['min']), (M.ROLL, M.ROLL), 'max mode: every smite is the cap')
     ef = M.plan('mock_high', 'X')['smite']
     T.check(M.ROLL * 0.999 <= ef['max'] <= M.ROLL, f"efficient mode within 0.1%: {ef['max']}")
+
+
+@T.test
+def size_tricks_and_bulk_lines():
+    """The clones' size tricks (editor-tricks.txt): socketed jewels normal quality without the picture field,
+    charms superior without it (a q2 no-picture jewel round-trips byte for byte, the editor reads it back); the
+    room under the size budget is filled with target-neutral bulk lines on charms and jewels (replenish life on
+    every list; absorb by time, or resist by level on a Host); one line per stat per list; every preset ends
+    within 300 bytes under the budget."""
+    E = engine()
+    M = E.M
+    isc, base = M.isc_from_data(E.data), M.base_from_data(E.data)
+    jew = dict(flags=M.FLAG_IDENTIFIED | M.FLAG_ALWAYS | M.FLAG_RUNEWORD, version=M.ITEM_VERSION, location=6,
+               equipped=0, x=0, y=0, panel=0, code='jew ', socketed_count=0, id=12345, ilvl=90, quality=2,
+               image=None, auto_affix=None, runeword_id=0xFFFF, realm_bit=0, lists=[[(74, None, 33)]],
+               rw_list=[(288, None, 4194303)])
+    b = M.encode_item(jew, isc, base)
+    r, end = M.decode_item(b, isc, base)
+    T.eq((end, r['quality'], r['image'], M.encode_item(r, isc, base)), (len(b), 2, None, b), 'q2 no-img jewel')
+    with_img = M.encode_item(dict(jew, quality=3, image=0, subquality=1), isc, base)
+    T.check(len(b) <= len(with_img), 'no sub-quality and no picture: never larger (6 bits less)')
+    budget = M.FILE_LIMIT - 1 - M.SIZE_MARGIN
+    folder = _gen_dir()
+    for key in M.PRESET_ORDER:
+        raw, P = M.generate(key, 'Bulk')
+        T.check(budget - 300 <= len(raw) <= budget, f'{key}: {len(raw)} bytes within 300 under {budget}')
+        host = P['o']['position'] == 'Host'
+        for u in P['units']:
+            for sl in u.slots:
+                keys = [(sid, p) for sid, p, _ in sl.lines]
+                T.eq(len(keys), len(set(keys)), f'{key}: {u.name}: one line per stat per list')
+                if u.kind in ('charm', 'jewel'):
+                    T.check(sl.has(74), f'{key}: {u.name}: replenish life bulk line')
+            if u.kind == 'charm':
+                T.check(u.slots[0].has(230 if host else 288), f'{key}: {u.name}: {"res" if host else "abs"} bulk')
+        path = M.write_new(raw, folder, 'Bulk')
+        ch = E.MC.Character(path, E.data)
+        q = set()
+        for e in ch.items:
+            recs = M.decode_blob(e.blob, isc, base)
+            q |= {(x['code'], x['quality'], x['image']) for x in recs if x['code'] in ('jew ', 'cm1 ')}
+        T.eq(q, {('jew ', 2, None), ('cm1 ', 3, None)}, f'{key}: jewels q2 / charms q3, no picture field')
 
 
 T.main(globals())

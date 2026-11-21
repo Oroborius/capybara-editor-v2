@@ -64,11 +64,12 @@ SMITE_TARGET = ROLL - SMITE_SLACK
 # generator writes; the decoder takes the profile's own table (any stat)
 VANILLA_ISC = {0: (8, 32, 0), 1: (7, 32, 0), 2: (7, 32, 0), 3: (7, 32, 0), 7: (9, 32, 0), 9: (8, 32, 0),
                21: (6, 0, 0), 22: (7, 0, 0), 27: (8, 0, 0), 34: (6, 0, 0), 36: (8, 0, 0), 39: (8, 50, 0),
-               41: (8, 50, 0), 43: (8, 50, 0), 45: (8, 50, 0), 76: (6, 10, 0), 77: (6, 10, 0), 93: (7, 20, 0),
+               41: (8, 50, 0), 43: (8, 50, 0), 45: (8, 50, 0), 74: (6, 30, 0), 76: (6, 10, 0), 77: (6, 10, 0), 93: (7, 20, 0),
                97: (6, 0, 9), 98: (1, 0, 8), 99: (7, 20, 0), 107: (3, 0, 9), 111: (9, 20, 0), 114: (6, 0, 0),
                135: (7, 0, 0), 136: (7, 0, 0), 142: (7, 0, 0), 144: (7, 0, 0), 148: (7, 0, 0), 151: (5, 0, 9),
                194: (4, 0, 0), 195: (7, 0, 16), 198: (7, 0, 16), 220: (6, 0, 0), 230: (6, 0, 0), 231: (6, 0, 0),
-               232: (6, 0, 0), 233: (6, 0, 0), 234: (6, 0, 0), 235: (6, 0, 0), 236: (6, 0, 0), 329: (9, 50, 0),
+               232: (6, 0, 0), 233: (6, 0, 0), 234: (6, 0, 0), 235: (6, 0, 0), 236: (6, 0, 0),
+               288: (22, 0, 0), 289: (22, 0, 0), 290: (22, 0, 0), 329: (9, 50, 0),
                330: (9, 50, 0), 331: (9, 50, 0)}
 GROUPS = {17: (18,), 48: (49,), 50: (51,), 52: (53,), 54: (55, 56), 57: (58, 59)}   # written as one line
 PER_LEVEL = {216, 217, 220, 221, 222, 223, 224, 230, 231, 232, 233, 234, 235, 236, 238}   # value x clvl / 8
@@ -790,8 +791,10 @@ TK31_RANGE = (1210000, 1572863)
 HF_SOURCE_TARGET = 8320000
 POSITIONS = {'Host': dict(dtm=500, stun=0), 'HPJ': dict(dtm=420, stun=11), 'LPJ': dict(dtm=330, stun=11)}
 # level 127: every well-described clones2 mock (per-level stats give 127/8 per point)
+# the generator fills the file with target-neutral bulk lines up to FILE_LIMIT - 1 - SIZE_MARGIN bytes
+SIZE_MARGIN = 200
 DEFAULTS = dict(cls=1, level=127, position='LPJ', life=7300000, damage=Fraction(SMITE_TARGET) * PVP / 2,
-                abs_budget=8150)
+                size_budget=FILE_LIMIT - 1 - SIZE_MARGIN)
 
 # item skeleton: (role, body, code, Sigon's set item id, socketed with 7 jewels)
 GEAR = (('helm', 1, 'ghm ', 36, True), ('armor', 3, 'gth ', 37, True), ('shield', 5, 'tow ', 40, True),
@@ -808,6 +811,21 @@ SOCKET_STAT = 8
 MAX_SOCKETS = 7
 JEWELS = 7
 CHARM_COUNT = 40
+# size tricks of the reference clones (docs/review/mock-pi-data/editor-tricks.txt): socketed jewels are NORMAL
+# quality (q2: no 3-bit sub-quality; clone-09, clone-32, Cold, clone-23, clone-52, Prototype) and every
+# jewel / charm has no picture field ("no img": 1 flag bit instead of 4; clone-32's 40 charms, clone-83's
+# jewel; our rings / amulets already load in game without it). Charms stay superior (no sample has a q2 charm).
+JEWEL_QUALITY = 2
+CHARM_QUALITY = 3
+# target-neutral bulk lines of the clones, written into the room left under the size budget (charms first, then
+# jewels, then gear; one line per stat per list): replenish life 33 (the field max: clone-99 / README "replenish
+# and DR on almost everything"), then absorb by time 4194303 (cold, fire, lightning: clone-28, Cold, Assault,
+# clone-52, TryToKill*), never on a Host (doc S4: abs-by-time does not work as host): a Host gets resist by
+# level instead (fire, lightning, cold 63: clone-45 82/82/54 lines, clone-32, clone-64; doc S4 "hosts 66k resist").
+# Life, mana, regen, smite, aura and mastery stats stay off: they would move a target.
+BULK_REPLENISH = (74, 33)
+BULK_ABS_TIME = ((288, 4194303), (289, 4194303), (290, 4194303))
+BULK_HOST_RES = ((230, 63), (231, 63), (232, 63))
 DELIRIUM_CHANCE = 127               # chance % of both Delirium lines (attack reset)
 AURA_LINE_MAX = 31
 
@@ -1255,16 +1273,28 @@ def _switch(P):
 
 
 def _fill_absorb(P):
-    """Absorb by level (cold, fire, lightning) on as many lists as the 8 KB budget allows (best value per bit)."""
-    room = (P['o']['abs_budget'] - len(build(P))) * 8
-    per = line_bits(234)
-    for s in P['lists']:
-        for sid in (234, 235, 236):
-            if room < per + 64:
-                return
-            if not s.has(sid):
-                s.add(sid, 63)
-                room -= per
+    """Absorb by level (cold, fire, lightning) on every list, then the clones' bulk lines (BULK_REPLENISH, then
+    BULK_ABS_TIME, or BULK_HOST_RES on a Host) on charms, jewels and gear, while the file stays within the size
+    budget."""
+    budget = P['o']['size_budget']
+    lists = [s for u in P['units'] for s in u.slots]       # with the switch side B copies
+    order = sorted(lists, key=lambda s: {'charm': 0, 'jewel': 1}.get(s.unit.kind, 2))
+    steps = [(s, sid, 63) for s in lists for sid in (234, 235, 236)]
+    bulk = [BULK_REPLENISH] + list(BULK_HOST_RES if P['o']['position'] == 'Host' else BULK_ABS_TIME)
+    steps += [(s, sid, v) for sid, v in bulk for s in order]
+    room = (budget - len(build(P))) * 8
+    added = []
+    for s, sid, v in steps:
+        per = line_bits(sid)
+        if room < per + 64:
+            break
+        if not s.has(sid):
+            s.add(sid, v)
+            added.append(s)
+            room -= per
+    while added and len(build(P)) > budget:         # byte padding per item: trim the estimate's overshoot
+        added.pop().lines.pop()
+    P['bulk_lines'] = len(added)
 
 
 # ---------------------------------------------------------------------------------- the file
@@ -1343,13 +1373,14 @@ def _item_records(P):
         for j, k in enumerate(kids):
             grp.append(dict(flags=FLAG_IDENTIFIED | FLAG_ALWAYS | FLAG_RUNEWORD, version=ITEM_VERSION,
                             location=6, equipped=0, x=j, y=0, panel=0, code='jew ', socketed_count=0,
-                            id=rng.getrandbits(32), ilvl=90, quality=3, image=0, auto_affix=None, subquality=1,
-                            runeword_id=0xFFFF, realm_bit=0, lists=[k.slots[0].lines], rw_list=k.slots[1].lines))
+                            id=rng.getrandbits(32), ilvl=90, quality=JEWEL_QUALITY, image=None, auto_affix=None,
+                            subquality=1, runeword_id=0xFFFF, realm_bit=0, lists=[k.slots[0].lines],
+                            rw_list=k.slots[1].lines))
         out.append(grp)
     for i, u in enumerate(x for x in units if x.kind == 'charm'):
         out.append([dict(flags=FLAG_IDENTIFIED | FLAG_ALWAYS, version=ITEM_VERSION, location=0, equipped=0,
                          x=i % 10, y=i // 10, panel=1, code='cm1 ', socketed_count=0, id=rng.getrandbits(32),
-                         ilvl=90, quality=3, image=0, auto_affix=None, subquality=1, realm_bit=0,
+                         ilvl=90, quality=CHARM_QUALITY, image=None, auto_affix=None, subquality=1, realm_bit=0,
                          lists=[u.slots[0].lines])])
     return out
 
