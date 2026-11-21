@@ -2575,7 +2575,10 @@ class StatScreen:
         e.bind('<Escape>', lambda _e: (self.cancel_edit(), self.win.update_dirty(), 'break')[2])
         e.bind('<FocusOut>', lambda _e: self.commit_edit(leaving=True))
         e.bind('<Tab>', lambda _e: (self.next_edit(1), 'break')[1])
-        e.bind('<ISO_Left_Tab>', lambda _e: (self.next_edit(-1), 'break')[1])
+        try:                                          # an X11 keysym: Windows / macOS Tk do not know it
+            e.bind('<ISO_Left_Tab>', lambda _e: (self.next_edit(-1), 'break')[1])
+        except tk.TclError:
+            pass
         e.bind('<Shift-Tab>', lambda _e: (self.next_edit(-1), 'break')[1])
         if key not in TEXT_KEYS:
             e.bind('<Up>', lambda ev: (self.step_edit(10 if ev.state & 1 else 1), 'break')[1])

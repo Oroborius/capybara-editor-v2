@@ -615,7 +615,7 @@ class CreatorWindow:
             try:
                 from tkinter import font as tkfont
                 ch = tkfont.Font(font=self.preview.cget('font')).measure('0')
-            except tk.TclError:
+            except (tk.TclError, AttributeError):          # the preview is not built yet
                 ch = 7
             pw = max(26 * ch, min(int(w * 0.28), 66 * ch))
             lw = max(24 * ch, min(int(w * 0.22), 52 * ch))
