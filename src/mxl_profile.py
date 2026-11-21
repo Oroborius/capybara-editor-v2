@@ -125,7 +125,7 @@ def detect(game_dir):
 
 def save_dir(game_dir, home=None):
     """Where the game in game_dir keeps its characters (only detected - nothing is read here): a Wine prefix's
-    drive_c/users/<user>/Saved Games/Diablo II (1.14x; 'Public' last), the Windows user's Saved Games\Diablo II,
+    drive_c/users/<user>/Saved Games/Diablo II (1.14x; 'Public' last), the Windows user's Saved Games\\Diablo II,
     else the game folder's own Save folder (1.13d and older). None when none exists."""
     import glob
     if not game_dir:
@@ -169,6 +169,12 @@ def _use_save_dir(game_dir, root=None):
     if d:
         os.environ['MXL_SAVE_DIR'] = d
         os.environ['MXL_SAVE_DIR_AUTO'] = '1'
+        # mxl_gui reads MXL_SAVE_DIR once at import (SAVE_DIR); when it is already imported (the launcher's
+        # Median guess was read), point it at this game's folder too, or the Median saves/stashes get opened
+        import sys
+        g = sys.modules.get('mxl_gui')
+        if g is not None and hasattr(g, 'SAVE_DIR'):
+            g.SAVE_DIR = d
     return d
 
 
