@@ -301,6 +301,7 @@ def _check_generated(key, raw, P, path):
     T.eq(v['lists'], 198 if P['o']['weapon'] else 178, f'{key}: lists')
     T.check(len(raw) == v['size'] <= 8191, f'{key}: {len(raw)} bytes (the game loads at most 8191)')
     T.eq(v['excess_jewels'], 0, f'{key}: every jewel fits the socket count (field + item_numsockets)')
+    T.check(v['longest'] <= M.LINE_CAP, f"{key}: at most {M.LINE_CAP} lines per stat list ({v['longest']})")
     T.check(v['dopplezon'] >= 1, f'{key}: NV state Dopplezon (stat 98, state 63)')
     _independent(key, raw, v)
     lv = {x[1] for x in v['delirium']}
@@ -478,14 +479,18 @@ def size_tricks_and_bulk_lines():
         raw, P = M.generate(key, 'Bulk')
         T.check(budget - 300 <= len(raw) <= budget, f'{key}: {len(raw)} bytes within 300 under {budget}')
         host = P['o']['position'] == 'Host'
+        # the role's first bulk stat (clone profile): Host resist by level, funky replenish, mocks absorb by time
+        first = 230 if host else 74 if P['o']['role'] == 'funky' else 288
         for u in P['units']:
             for sl in u.slots:
                 keys = [(sid, p) for sid, p, _ in sl.lines]
                 T.eq(len(keys), len(set(keys)), f'{key}: {u.name}: one line per stat per list')
-                if u.kind in ('charm', 'jewel'):
-                    T.check(sl.has(74), f'{key}: {u.name}: replenish life bulk line')
-            if u.kind == 'charm':
-                T.check(u.slots[0].has(230 if host else 288), f'{key}: {u.name}: {"res" if host else "abs"} bulk')
+                T.check(sl.count() <= M.LINE_CAP, f'{key}: {u.name}: at most {M.LINE_CAP} lines per list')
+                if u.side != 'B':
+                    T.check(all(sl.has(x) for x in (234, 235, 236)), f'{key}: {u.name}: absorb by level')
+            room = P['bulk_lines'] >= 3 * len(P['lists']) + 40      # the size budget reached the role's bulk
+            if u.kind == 'charm' and room and not P['o']['switch']:
+                T.check(u.slots[0].has(first), f'{key}: {u.name}: bulk stat {first}')
                 T.check(u.slots[0].has(7) and (P['o']['switch'] or u.slots[0].has(9)),
                         f'{key}: {u.name}: the life / +mana lines sit on the charms first')
         path = M.write_new(raw, folder, 'Bulk')
@@ -496,5 +501,96 @@ def size_tricks_and_bulk_lines():
             q |= {(x['code'], x['quality'], x['image']) for x in recs if x['code'] in ('jew ', 'cm1 ')}
         T.eq(q, {('jew ', 2, None), ('cm1 ', 3, None)}, f'{key}: jewels q2 / charms q3, no picture field')
 
+
+
+# proven clones per role (clone profile, docs/review/mock-pi-data/clone-profile.txt); clone-99 is the user's own
+ROLE_CLONES = {
+    'mock': ['clone-02', 'clone-80', 'clone-77', 'clone-90', 'clone-13', 'clone-10', 'clone-67',
+             'clone-92', 'clone-53', 'clone-34', 'clone-85', 'Assault', 'Cold', 'Glitch',
+             'clone-33', 'Hero', 'clone-70', 'clone-86', 'clone-105', 'clone-73', 'clone-81'],
+    'host': ['clone-45', 'clone-09', 'clone-32', 'clone-64'],
+    'pt': ['clone-104', 'clone-87', 'clone-76', 'clone-29'],
+    'ak': ['clone-05', 'clone-96', 'clone-39', 'clone-58'],
+    'funky': ['clone-99', 'clone-63', 'clone-65', 'clone-41', 'clone-60', 'clone-69'],
+}
+
+
+@T.test
+def every_preset_has_every_clone_category():
+    """The clone profile holds on the samples (each 'always' category is carried by >= 2/3 of the role's clone
+    sides) and every preset's generated save carries every one of them, on both weapon sides, with a total of at
+    least a third of the clones' median."""
+    E = engine()
+    M = E.M
+    found = {}
+    for f in sorted(glob.glob(os.path.join(E.saves, '**', '*.d2s'), recursive=True)):
+        base = os.path.splitext(os.path.basename(f))[0]
+        role = next((r for r, L in ROLE_CLONES.items() if base in L), None)
+        if role is None or (role, base) in found:
+            continue
+        m = E.M.model_from_character(E.MC.Character(f, E.data))
+        found[(role, base)] = [M.category_totals(m, sd) for sd in M.sides(m)]
+    for role, prof in M.CLONE_PROFILE.items():
+        sides = [ct for (r, _), L in found.items() if r == role for ct in L]
+        T.check(len(sides) >= 3, f'{role}: {len(sides)} clone sides in the samples')
+        for k in prof['always']:
+            n = sum(1 for ct in sides if ct[k][1])
+            T.check(3 * n >= 2 * len(sides), f'{role}: {k} on {n} of {len(sides)} clone sides')
+    folder = _gen_dir()
+    for key in M.PRESET_ORDER:
+        role = M.PRESET_ROLE[key]
+        raw, P = M.generate(key, 'Prof')
+        m = E.M.model_from_character(E.MC.Character(M.write_new(raw, folder, 'Prof'), E.data))
+        for sd in M.sides(m):           # side B only on a switch (otherwise weapon slot II is empty in game)
+            T.eq(M.profile_missing(m, role, sd), [], f'{key} side {sd}: no clone category missing')
+        ct = M.category_totals(m, 'A')
+        for k in M.CLONE_PROFILE[role]['always']:
+            t = M.CLONE_PROFILE[role]['typical'].get(k)
+            if t and t > 0:
+                T.check(ct[k][0] * 3 >= t, f'{key}: {k} total {ct[k][0]} vs the clones {t}')
+
+
+@T.test
+def plan_model_matches_the_written_save():
+    """The summary panel of the generator (model_from_plan, no file) shows what the analyzer reads from the
+    written save, on both weapon sides: same checks, same summary rows; an inactive switch counts nothing."""
+    E = engine()
+    M = E.M
+    folder = _gen_dir()
+    for key in M.PRESET_ORDER:
+        raw, P = M.generate(key, 'Same')
+        mp = M.model_from_plan(P, raw)
+        mc = M.model_from_character(E.MC.Character(M.write_new(raw, folder, 'Same'), E.data))
+        role = M.PRESET_ROLE[key]
+        for sd in ('A', 'B'):
+            T.eq(M.analyze(mp, sd, bo=True)['checks'], M.analyze(mc, sd, bo=True)['checks'], f'{key} {sd}: checks')
+            T.eq(M.summary_rows(mp, sd, True, role), M.summary_rows(mc, sd, True, role), f'{key} {sd}: summary')
+    raw, P = M.generate('balance_switch', 'Sw')
+    m = M.model_from_plan(P, raw)
+    a, b = M.category_totals(m, 'A'), M.category_totals(m, 'B')
+    T.check(a['stun'][1] > 0 and b['stun'][1] == 0, 'balance switch: stun only on side A (the inactive shield adds none)')
+    T.check(a['mana'][0] != b['mana'][0], 'balance switch: each side has its own +mana total')
+    rows = M.summary_rows(m, 'A', True, 'mock')
+    sect = {r[0] for r in rows}
+    T.check({'Caps', 'Auras', 'Defenses', 'Speeds', 'Damage', 'Life / mana', 'Clone profile'} <= sect,
+            f'summary sections {sorted(sect)}')
+    hf = next(r for r in rows if r[0] == 'Auras' and r[1] == 'Holy Freeze')
+    T.check('7 source(s)' in hf[2] and 'tow@5/0' in hf[2], f'Holy Freeze row lists its sources: {hf[2]}')
+
+
+@T.test
+def form_validation_names_the_field():
+    """validate(): a bad number, a value out of range or a target the plan cannot reach is reported on its field."""
+    M = engine().M
+    pre = M.prefill('mock_high')
+    T.eq(M.validate('mock_high', dict(pre), pre)[3], {}, 'untouched form: no problem')
+    for form, key in ((dict(pre, thorns='x1'), 'thorns'), (dict(pre, level='140'), 'level'),
+                      (dict(pre, mana='1100000'), 'mana'), (dict(pre, hf_sources='45'), 'hf_sources'),
+                      (dict(pre, switch='balance', mana_b='900000'), 'mana_b')):
+        errs = M.validate('mock_high', form, pre)[3]
+        T.eq(list(errs), [key], f'{key}: reported on its field ({errs})')
+    over, raw, P, errs = M.validate('mock_high', dict(pre, ias='-121', res_light='630', just_hit=True), pre)
+    T.eq((over, errs), (dict(ias=-121, res_light=630, just_hit=True), {}), 'edited speed / resist / NV state')
+    T.eq(P['o']['ias'], -121, 'the edited IAS reaches plan()')
 
 T.main(globals())
