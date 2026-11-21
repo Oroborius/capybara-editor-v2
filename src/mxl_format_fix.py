@@ -287,6 +287,60 @@ def _install_no_picture_icon():
     mxl_gfx.base_icon_name = base_icon_name
 
 
+def shown_sockets(it):
+    """Sockets the game gives an item: the save's socket field plus its item_numsockets (194) lines (mock clones:
+    field 3 + 194 = 4 -> 7 jewels). The host drew / printed only the field."""
+    n = it.get('sockets') or 0
+    for st in it.get('stats') or ():
+        if st.get('id') == 194:
+            n += st.get('value') or 0
+    return n
+
+
+def _with_shown_sockets(it):
+    if not isinstance(it, dict) or not it.get('has_sockets'):
+        return it
+    n = shown_sockets(it)
+    if n == (it.get('sockets') or 0):
+        return it
+    c = dict(it)
+    c['sockets'] = n
+    return c
+
+
+def _install_socket_display():
+    """Draw and print field + 194 sockets (display only: the item dict and the save keep the field)."""
+    import sys
+    import mxl_gfx
+    import mxl_tooltip
+    orig = mxl_gfx.icon_layers
+    if getattr(orig, '_shown_sock', False):
+        return
+
+    def icon_layers(it, *a, **k):
+        return orig(_with_shown_sockets(it), *a, **k)
+    icon_layers._shown_sock = True
+    for name in ('mxl_gfx', 'mxl_gui', 'mxl_library_gui'):
+        m = sys.modules.get(name)
+        if m is not None and getattr(m, 'icon_layers', None) is orig:
+            m.icon_layers = icon_layers
+    sec = mxl_tooltip.section_sockets
+
+    def section_sockets(ctx):                  # the host's section with the shown count (it, data from ctx)
+        it, data, out = ctx.it, ctx.data, []
+        n = shown_sockets(it)
+        if n:
+            out.append(mxl_tooltip.sockets_line(data, n))
+        if it.get('ethereal'):
+            out.append([(mxl_tooltip.BLUE, data.key('EtherealQ'))])
+        return out
+    mxl_tooltip.section_sockets = section_sockets
+    for k, v in list(vars(mxl_tooltip).items()):     # a section table built at import keeps the old function
+        if isinstance(v, (list, tuple)) and any(x is sec for x in v):
+            nv = [section_sockets if x is sec else x for x in v]
+            setattr(mxl_tooltip, k, type(v)(nv) if isinstance(v, tuple) else nv)
+
+
 def install():
     if getattr(mxl_format, '_sigma_fix', False):
         return
@@ -301,6 +355,10 @@ def install():
         pass
     try:
         _install_no_picture_icon()        # no-picture jewels / charms (mock clones): first variant, not the base file
+    except Exception:
+        pass
+    try:
+        _install_socket_display()         # field + item_numsockets (194) sockets, like the game
     except Exception:
         pass
     try:
