@@ -945,10 +945,6 @@ def options(preset='mock_high', **over):
     o.setdefault('deli_attack', 63)
     o.setdefault('deli_strike', 62)
     o.setdefault('dopplezon', True)
-    # Battle Orders cast before the duel (clones2 convention: BO 63 + 36 = 99, mana tuned WITH BO): mana and life
-    # targets are the BO'd values; 0 = no BO line
-    o['bo'] = max(0, min(99, int(o.get('bo', 99))))
-    o['bo_pct'] = 35 + 3 * (o['bo'] - 1) if o['bo'] else 0
     o['stun'] = max(0, min(100, int(o['stun'])))
     o['level'] = max(99, min(127, int(o['level'])))
     o['tk'] = max(0, min(99, int(o['tk'])))
@@ -962,6 +958,11 @@ def options(preset='mock_high', **over):
     w = (1 << 19) * max(32 - o['tk'], 1)
     if Fraction(o['mana']).denominator == 1 and o['mana'] % w == 0 and (o['mana'] // w) % 2 == 1:
         o['exact'] = True                                   # a funky zero needs the exact product
+    # Battle Orders cast before the duel (clones2 convention: BO 63 + 36 = 99, mana tuned WITH BO): mana and life
+    # targets are the BO'd values; 0 = no BO line. Funkies (exact product) default to no BO, like the four TK30
+    # reference funkies: their exactness must not hang on the fitted BO % (35 + 3 per level)
+    o['bo'] = max(0, min(99, int(o['bo'] if o.get('bo') is not None else 0 if o['exact'] else 99)))
+    o['bo_pct'] = 35 + 3 * (o['bo'] - 1) if o['bo'] else 0
     return o
 
 

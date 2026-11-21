@@ -374,6 +374,8 @@ def form_prefill_battle_orders_and_edited_fields():
     T.eq(sorted(lv for _, lv, _ in v['delirium']), [61, 63], 'Delirium levels as edited')
     T.check('lists 178/198' in M.plan_line(P, raw) and f'{len(raw)}/8191 bytes' in M.plan_line(P, raw), 'plan line')
     T.eq(v['bo_pct'], 35 + 3 * 98, 'BO 99 on the shield: +329%')
+    T.eq([M.options(k)['bo'] for k in ('funky', 'funky28', 'funky26', 'funky24')], [0] * 4,
+         'funkies: no BO (exact without BO, like the reference funkies)')
     T.eq(int(v['mana']), 1572500, 'host: 1572500 WITH BO')
     T.check(any(c[0] == 'mana_nobo' for c in a['checks']), 'the analyzer shows the mana without BO too')
     raw, P = M.generate('mock_high', 'NoBo', bo=0)

@@ -74,6 +74,7 @@ def toggle_tab_analyzer_generator_crafter():
     T.pump(5, 0.02)
     T.eq(page.ov['thorns'].get(), str(M.prefill('mock_high')['thorns']), 'fields prefilled with the preset')
     T.check(page.check() is not None and 'bytes' in page.plan_lbl.cget('text'), 'Check: the plan line')
+    T.pump(5, 0.02)
     shot = os.environ.get('CAPY_SHOT_DIR')
     if shot:
         import mxl_tabs
