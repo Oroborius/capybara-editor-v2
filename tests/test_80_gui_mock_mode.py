@@ -1,6 +1,8 @@
 """Mock Mode in the window (vanilla profile): the "Mock Mode" toggle sits at the right end of the top bar, turns
-the Mock tab on / off and is kept in the settings; the analyzer lists colour-coded checks of the loaded mock;
-Generate writes a NEW save (asked first) that the analyzer scores without a bad check; the item crafter adds a
+the Mock tab on / off and is kept in the settings; the analyzer lists colour-coded checks and the summary of the
+loaded mock per weapon switch; the generator's fields are prefilled, an edited field reaches the plan, a bad value
+is reported next to its field, the summary panel follows the switch selector; Generate writes a NEW save (no
+question) that the analyzer scores without a bad check; the item crafter adds a
 charm to the loaded character. Copies of the mock samples only; skipped without the vanilla install / samples
 (see test 75). The Median XL side (no toggle) is test 81."""
 import glob
@@ -41,6 +43,29 @@ def _tab_names():
     return [nb.tab(t, 'text') for t in nb.tabs()]
 
 
+def _rows(tree):
+    """(section, label, value, tag) of every row of a summary tree."""
+    out = []
+    for h in tree.get_children():
+        sec = tree.item(h)['text']
+        for i in tree.get_children(h):
+            r = tree.item(i)
+            out.append((sec, r['text'].strip('✔!✖ '), str(r['values'][0]) if r['values'] else '',
+                        r['tags'][0] if r['tags'] else ''))
+    return out
+
+
+def _shot(name, geo):
+    shot = os.environ.get('CAPY_SHOT_DIR')
+    if not shot:
+        return
+    G.root.geometry(geo)
+    T.pump(30, 0.03)
+    w, h = (int(x) for x in geo.split('+')[0].split('x'))
+    x, y = G.root.winfo_rootx(), G.root.winfo_rooty()
+    os.system(f'import -window root -crop {w}x{h}+{x}+{y} {os.path.join(shot, name)} 2>/dev/null')
+
+
 @T.test
 def toggle_tab_analyzer_generator_crafter():
     if _S is None:
@@ -61,44 +86,90 @@ def toggle_tab_analyzer_generator_crafter():
     T.check('Mock' in _tab_names(), 'Mock tab after the toggle')
     T.eq(settings.get('mock_mode'), True, 'setting kept')
     page = MG._state['page']
+    T.eq([page.nb.tab(t, 'text') for t in page.nb.tabs()], ['Generator', 'Analyzer', 'Item crafter'], 'sub tabs')
+    # ---- analyzer: checks + summary of the loaded character, per switch
     G.app.select_character('clone-90', G.app.view.get())
     T.pump(10, 0.02)
     a = page.analyze()
     T.check(a is not None, 'analysis of the loaded character')
-    rows = [page.tree.item(i) for i in page.tree.get_children()]
-    T.check(any('Mana' in r['text'] and '1438452' in r['values'][0] for r in rows), 'mana row of clone-90')
-    T.check(any(r['tags'] and r['tags'][0] == 'good' for r in rows), 'colour tags')
-    # ---- the prefilled fields under "Advanced" (collapsed by default) and the Check line
-    T.check(not page.adv_open, 'Advanced collapsed by default')
-    page.toggle_advanced()
+    rows = _rows(page.ana.tree)
+    T.check(any(r[0] == 'Checks' and 'Mana' in r[1] and '1438452' in r[2] for r in rows), 'mana row of clone-90')
+    page.ana.bo.set(False)                              # BO not cast: the saved mana
+    page.ana.render()
+    T.check(any(r[1] == 'Mana' and r[2].startswith('1438452') for r in _rows(page.ana.tree)), 'BO cast off')
+    page.ana.bo.set(True)
+    page.ana.render()
+    T.check(any(r[3] == 'good' for r in rows), 'colour tags')
+    T.check(any(r[0] == 'Auras' and r[1] == 'Holy Freeze' and 'source(s)' in r[2] for r in rows), 'aura sources')
+    side0 = page.ana.side.get()
+    other = 'A' if side0 == 'B' else 'B'
+    page.ana.side.set(other)
+    page.ana.render()
+    rows2 = _rows(page.ana.tree)
+    m0 = next(r[2] for r in rows if r[1] == 'Mana' and r[0] == 'Checks')
+    m1 = next(r[2] for r in rows2 if r[1] == 'Mana' and r[0] == 'Checks')
+    T.check(m0 != m1, f'switch selector: side {other} has its own mana ({m0[:12]} / {m1[:12]})')
+    # ---- generator: every field prefilled, the summary of the plan on the right
+    pre = M.prefill('mock_high')
+    T.eq({k: page.ov[k].get() for k in ('thorns', 'ias', 'res_cold', 'hf_target')},
+         {k: str(pre[k]) for k in ('thorns', 'ias', 'res_cold', 'hf_target')}, 'fields prefilled with the preset')
+    T.eq(page.ov['dopplezon'].get(), True, 'check box prefilled')
+    T.eq(page.err['hf_level'].cget('text'), '7 source(s)', 'source count next to the Holy Freeze field')
+    srows = _rows(page.summary.tree)
+    T.check({'Caps', 'Auras', 'Defenses', 'Speeds', 'Damage', 'Clone profile'} <= {r[0] for r in srows},
+            'summary sections')
+    T.check(any(r[0] == 'Clone profile' and r[3] == 'good' for r in srows), 'no clone category missing')
+    # an edited field reaches plan() and the summary
+    page.ov['ias'].set('-121')
+    T.check(page.check() is not None, 'Check with an edited field')
+    T.eq(page.over, {'ias': -121}, 'only the edited field is passed on')
+    T.check(any(r[1] == 'IAS' and r[2].startswith('-121') for r in _rows(page.summary.tree)), 'IAS -121 in the summary')
+    # a bad value: the message sits next to its field, nothing is generated
+    page.ov['level'].set('140')
+    T.check(page.check() is None, 'level 140 refused')
+    T.check('99-127' in page.err['level'].cget('text'), f"message next to the field: {page.err['level'].cget('text')}")
+    page.reset_fields()
+    T.eq(page.err['level'].cget('text'), '', 'reset clears the message')
+    # the switch selector: a balance switch shows its stun only on side A
+    page.preset.set(M.PRESETS['balance_switch']['label'])
+    page._preset_changed()
     T.pump(5, 0.02)
-    T.eq(page.ov['thorns'].get(), str(M.prefill('mock_high')['thorns']), 'fields prefilled with the preset')
-    T.check(page.check() is not None and 'bytes' in page.plan_lbl.cget('text'), 'Check: the plan line')
-    T.pump(5, 0.02)
-    w = page.tree.winfo_width()
-    T.check(w >= 130 + 150, f'analyzer list {w} px with Advanced open: the Value column shows')
-    shot = os.environ.get('CAPY_SHOT_DIR')
-    if shot:
-        import mxl_tabs
-        mxl_tabs._state['nb'].select(page.host)
-        T.pump(10, 0.02)
-        os.system(f'import -window root {os.path.join(shot, "v80.png")} 2>/dev/null')
-    # ---- Generate: asked first, a NEW file, the analyzer has no bad check
+    page.summary.side.set('A')
+    page.summary.render()
+    ra = _rows(page.summary.tree)
+    page.summary.side.set('B')
+    page.summary.render()
+    rb = _rows(page.summary.tree)
+    sa = next(r[2] for r in ra if r[1] == 'Stun')
+    sb = next(r[2] for r in rb if r[1] == 'Stun')
+    T.check('att' in sa and sb.startswith('none'), f'stun on side A only ({sa} / {sb})')
+    T.check(next(r[2] for r in ra if r[1] == 'Mana') != next(r[2] for r in rb if r[1] == 'Mana'), 'side B mana')
+    import mxl_tabs
+    mxl_tabs._state['nb'].select(page.host)
+    _shot('v80-800x600.png', '800x600+0+0')
+    _shot('v80-1280x800.png', '1280x800+0+0')
+    G.root.geometry('1180x680+0+0')
+    T.pump(10, 0.02)
+    T.check(page.gen_btn.winfo_width() > 40, 'Generate button shown')
+    # ---- Generate: no question, a NEW file, the analyzer has no bad check
     page.preset.set(M.PRESETS['funky']['label'])
     page._preset_changed()
     page.name.set('GuiMock')
     before = set(os.listdir(_S))
     G.boxes.clear()
-    page.generate()
+    T.check(page.generate() is not None, 'generated')
     T.pump(10, 0.02)
     new = set(os.listdir(_S)) - before
     T.eq(sorted(new), ['GuiMock.d2s'], 'new file')
-    T.check(any(x[0] == 'askyesno' for x in G.boxes), 'asked before writing')
+    T.eq([x for x in G.boxes if x[0] in ('askyesno', 'showerror')], [], 'no dialog')
+    T.check('GuiMock.d2s' in page.status.cget('text'), 'written: shown in the status line')
     a = page.analyze()
     T.eq([c for c in a['checks'] if c[3] == 'bad'], [], 'generated funky: no bad check')
     T.check(a['values']['band']['funky'], 'generated funky: on the funky zero')
     page.generate()                                     # same name again: a free name, nothing overwritten
     T.eq(sorted(set(os.listdir(_S)) - before), ['GuiMock.d2s', 'GuiMocka.d2s'], 'second file, free name')
+    page.name.set('9')
+    T.check(page.generate() is None and 'Name' in page.status.cget('text'), 'bad name: message, no file')
     # ---- crafter: a charm into the loaded character
     G.app.select_character('GuiMock', G.app.view.get())
     T.pump(10, 0.02)
