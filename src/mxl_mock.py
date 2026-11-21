@@ -427,7 +427,12 @@ def model_from_character(ch, size=None):
             if it.get('equipped') in (4, 5, 11, 12) and code in SHIELD_DMG:
                 shields[side] = code
             kids = it.get('socketed') or []
-            cap = (it.get('sockets') or 0) + sum(s['value'] for s in it.get('stats', []) if s['id'] == 194)
+            field = it.get('sockets') or 0
+            if code in ('rin ', 'amu '):
+                field = 0                            # the game clamps the field to the base's sockets (none here)
+            elif code in SOCKET_FIELD:
+                field = min(field, SOCKET_FIELD[code])
+            cap = field + sum(s['value'] for s in it.get('stats', []) if s['id'] == 194)
             excess += max(0, len(kids) - cap)
             for j, s in enumerate(kids[:cap]):          # the game drops children beyond the socket count
                 units.append(Unit('jewel', f'{nm}/{j}', lists_of(s), side))
@@ -807,7 +812,9 @@ SOCKET_FIELD = {'ghm ': 2, 'gth ': 3, 'tow ': 3, 'crs ': 6}
 # without it the 7 jewels of the amulet / rings (and 4-5 of helm / armor / shield) were lost in game.
 SOCKET_STAT = 8
 # user (2026-11-20): D2 supports up to 7 sockets without crashing on weapons, shields, body armor, helms, rings and
-# amulets (not boots / belts / gloves): socketed gear gets the save field at 7 (= JEWELS), no extra 194 line
+# amulets (not boots / belts / gloves). The game clamps the save's socket field to the base item's sockets (rings /
+# amulets: 0; in game a field of 7 lost the jewels: max mana 438311 instead of 1048576), so the field keeps the base
+# count and stat 194 adds the rest up to 7 in total (the clones' "194 = 7 - field")
 MAX_SOCKETS = 7
 JEWELS = 7
 CHARM_COUNT = 40
@@ -1371,8 +1378,8 @@ def _item_records(P):
         rec = dict(flags=f, version=ITEM_VERSION, location=1, equipped=u.body, x=0, y=0, panel=0, code=u.code,
                    socketed_count=len(kids), id=rng.getrandbits(32), ilvl=90, quality=5, image=None,
                    auto_affix=None, set_unique_id=u.set_id, realm_bit=0, defense_raw=10, max_durability=0,
-                   sockets=MAX_SOCKETS if kids else SOCKET_FIELD.get(u.code, 0), set_mask=31,
-                   lists=[u.slots[0].lines],
+                   sockets=SOCKET_FIELD.get(u.code, 0), set_mask=31,
+                   lists=[([(194, None, MAX_SOCKETS - SOCKET_FIELD.get(u.code, 0))] if kids else []) + u.slots[0].lines],
                    set_lists=[s.lines for s in u.slots[1:6]])
         grp = [rec]
         for j, k in enumerate(kids):
