@@ -629,6 +629,12 @@ HELL_RES = -100                      # Hell resistance penalty
 MAX_RES = 75                         # resist cap without +max resist
 ABS_TIME_MAX = 767                   # absorb by time per line: 10-bit min / max fields stored +256
 ABS_LVL_LINE = 63                    # absorb by character level line value (x clvl / 8)
+# Absorb by time in game (1.14d duels, 2026-11-22, Holy Freeze attacker ~25 a tick): a 767 line on an equipped
+# item's magic list, a socketed jewel's magic list or a jewel's runeword list soaks it all; on an inventory charm it
+# soaks nothing (host and joiner). The game does not add the lines: it sums the RAW 22-bit fields of every item
+# (1.13c D2Common: the stat getter sums child lists, then op 6 decodes once), so 10 + 10 soaked all (one 10 did
+# not) - several lines give one garbled field, not the sum. So: one by-time line per element, on gear / a jewel.
+ABS_TIME_KINDS = ('gear', 'jewel')
 # per element: (name, flat res, max res, res / lvl, absorb / lvl, absorb by time)
 ELEMENTS = (('cold', 43, 44, 230, 234, 288), ('fire', 39, 40, 231, 235, 289), ('light', 41, 42, 232, 236, 290))
 
@@ -650,12 +656,12 @@ def absorb_need(res):
 
 def absorb_fill(need, clvl, lines):
     """(by-clvl lines, by-time values): absorb by character level lines (63 x clvl / 8 each, at most one per list)
-    up to the need, the rest by time in full 767 lines plus one remainder line."""
+    up to the need (rounded up while lists are free), the rest by time as ONE line of at most 767 (the game sums the raw fields of several lines into
+    one, see ABS_TIME_KINDS, so more lines add nothing)."""
     per = Fraction(ABS_LVL_LINE * clvl, 8)
-    n = max(0, min(lines, math.floor(Fraction(need) / per)))
+    n = max(0, min(lines, math.ceil(Fraction(need) / per)))      # a by-clvl line beats any by-time line
     rest = max(0, int(Fraction(need) - n * per))
-    full, rem = divmod(rest, ABS_TIME_MAX)
-    return n, [ABS_TIME_MAX] * full + ([rem] if rem else [])
+    return n, ([min(ABS_TIME_MAX, rest)] if rest else [])
 
 
 def abs_time_raw(v):
@@ -667,6 +673,13 @@ def abs_time_raw(v):
 def abs_time_value(raw):
     """The absorb a by-time field always gives (the lower of its min / max)."""
     return max(0, min((raw >> 2) & 1023, (raw >> 12) & 1023) - 256)
+
+
+def abs_time_game(raws):
+    """What the game makes of the by-time lines of one element on gear / jewels: their RAW fields summed, decoded
+    once (the lower of min / max; may be negative)."""
+    t = sum(raws)
+    return min((t >> 2) & 1023, (t >> 12) & 1023) - 256 if raws else 0
 
 
 def element_res(flat, res_lvl, clvl, max_res=0):
@@ -912,12 +925,18 @@ def analyze(model, side=None, bo=False, energy=False):
     v['thorns_dtm'] = thorns_dtm(v['thorns_return_es'], es, tk or 31) if thl or bal else None
     v['absorb_lvl'] = sum(T.get(k, 0) for k in (234, 235, 236))
     clvl = model['level']
-    tv = {}
+    raws, on_charm = {}, 0                      # by time: raw fields summed by the game, nothing from charms
     for u in t['units']:
         for sid, p, x in u.lines():
             if sid in (288, 289, 290):
-                tv[sid] = tv.get(sid, 0) + abs_time_value(x)
+                if u.kind in ABS_TIME_KINDS:
+                    raws.setdefault(sid, []).append(x)
+                else:
+                    on_charm += 1
+    tv = {sid: abs_time_game(r) for sid, r in raws.items()}
     v['absorb_time'] = sum(tv.values())
+    v['absorb_time_lines'] = (sum(len(r) for r in raws.values()), on_charm,
+                              sum(abs_time_value(x) for r in raws.values() for x in r))
     v['absorb'] = {}
     for name, flat, mx, rl, al, at in ELEMENTS:
         lvl = Fraction(T.get(al, 0) * clvl, 8)
@@ -1010,6 +1029,12 @@ def analyze(model, side=None, bo=False, energy=False):
             + (' - Thorns alone is safe: Barbs 0 saves the lines' if alone else '')
             + (f"; {float(v['thorns_dtm']):.0f} mana damage per hit on the target (TK {tk or 31})"
                if safe else ''), GOOD if safe else WARN)
+    n_t, n_c, face = v['absorb_time_lines']
+    if n_c or n_t > len(raws):
+        add('abs_time', 'Absorb by time', (f"{n_c} line(s) on charms absorb nothing in game; " if n_c else '')
+            + (f"{n_t} gear / jewel lines (face {face}) count as ONE field in game: {v['absorb_time']} "
+               "(the game sums their raw values); one line per element on gear or a jewel"
+               if n_t > len(raws) else 'put by-time absorb on gear or a jewel'), WARN)
     if v['absorb'] or v['absorb_time']:
         parts, short = [], []
         for name, a in v['absorb'].items():
@@ -1209,12 +1234,12 @@ CHARM_QUALITY = 3
 # target-neutral bulk lines of the clones, written into the room left under the size budget (charms first, then
 # jewels, then gear; one line per stat per list): replenish life 33 (the field max: the reference funky / clone notes "replenish
 # and DR on almost everything"); the clones' by-time absorb (4194303 = 767 / 767: clone-28, Cold, Assault, clone-52,
-# TryToKill*) is now planned to the need (below), Hosts included (an old note said 'not as host'; the game code
-# sums it the same for every player): a
+# TryToKill*) is now planned to the need (below), Hosts included; in game it works on gear / jewels only, and
+# several lines do not add (see ABS_TIME_KINDS): a
 # Host gets resist by level first (fire, lightning, cold 63: clone-45 82/82/54 lines, clone-32, clone-64; doc S4 "hosts 66k resist").
 # user (2026-11-22): absorb is target-driven (absorb_plan): the need of each element at its Hell resistance, filled
-# with absorb by character level (234-236) first, then absorb by time (288-290, 767 a line) for the rest - "you need
-# by time for absorb to hit the minimum"; never by time on a Host.
+# with absorb by character level (234-236) first, then absorb by time (288-290, one line of at most 767, on gear /
+# a jewel) for the rest - "you need by time for absorb to hit the minimum".
 # Life, mana, regen, smite, aura and mastery stats stay off: they would move a target.
 BULK_REPLENISH = (74, 33)
 BULK_HOST_RES = ((230, 63), (231, 63), (232, 63))
@@ -1796,7 +1821,7 @@ def _switch(P):
 def absorb_plan(o, nl):
     """{element: dict(res, need, lvl (by-clvl lines), time (by-time values), total)} of the plan: the Hell
     resistance the options give, the absorb that soaks a capped hit at that resistance, filled with absorb by
-    character level first (one 63 line per list) and the rest by time (767 lines + one remainder line). By time
+    character level first (one 63 line per list) and the rest by time (one line of at most 767). By time
     only where the form allows it and the need is in reach of the lists; an element without
     resistance (-100) gets the by-clvl lines only (its need is out of reach)."""
     out = {}
@@ -1817,8 +1842,8 @@ def absorb_plan(o, nl):
 
 
 def _fill_absorb(P):
-    """The planned absorb (absorb_plan: by-clvl lines on the first lists, by-time lines on charms, jewels, then
-    gear; a switch shield copy mirrors its original's by-clvl lines), then the clones' bulk lines (BULK_REPLENISH,
+    """The planned absorb (absorb_plan: by-clvl lines on the first lists, the by-time line on a jewel, else a gear
+    item's magic list - never a charm; a switch shield copy mirrors its original's by-clvl lines), then the clones' bulk lines (BULK_REPLENISH,
     or BULK_HOST_RES first on a Host) while the file stays within the size budget."""
     budget = P['o']['size_budget']
     lists = [s for u in P['units'] for s in u.slots]       # with the switch side B copies
@@ -1835,7 +1860,9 @@ def _fill_absorb(P):
             lv += [s for s in copies if s.ok(sid_l)]
         for s in lv:
             s.add(sid_l, ABS_LVL_LINE)
-        free = iter([s for s in side_a if s.ok(sid_t)])
+        # by time only where the game applies it (ABS_TIME_KINDS): a jewel, else a gear item's own magic list
+        free = iter([s for s in side_a if s.ok(sid_t) and (s.unit.kind == 'jewel' or
+                                                             s.unit.kind == 'gear' and s.idx == 0)])
         for v, s in zip(a['time'], free):
             s.add(sid_t, abs_time_raw(v))
     # the role's bulk (clone profile): replenish life (reference funky: on every list), a Host resist by level
@@ -2334,7 +2361,7 @@ HINTS = dict(tk='hard TK points 0-99 (default 31; 31: band 524288, 30: funky 104
              res_fire='fire resist by level', res_light='lightning resist by level',
              res_flat='flat resist, every element (-100: the "-100 res" mocks)', curse_res='curse resistance (511)',
              dodge='dodge / avoid / evade % each', abs_lvl='absorb: the need per element (8388607 x 0.17 x 0.6 x (100 - res) / 100), by character level first',
-             abs_time='absorb by time (767 a line) for the rest of the need after 63 x clvl / 8 per list (Hosts too)', cbf='cannot be frozen',
+             abs_time='absorb by time: one line (at most 767) per element for the rest of the need after 63 x clvl / 8 per list, on a jewel or gear (charms: no effect in game; several lines do not add)', cbf='cannot be frozen',
              ias='increased attack speed', frw='faster run / walk', fhr='faster hit recovery (clones -36)',
              fcr='faster cast rate', nv_ias='non-visible attack rate (stat 68, 97 per line)',
              nv_frw='non-visible velocity (stat 67, 97 per line)', dopplezon='NV state Dopplezon on a charm',

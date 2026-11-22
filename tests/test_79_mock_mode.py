@@ -824,36 +824,55 @@ def rule_holy_shield_off_by_default():
 def rule_absorb_need_filled_by_level_then_by_time():
     """User rule 5 (reference calculator): the absorb need is 8388607 x 0.17 x 0.6 x (100 - res) / 100 (res 75 ->
     213909.4785); absorb by character level first (63 x clvl / 8 a line, one per list), the rest by time in 767
-    lines plus one remainder (clvl 127, 178 lists: 178 lines, 46 x 767 + 605). Elements without resist get the
-    by-clvl lines only; a Host never by time; the analyzer decodes the by-time field and checks the need."""
+    lines. In game (2026-11-22 duels) by time works on gear / jewels, not on charms, and the game sums the RAW
+    fields of several lines into one, so the plan writes ONE by-time line (at most 767) per element on a jewel or
+    gear magic list; the analyzer models the summed field and warns on charm / stacked lines."""
     M = engine().M
     T.eq(float(M.absorb_need(75)), 213909.4785, 'need at res 75')
-    T.eq(M.absorb_fill(M.absorb_need(75), 127, 178), (178, [767] * 46 + [605]), '178 by clvl + 46 x 767 + 605')
-    T.eq(M.absorb_fill(M.absorb_need(75), 127, 300)[0], 213, 'more lists: by clvl only up to the need')
+    T.eq(M.absorb_fill(M.absorb_need(75), 127, 178), (178, [767]), '178 by clvl + one 767 line')
+    T.eq(M.absorb_fill(1000, 127, 178), (1, []), 'under one by-clvl line: one by-clvl line')
+    T.eq(M.absorb_fill(1000, 127, 0), (0, [767]), 'no list free: one by-time line, capped at 767')
+    T.eq(M.abs_time_game([M.abs_time_raw(767), M.abs_time_raw(10)]), 10, 'game: 767 + 10 lines decode as 10')
+    T.eq(M.abs_time_game([4194303] * 2), 767, 'game: 767 + 767 is still 767')
+    T.eq(M.absorb_fill(M.absorb_need(75), 127, 300), (214, []), 'more lists: by clvl only, rounded up to the need')
     T.eq((M.abs_time_raw(767), M.abs_time_value(M.abs_time_raw(605)), M.abs_time_value(4194303)),
          (4194303, 605, 767), 'by-time field: time 3, min = max, stored +256')
     T.eq(M.DEFAULTS['abs_time'], True, 'by time on where the need requires it')
     for key in M.PRESET_ORDER:
         raw, P = M.generate(key, 'Abs')
         A = P['o']['absorb']
-        L = [(sid, v) for s in P['lists'] for sid, _, v in s.lines]
-        host = P['o']['position'] == 'Host'
+        L = [(s.unit.kind, s.idx, sid, v) for s in P['lists'] for sid, _, v in s.lines]
+        st = {c[0]: c[3] for c in M.analyze(M.model_from_plan(P, raw))['checks']}
         for name, _, _, _, sid_l, sid_t in M.ELEMENTS:
             a = A[name]
-            T.eq(sum(1 for x in L if x[0] == sid_l), a['lvl'], f'{key} {name}: by-clvl lines')
-            T.eq(sum(M.abs_time_value(v) for sid, v in L if sid == sid_t), sum(a['time']), f'{key} {name}: by time')
-            if a['res'] > M.HELL_RES:                   # Hosts too (by time works the same for every player)
-                T.check(a['total'] >= int(a['need']), f"{key} {name}: {float(a['total']):.0f} >= need")
+            T.eq(sum(1 for x in L if x[2] == sid_l), a['lvl'], f'{key} {name}: by-clvl lines')
+            bt = [x for x in L if x[2] == sid_t]
+            T.check(len(bt) <= 1, f'{key} {name}: at most one by-time line')
+            T.check(all(k == 'jewel' or k == 'gear' and i == 0 for k, i, _, _ in bt), f'{key} {name}: on gear / a jewel')
+            T.eq(sum(M.abs_time_value(x[3]) for x in bt), sum(a['time']), f'{key} {name}: by time')
             if a['res'] <= M.HELL_RES:
                 T.eq(a['time'], [], f'{key} {name}: no by time (no resist)')
-        st = {c[0]: c[3] for c in M.analyze(M.model_from_plan(P, raw))['checks']}
-        T.eq(st.get('absorb'), M.WARN if host else M.GOOD, f'{key}: absorb check')
+        short = any(a['res'] > M.HELL_RES and a['total'] < int(a['need']) for a in A.values())
+        T.eq(st.get('absorb'), M.WARN if short else M.GOOD, f'{key}: absorb check')
+        T.check('abs_time' not in st, f'{key}: no by-time warning on a generated file')
     P = M.plan('mock_high', 'Abs')
-    T.eq((P['o']['absorb']['cold']['lvl'], len(P['o']['absorb']['cold']['time'])), (178, 47), 'mock_high cold')
+    T.eq((P['o']['absorb']['cold']['lvl'], P['o']['absorb']['cold']['time']), (178, [767]), 'mock_high cold')
     raw, P = M.generate('mock_high', 'Abs', abs_time=False)
     T.check(not [x for x in _lines(P) if x[0] in (288, 289, 290)], 'by time off on request')
-    st = {c[0]: c[3] for c in M.analyze(M.model_from_plan(P, raw))['checks']}
-    T.eq(st['absorb'], M.WARN, 'analyzer: short of the need without by time')
+    # clone-style by-time lines: on a charm they count 0, stacked on gear they decode as one field
+    raw, P = M.generate('mock_high', 'Abs', abs_time=False)
+    base = M.analyze(M.model_from_plan(P, raw))['values']['absorb']['cold']['total']
+    charm = next(u for u in P['units'] if u.kind == 'charm')
+    charm.slots[0].add(288, M.abs_time_raw(767))
+    r = M.analyze(M.model_from_plan(P, M.build(P)))
+    T.eq((r['values']['absorb']['cold']['total'], {c[0]: c[3] for c in r['checks']}.get('abs_time')),
+         (base, M.WARN), 'charm by time: 0 and a warning')
+    charm.slots[0].lines.pop()
+    for j in [u for u in P['units'] if u.kind == 'jewel'][:2]:
+        j.slots[0].add(288, M.abs_time_raw(767))
+    r = M.analyze(M.model_from_plan(P, M.build(P)))
+    T.eq((r['values']['absorb']['cold']['total'] - base, {c[0]: c[3] for c in r['checks']}.get('abs_time')),
+         (767, M.WARN), 'two jewel lines: one 767 field and a warning')
 
 
 @T.test
@@ -909,7 +928,9 @@ def rule_best_mana_caps_the_mana():
         T.check(int(P['mana']['mana']) <= o['best_mana'], f"{key}: mana {int(P['mana']['mana'])} <= {o['best_mana']}")
         st = {c[0]: c[3] for c in M.analyze(M.model_from_plan(P), bo=True)['checks']}
         T.eq(st.get('best_mana'), M.GOOD, f'{key}: analyzer overheal check')
-    T.eq(int(M.plan('mock_high', 'Best')['mana']['mana']), 1534360, 'mock_high: 1572500 -> 1534360')
+    P = M.plan('mock_high', 'Best')     # absorb: 178 by-clvl lines + one 767 by-time line (several do not add)
+    ab = max(a['total'] for a in P['o']['absorb'].values())
+    T.eq((int(P['mana']['mana']), M.best_mana(31, ab)), (1540681, 1540681), 'mock_high: 1572500 -> 1540681')
     T.eq(int(M.plan('mock_mid', 'Best')['mana']['mana']), 1310719, 'mock_mid kept')
     P = M.plan('mock_high', 'Best', mana=1572863)
     T.eq(int(P['mana']['mana']), 1572863, 'a typed mana is kept')
@@ -920,13 +941,13 @@ def rule_best_mana_caps_the_mana():
 @T.test
 def rule_tk_change_resolves_mana():
     """User rule 5: a TK with another ratio re-solves the mana as that TK's overheal-safe mana (TK30: 3107224 on
-    mock_high); a mana out of the list budget (TK28: 6252952) or over the roll point (TK26) is refused clearly."""
+    mock_high); a mana out of the list budget (TK28: 6259273) or over the roll point (TK26) is refused clearly."""
     M = engine().M
     raw, P = M.generate('mock_high', 'Tk', tk=30)
     T.eq(int(P['mana']['mana']), M.best_mana(30, max(a['total'] for a in P['o']['absorb'].values())), 'TK30')
-    T.eq(P['o']['best_mana'], 3107224, 'TK30 best mana')
+    T.eq(P['o']['best_mana'], 3113545, 'TK30 best mana (by clvl + one by-time line)')
     T.eq(int(M.plan('mock_mid', 'Tk', tk=32)['mana']['mana']), 1310719, 'TK32: same ratio as TK31, mana kept')
-    for tk, want in ((28, '6252952'), (26, 'roll point')):
+    for tk, want in ((28, '6259273'), (26, 'roll point')):
         try:
             M.plan('mock_high', 'Tk', tk=tk)
             T.check(False, f'TK{tk} refused')
