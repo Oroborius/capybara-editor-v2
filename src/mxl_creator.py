@@ -1070,9 +1070,22 @@ class Creator:
                 return False
         return True
 
+    def _at(self, mods, how):
+        """The mods at their min or max roll. A damage pair (property funcs 15 / 16: the min stat takes the mod's
+        min, the max stat its max - "+5-10 damage") is no roll and keeps both ends (collapsed it gave 10-10)."""
+        out = []
+        for p, pa, lo, hi in mods:
+            try:
+                pair = any(f in (15, 16) for f in self.data.prop_funcs[p])
+            except (IndexError, TypeError):
+                pair = False
+            v = hi if how == 'max' else lo
+            out.append((p, pa, lo, hi) if pair else (p, pa, v, v))
+        return out
+
     def recipe_deltas(self, rec, how='max'):
         """[(stat, param or None, delta)] the recipe's mods make (at the mods' max, or min)."""
-        mods = [(p, pa, hi if how == 'max' else lo, hi if how == 'max' else lo) for p, pa, lo, hi in rec['mods']]
+        mods = self._at(rec['mods'], how)
         return [(s['id'], s.get('param') or None, s['value'])
                 for s in merge_stats(mods_stats(mods, self.data, 'min')) if s['value']]
 
@@ -1212,8 +1225,7 @@ class Creator:
         anc = self.types_of(code)
         for _row, itype, mods in self.honorific_recipes():
             if itype in anc:
-                return merge_stats(mods_stats([(p, pa, lo if how == 'min' else hi, lo if how == 'min' else hi)
-                                               for p, pa, lo, hi in mods], self.data, 'min'))
+                return merge_stats(mods_stats(self._at(mods, how), self.data, 'min'))
         return []
 
     def _corrupt_tables(self):

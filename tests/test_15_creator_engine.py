@@ -366,4 +366,28 @@ def proc_texts_name_their_skill_and_level():
         T.check(f'level {p & 63}' in t['label'] and 'skilldesc' not in t['label'], t['label'])
 
 
+@T.test
+def recipe_damage_pair_keeps_its_range():
+    """A cube recipe's "+5-10 damage" (a damage pair: min stat from the mod's min, max stat from its max) was
+    applied as 10-10 (the mod collapsed to its max before the stats were made). It keeps both ends now."""
+    E = T.engine()
+    cr, d = E.cr, E.data
+    seen = 0
+    for rec in cr.inplace_recipes():
+        pairs = [(p, lo, hi) for p, _pa, lo, hi in rec['mods']
+                 if lo < hi and any(f in (15, 16) for f in d.prop_funcs[p])]
+        if not pairs:
+            continue
+        seen += 1
+        p, lo, hi = pairs[0]
+        stats = list(d.props[p])
+        got = {sid: v for sid, _pa, v in cr.recipe_deltas(rec, 'max')}
+        mn, mx = [sid for sid, f in zip(stats, d.prop_funcs[p]) if f == 15], [sid for sid, f in zip(stats, d.prop_funcs[p]) if f == 16]
+        if mn:
+            T.eq(got.get(mn[0]), lo, f'recipe {rec.get("row")}: min damage {lo}')
+        if mx:
+            T.eq(got.get(mx[0]), hi, f'recipe {rec.get("row")}: max damage {hi}')
+    T.check(seen, 'a recipe with a damage pair')
+
+
 T.main(globals())
