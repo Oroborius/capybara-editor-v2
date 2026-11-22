@@ -181,11 +181,50 @@ def ask_add(owner, blob, data, default_name):
         return None
 
 
+def _place_on_character(app, entry):
+    """In the vanilla profile (no stash file: the stash is part of the .d2s) a copy goes into the inventory of the
+    character open on the Character tab and is saved there. Returns ('inv', x, y), None when it failed (the status
+    bar says why), or False when this does not apply (not vanilla / no character open)."""
+    try:
+        import mxl_profile
+        if mxl_profile.is_median():
+            return False
+        import mxl_tabs
+        cw = mxl_tabs.built_owner('Character')
+    except Exception:
+        return False
+    ch = getattr(cw, 'ch', None) if cw is not None else None
+    if ch is None:
+        _status(app, tr('err.nochar', 'Open a character first: in 1.14d library items go into its inventory'), True)
+        return None
+    from mxl_save import blob_item
+    try:
+        blob = blob_of(entry)
+        spot = ch.free_inventory_spot(blob_item(blob, app.data))
+        if spot is None:
+            _status(app, T('ch.err.inv_full', 'no free place in the inventory'), True)
+            return None
+        ch.place(blob, ('inv',) + tuple(spot))
+    except Exception as e:
+        _status(app, str(e), True)
+        return None
+    if not cw.save(tr('placed_char', '{name} placed in the inventory ({x}, {y})', name=entry['name'], x=spot[0], y=spot[1])):
+        return None
+    try:
+        cw.reload()
+    except Exception:
+        pass
+    return ('inv',) + tuple(spot)
+
+
 def place_copy(app, entry):
     """A copy of the entry on the stash page shown (else the first page with room). Returns (page, x, y)."""
     from mxl_save import blob_item, parse_stash, free_spot, edit_stash, EditError, STASH_PAGES
     from mxl_format import FormatError
     if not getattr(app, 'path', None):
+        placed = _place_on_character(app, entry)       # 1.14d: no stash file - the open character's inventory
+        if placed is not False:
+            return placed
         _status(app, tr('err.nostash', 'Open a stash first'), True)
         return None
     try:

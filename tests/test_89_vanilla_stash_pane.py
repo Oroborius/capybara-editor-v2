@@ -136,4 +136,38 @@ def pane_title_follows_language():
     T.eq(app.van_title.cget('text'), en, 'title back in English')
 
 
+@T.test
+def library_copy_goes_into_the_characters_inventory():
+    """1.14d has no stash file: a library item placed from the Library goes into the inventory of the character
+    open on the Character tab (it said "Open a stash first")."""
+    if _S is None:
+        T.skip('no vanilla install / samples')
+    app = _open()
+    import mxl_itemlib, mxl_tabs, mxl_char
+    cw = mxl_tabs.built_owner('Character')
+    if cw is None or cw.ch is None:
+        T.select_tab('Character')
+        T.pump(10)
+        cw = mxl_tabs.built_owner('Character')
+    T.check(cw is not None and cw.ch is not None, 'character open')
+    inv = cw.ch.inventory()
+    T.check(inv, 'an inventory item')
+    small = min(inv, key=lambda e: len(e.blob))
+    entry = mxl_itemlib.add(small.blob, 'v89 test item', app.data)
+    cw.ch.items.remove(small)                      # room for the copy (the sample's inventory is full)
+    T.check(cw.save('v89: room'), 'saved with a free spot')
+    path = cw.ch.path
+    before = len(mxl_char.Character(path, app.data).items)
+    spot = mxl_itemlib.place_copy(app, entry)
+    T.pump(10)
+    msgs = []
+    orig = mxl_itemlib._status
+    mxl_itemlib._status = lambda a, m, e=False: (msgs.append(m), orig(a, m, e))
+    spot = spot or mxl_itemlib.place_copy(app, entry)
+    mxl_itemlib._status = orig
+    T.check(spot is not None and spot[0] == 'inv', f'placed in the inventory: {spot} {msgs}')
+    T.eq(len(mxl_char.Character(path, app.data).items), before + 1, 'one more item in the saved character')
+    mxl_itemlib.delete(entry)
+
+
 T.main(globals())
