@@ -512,7 +512,9 @@ def prayer_drain(lvl):
 
 
 HIT_PVP = 1426063                   # the PvP-capped incoming hit (8388607 x 0.17, 1/256 units dropped)
-ES_ABSORB = Fraction(95, 100)       # Energy Shield 99: 95% of the damage goes to mana
+ES_ABSORB = Fraction(95, 100)       # Energy Shield 99: 95% of the damage goes to mana (the default target ES%)
+ES_PCT = 95                         # the generator's default Energy Shield % (form field 'es')
+TK_DEFAULT = 31                     # the generator's default Telekinesis (form field 'tk')
 DR_PCT_CAP = 50                     # damage reduced % caps at 50
 
 
@@ -521,6 +523,29 @@ def dtm_ceiling(mana, dr, drain=0, tk=31):
     drain x 16 / (32 - TK) - DR) x 0.5) x 100. drain 0: the HPJ ceiling; the per-pulse Prayer drain: LPJ."""
     den = (HIT_PVP + 2 * Fraction(drain) * Fraction(16, max(32 - tk, 1)) - dr) * Fraction(1, 2)
     return (ROLL - Fraction(mana)) / den * 100 if den > 0 else None
+
+
+def dtm_need(es, tk, dr, dr_pct):
+    """Damage to Mana % that gives back the mana Energy Shield takes from one PvP-capped hit (hol-t63 / hol-t40):
+    (1426063 x ES / TK ratio) / G x 100, ratio = 16 / (32 - TK), G = (1426063 x (1 - ES) - DR) x (1 - DR% / 100)."""
+    es = Fraction(es)
+    g = (HIT_PVP * (1 - es) - dr) * (1 - Fraction(min(DR_PCT_CAP, dr_pct), 100))
+    return HIT_PVP * es * max(32 - tk, 1) / 16 / g * 100 if g > 0 else None
+
+
+def thorns_safe(thorns_lvl, barbs_lvl, dr, dr_pct, es=ES_ABSORB):
+    """The return is a positive hit with the target's Energy Shield up (es, under 99% of 8388607) and gone."""
+    on = thorns_return(thorns_lvl, barbs_lvl, dr, dr_pct, es)
+    return 0 < on < ROLL * Fraction(99, 100) and thorns_return(thorns_lvl, barbs_lvl, dr, dr_pct, 0) > 0
+
+
+def max_thorns(cap, dr, dr_pct, es=ES_ABSORB):
+    """Thorns first (user): the highest Thorns level <= cap whose return alone is safe (thorns_safe, Barbs 0);
+    searched downwards (the return wraps, it is not monotone); 0 when none."""
+    for lv in range(int(cap), 0, -1):
+        if thorns_safe(lv, 0, dr, dr_pct, es):
+            return lv
+    return 0
 
 
 def thorns_return(thorns_lvl, barbs_lvl, dr, dr_pct, es=0):
@@ -711,8 +736,14 @@ def analyze(model, side=None, bo=False, energy=False):
              dtm=T.get(114, 0), dr=T.get(34, 0), dr_pct=T.get(36, 0), units=len(t['units']))
     v['dtm_hpj'] = dtm_ceiling(mana, v['dr'], 0, tk or 31)
     v['dtm_lpj'] = dtm_ceiling(mana, v['dr'], prayer_drain(prayer_lv) if prayer_src else 0, tk or 31)
+    es = Fraction(max(0, min(99, int(model.get('es', ES_PCT)))), 100)     # the target ES% (saves: 95, ES 99)
+    v['es'] = es
+    v['dtm_need'] = dtm_need(es, tk or 31, v['dr'], v['dr_pct'])
     thl, bal = t['aura_lv'].get(THORNS, 0), t['aura_lv'].get(BARBS, 0)
     v['thorns_return'] = thorns_return(thl, bal, v['dr'], v['dr_pct']) if thl or bal else None
+    v['thorns_return_es'] = thorns_return(thl, bal, v['dr'], v['dr_pct'], es) if thl or bal else None
+    v['absorb_lvl'] = sum(T.get(k, 0) for k in (234, 235, 236))
+    v['absorb_time'] = sum(T.get(k, 0) for k in (288, 289, 290))
     C = []
 
     def add(key, label, text, status):
@@ -776,17 +807,32 @@ def analyze(model, side=None, bo=False, energy=False):
             f'{hf_top * 0.17:.0f} of cap {ROLL * 0.17:.0f}',
             BAD if hf_top > ROLL else GOOD)      # user: aura damage caps like smite (x 0.17 PvP, no DR%)
     if prayer_src:
-        add('prayer', 'Prayer per second', f'heal {heal_s:.0f}, drain {drain_s:.0f} vs regen {regen_s:.0f} mana/s',
+        add('prayer', 'Prayer per second', f'Prayer {prayer_lv} x {prayer_src} source(s): heal {heal_s:.0f}, drain '
+            f'{drain_s:.0f} (1 + 0.1875 (L - 1) per source per 2 s) vs regen {regen_s:.0f} mana/s',
             GOOD if drain_s < regen_s else WARN)
     if v['dtm_lpj'] is not None and v['dtm']:
+        nd = v['dtm_need']
         add('dtm_cap', 'Damage to mana ceiling', f"DTM {v['dtm']}% vs max HPJ {float(v['dtm_hpj']):.0f}% / LPJ "
-            f"{float(v['dtm_lpj']):.0f}% (a capped hit must not roll the mana over)",
-            GOOD if v['dtm'] <= v['dtm_lpj'] else WARN)
+            f"{float(v['dtm_lpj']):.0f}% (a capped hit must not roll the mana over); ES {float(es * 100):.0f}% / "
+            f"TK {tk or 31} refill {float(nd or 0):.0f}%", GOOD if v['dtm'] <= v['dtm_lpj'] else WARN)
     if v['thorns_return'] is not None:
-        r = v['thorns_return']
-        add('thorns_return', 'Thorns + Barbs return', f"Thorns {thl} + Barbs {bal}: {r} per capped hit "
-            f"(ES off, DR {v['dr']}, DR% {min(DR_PCT_CAP, v['dr_pct'])})" + ('' if r > 0 else ' ROLLED OVER'),
-            GOOD if r > 0 else WARN)
+        r, re_ = v['thorns_return'], v['thorns_return_es']
+        safe = thorns_safe(thl, bal, v['dr'], v['dr_pct'], es)
+        alone = bal and thorns_safe(thl, 0, v['dr'], v['dr_pct'], es)
+        add('thorns_return', 'Thorns + Barbs return', f"Thorns {thl} + Barbs {bal}: {r} per capped hit ES off, "
+            f"{re_} with ES {float(es * 100):.0f}% (DR {v['dr']}, DR% {min(DR_PCT_CAP, v['dr_pct'])})"
+            + ('' if safe else ' ROLLED OVER / NOT SAFE')
+            + (' - Thorns alone is safe: Barbs 0 saves the lines' if alone else ''), GOOD if safe else WARN)
+    if v['absorb_time']:
+        add('absorb', 'Absorb', f"by time {v['absorb_time']} (half-bugged in game), by level {v['absorb_lvl']}: "
+            'rely on absorb by character level (234-236)', INFO)
+    elif v['absorb_lvl']:
+        add('absorb', 'Absorb', f"by character level {v['absorb_lvl']} (x clvl / 8)", GOOD)
+    if T.get(3, 0):
+        add('vitality', 'Item Vitality', f"+{T[3]}: a waste of file size for life (use +life / Oak Sage lines)", WARN)
+    if T.get(1, 0):
+        add('energy', 'Item Energy', f"+{T[1]}: only worth it for an exact mana target (prefer +mana / mana% lines)",
+            INFO)
     if stun:
         txt = ', '.join(f"{'att' if k == 195 else 'hit'} {c}% L{lv}" for k, lv, c in stun[:6])
         txt += f', ... ({len(stun)} lines)' if len(stun) > 6 else ''
@@ -834,56 +880,57 @@ def sides(model):
 # ============================================================================================ generator
 # Presets (doc 9.2 + the user's notes). mana: the target; exact: funky (the product must hit it exactly).
 # a reference funky: speeds IAS / FCR -121, FRW -164, stun 90% at level 63, NV states Just Hit + Holy Shield
-_FUNKY = dict(ias=-121, frw=-164, fcr=-121, stun_lvl=63, holy_shield=True, just_hit=True, barbs=0)   # barbs: 1 / 7 funkies
-# Barbs (barbs_plan): the highest level whose Thorns 4278 + Barbs return stays a positive hit with the target's
-# ES up and gone (DR 11214, DR% 50: windows 1-887, 1836-2784, 3734-4278) and that the free stat lists take
-# (one aura line per list): 2784 on the mocks / host (~112 lists), 3906 on the P/T (126 lists)
+_FUNKY = dict(ias=-121, frw=-164, fcr=-121, stun_lvl=63, holy_shield=True, just_hit=True)
+# Thorns / Barbs (user, 2026-11-22): Thorns first - plan() solves the highest Thorns the non-charm lists take (31 per
+# list: 4278 on 138 lists, 4898 with the weapon) whose return alone stays a positive hit with the target's ES (form
+# 'es', 95%) up and gone (max_thorns); Barbs only when Thorns alone is not safe (pick_barbs), else 0. Neither is a
+# preset constant: both follow the DR, DR%, ES% and the list budget.
 PRESETS = {
     # TK31 mocks (clones2: clone-02 A / clone-80 B / clone-79 B high, clone-70 / clone-90 B mid, clone-12 /
     # Beginner B low): 7 Holy Freeze sources capped by cold mastery, Thorns + Barbs return, resist by level
     'mock_high': dict(label='Mock High', role='mock', tk=31, mana=1572500, hf_sources=7, hf_level=3100,
-                      thorns=4278, res_cold=3528, res_fire=3339,
-                      note='TK31 top of good band 2 (1048576-1572863): 7 capped Holy Freeze, Thorns 4278 + Barbs '
-                           '2784, cold / fire resist by level, max absorb'),
-    'mock_mid': dict(label='Mock Mid', role='mock', tk=31, mana=1310719, hf_sources=7, hf_level=3100, thorns=4278,
+                      res_cold=3528, res_fire=3339,
+                      note='TK31 top of good band 2 (1048576-1572863): 7 capped Holy Freeze, Thorns first (Barbs '
+                           'only if needed), cold / fire resist by level, max absorb'),
+    'mock_mid': dict(label='Mock Mid', role='mock', tk=31, mana=1310719, hf_sources=7, hf_level=3100,
                      res_cold=3528, res_fire=3528, note='TK31 "1.31" mana (off-screen 4194288), 7 capped Holy Freeze'),
-    'mock_low': dict(label='Mock Low', role='mock', tk=31, mana=1211974, hf_sources=7, hf_level=3100, thorns=4278,
+    'mock_low': dict(label='Mock Low', role='mock', tk=31, mana=1211974, hf_sources=7, hf_level=3100,
                      res_cold=4158, res_fire=4158, note='TK31 low mana 1.21M, 7 capped Holy Freeze, more resist'),
     # P/T (clone-76, clone-104, clone-87): no holy aura, no stun, high return, all three res/lvl
     'prayer_thorner': dict(label='Prayer/Thorner', role='pt', tk=31, mana=1572863, hf_sources=0, hf_level=0,
-                           thorns=4278, barbs=3906, stun=0, res_cold=3780, res_fire=3780, res_light=3780,
+                           stun=0, res_cold=3780, res_fire=3780, res_light=3780,
                            target_def=762, itd=True,
-                           note='P/T: 1572863 (the PT mana: no enemy aura), Thorns 4278 + Barbs 3906 (capped '
-                                'return), no holy aura, no stun, max absorb'),
+                           note='P/T: 1572863 (the PT mana: no enemy aura), Thorns first (Barbs only '
+                                'if needed), no holy aura, no stun, max absorb'),
     'aura_killer': dict(label='Aura Killer', role='ak', tk=31, mana=1211974, hf_sources=28, hf_level=3100,
-                        hf_target=8320000, thorns=3981, barbs=0, res_cold=4725, res_fire=4725, res_light=4725,
+                        hf_target=8320000, res_cold=4725, res_fire=4725, res_light=4725,
                         target_def=762, pierce=45390, note='reference clone-05 layout: 28 Holy Freeze sources on '
                                                         'gear jewels at ~8.32M per source, all 40 charms Prayer'),
     # funkies: a reference funky (speeds -121 / -164, FHR -36, stun 90 L63, Delirium, curse res, NV
     # states Just Hit + Holy Shield) on the tested aura plan
     'funky': dict(label='Funky (TK30)', role='funky', tk=30, mana=1048576, exact=True, hf_sources=7, hf_level=3100,
-                  thorns=3981, stun=100, **_FUNKY, note='perfect funky: exactly 1048576.000 at TK30 (q even: stable)'),
+                  stun=100, **_FUNKY, note='perfect funky: exactly 1048576.000 at TK30 (q even: stable)'),
     'funky28': dict(label='Funky TK28', role='funky', tk=28, mana=2097152, exact=True, hf_sources=7, hf_level=3100,
-                    thorns=3981, stun=100, **_FUNKY, note='funky zero 2097152 at TK28 (q 4, stable)'),
+                    stun=100, **_FUNKY, note='funky zero 2097152 at TK28 (q 4, stable)'),
     'funky26': dict(label='Funky TK26', role='funky', tk=26, mana=3145728, exact=True, hf_sources=7, hf_level=3100,
-                    thorns=3981, stun=100, **_FUNKY, note='funky zero 3145728 at TK26 (q 6, stable)'),
+                    stun=100, **_FUNKY, note='funky zero 3145728 at TK26 (q 6, stable)'),
     'funky24': dict(label='Funky TK24', role='funky', tk=24, mana=4194304, exact=True, hf_sources=7, hf_level=3100,
-                    thorns=3981, stun=100, **_FUNKY, weapon=True, note='funky zero 4194304 at TK24 (q 8); needs a socketed '
+                    stun=100, **_FUNKY, weapon=True, note='funky zero 4194304 at TK24 (q 8); needs a socketed '
                                                              'weapon (198 lists) for the exact product'),
     'balance_switch': dict(label='Balance switch', role='mock', tk=31, mana=1572500, mana_b=1211974, hf_sources=7,
-                           hf_level=3100, thorns=4278, switch='balance', res_cold=3528,
+                           hf_level=3100, switch='balance', res_cold=3528,
                            note='side A High 1.5725M (stun shield), weapon switch to side B Low 1.21M (no stun)'),
     # clones2: clone-104 / clone-87 "mid mana" P/T 1377236 (TK31): 40 Prayer charms, Thorns
-    # 4278 + Barbs 4154 (ours 3906: the room left at 31 per line), no holy aura, no stun
-    'pt_mid': dict(label='P/T Mid', role='pt', tk=31, mana=1377236, hf_sources=0, hf_level=0, thorns=4278,
-                   barbs=3906, stun=0, res_cold=2898, res_fire=2898, res_light=2898, target_def=762, itd=True,
-                   note='clone-104 mid-mana Prayer/Thorner: 1377236, Thorns 4278 + Barbs 3906, no holy aura, '
+    # 4278 + Barbs 4154 (ours: Thorns first, Barbs only if needed), no holy aura, no stun
+    'pt_mid': dict(label='P/T Mid', role='pt', tk=31, mana=1377236, hf_sources=0, hf_level=0,
+                   stun=0, res_cold=2898, res_fire=2898, res_light=2898, target_def=762, itd=True,
+                   note='clone-104 mid-mana Prayer/Thorner: 1377236, Thorns first, no holy aura, '
                         'no stun'),
-    # clone-45 / clone-09 / clone-32 hosts: high mana, Host position (DTM 500, no stun), Thorns + Barbs
+    # clone-45 / clone-09 / clone-32 hosts: high mana, Host position (DTM 500, no stun), Thorns first
     'host': dict(label='Host', role='host', tk=31, mana=1572500, position='Host', hf_sources=7, hf_level=3100,
-                 thorns=4278, barbs=2784, res_cold=5166, res_fire=5166, cbf=True,
+                 res_cold=5166, res_fire=5166, cbf=True,
                  note='Host (clone-45 / clone-09 / clone-32): high mana, no stun, 7 capped Holy Freeze, '
-                      'Thorns 4278 + Barbs 2784, resist by level (no absorb by time)'),
+                      'Thorns first, resist by level (no absorb by time)'),
 }
 PRESET_ORDER = ('mock_high', 'mock_mid', 'mock_low', 'prayer_thorner', 'aura_killer', 'funky', 'funky28',
                 'funky26', 'funky24', 'balance_switch', 'pt_mid', 'host')
@@ -904,10 +951,11 @@ DEFAULTS = dict(cls=1, level=127, position='LPJ', life=7300000, damage=Fraction(
                 size_budget=FILE_LIMIT - 1 - SIZE_MARGIN,
                 # every category the proven clones carry (docs/review/mock-pi-data/clone-profile.txt, CLONE_PROFILE):
                 # the clone median unless a preset says otherwise
-                barbs=2784, hf_cap=True, hf_target=HF_MOCK_TARGET, thorns_lvl=0,
+                thorns=None, barbs=None, dtm=None, es=ES_PCT, tk=TK_DEFAULT, holy_shield_cast=0,   # None: solved
+                hf_cap=True, hf_target=HF_MOCK_TARGET, thorns_lvl=0,
                 ias=107, frw=107, fhr=-36, fcr=0, nv_ias=97, nv_frw=97,      # IAS 93, FRW 96, FHR 99, FCR 105, 68, 67
                 curse_res=511, target_def=381, dodge=127, ow=127, cb=127, ds=0, itd=False, cbf=False,
-                dr=63, dr_pct=255, mdr=0, abs_pct=127, abs_flat=0, abs_lvl=True, abs_time=True, replenish=True,
+                dr=63, dr_pct=255, mdr=0, abs_pct=127, abs_flat=0, abs_lvl=True, abs_time=False, replenish=True,
                 res_cold=0, res_fire=0, res_light=0, res_flat=0, pierce=0,
                 stun_lvl=1, holy_shield=False, just_hit=False)
 
@@ -939,6 +987,8 @@ CHARM_QUALITY = 3
 # and DR on almost everything"), then absorb by time 4194303 (cold, fire, lightning: clone-28, Cold, Assault,
 # clone-52, TryToKill*), never on a Host (doc S4: abs-by-time does not work as host): a Host gets resist by
 # level instead (fire, lightning, cold 63: clone-45 82/82/54 lines, clone-32, clone-64; doc S4 "hosts 66k resist").
+# user (2026-11-22): absorb by time is half-bugged in game, absorb by character level (234-236) works: the generator
+# relies on per-level absorb (63 on every list) and writes by-time lines only when the form's 'abs_time' is on.
 # Life, mana, regen, smite, aura and mastery stats stay off: they would move a target.
 BULK_REPLENISH = (74, 33)
 BULK_ABS_TIME = ((288, 4194303), (289, 4194303), (290, 4194303))
@@ -1111,11 +1161,14 @@ def options(preset='mock_high', **over):
     o['preset'] = preset
     pos = over.get('position') or o['position']
     o['position'] = pos
-    o.setdefault('dtm', POSITIONS[pos]['dtm'])
+    o['dtm_position'] = POSITIONS[pos]['dtm']              # the position's DTM floor (plan() solves 'dtm')
     o.setdefault('stun', POSITIONS[pos]['stun'])
     for k, v in over.items():
         if v is not None:
             o[k] = v
+    o['es'] = max(0, min(99, int(o['es'])))
+    if PRESETS[preset].get('exact') and over.get('tk') is not None and over.get('mana') is None:
+        o['mana'] = (1 << 19) * max(32 - int(o['tk']), 1)     # a funky at another TK: that TK's first funky zero
     o.setdefault('exact', False)
     o.setdefault('weapon', False)
     o.setdefault('switch', None)
@@ -1199,6 +1252,16 @@ def plan(preset='mock_high', name='Mock', **over):
     charms = [PUnit('charm', f'charm{i}', 1, 'prayer' if i < nps else 'cover') for i in range(CHARM_COUNT)]
     units += charms
     U = {u.name: u for u in units}
+    # ---- Thorns first, Barbs only if still needed (user): against the flat DR the plan writes (one line per list)
+    # and the target ES% of the form; a user's Thorns / Barbs stay as typed (the analyzer warns)
+    es = Fraction(o['es'], 100)
+    n_all = sum(len(u.slots) for u in units)
+    th_cap = AURA_LINE_MAX * sum(len(u.slots) for u in units if u.kind != 'charm')
+    dr_est = n_all * max(0, min(63, int(o['dr'])))
+    if o['thorns'] is None:
+        o['thorns'] = max_thorns(th_cap, dr_est, int(o['dr_pct']), es)
+    if o['barbs'] is None:
+        o['barbs'] = pick_barbs(int(o['thorns']), th_cap, dr_est, int(o['dr_pct']), es)
     # ---- aura roles: Holy Freeze sources on the shield's jewels (then charms), one Meditation, one Thorns,
     # one Barbs source; every other gear item / jewel is an Oak Sage "cover" (stacking: one aura)
     H = max(0, int(o['hf_sources'])) if o['hf_level'] else 0
@@ -1257,6 +1320,22 @@ def plan(preset='mock_high', name='Mock', **over):
         med = rg['med'] if o['med'] is None else max(0, int(o['med']))
         pct = rg['pct'] if o['regen'] is None else max(0, min(255, int(o['regen'])))
         rg = dict(rg, med=med, pct=pct, total=warmth_pct(warmth) + (meditation_pct(med) if med else 0) + pct)
+    # ---- Prayer drain vs regen (1 + 0.1875 (L - 1) per source per 2 s pulse) and the DTM: at least the position's
+    # DTM and the refill the target ES% / TK need (dtm_need), never over the LPJ ceiling (dtm_ceiling with the drain)
+    pr_lv = sum(v for s in lists for sid, p, v in s.lines if sid == 151 and p == PRAYER)
+    drain = prayer_drain(pr_lv) if nps else 0
+    drain_s = drain * nps / 2
+    regen_s = mana['mana'] / 120 * (100 + rg['total']) / 100
+    if drain_s >= regen_s:
+        raise PlanError(f'Prayer {pr_lv} x {nps} sources drains {float(drain_s):.0f} mana/s, regen only '
+                        f'{float(regen_s):.0f}', key='prayer')
+    need = dtm_need(es, o['tk'], dr_est, int(o['dr_pct']))
+    ceil = dtm_ceiling(mana['mana'], dr_est, drain, o['tk'])
+    if o['dtm'] is None:
+        d = max(int(o['dtm_position']), math.ceil(need) if need is not None else 0)
+        o['dtm'] = min(d, math.floor(ceil)) if ceil is not None else d
+    dtm_info = dict(need=need, hpj=dtm_ceiling(mana['mana'], dr_est, 0, o['tk']), lpj=ceil,
+                    drain_s=drain_s, regen_s=regen_s, prayer_level=pr_lv, prayer_sources=nps)
     # ---- life: +479 lines + Oak Sage on the cover units
     oak_lists = by_role('cover')
     oak_lo, oak_hi = len(cover_units), len(oak_lists) * AURA_LINE_MAX
@@ -1391,7 +1470,7 @@ def plan(preset='mock_high', name='Mock', **over):
             put(sid, split(int(o[key]), 63), gear_first=False)
     P = dict(o=o, units=units, lists=lists, U=U, mana=mana, regen=rg, life=life, smite=sm, stun=stun,
              hf_mastery=hf_mast, expect_sources=expect_src, name=name, rng_seed=rng.getrandbits(64),
-             dmg_target=dmg_target, pvm=pvm)
+             dmg_target=dmg_target, pvm=pvm, balance=dtm_info)
     _switch(P)
     _fill_absorb(P)
     over_cap = [f'{s.unit.name}#{s.idx}' for u in P['units'] for s in u.slots if s.count() > LINE_CAP]
@@ -1605,10 +1684,14 @@ def safe_barbs(thorns_lvl, cap, dr, dr_pct, es=ES_ABSORB):
     """Highest Barbs level <= cap whose Thorns + Barbs return stays a positive hit both with the target's Energy
     Shield up (es) and gone (ES 0), and under 99% of 8388607 with ES up; 0 when none."""
     for lv in range(int(cap), 0, -1):
-        on = thorns_return(thorns_lvl, lv, dr, dr_pct, es)
-        if 0 < on < ROLL * Fraction(99, 100) and thorns_return(thorns_lvl, lv, dr, dr_pct, 0) > 0:
+        if thorns_safe(thorns_lvl, lv, dr, dr_pct, es):
             return lv
     return 0
+
+
+def pick_barbs(thorns_lvl, cap, dr, dr_pct, es=ES_ABSORB):
+    """Barbs only when still needed (user): 0 when Thorns alone is safe, else the highest safe Barbs <= cap."""
+    return 0 if thorns_safe(thorns_lvl, 0, dr, dr_pct, es) else safe_barbs(thorns_lvl, cap, dr, dr_pct, es)
 
 
 def barbs_plan(preset, **over):
@@ -1626,24 +1709,24 @@ def barbs_plan(preset, **over):
     while lo < hi:                                     # the most Barbs the lists take
         mid = (lo + hi + 1) // 2
         lo, hi = (mid, hi) if ok(mid) else (lo, mid - 1)
-    o = options(preset, **over)
     P = plan(preset, 'Barbs', **dict(over, barbs=lo))
+    o = P['o']
     dr = totals(model_from_plan(P))['T'].get(34, 0)
-    return safe_barbs(int(o['thorns']), lo, dr, int(o['dr_pct'])), dr
+    return safe_barbs(int(o['thorns']), lo, dr, int(o['dr_pct']), Fraction(o['es'], 100)), dr
 
 
 def generate(preset='mock_high', name='Mock', **over):
     """(bytes, plan) of a new mock character."""
     P = plan(preset, name, **over)
     o = P['o']
-    if over.get('thorns') is not None and over.get('barbs') is None and o['barbs']:
-        # Thorns changed by the user, Barbs left to the preset: a preset Barbs safe for the preset's Thorns can roll
-        # the return over with another Thorns level - take the highest safe Barbs under the preset's one instead
+    if over.get('barbs') is None:
+        # Barbs left to the plan: re-check the solved Thorns / Barbs against the DR actually written (the plan
+        # solved them on its estimate) and re-pick Barbs (0 when Thorns alone is safe) if the return is not safe
         dr = totals(model_from_plan(P))['T'].get(34, 0)
-        th, ba, pct = int(o['thorns']), int(o['barbs']), int(o['dr_pct'])
-        on = thorns_return(th, ba, dr, pct, ES_ABSORB)
-        if not (0 < on < ROLL * Fraction(99, 100) and thorns_return(th, ba, dr, pct, 0) > 0):
-            P = plan(preset, name, **dict(over, barbs=safe_barbs(th, ba, dr, pct)))
+        th, ba, pct, es = int(o['thorns']), int(o['barbs']), int(o['dr_pct']), Fraction(o['es'], 100)
+        if not thorns_safe(th, ba, dr, pct, es) or (ba and thorns_safe(th, 0, dr, pct, es)):
+            cap = AURA_LINE_MAX * sum(1 for s in P['lists'] if s.unit.kind != 'charm')
+            P = plan(preset, name, **dict(over, thorns=th, barbs=pick_barbs(th, max(ba, cap), dr, pct, es)))
     raw = build(P)
     if len(raw) >= FILE_LIMIT:
         raise PlanError(f'{len(raw)} bytes: over the 8 KB save limit')
@@ -1657,7 +1740,9 @@ def expected(P):
     return dict(mana=mana, exact=o['exact'],
                 tk=o['tk'], regen=P['regen']['total'], regen_cap=regen_cap(mana), life=P['life']['life'],
                 smite_max=P['smite']['max'], pvm=P['pvm'], sources=dict(P['expect_sources']),
-                side_b=P.get('side_b'), stun=P['stun'])
+                side_b=P.get('side_b'), stun=P['stun'], es=o['es'], thorns=o['thorns'], barbs=o['barbs'],
+                dtm=o['dtm'], dtm_need=P['balance']['need'], dtm_lpj=P['balance']['lpj'],
+                prayer_drain_s=P['balance']['drain_s'], prayer_regen_s=P['balance']['regen_s'])
 
 
 def summary(P, raw=None):
@@ -1666,7 +1751,10 @@ def summary(P, raw=None):
     out = [f"{o['label']}: TK {o['tk']}, mana {_num(e['mana'])} (base {_num(Fraction(m['base_raw'], 256))}, "
            f"+{m['flat']} flat, +{m['pct']}%)",
            f"regen {e['regen']}% / cap {e['regen_cap']}% (Meditation {P['regen']['med']}), life {_num(e['life'])}",
-           f"smite max {e['smite_max']} PvM (target {e['pvm']}), stun {P['stun']}%"]
+           f"smite max {e['smite_max']} PvM (target {e['pvm']}), stun {P['stun']}%",
+           f"Thorns {o['thorns']} + Barbs {o['barbs']}, ES {o['es']}%, DTM {o['dtm']}% (refill "
+           f"{float(e['dtm_need'] or 0):.0f}%, LPJ ceiling {float(e['dtm_lpj'] or 0):.0f}%)",
+           f"Prayer drain {float(e['prayer_drain_s']):.0f} vs regen {float(e['prayer_regen_s']):.0f} mana/s"]
     if P.get('side_b'):
         out.append(f"side B mana {_num(P['side_b']['mana'])}")
     if raw is not None:
@@ -1700,7 +1788,7 @@ def model_from_plan(P, raw=None):
     return dict(name=P['name'], cls=o['cls'], level=o['level'], active_weapon=0, base_str=1023, base_ene=0,
                 base_vit=0, base_mana_raw=P['mana']['base_raw'], base_life_raw=(1 << 21) - 1, stat_points=0,
                 skills={first + i: lv for i, lv in enumerate(sk) if lv}, units=units, set_ids=set_ids,
-                shields=shields, size=len(raw) if raw is not None else len(build(P)), excess_jewels=0)
+                shields=shields, size=len(raw) if raw is not None else len(build(P)), excess_jewels=0, es=o['es'])
 
 
 # ---------------------------------------------------------------------------------- categories and the profile
@@ -1757,7 +1845,8 @@ def category_totals(model, side=None):
 # the clone profile (docs/review/mock-pi-data/clone-profile.txt): the categories that (nearly) every proven clone
 # of a role carries, and their typical totals (median of the role; line-value sums, per-level stats before x clvl/8)
 _BASE = ('dr', 'dr_pct', 'abs_pct', 'abs_lvl', 'str_lvl', 'damage', 'dtm', 'smite', 'prayer_skill', 'dopplezon',
-         'prayer', 'thorns', 'barbs', 'oak', 'meditation', 'life', 'mana', 'mana_pct', 'regen')
+         'prayer', 'thorns', 'oak', 'meditation', 'life', 'mana', 'mana_pct', 'regen')
+# no 'barbs': the clones carry it, but the user's rule is Thorns first, Barbs only when Thorns alone is not safe
 # 'always': carried by >= 2/3 of the role's proven clones (clones2 + clones; the reference clones weighted);
 # 'typical': the role's median total
 CLONE_PROFILE = {
@@ -1865,7 +1954,8 @@ PRESET_ROLE = {k: p.get('role', 'mock') for k, p in PRESETS.items()}
 # a combo box (extra = the values); every key is an options() key. 'src' after an aura: its source count (shown).
 SWITCHES = ('none', 'balance')
 FIELDS = (
-    ('Mana / TK', (('tk', 'TK', 'int', (0, 99)), ('mana', 'Mana (BO)', 'int', (1, 16777215)),
+    ('Mana / TK', (('tk', 'TK', 'int', (0, 99)), ('es', 'Energy Shield %', 'int', (0, 99)),
+                   ('mana', 'Mana (BO)', 'int', (1, 16777215)),
                    ('bo', 'BO level', 'int', (0, 99)), ('level', 'Level', 'int', (99, 127)),
                    ('cls', 'Class', 'choice', CLASSES), ('position', 'Position', 'choice', tuple(POSITIONS)),
                    ('enemy_aura', 'Enemy aura', 'choice', ('preset',) + tuple(ENEMY_AURA_MANA)))),
@@ -1906,14 +1996,20 @@ FIELD_EXTRA = {f[0]: f[3] for _, fs in FIELDS for f in fs}
 # the aura fields with the source count shown next to them (the plan's expected sources)
 AURA_FIELD_SOURCE = dict(prayer=PRAYER, thorns=THORNS, barbs=BARBS, oak=OAK, med=MEDITATION, hf_level=HOLY_FREEZE)
 # a short hint per field: unit and range
-HINTS = dict(tk='hard TK points 0-99 (31: band 524288, 30: funky 1048576)', mana='max mana after BO; TK31 '
+HINTS = dict(tk='hard TK points 0-99 (default 31; 31: band 524288, 30: funky 1048576); changing it re-solves the '
+             'DTM, its ceilings and a funky\'s mana',
+             es='Energy Shield % of the damage that goes to mana (default 95, ES 99): the Thorns / Barbs safety '
+                '(ES up and gone), the DTM refill and the solved Thorns / Barbs / DTM follow it', mana='max mana after BO; TK31 '
              '1210000-1572863', bo='BO level cast before the duel, 0-99 (0 = none; % = 35 + 3 per level)',
              level='character level 99-127', cls='character class (TK / ES need a Sorceress)',
              position='Host: DTM 500, no stun; HPJ / LPJ: high / low ping joiner (DTM 420 / 330, stun)',
              enemy_aura='TK31 mana by the enemy aura: high -> 1211974, mid -> 1310719, low -> 1572500, none -> 1572863',
              life='max life after BO, under 8388607', oak='Oak Sage total level (life %), one source per gear item',
-             prayer='total Prayer level (31 per list = 5518)', prayer_sources='Prayer charms 0-40',
-             thorns='Thorns total level (one source)', barbs='Barbs total level (one source)',
+             prayer='total Prayer level (31 per list = 5518); its drain (1 + 0.1875 (L - 1) per source per 2 s) '
+                    'must stay under the mana regen', prayer_sources='Prayer charms 0-40',
+             thorns='Thorns total level (one source); solved first: the most the lists take whose return stays '
+                    'safe with ES up and gone', barbs='Barbs total level (one source); 0 unless Thorns alone is '
+                    'not safe',
              med='Meditation level (one source: mana regen to the cap)',
              regen='mana regen % line 0-255', hf_level='Holy Freeze total level',
              hf_sources='Holy Freeze sources 0-42 (gear jewels)',
@@ -1926,20 +2022,22 @@ HINTS = dict(tk='hard TK points 0-99 (31: band 524288, 30: funky 1048576)', mana
              deli_strike='Delirium on strike, level 1-63 (not the attack level)',
              smite_max='on: the max smite exactly at the cap (min lower by the shield spread); off: within 0.1% of the cap for the fewest bits',
              ow='chance of open wounds % (the bleed finishes a 1 HP target)', cb='crushing blow %',
-             ds='deadly strike %', target_def='-% target defense (clones 254-1016)', dtm='damage taken goes to mana %',
+             ds='deadly strike %', target_def='-% target defense (clones 254-1016)',
+             dtm='damage taken goes to mana %: solved as the position\'s (Host 500 / HPJ 420 / LPJ 330) or the ES refill '
+                 '(ES% / TK), whichever is higher, never over the LPJ ceiling (mana, DR, Prayer drain, TK)',
              itd="ignore target's defense", pierce='-% enemy cold resist (clone-05: 255 on every list)', weapon='a socketed weapon (198 lists)',
              dr='flat damage reduced on every list (63 max per line)', dr_pct='damage reduced %',
              mdr='magic damage reduced', abs_pct='absorb % per element (cold, fire, lightning)',
              abs_flat='flat absorb per element', res_cold='cold resist by level (sum of lines, x clvl / 8)',
              res_fire='fire resist by level', res_light='lightning resist by level',
              res_flat='flat resist, every element (-100: the "-100 res" mocks)', curse_res='curse resistance (511)',
-             dodge='dodge / avoid / evade % each', abs_lvl='absorb by level 63 on every list',
-             abs_time='absorb by time bulk lines (not on a Host)', cbf='cannot be frozen',
+             dodge='dodge / avoid / evade % each', abs_lvl='absorb by character level 63 on every list (works in game: the absorb the generator relies on)',
+             abs_time='absorb by time bulk lines (off by default: half-bugged in game; never on a Host)', cbf='cannot be frozen',
              ias='increased attack speed', frw='faster run / walk', fhr='faster hit recovery (clones -36)',
              fcr='faster cast rate', nv_ias='non-visible attack rate (stat 68, 97 per line)',
              nv_frw='non-visible velocity (stat 67, 97 per line)', dopplezon='NV state Dopplezon on a charm',
              just_hit='NV state Just Hit on a charm', holy_shield='NV state Holy Shield on a charm (no smite damage)',
-             holy_shield_cast='Holy Shield skill level on the shield (oskill), cast before the duel: its damage '
+             holy_shield_cast='optional (default 0 = off): Holy Shield skill level on the shield (oskill), cast before the duel: its damage '
                               '(3-6 at 1, 57-60 at 20) adds to the shield range before the Smite multiplier',
              replenish='replenish life 33 bulk lines', switch='balance: side B copy of the shield with its own mana',
              mana_b='side B mana (weapon switch)')
@@ -1954,7 +2052,7 @@ def prefill(preset='mock_high', **over):
     solved = dict(oak=P['life']['oak'], med=P['regen']['med'], regen=P['regen']['pct'], prayer=pr,
                   prayer_sources=P['expect_sources'].get(PRAYER, 0), stun=o['stun'], cls=CLASSES[o['cls']],
                   enemy_aura='preset', switch=o['switch'] or 'none', mana_b=int(o.get('mana_b') or 0),
-                  damage=int(o['damage']))
+                  damage=int(o['damage']), thorns=P['o']['thorns'], barbs=P['o']['barbs'], dtm=P['o']['dtm'])
     out = {}
     for k in FIELD_KEYS:
         v = solved[k] if k in solved else o.get(k)
