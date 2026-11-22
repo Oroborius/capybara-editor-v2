@@ -569,6 +569,9 @@ def element_res(flat, res_lvl, clvl, max_res=0):
     return min(MAX_RES + max_res, HELL_RES + flat + math.floor(Fraction(res_lvl * clvl, 8)))
 
 
+MANA_FLOOR, MANA_FLOOR_LOW = 1280000, 1210000   # the user: never below ~1.28M personally, some go to 1.21M
+
+
 def best_mana(tk, absorb, res=HELL_RES):
     """Highest mana the absorb heal cannot overflow: (8388608 / TK ratio) x 3 - 1 - floor(absorb / ((100 - res)
     / 100) x 0.36), res -100 (Hell)."""
@@ -920,6 +923,12 @@ def analyze(model, side=None, bo=False, energy=False):
             f"{float(ab):.0f} at -100 res): " + ('the absorb heal cannot overflow the mana' if safe_m
                                                  else 'OVER: the absorb heal can overflow the mana'),
             GOOD if safe_m else WARN)
+    if not b['funky'] and mana and math.floor(mana) < MANA_FLOOR_LOW:
+        add('mana_floor', 'Mana floor', f"{_num(mana)} is below {MANA_FLOOR_LOW:,}: lower than players go "
+            f"(most keep {MANA_FLOOR:,}+)", WARN)
+    elif not b['funky'] and mana and math.floor(mana) < MANA_FLOOR:
+        add('mana_floor', 'Mana floor', f"{_num(mana)} is below {MANA_FLOOR:,} (some go as low as "
+            f"{MANA_FLOOR_LOW:,}; typed values are kept)", WARN)
     if T.get(3, 0):
         add('vitality', 'Item Vitality', f"+{T[3]}: a waste of file size for life (use +life / Oak Sage lines)", WARN)
     if T.get(1, 0):
@@ -1338,6 +1347,8 @@ def plan(preset='mock_high', name='Mock', **over):
         moved = tk_ratio(o['tk']) != tk_ratio(PRESETS[preset]['tk'])
         for key in ('mana',) + (('mana_b',) if o['switch'] else ()):
             if o.get(key) is not None and o[key + '_auto']:
+                # the default is the mathematically best mana for the absorb / res (the high-mana presets land on
+                # it); presets that deliberately run lower (enemy aura mid / high) keep theirs; a typed mana is kept
                 o[key] = best if moved else min(o[key], best)
     else:
         o['best_mana'] = None
