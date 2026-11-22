@@ -180,6 +180,8 @@ def parse_item(blob, data):
         it['ilvl'] = br.read(ILVL_BITS)
         it['quality'] = mxl_format.QUALITY.get(br.read(4), 'unknown')
     it.opaque = True                                  # stats not readable with these tables: never re-encoded
+    if getattr(data, 'v109', False):
+        it.v109 = True
     end = _opaque_end(blob, data, br.pos)
     br.pos = (end - 2) * 8
     _keep_raw(it, blob, br)
@@ -190,6 +192,8 @@ def _parse_item(blob, data):
     expect(blob, 0, b'JM')
     br = BitReader(blob[2:])
     it = Item()
+    if getattr(data, 'v109', False):                  # a 1.09 (save version 92) record: mxl_v109.Data109
+        it.v109 = True                                # never re-encoded (no 1.09 item writer)
     flags = br.read(32)
     it['identified'] = bool(flags >> 4 & 1)
     it['has_sockets'] = bool(flags >> 11 & 1)
@@ -263,15 +267,17 @@ def _parse_item(blob, data):
             it['durability'] = br.read(data.isc[S.DURABILITY]['bits'])
     if data.base(code).stack_max is not None:
         it['quantity'] = br.read(QUANTITY_BITS)
+    old = getattr(data, 'v109', False)
+    rs = data.read_stats if old else (lambda b, _d=data: read_stats(b, _d))
     if it['has_sockets']:
-        it['sockets'] = br.read(SOCKET_FIELD_BITS)
+        it['sockets'] = br.read(data.isc[194]['bits'] if old else SOCKET_FIELD_BITS)
     set_lists = br.read(5) if q == 'set' else 0
-    it['stats'] = read_stats(br, data)
+    it['stats'] = rs(br)
     for i in range(5):
         if set_lists >> i & 1:
-            it['set_stats_%d' % i] = read_stats(br, data)
+            it['set_stats_%d' % i] = rs(br)
     if runeword:
-        it['stats_runeword'] = read_stats(br, data)
+        it['stats_runeword'] = rs(br)
     _keep_raw(it, blob, br)
     return it, br
 

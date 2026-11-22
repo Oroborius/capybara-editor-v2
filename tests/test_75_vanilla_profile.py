@@ -177,7 +177,6 @@ def mock_samples_open_and_save_byte_identical():
     dst = T.guard(os.path.join(T.tmp(), 'vmock'), 'mock copies')
     shutil.copytree(src, dst)
     files = sorted(glob.glob(os.path.join(dst, '*.d2s')) + glob.glob(os.path.join(dst, 'clones', '*.d2s')))
-    files = [f for f in files if T.read(f)[4] == 96]      # version 92 (pre-1.10) saves are refused (test 79)
     T.check(len(files) >= 38, f'{len(files)} mock samples')
     import mxl_save
     bad, raw = [], set()

@@ -700,19 +700,15 @@ def thorns_barbs_safe_window():
 
 
 @T.test
-def old_save_versions_are_refused():
-    """A pre-1.10 save (header version 92: its stats are packed another way) raises a clear FormatError instead
-    of misreading the stats; the version 96 samples (vanilla 1.10+, Median XL) still open."""
+def old_save_versions_open():
+    """A pre-1.10 save (header version 92, 1.09) opens: its u32 stats and 1.09 item records are read (test 94 has
+    the details); the version 96 samples (vanilla 1.10+, Median XL) still open."""
     E = engine()
-    from mxl_format import FormatError
     old = [f for f in glob.glob(os.path.join(E.saves, '**', '*.d2s'), recursive=True) if T.read(f)[4] == 92]
     T.check(any(os.path.basename(f) == 'clone-59.d2s' for f in old), 'clone-59 is a version 92 save')
     for f in old:
-        try:
-            E.MC.Character(f, E.data)
-            T.check(False, f'{os.path.basename(f)}: refused')
-        except FormatError as e:
-            T.check('old save version (92)' in str(e), f'{os.path.basename(f)}: {e}')
+        ch = E.MC.Character(f, E.data)
+        T.check(ch.old and ch.stat(12) > 0, f'{os.path.basename(f)}: opened, level read')
     E.MC.Character(_sample('clones/clone-35.d2s'), E.data)
 
 

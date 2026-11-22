@@ -16,6 +16,7 @@ import struct
 from mxl_format import read_item_list, FormatError
 from mxl_creator import decode_item, encode_item, CreateError
 from mxl_lang import T
+import mxl_v109
 
 MAGIC = 0xAA55AA55
 QUEST_OFF, WP_OFF, NPC_OFF, STATS_OFF = 0x14F, 0x279, 0x2C9, 0x2FD
@@ -170,6 +171,13 @@ class _W:
 # Folder profiles (vanilla D2) only, set by mxl_profile: a stat list that ends before 'if' (hacked clone saves)
 # keeps the bytes in between as they are. Median XL: False, unchanged.
 STATS_LENIENT = False
+
+
+def old_save_note():
+    """Shown for a 1.09 (version 92) save: what the editor can change there."""
+    return T('ch.note.old_save', 'Diablo II 1.09 save (version 92): the items are read-only here (no 1.09 item '
+             'writer); stats, skills, quests and waypoints are saved in the 1.09 layout. Loading the character '
+             'once in 1.14d converts it to the current format.')
 
 
 def _csv(data):
@@ -471,6 +479,8 @@ class Entry:
 
     def moved(self, data, **fields):
         """Copy with header fields changed (location, equipped, x, y, panel); socketed items unchanged."""
+        if getattr(self.it, 'v109', False):
+            raise CharError(old_save_note())
         rec, n = decode_item(self.blob, data)
         rec.update(fields)
         return encode_item(rec, data) + self.blob[n:]
@@ -490,7 +500,10 @@ class Character:
         if struct.unpack_from('<I', b, 0)[0] != MAGIC:
             raise FormatError(T('ch.err.not_char', 'not a character file'))
         self.version = struct.unpack_from('<I', b, 4)[0]
-        if self.version != 96:                          # 1.10+ (Median XL too); pre-1.10 saves pack the stats apart
+        # 96: 1.10+ (Median XL too). 92: a 1.09 save, read in the vanilla folder profiles (mxl_v109): its stats and
+        # item records are packed another way; the character values are written back in that layout, the items kept
+        self.old = self.version == mxl_v109.VERSION and not _median()
+        if self.version != 96 and not self.old:
             raise FormatError(T('ch.err.old_version', 'unsupported old save version ({v}); only 1.10+ saves (96)',
                                 v=self.version))
         if b[QUEST_OFF:QUEST_OFF + 4] != b'Woo!' or b[WP_OFF:WP_OFF + 2] != b'WS':
@@ -501,6 +514,9 @@ class Character:
         if gf < 0:
             raise FormatError(T('ch.err.no_stats', "stats ('gf') not found"))
         self.head = bytearray(b[:gf])
+        if self.old:
+            self._parse_old(b, gf)
+            return
         widths = _csv(d)
         br = _Bits(b[gf + 2:gf + 2 + 2048])
         stats = []
@@ -555,6 +571,49 @@ class Character:
                 r = r2
         self.tail = b[r:]
 
+    def _parse_old(self, b, gf):
+        """The rest of a version 92 (1.09) file: mask + u32 stats, skills, then the item lists read with the 1.09
+        record widths (mxl_v109.Data109). The item bytes are kept as read: build() refuses changed items."""
+        d = self.data
+        self.stats, p = mxl_v109.read_stats(b, gf)
+        self.stats_extra = b''
+        if b[p:p + 2] != b'if':
+            raise FormatError(T('ch.err.no_skills', "skills ('if') not found after the stats"))
+        jm = p + 2 + class_skill_count(d, b[0x28]) if b[0x28] < 7 else -1
+        if b[jm:jm + 2] != b'JM':
+            jm = b.find(b'JM', p)
+        self.skills = b[p:jm]
+        self.offsets = (gf, p, jm)
+        d9 = mxl_v109.Data109(d)
+        count = struct.unpack_from('<H', b, jm + 2)[0]
+        items, q = read_item_list(b, jm + 4, count, d9)
+        self.items = [Entry(it, b[it['_offset']:it['_offset'] + self._full_size(it)]) for it in items]
+        if b[q:q + 2] != b'JM':
+            raise FormatError(T('ch.err.no_corpse', 'corpse list not found'))
+        cc = struct.unpack_from('<H', b, q + 2)[0]
+        r = q + 4
+        if cc:
+            r += 12
+            if b[r:r + 2] != b'JM':
+                raise FormatError(T('ch.err.no_corpse_items', 'corpse items not found'))
+            n = struct.unpack_from('<H', b, r + 2)[0]
+            _, r = read_item_list(b, r + 4, n, d9)
+        self.corpse = b[q:r]
+        self.has_jf = b[r:r + 2] == b'jf'
+        self.merc_items = None
+        if self.has_jf:
+            r += 2
+            if b[r:r + 2] == b'JM':
+                n = struct.unpack_from('<H', b, r + 2)[0]
+                mitems, r = read_item_list(b, r + 4, n, d9)
+                self.merc_items = [Entry(it, b[it['_offset']:it['_offset'] + self._full_size(it)]) for it in mitems]
+        self.tail = b[r:]
+        self._old_items = self._item_bytes()
+
+    def _item_bytes(self):
+        return ([e.blob for e in self.items], self.corpse,
+                None if self.merc_items is None else [e.blob for e in self.merc_items])
+
     @staticmethod
     def _full_size(it):
         end = it['_offset'] + it['_size']
@@ -565,6 +624,24 @@ class Character:
     def build(self):
         d = self.data
         out = bytearray(self.head)
+        if getattr(self, 'old', False):
+            if self._item_bytes() != self._old_items:
+                raise CharError(old_save_note())
+            try:
+                sb = mxl_v109.build_stats(self.stats)
+            except ValueError as e:
+                raise CharError(T('ch.err.old_stat', '1.09 save: {stat} cannot be stored', stat=e))
+            out += b'gf' + sb + self.skills
+            out += b'JM' + struct.pack('<H', len(self.items)) + b''.join(e.blob for e in self.items)
+            out += self.corpse
+            if self.has_jf:
+                out += b'jf'
+                if self.merc_items is not None:
+                    out += b'JM' + struct.pack('<H', len(self.merc_items)) + b''.join(e.blob for e in self.merc_items)
+            out += self.tail
+            struct.pack_into('<I', out, 8, len(out))
+            struct.pack_into('<I', out, 12, checksum(out))
+            return bytes(out)
         w = _W()
         widths = _csv(d)
         for sid, p, v in self.stats:
@@ -666,7 +743,7 @@ class Character:
         """Descriptor (StatField) of one stat-screen value: current value, storable range, where it is stored."""
         f, raw = self._field_raw(key)
         key, sid, shift, label = f
-        bits = _csv(self.data)[sid][1]
+        bits = 32 if getattr(self, 'old', False) else _csv(self.data)[sid][1]    # 1.09: one u32 per stat
         raw_max = (1 << bits) - 1
         note = ''
         lo = 0
@@ -1253,6 +1330,22 @@ def _reader_bytes(raw, data):
     return bytes(b) if right(b) else None
 
 
+def _old_reader_bytes(raw, data):
+    """A version 92 (1.09) file for the collector's reader, which knows only the 96 layout: (bytes, Character) -
+    the header, an empty stat list, the skills and empty item lists; the wrapper puts the values and items read
+    by Character into its result."""
+    ch = Character.__new__(Character)
+    ch.data, ch.path, ch.raw = data, None, raw
+    ch.parse(raw)
+    out = bytes(ch.head) + b'gf\xff\x01' + bytes(ch.skills) + b'JM\0\0' + b'JM\0\0'
+    if ch.has_jf:
+        out += b'jf' + (b'JM\0\0' if ch.merc_items is not None else b'')
+    out = bytearray(out + bytes(ch.tail))
+    struct.pack_into('<I', out, 4, 96)
+    struct.pack_into('<I', out, 8, len(out))
+    return bytes(out), ch
+
+
 def install_reader_fix():
     """Wraps mxl_save.load_character (also where a module bound it by name) with _reader_bytes. Idempotent."""
     import sys
@@ -1262,13 +1355,19 @@ def install_reader_fix():
         return
 
     def load_character(path, data):
+        old = False
         try:
             raw = mxl_save.read_file(path)
-            fixed = _reader_bytes(raw, data)
+            old = mxl_v109.is_old(raw) and not _median()
+            fixed = _old_reader_bytes(raw, data) if old else _reader_bytes(raw, data)
         except Exception:
+            if old:
+                raise
             fixed = None
         if fixed is None:
             return host(path, data)
+        if old:
+            fixed, ch = fixed
         name = bytes(raw[0x14:0x24]).split(b'\0')[0].decode('latin1')
         real = mxl_save.read_file
         mxl_save.read_file = lambda p, _real=real: fixed if p == path else _real(p)
@@ -1280,6 +1379,10 @@ def install_reader_fix():
             c['name'] = name
         except Exception:
             setattr(c, 'name', name)
+        if old:                                        # the 1.09 values / items read by Character
+            c['items'] = [e.it for e in ch.items]
+            for key, sid in (('strength', 0), ('energy', 1), ('dexterity', 2), ('vitality', 3)):
+                c[key] = ch.stat(sid)
         return c
     load_character._capy_reader_fix = True
     load_character.__wrapped__ = host
