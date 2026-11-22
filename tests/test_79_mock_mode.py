@@ -594,4 +594,30 @@ def form_validation_names_the_field():
     T.eq((over, errs), (dict(ias=-121, res_light=630, just_hit=True), {}), 'edited speed / resist / NV state')
     T.eq(P['o']['ias'], -121, 'the edited IAS reaches plan()')
 
+
+@T.test
+def prayer_drain_energy_vitality_and_dtm_ceiling():
+    """Prayer drains 1 + 0.1875 (L - 1) per source per pulse; item Energy / Vitality add after the % boost; the
+    DTM ceilings (HPJ without, LPJ with the doubled drain x TK ratio)."""
+    M = engine().M
+    T.eq((M.prayer_drain(1), M.prayer_drain(17), M.prayer_drain(0)), (1, 4, 0), 'Prayer drain per pulse')
+    T.eq(M.prayer_drain(5518), Fraction(16 + 3 * 5517, 16), 'Prayer 5518')
+    t = dict(T={77: 100, 0: 10, 76: 100, 3: 10}, side='A', nonclass={}, aura_lv={})
+    m = dict(cls=1, base_mana_raw=256 * 1000, base_life_raw=256 * 1000, set_ids={None: set(), 'A': set()},
+             skills={})
+    T.eq(M.mana_of(m, t)[0], 2000 + 10 * 2, 'Sorceress: 10 item Energy add 20 mana after the %')
+    T.eq(M.life_of(m, t), 2000 + 10 * 2, 'Sorceress: 10 item Vitality add 20 life after the %')
+    hpj = M.dtm_ceiling(1572500, 11214)
+    T.eq(round(float(hpj), 2), round((8388607 - 1572500) / ((1426063 - 11214) * 0.5) * 100, 2), 'HPJ ceiling')
+    d = M.prayer_drain(5518)
+    lpj = M.dtm_ceiling(1572500, 11214, d, 31)
+    T.eq(round(float(lpj), 2), round((8388607 - 1572500) / ((1426063 + 2 * float(d) * 16 - 11214) * 0.5) * 100, 2),
+         'LPJ ceiling')
+    for key in M.PRESET_ORDER:
+        P = M.plan(key, 'Dtm')
+        a = M.analyze(M.model_from_plan(P), bo=True)
+        c = [x for x in a['checks'] if x[0] == 'dtm_cap']
+        T.check(c and c[0][3] == M.GOOD, f'{key}: DTM under the ceiling ({c[0][2] if c else "no check"})')
+
+
 T.main(globals())

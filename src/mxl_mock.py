@@ -507,7 +507,28 @@ def prayer_heal(lvl):
 
 
 def prayer_drain(lvl):
-    return (lvl - 28) * 0.376 + 6 if lvl >= 28 else 1
+    """Mana drained per Prayer source per pulse: (16 + 3 (lvl - 1)) x 16 / 256 = 1 + 0.1875 (lvl - 1)."""
+    return Fraction(16 + 3 * (lvl - 1), 16) if lvl > 0 else 0
+
+
+HIT_PVP = 1426063                   # the PvP-capped incoming hit (8388607 x 0.17, 1/256 units dropped)
+ES_ABSORB = Fraction(95, 100)       # Energy Shield 99: 95% of the damage goes to mana
+DR_PCT_CAP = 50                     # damage reduced % caps at 50
+
+
+def dtm_ceiling(mana, dr, drain=0, tk=31):
+    """Highest Damage to Mana % before a capped hit rolls the mana over: (8388607 - mana) / ((1426063 + 2 x
+    drain x 16 / (32 - TK) - DR) x 0.5) x 100. drain 0: the HPJ ceiling; the per-pulse Prayer drain: LPJ."""
+    den = (HIT_PVP + 2 * Fraction(drain) * Fraction(16, max(32 - tk, 1)) - dr) * Fraction(1, 2)
+    return (ROLL - Fraction(mana)) / den * 100 if den > 0 else None
+
+
+def thorns_return(thorns_lvl, barbs_lvl, dr, dr_pct, es=0):
+    """Thorns + Barbs damage returned by one PvP-capped hit (wrapped to the 24-bit field): (Thorns %
+    + Barbs %) / 100 x G / 8, G = (1426063 x (1 - ES) - DR) x (1 - DR% / 100). Negative: the return rolled over."""
+    g = (HIT_PVP * (1 - Fraction(es)) - dr) * (1 - Fraction(min(DR_PCT_CAP, dr_pct), 100))
+    v = math.floor(Fraction(thorns_pct(thorns_lvl) + barbs_pct(barbs_lvl), 100) * g / 8) % (1 << 24)
+    return v - (1 << 24) if v >= 1 << 23 else v
 
 
 def holy_freeze_dmg(lvl, top=False):
@@ -572,15 +593,19 @@ def mana_of(model, t, bo=False, energy=False):
     if energy and model['cls'] < 7:
         v += int(model.get('stat_points', 0) * Fraction(MANA_PER_ENERGY[model['cls']]) * 256)
     v += 256 * (t['T'].get(9, 0) + (SET_BONUS if full else 0))
-    return Fraction(pct_fp(v, t['T'].get(77, 0) + (bo_pct(model, t) if bo else 0)), 256), full
+    v = pct_fp(v, t['T'].get(77, 0) + (bo_pct(model, t) if bo else 0))
+    if model['cls'] < 7:                                # item Energy adds after the % boost
+        v += int(t['T'].get(0, 0) * Fraction(MANA_PER_ENERGY[model['cls']]) * 256)
+    return Fraction(v, 256), full
 
 
 def life_of(model, t, bo=False):
     T = t['T']
     oak = t['aura_lv'].get(OAK, 0)
     vit_life = {0: 3, 1: 2, 2: 2, 3: 3, 4: 4, 5: 2, 6: 3}.get(model['cls'], 2)
-    v = model['base_life_raw'] + 256 * (T.get(7, 0) + vit_life * T.get(3, 0))
-    return Fraction(pct_fp(v, T.get(76, 0) + oak_pct(oak) + (bo_pct(model, t) if bo else 0)), 256)
+    v = model['base_life_raw'] + 256 * T.get(7, 0)
+    v = pct_fp(v, T.get(76, 0) + oak_pct(oak) + (bo_pct(model, t) if bo else 0))
+    return Fraction(v + 256 * vit_life * T.get(3, 0), 256)    # item Vitality adds after the % boost
 
 
 def solve_fp(target, pct, exact):
@@ -642,7 +667,7 @@ def analyze(model, side=None, bo=False, energy=False):
     prayer_lv = t['aura_lv'].get(PRAYER, 0)
     prayer_src = sum(t['sources'].get(PRAYER, {}).values())
     heal_s = prayer_heal(prayer_lv) * prayer_src / 2 if prayer_src else 0
-    drain_s = prayer_drain(prayer_lv) * prayer_src / 2 if prayer_src else 0
+    drain_s = float(prayer_drain(prayer_lv)) * prayer_src / 2 if prayer_src else 0
     regen_s = float(mana) / 120 * (100 + regen) / 100
     stun = [(k, lv, c) for k, sk, lv, c in t['ctc'] if sk == STUN and k in (195, 198)]
     deli = [(k, lv, c) for k, sk, lv, c in t['ctc'] if sk == DELIRIUM and k in (195, 198)]
@@ -658,6 +683,10 @@ def analyze(model, side=None, bo=False, energy=False):
              sources={AURA_NAMES.get(k, str(k)): dict(x) for k, x in t['sources'].items()},
              hf_per_source=hf_dmg, hf_sources=hf_src, lists=t['lists'], size=model['size'], side=t['side'],
              dtm=T.get(114, 0), dr=T.get(34, 0), dr_pct=T.get(36, 0), units=len(t['units']))
+    v['dtm_hpj'] = dtm_ceiling(mana, v['dr'], 0, tk or 31)
+    v['dtm_lpj'] = dtm_ceiling(mana, v['dr'], prayer_drain(prayer_lv) if prayer_src else 0, tk or 31)
+    thl, bal = t['aura_lv'].get(THORNS, 0), t['aura_lv'].get(BARBS, 0)
+    v['thorns_return'] = thorns_return(thl, bal, v['dr'], v['dr_pct']) if thl or bal else None
     C = []
 
     def add(key, label, text, status):
@@ -722,6 +751,15 @@ def analyze(model, side=None, bo=False, energy=False):
     if prayer_src:
         add('prayer', 'Prayer per second', f'heal {heal_s:.0f}, drain {drain_s:.0f} vs regen {regen_s:.0f} mana/s',
             GOOD if drain_s < regen_s else WARN)
+    if v['dtm_lpj'] is not None and v['dtm']:
+        add('dtm_cap', 'Damage to mana ceiling', f"DTM {v['dtm']}% vs max HPJ {float(v['dtm_hpj']):.0f}% / LPJ "
+            f"{float(v['dtm_lpj']):.0f}% (a capped hit must not roll the mana over)",
+            GOOD if v['dtm'] <= v['dtm_lpj'] else WARN)
+    if v['thorns_return'] is not None:
+        r = v['thorns_return']
+        add('thorns_return', 'Thorns + Barbs return', f"Thorns {thl} + Barbs {bal}: {r} per capped hit "
+            f"(ES off, DR {v['dr']}, DR% {min(DR_PCT_CAP, v['dr_pct'])})" + ('' if r > 0 else ' ROLLED OVER'),
+            GOOD if r > 0 else WARN)
     if stun:
         txt = ', '.join(f"{'att' if k == 195 else 'hit'} {c}% L{lv}" for k, lv, c in stun[:6])
         txt += f', ... ({len(stun)} lines)' if len(stun) > 6 else ''
