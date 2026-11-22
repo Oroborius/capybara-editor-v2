@@ -629,9 +629,30 @@ def solve_fp(target, pct, exact):
     return None
 
 
+HOLY_SHIELD = 117
+
+
+def holy_shield_dmg(lvl):
+    """Holy Shield's Smite damage (min, max) at a skill level, from the 1.14d skills.bin row: MinDam 3 / MaxDam 6 plus
+    2 / 3 / 4 / 4 / 4 per level in the level brackets 2-8, 9-16, 17-22, 23-28, 29+ (HitShift 8: whole points).
+    Level 1: 3-6, level 20: 57-60. 0: none."""
+    if lvl <= 0:
+        return 0, 0
+    v = 3
+    for step, lo, hi in ((2, 1, 8), (3, 8, 16), (4, 16, 22), (4, 22, 28), (4, 28, None)):
+        n = (lvl if hi is None else min(lvl, hi)) - lo
+        if n > 0:
+            v += step * n
+    return v, v + 3
+
+
 def smite_of(model, t):
-    """Smite damage (PvM min, max) with the equipped shield: (shield min / max + Damage) x (100 + 15 x slvl + str%) / 100.
-    Only the shield's own range, +Damage (111), strength and the Smite level count (in game; +min / +max lines do not)."""
+    """Smite damage (PvM min, max) with the equipped shield: (shield min / max + Holy Shield min / max + Damage) x
+    (100 + 15 x slvl + str%) / 100. Only the shield's own range, Holy Shield, +Damage (111), strength and the Smite
+    level count (in game; +min / +max lines do not). Holy Shield (cast before the duel, level = hard points + item
+    + skills, at most 99): the game's Smite (1.13c D2Game SrvDo150) adds the damage of the skill level stored in
+    the holyshield state's own stat list to the shield's range BEFORE the Smite % multiplier; the NV state alone
+    (stat 98 = 101 on an item) has no such stat list and adds nothing."""
     T, lvl = t['T'], model['level']
     shield = model['shields'].get(t['side']) or model['shields'].get(None)
     smin, smax = SHIELD_DMG.get(shield, (0, 0))
@@ -639,10 +660,14 @@ def smite_of(model, t):
     slvl = min(99, t['nonclass'].get(SMITE, 0) + (model['skills'].get(SMITE, 0)))
     strength = model['base_str'] + T.get(0, 0) + T.get(220, 0) * lvl // 8
     mult = 100 + 15 * slvl + strength
+    hs_lvl = min(99, t['nonclass'].get(HOLY_SHIELD, 0) + model['skills'].get(HOLY_SHIELD, 0))
+    hmin, hmax = holy_shield_dmg(hs_lvl)
+    smin, smax = smin + hmin, smax + hmax
     # +min damage (stat 21) does not reach Smite (duel 2026-11-22: hits spread over the whole shield range with it)
     lo = (smin + T.get(111, 0)) * mult // 100
     hi = (smax + T.get(111, 0)) * mult // 100       # +min / +max damage lines do not reach Smite: only +Damage (111)
-    return dict(shield=shield, slvl=slvl, strength=strength, mult=mult, min=lo, max=hi)
+    return dict(shield=shield, slvl=slvl, strength=strength, mult=mult, min=lo, max=hi, hs_lvl=hs_lvl,
+                hs_min=hmin, hs_max=hmax)
 
 
 GOOD, WARN, BAD, INFO = 'good', 'warn', 'bad', 'info'
@@ -724,8 +749,9 @@ def analyze(model, side=None, bo=False, energy=False):
         + ('  ROLL-OVER' if regen > cap else ''), st)
     add('life', 'Life', _num(life), BAD if life >= ROLL else WARN if life > 7900000 else GOOD)
     st = BAD if sm['max'] > ROLL else WARN if sm['max'] < ROLL * 0.95 else GOOD
+    hs = f", Holy Shield {sm['hs_lvl']} +{sm['hs_min']}-{sm['hs_max']}" if sm['hs_lvl'] else ''
     add('damage', 'Smite damage', f"PvM {sm['min']}-{sm['max']} (lvl {sm['slvl']}, str {sm['strength']}, "
-        f"shield {(sm['shield'] or '-').strip()}); PvP after DR {float(pvp):.0f} / cap {float(DMG_CAP_PVP):.0f}",
+        f"shield {(sm['shield'] or '-').strip()}{hs}); PvP after DR {float(pvp):.0f} / cap {float(DMG_CAP_PVP):.0f}",
         st if sm['slvl'] else INFO)
     for aid, kinds in sorted(t['sources'].items()):
         n = sum(kinds.values())
@@ -1027,10 +1053,13 @@ def solve_life(target, base_raw, oak_min, oak_max, max_lines, extra_pct=0):
     return best[1] if best else None
 
 
-def solve_smite(target_pvm, level, shield, max_lines, base_str=1023, slvl=63, mode='efficient'):
-    """Max Smite damage = (shield max + sum(+damage lines <= 491)) x (100 + 15 slvl + str%) / 100 <= target,
-    str = base + floor(sum(str/lvl lines <= 63) x clvl / 8). Smallest gap, then fewest bits."""
+def solve_smite(target_pvm, level, shield, max_lines, base_str=1023, slvl=63, mode='efficient', hs_lvl=0):
+    """Max Smite damage = (shield max + Holy Shield max + sum(+damage lines <= 491)) x (100 + 15 slvl + str%) / 100
+    <= target, str = base + floor(sum(str/lvl lines <= 63) x clvl / 8). Smallest gap, then fewest bits. hs_lvl:
+    the Holy Shield level cast before the duel (its damage adds to the shield's range, see smite_of)."""
     smin, smax = SHIELD_DMG[shield]
+    hmin, hmax = holy_shield_dmg(hs_lvl)
+    smin, smax = smin + hmin, smax + hmax
     cands = []
     for S in range(0, 63 * max_lines + 1):
         mult = 100 + 15 * slvl + base_str + S * level // 8
@@ -1091,6 +1120,7 @@ def options(preset='mock_high', **over):
     o.setdefault('weapon', False)
     o.setdefault('switch', None)
     o['smite_max'] = bool(o.get('smite_max', False))
+    o['holy_shield_cast'] = max(0, min(99, int(o.get('holy_shield_cast') or 0)))
     for k in ('prayer', 'prayer_sources', 'oak', 'med', 'regen'):
         o.setdefault(k, None)                               # None: solved by plan()
     o.setdefault('deli_attack', 63)
@@ -1288,7 +1318,8 @@ def plan(preset='mock_high', name='Mock', **over):
     pvm = min(ROLL, math.floor(dmg_target * 2 / PVP))
     if o.get('smite_max') and over.get('damage') is None:
         pvm = ROLL                                          # max damage: the exact cap, no safety margin
-    sm = solve_smite(pvm, o['level'], 'tow ', nl, mode='max' if o.get('smite_max') else 'efficient')
+    hs_cast = o['holy_shield_cast']
+    sm = solve_smite(pvm, o['level'], 'tow ', nl, mode='max' if o.get('smite_max') else 'efficient', hs_lvl=hs_cast)
     if sm is None:
         raise PlanError('smite target cannot be reached', key='damage')
     sh = U['shield']
@@ -1296,6 +1327,8 @@ def plan(preset='mock_high', name='Mock', **over):
     sh.slots[1].add(97, 63, PRAYER)
     for i, v in enumerate(split(o['bo'], 63)):              # non-class BO (cast before the duel)
         sh.slots[2 + 3 * i].add(97, v, BATTLE_ORDERS)
+    for v in split(hs_cast, 63):                            # non-class Holy Shield (cast before the duel)
+        next(s for s in sh.slots if s.ok(97, HOLY_SHIELD)).add(97, v, HOLY_SHIELD)
 
     def free(sid, param=None):
         return [s for s in pref if s.ok(sid, param)]
@@ -1844,6 +1877,7 @@ FIELDS = (
                ('hf_sources', 'HF src', 'int', (0, 49)), ('hf_target', 'HF per src', 'int', (0, ROLL)),
                ('hf_cap', 'HF mastery', 'bool', None), ('thorns_lvl', 'Thorns / lvl', 'int', (0, 2000)))),
     ('Damage', (('damage', 'Smite PvP', 'int', (0, int(DMG_CAP_PVP))), ('smite_max', 'Max smite', 'bool', None),
+                ('holy_shield_cast', 'Holy Shield lvl', 'int', (0, 99)),
                 ('ow', 'Open wounds', 'int', (0, 1000)), ('cb', 'Crushing blow', 'int', (0, 1000)),
                 ('ds', 'Deadly strike', 'int', (0, 1000)), ('target_def', '-% Target def', 'int', (0, 3000)),
                 ('dtm', 'DTM %', 'int', (0, 2000)), ('pierce', 'Cold pierce', 'int', (0, 60000)),
@@ -1904,7 +1938,9 @@ HINTS = dict(tk='hard TK points 0-99 (31: band 524288, 30: funky 1048576)', mana
              ias='increased attack speed', frw='faster run / walk', fhr='faster hit recovery (clones -36)',
              fcr='faster cast rate', nv_ias='non-visible attack rate (stat 68, 97 per line)',
              nv_frw='non-visible velocity (stat 67, 97 per line)', dopplezon='NV state Dopplezon on a charm',
-             just_hit='NV state Just Hit on a charm', holy_shield='NV state Holy Shield on a charm',
+             just_hit='NV state Just Hit on a charm', holy_shield='NV state Holy Shield on a charm (no smite damage)',
+             holy_shield_cast='Holy Shield skill level on the shield (oskill), cast before the duel: its damage '
+                              '(3-6 at 1, 57-60 at 20) adds to the shield range before the Smite multiplier',
              replenish='replenish life 33 bulk lines', switch='balance: side B copy of the shield with its own mana',
              mana_b='side B mana (weapon switch)')
 _BOOL_KEYS = tuple(k for k, kind in FIELD_KIND.items() if kind == 'bool')

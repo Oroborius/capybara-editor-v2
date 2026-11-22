@@ -465,6 +465,43 @@ def smite_max_and_efficient_modes():
 
 
 @T.test
+def holy_shield_adds_smite_damage_before_the_multiplier():
+    """Holy Shield (skill 117; skills.bin MinDam 3 / MaxDam 6, +2/3/4/4/4 per level bracket) adds its damage to the
+    shield's range before the Smite multiplier (1.13c D2Game SrvDo150 reads the holyshield state's stat list); the
+    NV state alone (stat 98 = 101) adds nothing. Max mode with holy_shield_cast keeps the max exactly at the cap."""
+    M = engine().M
+    T.eq([M.holy_shield_dmg(l) for l in (0, 1, 2, 8, 9, 16, 17, 20, 22, 23, 29)],
+         [(0, 0), (3, 6), (5, 8), (17, 20), (20, 23), (41, 44), (45, 48), (57, 60), (65, 68), (69, 72), (93, 96)],
+         'Holy Shield damage per level')
+    P = M.plan('mock_high', 'X', smite_max=True)
+    m = M.model_from_plan(P)
+    t = M.totals(m)
+    base = M.smite_of(m, t)
+    T.eq(base['hs_lvl'], 0, 'no Holy Shield skill: no bonus')
+    t['T'][98] = t['T'].get(98, 0) + 1                  # the NV state only
+    T.eq(M.smite_of(m, t)['max'], base['max'], 'the NV state alone adds nothing')
+    t['nonclass'][M.HOLY_SHIELD] = 15
+    m['skills'][M.HOLY_SHIELD] = 5                      # hard points + oskill: level 20 (57-60)
+    hs = M.smite_of(m, t)
+    smin, smax = M.SHIELD_DMG['tow ']
+    d, mult = P['smite']['dmg'], base['mult']
+    T.eq((hs['hs_lvl'], hs['min'], hs['max']),
+         (20, (smin + 57 + d) * mult // 100, (smax + 60 + d) * mult // 100), 'Holy Shield 20 before the multiplier')
+    t['nonclass'][M.HOLY_SHIELD] = 120
+    T.eq(M.smite_of(m, t)['hs_lvl'], 99, 'Holy Shield level capped at 99')
+    for lv in (20, 70):
+        P = M.plan('mock_high', 'X', smite_max=True, holy_shield_cast=lv)
+        sm = P['smite']
+        T.eq(sm['max'], M.ROLL, f'max mode with Holy Shield {lv}: max exactly at the cap')
+        m = M.model_from_plan(P)
+        a = M.smite_of(m, M.totals(m))
+        T.eq((a['hs_lvl'], a['max'], a['min']), (lv, sm['max'], sm['min']), f'analyzer = plan with Holy Shield {lv}')
+    raw, P = M.generate('mock_high', 'X', smite_max=True, holy_shield_cast=20)
+    v = M.analyze(M.model_from_plan(P, raw))['values']['smite']
+    T.eq((v['hs_lvl'], v['max']), (20, M.ROLL), 'the written save scores Holy Shield 20 at the cap')
+
+
+@T.test
 def size_tricks_and_bulk_lines():
     """The clones' size tricks (editor-tricks.txt): socketed jewels normal quality without the picture field,
     charms superior without it (a q2 no-picture jewel round-trips byte for byte, the editor reads it back); the
