@@ -518,6 +518,64 @@ TK_DEFAULT = 31                     # the generator's default Telekinesis (form 
 DR_PCT_CAP = 50                     # damage reduced % caps at 50
 
 
+# ---- the user's reference formulas (Thorns return, absorb need and fill, overheal-safe mana)
+THORNS_HIT = Fraction('1426063.19')  # the capped incoming hit the Thorns return is reckoned on
+HELL_RES = -100                      # Hell resistance penalty
+MAX_RES = 75                         # resist cap without +max resist
+ABS_TIME_MAX = 767                   # absorb by time per line: 10-bit min / max fields stored +256
+ABS_LVL_LINE = 63                    # absorb by character level line value (x clvl / 8)
+# per element: (name, flat res, max res, res / lvl, absorb / lvl, absorb by time)
+ELEMENTS = (('cold', 43, 44, 230, 234, 288), ('fire', 39, 40, 231, 235, 289), ('light', 41, 42, 232, 236, 290))
+
+
+def tk_ratio(tk):
+    """Telekinesis mana ratio 1 / (2 - TK / 16) = 16 / (32 - TK), TK counted 0..31."""
+    return Fraction(16, 32 - max(0, min(31, int(tk))))
+
+
+def thorns_dtm(ret_es, es=ES_ABSORB, tk=31):
+    """Mana the Thorns return (ES up) takes from the target: return x PvP x ES absorb / TK ratio."""
+    return Fraction(ret_es) * PVP * Fraction(es) / tk_ratio(tk)
+
+
+def absorb_need(res):
+    """Absorb that soaks one capped elemental hit: 8388607 x PvP x 0.6 x (100 - res) / 100."""
+    return Fraction(ROLL) * PVP * Fraction(6, 10) * (100 - Fraction(res)) / 100
+
+
+def absorb_fill(need, clvl, lines):
+    """(by-clvl lines, by-time values): absorb by character level lines (63 x clvl / 8 each, at most one per list)
+    up to the need, the rest by time in full 767 lines plus one remainder line."""
+    per = Fraction(ABS_LVL_LINE * clvl, 8)
+    n = max(0, min(lines, math.floor(Fraction(need) / per)))
+    rest = max(0, int(Fraction(need) - n * per))
+    full, rem = divmod(rest, ABS_TIME_MAX)
+    return n, [ABS_TIME_MAX] * full + ([rem] if rem else [])
+
+
+def abs_time_raw(v):
+    """The 22-bit by-time field for a constant absorb v (time 3, min = max = v, both stored +256)."""
+    u = max(0, min(ABS_TIME_MAX, int(v))) + 256
+    return 3 | u << 2 | u << 12
+
+
+def abs_time_value(raw):
+    """The absorb a by-time field always gives (the lower of its min / max)."""
+    return max(0, min((raw >> 2) & 1023, (raw >> 12) & 1023) - 256)
+
+
+def element_res(flat, res_lvl, clvl, max_res=0):
+    """Hell resistance of one element: -100 + flat + res / lvl x clvl / 8, capped at 75 + max resist."""
+    return min(MAX_RES + max_res, HELL_RES + flat + math.floor(Fraction(res_lvl * clvl, 8)))
+
+
+def best_mana(tk, absorb, res=HELL_RES):
+    """Highest mana the absorb heal cannot overflow: (8388608 / TK ratio) x 3 - 1 - floor(absorb / ((100 - res)
+    / 100) x 0.36), res -100 (Hell)."""
+    top = Fraction(1 << 23) / tk_ratio(tk) * 3 - 1
+    return int(top - math.floor(Fraction(absorb) * 100 / (100 - Fraction(res)) * Fraction(36, 100)))
+
+
 def dtm_ceiling(mana, dr, drain=0, tk=31):
     """Highest Damage to Mana % before a capped hit rolls the mana over: (8388607 - mana) / ((1426063 + 2 x
     drain x 16 / (32 - TK) - DR) x 0.5) x 100. drain 0: the HPJ ceiling; the per-pulse Prayer drain: LPJ."""
@@ -549,10 +607,11 @@ def max_thorns(cap, dr, dr_pct, es=ES_ABSORB):
 
 
 def thorns_return(thorns_lvl, barbs_lvl, dr, dr_pct, es=0):
-    """Thorns + Barbs damage returned by one PvP-capped hit (wrapped to the 24-bit field): (Thorns %
-    + Barbs %) / 100 x G / 8, G = (1426063 x (1 - ES) - DR) x (1 - DR% / 100). Negative: the return rolled over."""
-    g = (HIT_PVP * (1 - Fraction(es)) - dr) * (1 - Fraction(min(DR_PCT_CAP, dr_pct), 100))
-    v = math.floor(Fraction(thorns_pct(thorns_lvl) + barbs_pct(barbs_lvl), 100) * g / 8) % (1 << 24)
+    """Thorns + Barbs damage returned by one capped hit (wrapped to the 24-bit field): (Thorns % + Barbs %) / 100
+    x G / 8 = (0.4 Th + 2.1 + 0.1 Ba + 0.4) x G / 8, G = (1426063.19 x (1 - ES absorb) - DR) x (1 - DR% / 100);
+    es is the target's Energy Shield absorb (0.95: 5% of the hit stays on life). Negative: the return rolled over."""
+    g = (THORNS_HIT * (1 - Fraction(es)) - dr) * (1 - Fraction(min(DR_PCT_CAP, dr_pct), 100))
+    v = (Fraction(thorns_pct(thorns_lvl) + barbs_pct(barbs_lvl), 100) * g / 8) % (1 << 24)
     return v - (1 << 24) if v >= 1 << 23 else v
 
 
@@ -742,8 +801,25 @@ def analyze(model, side=None, bo=False, energy=False):
     thl, bal = t['aura_lv'].get(THORNS, 0), t['aura_lv'].get(BARBS, 0)
     v['thorns_return'] = thorns_return(thl, bal, v['dr'], v['dr_pct']) if thl or bal else None
     v['thorns_return_es'] = thorns_return(thl, bal, v['dr'], v['dr_pct'], es) if thl or bal else None
+    v['thorns_dtm'] = thorns_dtm(v['thorns_return_es'], es, tk or 31) if thl or bal else None
     v['absorb_lvl'] = sum(T.get(k, 0) for k in (234, 235, 236))
-    v['absorb_time'] = sum(T.get(k, 0) for k in (288, 289, 290))
+    clvl = model['level']
+    tv = {}
+    for u in t['units']:
+        for sid, p, x in u.lines():
+            if sid in (288, 289, 290):
+                tv[sid] = tv.get(sid, 0) + abs_time_value(x)
+    v['absorb_time'] = sum(tv.values())
+    v['absorb'] = {}
+    for name, flat, mx, rl, al, at in ELEMENTS:
+        lvl = Fraction(T.get(al, 0) * clvl, 8)
+        if not lvl and not tv.get(at):
+            continue
+        res = element_res(T.get(flat, 0), T.get(rl, 0), clvl, T.get(mx, 0))
+        v['absorb'][name] = dict(res=res, need=absorb_need(res), lvl=lvl, time=tv.get(at, 0),
+                                 total=lvl + tv.get(at, 0))
+    ab = max([a['total'] for a in v['absorb'].values()] or [0])
+    v['best_mana'] = best_mana(tk or 31, ab) if ab else None
     C = []
 
     def add(key, label, text, status):
@@ -819,15 +895,31 @@ def analyze(model, side=None, bo=False, energy=False):
         r, re_ = v['thorns_return'], v['thorns_return_es']
         safe = thorns_safe(thl, bal, v['dr'], v['dr_pct'], es)
         alone = bal and thorns_safe(thl, 0, v['dr'], v['dr_pct'], es)
-        add('thorns_return', 'Thorns + Barbs return', f"Thorns {thl} + Barbs {bal}: {r} per capped hit ES off, "
-            f"{re_} with ES {float(es * 100):.0f}% (DR {v['dr']}, DR% {min(DR_PCT_CAP, v['dr_pct'])})"
+        add('thorns_return', 'Thorns + Barbs return', f"Thorns {thl} + Barbs {bal}: {float(r):.0f} per capped hit ES off, "
+            f"{float(re_):.0f} with ES {float(es * 100):.0f}% (DR {v['dr']}, DR% {min(DR_PCT_CAP, v['dr_pct'])})"
             + ('' if safe else ' ROLLED OVER / NOT SAFE')
-            + (' - Thorns alone is safe: Barbs 0 saves the lines' if alone else ''), GOOD if safe else WARN)
-    if v['absorb_time']:
-        add('absorb', 'Absorb', f"by time {v['absorb_time']} (half-bugged in game), by level {v['absorb_lvl']}: "
-            'rely on absorb by character level (234-236)', INFO)
-    elif v['absorb_lvl']:
-        add('absorb', 'Absorb', f"by character level {v['absorb_lvl']} (x clvl / 8)", GOOD)
+            + (' - Thorns alone is safe: Barbs 0 saves the lines' if alone else '')
+            + (f"; {float(v['thorns_dtm']):.0f} mana damage per hit on the target (TK {tk or 31})"
+               if safe else ''), GOOD if safe else WARN)
+    if v['absorb'] or v['absorb_time']:
+        parts, short = [], []
+        for name, a in v['absorb'].items():
+            if a['res'] <= HELL_RES:
+                parts.append(f"{name} {float(a['total']):.0f} (no resist: need {float(a['need']):.0f} out of reach)")
+                continue
+            ok = a['total'] >= int(a['need'])
+            parts.append(f"{name} {float(a['total']):.0f} / need {float(a['need']):.0f} at res {a['res']}"
+                         f" (clvl {float(a['lvl']):.0f} + by time {a['time']})")
+            if not ok:
+                short.append(name)
+        add('absorb', 'Absorb', '; '.join(parts) + (f" - SHORT on {', '.join(short)}: add absorb by time"
+                                                    if short else ''), WARN if short else GOOD)
+    if v['best_mana'] is not None and not b['funky']:
+        safe_m = math.floor(mana) <= v['best_mana']
+        add('best_mana', 'Overheal-safe mana', f"{_num(mana)} vs {v['best_mana']} (TK {tk or 31}, absorb "
+            f"{float(ab):.0f} at -100 res): " + ('the absorb heal cannot overflow the mana' if safe_m
+                                                 else 'OVER: the absorb heal can overflow the mana'),
+            GOOD if safe_m else WARN)
     if T.get(3, 0):
         add('vitality', 'Item Vitality', f"+{T[3]}: a waste of file size for life (use +life / Oak Sage lines)", WARN)
     if T.get(1, 0):
@@ -880,11 +972,12 @@ def sides(model):
 # ============================================================================================ generator
 # Presets (doc 9.2 + the user's notes). mana: the target; exact: funky (the product must hit it exactly).
 # a reference funky: speeds IAS / FCR -121, FRW -164, stun 90% at level 63, NV states Just Hit + Holy Shield
-_FUNKY = dict(ias=-121, frw=-164, fcr=-121, stun_lvl=63, holy_shield=True, just_hit=True)
+_FUNKY = dict(ias=-121, frw=-164, fcr=-121, stun_lvl=63, holy_shield=True, just_hit=True, thorns=0, barbs=0)
 # Thorns / Barbs (user, 2026-11-22): Thorns first - plan() solves the highest Thorns the non-charm lists take (31 per
 # list: 4278 on 138 lists, 4898 with the weapon) whose return alone stays a positive hit with the target's ES (form
 # 'es', 95%) up and gone (max_thorns); Barbs only when Thorns alone is not safe (pick_barbs), else 0. Neither is a
-# preset constant: both follow the DR, DR%, ES% and the list budget.
+# preset constant: both follow the DR, DR%, ES% and the list budget. Funkies and the Aura Killer carry neither
+# (user's reference: no Thorns, no Barbs at all).
 PRESETS = {
     # TK31 mocks (clones2: clone-02 A / clone-80 B / clone-79 B high, clone-70 / clone-90 B mid, clone-12 /
     # Beginner B low): 7 Holy Freeze sources capped by cold mastery, Thorns + Barbs return, resist by level
@@ -904,7 +997,7 @@ PRESETS = {
                                 'if needed), no holy aura, no stun, max absorb'),
     'aura_killer': dict(label='Aura Killer', role='ak', tk=31, mana=1211974, hf_sources=28, hf_level=3100,
                         hf_target=8320000, res_cold=4725, res_fire=4725, res_light=4725,
-                        target_def=762, pierce=45390, note='reference clone-05 layout: 28 Holy Freeze sources on '
+                        target_def=762, pierce=45390, thorns=0, barbs=0, note='reference clone-05 layout: 28 Holy Freeze sources on '
                                                         'gear jewels at ~8.32M per source, all 40 charms Prayer'),
     # funkies: a reference funky (speeds -121 / -164, FHR -36, stun 90 L63, Delirium, curse res, NV
     # states Just Hit + Holy Shield) on the tested aura plan
@@ -955,7 +1048,7 @@ DEFAULTS = dict(cls=1, level=127, position='LPJ', life=7300000, damage=Fraction(
                 hf_cap=True, hf_target=HF_MOCK_TARGET, thorns_lvl=0,
                 ias=107, frw=107, fhr=-36, fcr=0, nv_ias=97, nv_frw=97,      # IAS 93, FRW 96, FHR 99, FCR 105, 68, 67
                 curse_res=511, target_def=381, dodge=127, ow=127, cb=127, ds=0, itd=False, cbf=False,
-                dr=63, dr_pct=255, mdr=0, abs_pct=127, abs_flat=0, abs_lvl=True, abs_time=False, replenish=True,
+                dr=63, dr_pct=255, mdr=0, abs_pct=127, abs_flat=0, abs_lvl=True, abs_time=True, replenish=True,
                 res_cold=0, res_fire=0, res_light=0, res_flat=0, pierce=0,
                 stun_lvl=1, holy_shield=False, just_hit=False)
 
@@ -984,14 +1077,14 @@ JEWEL_QUALITY = 2
 CHARM_QUALITY = 3
 # target-neutral bulk lines of the clones, written into the room left under the size budget (charms first, then
 # jewels, then gear; one line per stat per list): replenish life 33 (the field max: the reference funky / clone notes "replenish
-# and DR on almost everything"), then absorb by time 4194303 (cold, fire, lightning: clone-28, Cold, Assault,
-# clone-52, TryToKill*), never on a Host (doc S4: abs-by-time does not work as host): a Host gets resist by
-# level instead (fire, lightning, cold 63: clone-45 82/82/54 lines, clone-32, clone-64; doc S4 "hosts 66k resist").
-# user (2026-11-22): absorb by time is half-bugged in game, absorb by character level (234-236) works: the generator
-# relies on per-level absorb (63 on every list) and writes by-time lines only when the form's 'abs_time' is on.
+# and DR on almost everything"); the clones' by-time absorb (4194303 = 767 / 767: clone-28, Cold, Assault, clone-52,
+# TryToKill*) is now planned to the need (below), never on a Host (doc S4: abs-by-time does not work as host): a
+# Host gets resist by level first (fire, lightning, cold 63: clone-45 82/82/54 lines, clone-32, clone-64; doc S4 "hosts 66k resist").
+# user (2026-11-22): absorb is target-driven (absorb_plan): the need of each element at its Hell resistance, filled
+# with absorb by character level (234-236) first, then absorb by time (288-290, 767 a line) for the rest - "you need
+# by time for absorb to hit the minimum"; never by time on a Host.
 # Life, mana, regen, smite, aura and mastery stats stay off: they would move a target.
 BULK_REPLENISH = (74, 33)
-BULK_ABS_TIME = ((288, 4194303), (289, 4194303), (290, 4194303))
 BULK_HOST_RES = ((230, 63), (231, 63), (232, 63))
 DELIRIUM_CHANCE = 127               # chance % of both Delirium lines (attack reset)
 AURA_LINE_MAX = 31
@@ -1166,6 +1259,9 @@ def options(preset='mock_high', **over):
     for k, v in over.items():
         if v is not None:
             o[k] = v
+    # a mana the user did not type is re-solved by plan(): capped at the overheal-safe mana, re-solved for a TK
+    o['mana_auto'] = over.get('mana') is None
+    o['mana_b_auto'] = over.get('mana_b') is None
     o['es'] = max(0, min(99, int(o['es'])))
     if PRESETS[preset].get('exact') and over.get('tk') is not None and over.get('mana') is None:
         o['mana'] = (1 << 19) * max(32 - int(o['tk']), 1)     # a funky at another TK: that TK's first funky zero
@@ -1228,6 +1324,22 @@ def plan(preset='mock_high', name='Mock', **over):
     """The whole character as data: units with their stat lists, header values, targets and the expected
     analyzer results. Raises PlanError when a target cannot be hit on the list budget."""
     o = options(preset, **over)
+    nl_est = sum(6 + (2 * JEWELS if g[4] else 0) for g in list(GEAR) + ([WEAPON] if o['weapon'] else [])) + CHARM_COUNT
+    o['absorb'] = absorb_plan(o, nl_est)
+    abs_max = max([a['total'] for a in o['absorb'].values()] or [0])
+    if not o['exact']:
+        # the overheal-safe mana (absorb heal cannot overflow it): the cap of an auto mana, and the new target when
+        # the TK ratio changed (the preset's mana belongs to its own TK)
+        best = best_mana(o['tk'], abs_max)
+        o['best_mana'] = best
+        if best > ROLL:
+            raise PlanError(f"TK {o['tk']}: the overheal-safe mana {best} is over the roll point {ROLL}", key='tk')
+        moved = tk_ratio(o['tk']) != tk_ratio(PRESETS[preset]['tk'])
+        for key in ('mana',) + (('mana_b',) if o['switch'] else ()):
+            if o.get(key) is not None and o[key + '_auto']:
+                o[key] = best if moved else min(o[key], best)
+    else:
+        o['best_mana'] = None
     if not o['exact']:
         for key in ('mana',) + (('mana_b',) if o['switch'] else ()):
             m = o.get(key)
@@ -1274,7 +1386,8 @@ def plan(preset='mock_high', name='Mock', **over):
     for u in hf_jewels[:H]:
         u.role = 'hf'
     U['gloves'].role = 'med'
-    U['boots'].role = 'thorns'
+    if o['thorns']:
+        U['boots'].role = 'thorns'
     if o['barbs']:
         U['belt'].role = 'barbs'
     lists = [s for u in units for s in u.slots]
@@ -1334,8 +1447,11 @@ def plan(preset='mock_high', name='Mock', **over):
     if o['dtm'] is None:
         d = max(int(o['dtm_position']), math.ceil(need) if need is not None else 0)
         o['dtm'] = min(d, math.floor(ceil)) if ceil is not None else d
+    th_ret = thorns_return(int(o['thorns']), int(o['barbs']), dr_est, int(o['dr_pct']), es) \
+        if o['thorns'] or o['barbs'] else None
     dtm_info = dict(need=need, hpj=dtm_ceiling(mana['mana'], dr_est, 0, o['tk']), lpj=ceil,
-                    drain_s=drain_s, regen_s=regen_s, prayer_level=pr_lv, prayer_sources=nps)
+                    drain_s=drain_s, regen_s=regen_s, prayer_level=pr_lv, prayer_sources=nps, thorns_return=th_ret,
+                    thorns_dtm=thorns_dtm(th_ret, es, o['tk']) if th_ret is not None else None)
     # ---- life: +479 lines + Oak Sage on the cover units
     oak_lists = by_role('cover')
     oak_lo, oak_hi = len(cover_units), len(oak_lists) * AURA_LINE_MAX
@@ -1537,25 +1653,54 @@ def _switch(P):
     P['units'] += copies
 
 
+def absorb_plan(o, nl):
+    """{element: dict(res, need, lvl (by-clvl lines), time (by-time values), total)} of the plan: the Hell
+    resistance the options give, the absorb that soaks a capped hit at that resistance, filled with absorb by
+    character level first (one 63 line per list) and the rest by time (767 lines + one remainder line). By time
+    only where the form allows it (never on a Host) and the need is in reach of the lists; an element without
+    resistance (-100) gets the by-clvl lines only (its need is out of reach)."""
+    out = {}
+    if not o['abs_lvl']:
+        return out
+    clvl = int(o['level'])
+    by_time = o['abs_time'] and o['position'] != 'Host'
+    for name, _, _, _, _, _ in ELEMENTS:
+        res = element_res(int(o['res_flat']), int(o['res_' + name]), clvl)
+        need = absorb_need(res)
+        n, tv = absorb_fill(need, clvl, nl)
+        if tv and (res <= HELL_RES or not by_time or len(tv) > nl):
+            n, tv = nl, []                              # no by time: every list's by-clvl line
+        out[name] = dict(res=res, need=need, lvl=n, time=tv,
+                         total=Fraction(ABS_LVL_LINE * clvl, 8) * n + sum(tv))
+    return out
+
+
 def _fill_absorb(P):
-    """Absorb by level (cold, fire, lightning) on every list, then the clones' bulk lines (BULK_REPLENISH, then
-    BULK_ABS_TIME, or BULK_HOST_RES on a Host) on charms, jewels and gear, while the file stays within the size
-    budget."""
+    """The planned absorb (absorb_plan: by-clvl lines on the first lists, by-time lines on charms, jewels, then
+    gear; a switch shield copy mirrors its original's by-clvl lines), then the clones' bulk lines (BULK_REPLENISH,
+    or BULK_HOST_RES first on a Host) while the file stays within the size budget."""
     budget = P['o']['size_budget']
     lists = [s for u in P['units'] for s in u.slots]       # with the switch side B copies
     order = sorted(lists, key=lambda s: {'charm': 0, 'jewel': 1}.get(s.unit.kind, 2))
     o = P['o']
-    steps = [(s, sid, 63) for s in lists for sid in (234, 235, 236)] if o['abs_lvl'] else []
-    # the role's bulk first (clone profile): funkies replenish life (reference funky: on every list), mocks absorb by
-    # time (13 / 22 high mocks; no replenish), a Host resist by level (abs-by-time does not work as Host)
+    side_a = [s for s in order if s.unit.side != 'B']
+    copies = [s for s in lists if s.unit.side == 'B']
+    for name, _, _, _, sid_l, sid_t in ELEMENTS:
+        a = o['absorb'].get(name)
+        if not a:
+            continue
+        lv = [s for s in P['lists'] if s.ok(sid_l)][:a['lvl']]
+        if a['lvl'] >= len(P['lists']):
+            lv += [s for s in copies if s.ok(sid_l)]
+        for s in lv:
+            s.add(sid_l, ABS_LVL_LINE)
+        free = iter([s for s in side_a if s.ok(sid_t)])
+        for v, s in zip(a['time'], free):
+            s.add(sid_t, abs_time_raw(v))
+    # the role's bulk (clone profile): replenish life (reference funky: on every list), a Host resist by level
     rep = [BULK_REPLENISH] if o['replenish'] else []
-    if o['position'] == 'Host':
-        bulk = list(BULK_HOST_RES) + rep
-    elif o.get('role') == 'funky':
-        bulk = rep + (list(BULK_ABS_TIME) if o['abs_time'] else [])
-    else:
-        bulk = (list(BULK_ABS_TIME) if o['abs_time'] else []) + rep
-    steps += [(s, sid, v) for sid, v in bulk for s in order]
+    bulk = (list(BULK_HOST_RES) if o['position'] == 'Host' else []) + rep
+    steps = [(s, sid, v) for sid, v in bulk for s in order]
     room = (budget - len(build(P))) * 8
     added = []
     for s, sid, v in steps:
@@ -1719,8 +1864,8 @@ def generate(preset='mock_high', name='Mock', **over):
     """(bytes, plan) of a new mock character."""
     P = plan(preset, name, **over)
     o = P['o']
-    if over.get('barbs') is None:
-        # Barbs left to the plan: re-check the solved Thorns / Barbs against the DR actually written (the plan
+    if over.get('barbs') is None and (o['thorns'] or o['barbs']):
+        # Barbs left to the plan (a build without Thorns and Barbs - funkies, Aura Killer - stays without): re-check the solved Thorns / Barbs against the DR actually written (the plan
         # solved them on its estimate) and re-pick Barbs (0 when Thorns alone is safe) if the return is not safe
         dr = totals(model_from_plan(P))['T'].get(34, 0)
         th, ba, pct, es = int(o['thorns']), int(o['barbs']), int(o['dr_pct']), Fraction(o['es'], 100)
@@ -1742,7 +1887,9 @@ def expected(P):
                 smite_max=P['smite']['max'], pvm=P['pvm'], sources=dict(P['expect_sources']),
                 side_b=P.get('side_b'), stun=P['stun'], es=o['es'], thorns=o['thorns'], barbs=o['barbs'],
                 dtm=o['dtm'], dtm_need=P['balance']['need'], dtm_lpj=P['balance']['lpj'],
-                prayer_drain_s=P['balance']['drain_s'], prayer_regen_s=P['balance']['regen_s'])
+                prayer_drain_s=P['balance']['drain_s'], prayer_regen_s=P['balance']['regen_s'],
+                thorns_dtm=P['balance']['thorns_dtm'], best_mana=o['best_mana'],
+                absorb={k: a['total'] for k, a in o['absorb'].items()})
 
 
 def summary(P, raw=None):
@@ -1755,6 +1902,14 @@ def summary(P, raw=None):
            f"Thorns {o['thorns']} + Barbs {o['barbs']}, ES {o['es']}%, DTM {o['dtm']}% (refill "
            f"{float(e['dtm_need'] or 0):.0f}%, LPJ ceiling {float(e['dtm_lpj'] or 0):.0f}%)",
            f"Prayer drain {float(e['prayer_drain_s']):.0f} vs regen {float(e['prayer_regen_s']):.0f} mana/s"]
+    if e['thorns_dtm'] is not None:
+        out.append(f"Thorns return {float(P['balance']['thorns_return']):.0f} (ES up): "
+                   f"{float(e['thorns_dtm']):.0f} mana damage per hit on the target")
+    if o['absorb']:
+        out.append('absorb ' + ', '.join(f"{k} {float(a['total']):.0f}/{float(a['need']):.0f} ({a['lvl']} clvl + "
+                                         f"{len(a['time'])} by time)" for k, a in o['absorb'].items()))
+    if o['best_mana'] is not None:
+        out.append(f"overheal-safe mana {o['best_mana']}")
     if P.get('side_b'):
         out.append(f"side B mana {_num(P['side_b']['mana'])}")
     if raw is not None:
@@ -1826,6 +1981,8 @@ def category_totals(model, side=None):
     for _, rows in CATEGORIES:
         for key, _, ids in rows:
             out[key] = (sum(t['T'].get(i, 0) for i in ids), sum(t['N'].get(i, 0) for i in ids))
+    out['abs_time'] = (sum(abs_time_value(x) for u in t['units'] for sid, _, x in u.lines() if sid in (288, 289, 290)),
+                       out['abs_time'][1])
     for key, (kind, p) in SPECIAL.items():
         ps = p if isinstance(p, tuple) else (p,)
         tot = n = 0
@@ -2031,8 +2188,8 @@ HINTS = dict(tk='hard TK points 0-99 (default 31; 31: band 524288, 30: funky 104
              abs_flat='flat absorb per element', res_cold='cold resist by level (sum of lines, x clvl / 8)',
              res_fire='fire resist by level', res_light='lightning resist by level',
              res_flat='flat resist, every element (-100: the "-100 res" mocks)', curse_res='curse resistance (511)',
-             dodge='dodge / avoid / evade % each', abs_lvl='absorb by character level 63 on every list (works in game: the absorb the generator relies on)',
-             abs_time='absorb by time bulk lines (off by default: half-bugged in game; never on a Host)', cbf='cannot be frozen',
+             dodge='dodge / avoid / evade % each', abs_lvl='absorb: the need per element (8388607 x 0.17 x 0.6 x (100 - res) / 100), by character level first',
+             abs_time='absorb by time (767 a line) for the rest of the need after 63 x clvl / 8 per list (never on a Host)', cbf='cannot be frozen',
              ias='increased attack speed', frw='faster run / walk', fhr='faster hit recovery (clones -36)',
              fcr='faster cast rate', nv_ias='non-visible attack rate (stat 68, 97 per line)',
              nv_frw='non-visible velocity (stat 67, 97 per line)', dopplezon='NV state Dopplezon on a charm',
@@ -2052,7 +2209,10 @@ def prefill(preset='mock_high', **over):
     solved = dict(oak=P['life']['oak'], med=P['regen']['med'], regen=P['regen']['pct'], prayer=pr,
                   prayer_sources=P['expect_sources'].get(PRAYER, 0), stun=o['stun'], cls=CLASSES[o['cls']],
                   enemy_aura='preset', switch=o['switch'] or 'none', mana_b=int(o.get('mana_b') or 0),
-                  damage=int(o['damage']), thorns=P['o']['thorns'], barbs=P['o']['barbs'], dtm=P['o']['dtm'])
+                  damage=int(o['damage']), thorns=P['o']['thorns'], barbs=P['o']['barbs'], dtm=P['o']['dtm'],
+                  mana=P['o']['mana'])
+    if P['o'].get('mana_b') is not None:
+        solved['mana_b'] = int(P['o']['mana_b'])
     out = {}
     for k in FIELD_KEYS:
         v = solved[k] if k in solved else o.get(k)

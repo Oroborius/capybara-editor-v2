@@ -362,7 +362,8 @@ def overrides_hit_their_targets():
     T.check('mana_lock' not in M.PRESETS and 'mana_lock' not in M.PRESET_ORDER, 'Mana lock preset removed')
     for aura, mana in M.ENEMY_AURA_MANA.items():
         raw, P = M.generate('mock_high', 'Over', enemy_aura=aura)
-        T.eq(int(P['mana']['mana']), mana, f'enemy aura {aura}: mana {mana}')
+        want = min(mana, P['o']['best_mana'])               # capped at the overheal-safe mana
+        T.eq(int(P['mana']['mana']), want, f'enemy aura {aura}: mana {want}')
     T.eq(M.PRESETS['prayer_thorner']['mana'], 1572863, 'P/T (no enemy aura): 1572863')
     P = M.plan('aura_killer', 'AK')
     T.check(all(u.role == 'prayer' for u in P['units'] if u.kind == 'charm'), 'Aura Killer: every charm Prayer')
@@ -399,11 +400,12 @@ def form_prefill_battle_orders_and_edited_fields():
     T.eq(v['bo_pct'], 35 + 3 * 98, 'BO 99 on the shield: +329%')
     T.eq([M.options(k)['bo'] for k in ('funky', 'funky28', 'funky26', 'funky24')], [0] * 4,
          'funkies: no BO (exact without BO, like the reference funkies)')
-    T.eq(int(v['mana']), 1572500, 'host: 1572500 WITH BO')
+    T.eq(int(v['mana']), P['o']['best_mana'], 'host: 1572500 capped at the overheal-safe mana, WITH BO')
     T.check(any(c[0] == 'mana_nobo' for c in a['checks']), 'the analyzer shows the mana without BO too')
     raw, P = M.generate('mock_high', 'NoBo', bo=0)
     a, m, _ = _analyze(M.write_new(raw, folder, 'NoBo'))
-    T.eq((a['values']['bo_pct'], int(a['values']['mana'])), (0, 1572500), 'BO 0: no BO line, mana without BO')
+    T.eq((a['values']['bo_pct'], int(a['values']['mana'])), (0, P['o']['best_mana']),
+         'BO 0: no BO line, mana without BO')
 
 
 @T.test
@@ -508,9 +510,8 @@ def size_tricks_and_bulk_lines():
     """The clones' size tricks (editor-tricks.txt): socketed jewels normal quality without the picture field,
     charms superior without it (a q2 no-picture jewel round-trips byte for byte, the editor reads it back); the
     room under the size budget is filled with target-neutral bulk lines on charms and jewels (replenish life on
-    every list; resist by level on a Host; absorb by time only when the form's 'abs_time' is on: half-bugged in
-    game, the user's rule); the target lines (life, +mana) go on the charms first; one line per stat per list;
-    every preset stays under the budget (within 300 bytes of it with the by-time bulk on)."""
+    every list; resist by level first on a Host; absorb is planned to its need, not bulk); the target lines
+    (life, +mana) go on the charms first; one line per stat per list; every preset stays under the budget."""
     E = engine()
     M = E.M
     isc, base = M.isc_from_data(E.data), M.base_from_data(E.data)
@@ -525,14 +526,12 @@ def size_tricks_and_bulk_lines():
     T.check(len(b) <= len(with_img), 'no sub-quality and no picture: never larger (6 bits less)')
     budget = M.FILE_LIMIT - 1 - M.SIZE_MARGIN
     folder = _gen_dir()
-    for key, at in [(k, False) for k in M.PRESET_ORDER] + [('mock_high', True), ('funky', True)]:
-        raw, P = M.generate(key, 'Bulk', abs_time=at or None)
+    for key, at in [(k, None) for k in M.PRESET_ORDER] + [('mock_high', False)]:
+        raw, P = M.generate(key, 'Bulk', abs_time=at)
         T.check(len(raw) <= budget, f'{key}: {len(raw)} bytes under {budget}')
-        if at:
-            T.check(budget - 300 <= len(raw), f'{key} + by-time bulk: {len(raw)} bytes within 300 under {budget}')
         host = P['o']['position'] == 'Host'
-        # the first bulk stat: Host resist by level, else replenish (mocks: absorb by time first when it is on)
-        first = 230 if host else 288 if at and P['o']['role'] != 'funky' else 74
+        # the first bulk stat: Host resist by level, else replenish
+        first = 230 if host else 74
         for u in P['units']:
             for sl in u.slots:
                 keys = [(sid, p) for sid, p, _ in sl.lines]
@@ -676,7 +675,7 @@ def prayer_drain_energy_vitality_and_dtm_ceiling():
 @T.test
 def thorns_barbs_safe_window():
     """Thorns + Barbs return wraps at 2^24 (negative above 2^23): with Thorns 4278 against DR 11214 / 50% and ES
-    off the positive Barbs windows are 1-887, 1836-2784, 3734-4278 (safe_barbs still finds them for a user's
+    off the positive Barbs windows are 1-887, 1836-2784, 3733-4278 (the return is not floored; safe_barbs still finds them for a user's
     Barbs); every preset's written save's return check is good (ES up and gone)."""
     M = engine().M
     pos = [lv for lv in range(1, 4279) if M.thorns_return(4278, lv, 11214, 255) > 0]
@@ -685,12 +684,14 @@ def thorns_barbs_safe_window():
         if b != a + 1:
             runs.append((start, a))
             start = b
-    T.eq(runs, [(1, 887), (1836, 2784), (3734, 4278)], 'ES-off windows')
+    T.eq(runs, [(1, 887), (1836, 2784), (3733, 4278)], 'ES-off windows')
     T.eq(M.safe_barbs(4278, 3472, 11214, 255), 2784, '112 lists -> 2784')
     T.eq(M.safe_barbs(4278, 2784, 11214, 255), 2784, 'the window edge itself')
     T.eq(M.safe_barbs(4278, 3500, 11214, 255), 2784, 'the ES-off gap is skipped')
     for key in M.PRESET_ORDER:
         raw, P = M.generate(key, 'Thorn')
+        if not P['o']['thorns']:
+            continue                                        # funkies / Aura Killer: no Thorns (rule 1 test)
         c = [x for x in M.analyze(M.model_from_plan(P))['checks'] if x[0] == 'thorns_return']
         T.check(c and c[0][3] == M.GOOD, f'{key}: return a positive hit ({c[0][2] if c else "no check"})')
     m = M.model_from_plan(M.plan('mock_high', 'Thorn', barbs=3100))
@@ -756,6 +757,8 @@ def rule_thorns_first_barbs_only_if_needed():
     is safe (ES up and gone) and its Barbs is 0 when that Thorns alone is safe."""
     M = engine().M
     for key in M.PRESET_ORDER:
+        if M.PRESETS[key].get('thorns') == 0:
+            continue                                        # no Thorns at all (rule_no_thorns_on_funky_and_ak)
         raw, P = M.generate(key, 'Thorn')
         o = P['o']
         dr = M.totals(M.model_from_plan(P))['T'].get(34, 0)
@@ -765,7 +768,8 @@ def rule_thorns_first_barbs_only_if_needed():
         T.check(M.thorns_safe(o['thorns'], 0, dr, int(o['dr_pct']), es), f'{key}: Thorns alone safe')
         T.eq(o['barbs'], 0, f'{key}: Barbs 0 (Thorns alone is safe)')
         T.check(not [x for x in _lines(P) if x == (151, M.BARBS)], f'{key}: no Barbs line')
-    T.eq((M.plan('mock_high', 'T')['o']['thorns'], M.plan('funky24', 'T')['o']['thorns']), (4278, 4898),
+    T.eq((M.plan('mock_high', 'T')['o']['thorns'], M.plan('mock_high', 'T', weapon=True)['o']['thorns']),
+         (4278, 4898),
          '138 / 158 non-charm lists x 31')
     # a Thorns the return rolls with alone: Barbs comes back only then (the ES-off windows above)
     th = next(t for t in range(4278, 0, -1) if not M.thorns_safe(t, 0, 11214, 255)
@@ -821,22 +825,117 @@ def rule_holy_shield_off_by_default():
 
 
 @T.test
-def rule_absorb_by_level_not_by_time():
-    """User rule 5: absorb by character level (234-236) on every list; no absorb-by-time line (288-290) unless the
-    form turns it on; the analyzer still reads by-time absorb and notes it as half-bugged."""
+def rule_absorb_need_filled_by_level_then_by_time():
+    """User rule 5 (reference calculator): the absorb need is 8388607 x 0.17 x 0.6 x (100 - res) / 100 (res 75 ->
+    213909.4785); absorb by character level first (63 x clvl / 8 a line, one per list), the rest by time in 767
+    lines plus one remainder (clvl 127, 178 lists: 178 lines, 46 x 767 + 605). Elements without resist get the
+    by-clvl lines only; a Host never by time; the analyzer decodes the by-time field and checks the need."""
     M = engine().M
-    T.eq(M.DEFAULTS['abs_time'], False, 'by time off by default')
+    T.eq(float(M.absorb_need(75)), 213909.4785, 'need at res 75')
+    T.eq(M.absorb_fill(M.absorb_need(75), 127, 178), (178, [767] * 46 + [605]), '178 by clvl + 46 x 767 + 605')
+    T.eq(M.absorb_fill(M.absorb_need(75), 127, 300)[0], 213, 'more lists: by clvl only up to the need')
+    T.eq((M.abs_time_raw(767), M.abs_time_value(M.abs_time_raw(605)), M.abs_time_value(4194303)),
+         (4194303, 605, 767), 'by-time field: time 3, min = max, stored +256')
+    T.eq(M.DEFAULTS['abs_time'], True, 'by time on where the need requires it')
     for key in M.PRESET_ORDER:
         raw, P = M.generate(key, 'Abs')
-        L = _lines(P)
-        T.check(not [x for x in L if x[0] in (288, 289, 290)], f'{key}: no absorb by time')
-        T.check(sum(1 for x in L if x[0] == 234) >= len(P['lists']) - 5, f'{key}: absorb by level on the lists')
+        A = P['o']['absorb']
+        L = [(sid, v) for s in P['lists'] for sid, _, v in s.lines]
+        host = P['o']['position'] == 'Host'
+        for name, _, _, _, sid_l, sid_t in M.ELEMENTS:
+            a = A[name]
+            T.eq(sum(1 for x in L if x[0] == sid_l), a['lvl'], f'{key} {name}: by-clvl lines')
+            T.eq(sum(M.abs_time_value(v) for sid, v in L if sid == sid_t), sum(a['time']), f'{key} {name}: by time')
+            if a['res'] > M.HELL_RES and not host:
+                T.check(a['total'] >= int(a['need']), f"{key} {name}: {float(a['total']):.0f} >= need")
+            if host or a['res'] <= M.HELL_RES:
+                T.eq(a['time'], [], f'{key} {name}: no by time (Host / no resist)')
         st = {c[0]: c[3] for c in M.analyze(M.model_from_plan(P, raw))['checks']}
-        T.eq(st.get('absorb'), M.GOOD, f'{key}: absorb check')
-    raw, P = M.generate('mock_high', 'Abs', abs_time=True)
-    T.check([x for x in _lines(P) if x[0] == 288], 'by time on request')
-    c = {c[0]: c for c in M.analyze(M.model_from_plan(P, raw))['checks']}['absorb']
-    T.check(c[3] == M.INFO and 'half-bugged' in c[2], 'analyzer: by-time noted')
+        T.eq(st.get('absorb'), M.WARN if host else M.GOOD, f'{key}: absorb check')
+    P = M.plan('mock_high', 'Abs')
+    T.eq((P['o']['absorb']['cold']['lvl'], len(P['o']['absorb']['cold']['time'])), (178, 47), 'mock_high cold')
+    raw, P = M.generate('mock_high', 'Abs', abs_time=False)
+    T.check(not [x for x in _lines(P) if x[0] in (288, 289, 290)], 'by time off on request')
+    st = {c[0]: c[3] for c in M.analyze(M.model_from_plan(P, raw))['checks']}
+    T.eq(st['absorb'], M.WARN, 'analyzer: short of the need without by time')
+
+
+@T.test
+def rule_no_thorns_on_funky_and_ak():
+    """User rule 1: funkies and the Aura Killer carry no Thorns and no Barbs at all (no aura line, no source)."""
+    M = engine().M
+    for key in ('funky', 'funky28', 'funky26', 'funky24', 'aura_killer'):
+        raw, P = M.generate(key, 'NoTh')
+        T.eq((P['o']['thorns'], P['o']['barbs']), (0, 0), f'{key}: Thorns 0, Barbs 0')
+        T.check(not [x for x in _lines(P) if x in ((151, M.THORNS), (151, M.BARBS))], f'{key}: no Thorns / Barbs')
+        T.check(not [c for c in M.analyze(M.model_from_plan(P, raw))['checks'] if c[0] == 'thorns_return'],
+                f'{key}: no return check')
+        T.eq((M.prefill(key)['thorns'], M.prefill(key)['barbs']), (0, 0), f'{key}: form prefill')
+
+
+@T.test
+def rule_thorns_return_reference_numbers():
+    """User rule 2 (reference calculator defaults: Thorns 4093, Barbs 3512, DR 10314, DR% 50, ES absorb 0.95,
+    TK 31, hit 1426063.19): return (0.4 Th + 2.1 + 0.1 Ba + 0.4) x ((hit x (1 - 0.95) - DR) x 0.5) / 8 =
+    7588957.35 with ES (0.9047 of 8388607), 176163441.40 without (mod 2^24: 8391281.40, rolled); the Thorns DTM
+    return x 0.17 x 0.95 / TK ratio (16 at TK31) = 76601.04."""
+    M = engine().M
+    es = Fraction(95, 100)
+    on = M.thorns_return(4093, 3512, 10314, 50, es)
+    off = M.thorns_return(4093, 3512, 10314, 50, 0)
+    T.eq(round(float(on), 2), 7588957.35, 'return with ES')
+    T.eq(round(float(on) / M.ROLL, 4), 0.9047, 'fraction of 8388607')
+    T.eq(round(float(off + (1 << 24)), 2), 8391281.40, 'ES off: wrapped (rolled over)')
+    T.check(off < 0 and not M.thorns_safe(4093, 3512, 10314, 50, es), 'ES off rolled: not safe')
+    T.eq(round(float(M.thorns_dtm(on, es, 31)), 2), 76601.04, 'Thorns DTM')
+    T.eq((M.tk_ratio(31), M.tk_ratio(30), M.tk_ratio(99), M.tk_ratio(0)), (16, 8, 16, Fraction(1, 2)), 'TK ratio')
+    P = M.plan('mock_high', 'Th')
+    a = M.analyze(M.model_from_plan(P))
+    T.check(a['values']['thorns_dtm'] > 0, 'analyzer: Thorns DTM')
+    T.check(any('mana damage per hit' in x for x in M.summary(P)), 'summary: Thorns DTM')
+
+
+@T.test
+def rule_best_mana_caps_the_mana():
+    """User rule 4 (reference calculator 'Best Mana'): (8388608 / TK ratio) x 3 - 1 - floor(absorb / ((100 - res)
+    / 100) x 0.36) at res -100: TK31, absorb 213909 -> 1534360. Presets with absorb cap their mana there (mock_mid
+    / mock_low stay under it), a typed mana is kept; the analyzer shows it; funkies (exact) are not capped."""
+    M = engine().M
+    T.eq(M.best_mana(31, 213909), 1534360, 'TK31, absorb 213909, res -100')
+    T.eq(M.best_mana(31, 0), 1572863, 'no absorb: the top of good band 2')
+    T.eq(M.best_mana(30, 213909), 3107224, 'TK30')
+    for key in M.PRESET_ORDER:
+        P = M.plan(key, 'Best')
+        o = P['o']
+        if o['exact']:
+            T.eq(o['best_mana'], None, f'{key}: exact funky, no cap')
+            continue
+        T.check(int(P['mana']['mana']) <= o['best_mana'], f"{key}: mana {int(P['mana']['mana'])} <= {o['best_mana']}")
+        st = {c[0]: c[3] for c in M.analyze(M.model_from_plan(P), bo=True)['checks']}
+        T.eq(st.get('best_mana'), M.GOOD, f'{key}: analyzer overheal check')
+    T.eq(int(M.plan('mock_high', 'Best')['mana']['mana']), 1534360, 'mock_high: 1572500 -> 1534360')
+    T.eq(int(M.plan('mock_mid', 'Best')['mana']['mana']), 1310719, 'mock_mid kept')
+    P = M.plan('mock_high', 'Best', mana=1572863)
+    T.eq(int(P['mana']['mana']), 1572863, 'a typed mana is kept')
+    st = {c[0]: c[3] for c in M.analyze(M.model_from_plan(P), bo=True)['checks']}
+    T.eq(st['best_mana'], M.WARN, 'analyzer: over the overheal-safe mana')
+
+
+@T.test
+def rule_tk_change_resolves_mana():
+    """User rule 5: a TK with another ratio re-solves the mana as that TK's overheal-safe mana (TK30: 3107224 on
+    mock_high); a mana out of the list budget (TK28: 6252952) or over the roll point (TK26) is refused clearly."""
+    M = engine().M
+    raw, P = M.generate('mock_high', 'Tk', tk=30)
+    T.eq(int(P['mana']['mana']), M.best_mana(30, max(a['total'] for a in P['o']['absorb'].values())), 'TK30')
+    T.eq(P['o']['best_mana'], 3107224, 'TK30 best mana')
+    T.eq(int(M.plan('mock_mid', 'Tk', tk=32)['mana']['mana']), 1310719, 'TK32: same ratio as TK31, mana kept')
+    for tk, want in ((28, '6252952'), (26, 'roll point')):
+        try:
+            M.plan('mock_high', 'Tk', tk=tk)
+            T.check(False, f'TK{tk} refused')
+        except M.PlanError as e:
+            T.check(want in str(e), f'TK{tk}: {e}')
 
 
 @T.test
