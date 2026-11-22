@@ -82,6 +82,13 @@ def install():
         return
     log.info('---- start: %s (Python %s, %s %s)', sys.executable, platform.python_version(), platform.system(),
              platform.version())
+    try:                                         # which build this is (the support zips did not say)
+        import json
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'build_info.json'), encoding='utf-8') as f:
+            b = json.load(f)
+        log.info('build %s (commit %s)', b.get('tag'), b.get('commit'))
+    except Exception:
+        pass
     try:
         import mxl_userdir
         if mxl_userdir.migrated_from:

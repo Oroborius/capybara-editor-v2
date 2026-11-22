@@ -2271,16 +2271,18 @@ class CreatorWindow:
         r += 1
         ttk.Label(box, text=T('cr.tog.group', 'with')).grid(row=0, column=0, sticky='w')
         gvar, rvar = tk.StringVar(value=glabels[0]), tk.StringVar()
-        gcb = ttk.Combobox(box, textvariable=gvar, values=glabels, state='readonly')
+        gcb = ttk.Combobox(box, textvariable=gvar, values=glabels, state='readonly', width=8)   # stretches; never widens
         gcb.grid(row=0, column=1, columnspan=2, sticky='we', padx=(4, 0))
         ttk.Label(box, text=T('cr.tog.recipe', 'recipe')).grid(row=1, column=0, sticky='w', pady=(2, 0))
-        rcb = ttk.Combobox(box, textvariable=rvar, state='readonly')
+        rcb = ttk.Combobox(box, textvariable=rvar, state='readonly', width=8)
         rcb.grid(row=1, column=1, sticky='we', padx=(4, 0), pady=(2, 0))
         cur = {}
         D2.button(box, T('cr.tog.apply', 'Apply'), lambda: cur.get('rec') is not None and self.apply_toggle(cur['rec']),
                   6).grid(row=1, column=2, sticky='e', padx=(4, 0), pady=(2, 0))
-        detail = ttk.Label(box, text='', justify='left', wraplength=self._wrap_w())
+        detail = ttk.Label(box, text='', justify='left', wraplength=max(self._wrap_w() - 40, 120))
         detail.grid(row=2, column=0, columnspan=3, sticky='w', pady=(2, 0))
+        detail._wrap_less = True                         # its own fit (the rewrap pass would widen it again)
+        detail._fit = lambda w=detail: w.configure(wraplength=max(self._wrap_w() - 40, 120))
         for w in (gcb, rcb):
             self.scroll.no_wheel(w)
 
@@ -2924,6 +2926,7 @@ class CreatorWindow:
 
     def set_status(self, text, error=False):
         self.status.configure(text=text, foreground='#e06060' if error else '')
+        _clog('status' + (' ERROR' if error else ''), text, self, error)
 
     def show_orb(self, code):
         """Mystic orbs keep their effect in the game's mysticorbs table, not on the item: shown under the tooltip."""
@@ -3337,3 +3340,56 @@ def run():
         mxl_gui.main()
     finally:
         mxl_splash.close()
+
+
+# ------------------------------------------------------------------------------- action log (support zips)
+def _spec_line(w):
+    """A short description of what the window is making / editing, for the log."""
+    try:
+        sp = getattr(w, 'spec', None) or {}
+        keys = ('code', 'quality', 'row', 'ilvl', 'recipe', 'sockets', 'ethereal')
+        parts = [f'{k}={sp.get(k)!r}' for k in keys if sp.get(k) not in (None, '', False)]
+        n = len(sp.get('extra') or [])
+        if n:
+            parts.append(f'extra={n}')
+        if getattr(w, 'edit_item', None) is not None:
+            parts.append('edit')
+        return ' '.join(parts)
+    except Exception as e:                          # never let logging break the window
+        return f'(spec unreadable: {e})'
+
+
+def _clog(what, text, w=None, error=False):
+    try:
+        import mxl_log
+        msg = f'creator {what}: {text}' + (f' [{_spec_line(w)}]' if w is not None else '')
+        (mxl_log.log.warning if error else mxl_log.log.info)(msg)
+    except Exception:
+        pass
+
+
+def _log_actions():
+    """Each user action of the Item Creator / Editor goes to the log with what it was working on, and an error
+    in one is logged with its traceback before it is re-raised (Tk shows / logs it as before)."""
+    import functools
+    import traceback
+    for name in ('on_quality', 'on_pick', 'apply_toggle', 'apply_orb', 'reroll_crafted', 'reroll', 'commit'):
+        fn = getattr(CreatorWindow, name, None)
+        if fn is None or getattr(fn, '_capy_logged', False):
+            continue
+
+        def make(fn, name):
+            @functools.wraps(fn)
+            def logged(self, *a, **k):
+                _clog('action', name + ('(' + ', '.join(repr(x)[:60] for x in a) + ')' if a else ''), self)
+                try:
+                    return fn(self, *a, **k)
+                except Exception as e:
+                    _clog('FAILED', f'{name}: {type(e).__name__}: {e}\n{traceback.format_exc()}', self, True)
+                    raise
+            logged._capy_logged = True
+            return logged
+        setattr(CreatorWindow, name, make(fn, name))
+
+
+_log_actions()
