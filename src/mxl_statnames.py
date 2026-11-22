@@ -514,7 +514,20 @@ def hidden_skill_name(data, sk):
             states = [v for v in (struct.unpack_from('<H', r, off)[0] for off in STATE_COLS) if 0 < v < 0xFFFF]
             icons = _state_icon_names(data)
             import mxl_rownames as RN
-            what = RN.vanilla_names(data, 'skills').get(sk) or next((icons[v] for v in states if v in icons), '')
+            what = RN.vanilla_names(data, 'skills').get(sk) or ''
+            if not what:                     # what the row DOES first ("Aura: Physical Resist" for Mega Impact's
+                passive = [v for v in struct.unpack_from('<5h', r, 0x98) if v >= 0]   # proc #613): the state /
+                aura = [v for v in struct.unpack_from('<6h', r, 0x54) if v >= 0]        # graphics names below
+                for kind, sids in (('Passive', passive), ('Aura', aura)):              # ("BattleCry",
+                    labels = []                                                        # "ChillBloodInitialPoof")
+                    for v in sids:                                                     # are file names
+                        t = _short_stat(data, v)
+                        if t and t not in labels:
+                            labels.append(t)
+                    if labels:
+                        what = f"{kind}: {', '.join(labels[:3])}" + (', ...' if len(labels) > 3 else '')
+                        break
+            what = what or next((icons[v] for v in states if v in icons), '')
             what = what or RN.skill_derived(data, sk) or ''
             if not what:
                 passive = [v for v in struct.unpack_from('<5h', r, 0x98) if v >= 0]
