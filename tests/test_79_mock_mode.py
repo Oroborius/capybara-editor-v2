@@ -958,4 +958,48 @@ def rule_prayer_drain_in_the_balance():
         T.eq(getattr(e, 'key', None), 'prayer', f'refused: {e}')
 
 
+
+
+@T.test
+def shield_base_option_from_the_tables():
+    """Max smite shield base: the form lists the shields the class may use with their min-max from the game tables
+    (armor.bin mindam / maxdam, itemtypes class along the Equiv chain); the default stays the Tower Shield (output
+    unchanged); another base keeps the lists and the file size, max mode still sits at the cap and the spread
+    (max - min) narrows with the base's range (Small Shield 2-3 vs Tower Shield 1-5); a class's shields only."""
+    E = engine()
+    M = E.M
+    sor = M.shield_choices(1, data=E.data)
+    T.check(any(c.startswith('tow 1-5') and 'Tower Shield' in c for c in sor), f'tower listed: {sor[:5]}')
+    T.check(any(c.startswith('sml 2-3') for c in sor), 'small shield listed')
+    T.check(not any(c.startswith(('pa', 'ne')) for c in sor), 'no paladin shields / necro heads for a Sorceress')
+    T.check(any(c.startswith('pae 46-46') for c in M.shield_choices(3)), 'paladin shields for a Paladin')
+    T.eq(M.shield_dmg('tow '), (1, 5), 'tower 1-5 from armor.bin')
+    pre = M.prefill('mock_high')
+    T.check(pre['shield'].startswith('tow 1-5'), f"prefill {pre['shield']}")
+    lab = next(c for c in sor if c.startswith('sml '))
+    T.eq(M.edited({'shield': lab}, pre), {'shield': 'sml '}, 'form label -> code')
+    sizes, spread = {}, {}
+    for sh in ('tow ', 'sml '):
+        raw, P = M.generate('mock_high', 'Sh', smite_max=True, shield=sh)
+        T.eq(P['o']['shield'], sh, 'option kept')
+        p = os.path.join(T.tmp(), f'shield_{sh.strip()}.d2s')
+        with open(p, 'wb') as f:
+            f.write(raw)
+        a, m, _ch = _analyze(p)
+        sm = a['values']['smite']
+        T.eq(sm['shield'], sh, f'{sh}: analyzer sees the base')
+        T.eq(sm['max'], M.ROLL, f'{sh}: max at the cap')
+        sizes[sh] = (len(raw), len(P['lists']))
+        spread[sh] = sm['max'] - sm['min']
+        T.check(any('spread' in str(c) for c in a['checks']), 'spread shown in the analyzer')
+    T.eq(sizes['sml '], sizes['tow '], 'same size and lists')
+    T.check(spread['sml '] * 3 < spread['tow '], f'narrower spread {spread}')
+    T.eq(M.plan('mock_high', 'D')['o']['shield'], 'tow ', 'default tower')
+    try:
+        M.plan('mock_high', 'X', shield='pae ')
+        T.check(False, 'a paladin shield on a Sorceress is refused')
+    except M.PlanError as e:
+        T.eq(getattr(e, 'key', None), 'shield', 'error on the shield field')
+
+
 T.main(globals())

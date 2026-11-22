@@ -329,7 +329,7 @@ class MockPage:
         gnb.grid(row=5, column=0, columnspan=3, sticky='nsew', pady=(2, 0))
         self.ov, self.pre, self.err, self.src = {}, {}, {}, {}
         self.touched, self._filling = set(), False        # the fields the user changed (the rest stay solved)
-        self.field_tab = {}
+        self.field_tab, self.dyn_choice = {}, {}
         bg = _bg(left)
         for gi, (group, fields) in enumerate(M.FIELDS):
             sc = mxl_scroll.Scrolled(gnb, bg=bg, horizontal=False)
@@ -347,7 +347,11 @@ class MockPage:
                     ttk.Label(box, text=T(f'mock.f.{k}', lab)).grid(row=i, column=0, sticky='w')
                     v = tk.StringVar()
                     if kind == 'choice':
-                        w = ttk.Combobox(box, textvariable=v, values=list(extra), state='readonly', width=9)
+                        vals = extra(data=getattr(self.app, 'data', None)) if callable(extra) else extra
+                        w = ttk.Combobox(box, textvariable=v, values=list(vals), state='readonly',
+                                         width=22 if callable(extra) else 9)
+                        if callable(extra):                 # e.g. the shield bases: per class, from the tables
+                            self.dyn_choice[k] = (w, extra)
                     else:
                         w = ttk.Spinbox(box, textvariable=v, from_=extra[0], to=extra[1], increment=1, width=9)
                     w.grid(row=i, column=1, sticky='w', pady=1, padx=(2, 2))
@@ -376,6 +380,14 @@ class MockPage:
     def _touch(self, k):
         if not self._filling:
             self.touched.add(k)
+        if k == 'cls' and self.dyn_choice:                  # the shields that class may use
+            c = self.ov['cls'].get()
+            cls = M.CLASSES.index(c) if c in M.CLASSES else 1
+            for w, fn in self.dyn_choice.values():
+                try:
+                    w.configure(values=list(fn(cls, data=getattr(self.app, 'data', None))))
+                except tk.TclError:
+                    pass
 
     def _fill(self, values, keys):
         self._filling = True

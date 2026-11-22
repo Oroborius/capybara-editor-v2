@@ -55,6 +55,113 @@ SHIELD_DMG = {'buc ': (1, 3), 'sml ': (2, 3), 'lrg ': (2, 4), 'kit ': (2, 5), 't
               'uit ': (12, 34), 'uow ': (18, 28), 'uts ': (11, 35), 'ush ': (24, 38), 'upk ': (26, 40),
               'pa6 ': (12, 16), 'pa7 ': (15, 20), 'pa8 ': (18, 24), 'pa9 ': (20, 28), 'paa ': (24, 32),
               'pab ': (22, 70), 'pac ': (35, 58), 'pad ': (10, 82), 'pae ': (46, 46), 'paf ': (5, 87)}
+SHIELD_DEFAULT = 'tow '              # the plan's shield base (Sigon's Guard's own base); the form may pick another
+_SHIELD_TAB = {}                     # data folder -> {code: dict(min, max, cls, field, row)} (armor.bin shields)
+_SHIELD_NAMES = {}                   # code -> item name, filled by shield_choices(data=...)
+
+
+def _data_folder():
+    """The selected game folder's extracted tables (the vanilla profile), or None (no profile: fallback tables)."""
+    try:
+        import mxl_profile
+        st = mxl_profile.active()
+        if st and st.get('data_dir'):
+            return st['data_dir']
+    except Exception:
+        pass
+    try:
+        import paths
+        return getattr(paths, 'DATA_DIR', None)
+    except Exception:
+        return None
+
+
+def _bin_rows(folder, name):
+    with open(os.path.join(folder, name + '.bin'), 'rb') as f:
+        b = f.read()
+    n = struct.unpack_from('<I', b)[0]
+    rs = (len(b) - 4) // n
+    return [b[4 + i * rs:4 + (i + 1) * rs] for i in range(n)]
+
+
+def shield_table(folder=None):
+    """{code: dict(min, max, cls, field, row)} of every shield base in the folder's armor.bin (its item type, or a
+    type it is equivalent to, is 'shld'): Smite's min / max damage (mindam 0xFE, maxdam 0xFF), the class that may
+    use it (itemtypes class 0x21 along the Equiv chain; None = any class) and the socket field the save keeps
+    (gemsockets 0x138, at most the type's MaxSock40: the items are item level 90). {} without tables."""
+    folder = folder or _data_folder()
+    if not folder:
+        return {}
+    if folder in _SHIELD_TAB:
+        return _SHIELD_TAB[folder]
+    out = {}
+    try:
+        types = _bin_rows(folder, 'itemtypes')
+        codes = [r[0:4].decode('latin1') for r in types]
+
+        def chain(t, seen=()):
+            if not 0 <= t < len(types) or t in seen:
+                return []
+            r = types[t]
+            out_ = [t]
+            for e in struct.unpack_from('<2h', r, 4):
+                out_ += chain(e, seen + (t,))
+            return out_
+        for i, r in enumerate(_bin_rows(folder, 'armor')):
+            t = struct.unpack_from('<h', r, 0x11E)[0]
+            ch = chain(t)
+            if 'shld' not in (codes[x] for x in ch):
+                continue
+            cls = next((types[x][0x21] for x in ch if types[x][0x21] < len(CLASSES)), None)
+            code = r[128:132].decode('latin1')
+            out.setdefault(code, dict(min=r[0xFE], max=r[0xFF], cls=cls, row=i,
+                                      field=min(r[0x138], types[t][0x1C] if 0 <= t < len(types) else r[0x138])))
+    except (OSError, ValueError, ZeroDivisionError, IndexError, struct.error):
+        out = {}
+    _SHIELD_TAB[folder] = out
+    return out
+
+
+def shield_dmg(code):
+    """Smite's (min, max) shield damage of a base: the game tables, else the vanilla 1.10-1.14d SHIELD_DMG."""
+    s = shield_table().get(code)
+    return (s['min'], s['max']) if s else SHIELD_DMG.get(code)
+
+
+def is_shield(code):
+    return code in shield_table() or code in SHIELD_DMG
+
+
+def shield_bases(cls=1):
+    """[(code, min, max)] of the shields a class may use (Smite needs one), in the table's order."""
+    tab = shield_table()
+    if tab:
+        return [(c, s['min'], s['max']) for c, s in sorted(tab.items(), key=lambda x: x[1]['row'])
+                if s['cls'] is None or s['cls'] == cls]
+    return [(c, a, b) for c, (a, b) in SHIELD_DMG.items() if cls == 3 or not c.startswith('pa')]
+
+
+def shield_label(code):
+    a, b = shield_dmg(code) or (0, 0)
+    name = _SHIELD_NAMES.get(code)
+    return f"{code.strip()} {a}-{b}" + (f" {name}" if name else '')
+
+
+def shield_choices(cls=1, data=None):
+    """Form labels 'tow 1-5 Tower Shield' of the shields the class may use (names from the editor's tables)."""
+    if data is not None:
+        for c, _a, _b in shield_bases(cls):
+            try:
+                _SHIELD_NAMES[c] = data.base(c).name
+            except Exception:
+                pass
+    return tuple(shield_label(c) for c, _a, _b in shield_bases(cls))
+
+
+def shield_code(label):
+    """The base code of a form label (its first word), e.g. 'tow 1-5 Tower Shield' -> 'tow '."""
+    w = str(label or '').split()
+    return (w[0][:4].ljust(4)) if w else SHIELD_DEFAULT
 # user (2026-11-20): the smite cap is 8388607 before any penalty / reduction; one point over rolls over and deals 1
 # (as bad as no damage), so the analyzer scores > 8388607 BAD. The in-game rounding is unverified (Equilibrium's
 # clone notes: 713029.5 PvP is ~113 PvM under our formula), so the generator aims SMITE_SLACK under the cap.
@@ -174,6 +281,8 @@ _KIND = {'ghm ': 'armor', 'gth ': 'armor', 'hgl ': 'armor', 'hbt ': 'armor', 'hb
 
 
 def _vanilla_base(code):
+    if code not in _KIND and is_shield(code):
+        return 'armor', False
     return _KIND[code], False
 
 
@@ -436,7 +545,7 @@ def model_from_character(ch, size=None):
             units.append(Unit('gear', nm, lists_of(it), side))
             if it.get('quality') in (5, 'set'):
                 set_ids[side].add(it.get('set_unique_id'))
-            if it.get('equipped') in (4, 5, 11, 12) and code in SHIELD_DMG:
+            if it.get('equipped') in (4, 5, 11, 12) and is_shield(code):
                 shields[side] = code
             kids = it.get('socketed') or []
             field = it.get('sockets') or 0
@@ -742,7 +851,7 @@ def smite_of(model, t):
     (stat 98 = 101 on an item) has no such stat list and adds nothing."""
     T, lvl = t['T'], model['level']
     shield = model['shields'].get(t['side']) or model['shields'].get(None)
-    smin, smax = SHIELD_DMG.get(shield, (0, 0))
+    smin, smax = (shield_dmg(shield) if shield else None) or (0, 0)
     # effective level at most 99, like BO (bo_pct): clone-45' two Smite 63 lines give a capped 8382830, not 8462500
     slvl = min(99, t['nonclass'].get(SMITE, 0) + (model['skills'].get(SMITE, 0)))
     strength = model['base_str'] + T.get(0, 0) + T.get(220, 0) * lvl // 8
@@ -861,7 +970,8 @@ def analyze(model, side=None, bo=False, energy=False):
     st = BAD if sm['max'] > ROLL else WARN if sm['max'] < ROLL * 0.95 else GOOD
     hs = f", Holy Shield {sm['hs_lvl']} +{sm['hs_min']}-{sm['hs_max']}" if sm['hs_lvl'] else ''
     add('damage', 'Smite damage', f"PvM {sm['min']}-{sm['max']} (lvl {sm['slvl']}, str {sm['strength']}, "
-        f"shield {(sm['shield'] or '-').strip()}{hs}); PvP after DR {float(pvp):.0f} / cap {float(DMG_CAP_PVP):.0f}",
+        f"shield {shield_label(sm['shield']) if sm['shield'] else '-'}{hs}); PvP after DR {float(pvp):.0f} / cap "
+        f"{float(DMG_CAP_PVP):.0f}; spread {float((sm['max'] - sm['min']) * PVP):.0f} PvP before DR",
         st if sm['slvl'] else INFO)
     for aid, kinds in sorted(t['sources'].items()):
         n = sum(kinds.values())
@@ -1068,6 +1178,15 @@ GEAR = (('helm', 1, 'ghm ', 36, True), ('armor', 3, 'gth ', 37, True), ('shield'
         ('gloves', 10, 'hgl ', 35, False), ('boots', 9, 'hbt ', 38, False), ('belt', 8, 'hbl ', 39, False))
 WEAPON = ('weapon', 4, 'crs ', 36, True)
 SOCKET_FIELD = {'ghm ': 2, 'gth ': 3, 'tow ': 3, 'crs ': 6}
+
+
+def socket_field(code):
+    """The socket field the save keeps for a gear base: SOCKET_FIELD, else the shield table's (gemsockets capped
+    by the type's MaxSock40), else None (unknown base)."""
+    if code in SOCKET_FIELD:
+        return SOCKET_FIELD[code]
+    s = shield_table().get(code)
+    return s['field'] if s else None
 # the game only keeps as many socketed children as the item has sockets: the save field PLUS item_numsockets (194)
 # lines. Every reference mock writes 194 = 8 on the first list of each socketed item (amulet / rings: field 0-1);
 # without it the 7 jewels of the amulet / rings (and 4-5 of helm / armor / shield) were lost in game.
@@ -1211,7 +1330,7 @@ def solve_smite(target_pvm, level, shield, max_lines, base_str=1023, slvl=63, mo
     """Max Smite damage = (shield max + Holy Shield max + sum(+damage lines <= 491)) x (100 + 15 slvl + str%) / 100
     <= target, str = base + floor(sum(str/lvl lines <= 63) x clvl / 8). Smallest gap, then fewest bits. hs_lvl:
     the Holy Shield level cast before the duel (its damage adds to the shield's range, see smite_of)."""
-    smin, smax = SHIELD_DMG[shield]
+    smin, smax = shield_dmg(shield)
     hmin, hmax = holy_shield_dmg(hs_lvl)
     smin, smax = smin + hmin, smax + hmax
     cands = []
@@ -1281,6 +1400,9 @@ def options(preset='mock_high', **over):
     o.setdefault('switch', None)
     o['smite_max'] = bool(o.get('smite_max', False))
     o['holy_shield_cast'] = max(0, min(99, int(o.get('holy_shield_cast') or 0)))
+    o['shield'] = shield_code(o.get('shield')) if o.get('shield') else SHIELD_DEFAULT
+    if o['shield'] != SHIELD_DEFAULT and o['shield'] not in {c for c, _a, _b in shield_bases(int(o['cls']))}:
+        raise PlanError(f"shield {o['shield'].strip()}: not a shield {CLASSES[int(o['cls'])]} can use", key='shield')
     for k in ('prayer', 'prayer_sources', 'oak', 'med', 'regen'):
         o.setdefault(k, None)                               # None: solved by plan()
     o.setdefault('deli_attack', 63)
@@ -1363,10 +1485,12 @@ def plan(preset='mock_high', name='Mock', **over):
             if o['tk'] == 30 and m < 2097153:
                 raise PlanError(f'{key} {m}: at TK30 skip the first negative band (the rolling zero 1048576 is '
                                 'a protective barrier): use 2097153-3145727', key=key)
-    rng = random.Random(f'{name}/{preset}/{sorted((k, str(v)) for k, v in o.items())}')
+    rng = random.Random(f'{name}/{preset}/{sorted((k, str(v)) for k, v in o.items() if (k, v) != ("shield", SHIELD_DEFAULT))}')
     units = []
     gear = list(GEAR) + ([WEAPON] if o['weapon'] else [])
     for role, body, code, sid, sock in gear:
+        if role == 'shield':
+            code = o['shield']                              # the form's base (Sigon's Guard on it, same lists)
         g = PUnit('gear', role, 6, 'cover', body, code, sid, side='A' if body in (4, 5) else None)
         units.append(g)
         if sock:
@@ -1431,7 +1555,7 @@ def plan(preset='mock_high', name='Mock', **over):
     # first (side B re-tunes the shield copy)
     pref = sorted(lists, key=lambda s: {'charm': 0, 'jewel': 1}.get(s.unit.kind, 2))
     order = pref if not o['switch'] else sorted(
-        lists, key=lambda s: (s.unit.code != 'tow ' and (s.unit.parent is None or s.unit.parent.code != 'tow '),
+        lists, key=lambda s: (s.unit.name != 'shield' and (s.unit.parent is None or s.unit.parent.name != 'shield'),
                               s.unit.kind == 'charm'))      # the shield and its jewels first
     for s, v in zip(order, split(mana['flat'], 223)):
         s.add(9, v)
@@ -1527,7 +1651,7 @@ def plan(preset='mock_high', name='Mock', **over):
     if o.get('smite_max') and over.get('damage') is None:
         pvm = ROLL                                          # max damage: the exact cap, no safety margin
     hs_cast = o['holy_shield_cast']
-    sm = solve_smite(pvm, o['level'], 'tow ', nl, mode='max' if o.get('smite_max') else 'efficient', hs_lvl=hs_cast)
+    sm = solve_smite(pvm, o['level'], o['shield'], nl, mode='max' if o.get('smite_max') else 'efficient', hs_lvl=hs_cast)
     if sm is None:
         raise PlanError('smite target cannot be reached', key='damage')
     sh = U['shield']
@@ -1799,8 +1923,8 @@ def _item_records(P):
         rec = dict(flags=f, version=ITEM_VERSION, location=1, equipped=u.body, x=0, y=0, panel=0, code=u.code,
                    socketed_count=len(kids), id=rng.getrandbits(32), ilvl=90, quality=5, image=None,
                    auto_affix=None, set_unique_id=u.set_id, realm_bit=0, defense_raw=10, max_durability=0,
-                   sockets=SOCKET_FIELD.get(u.code, 0), set_mask=31,
-                   lists=[([(194, None, MAX_SOCKETS - SOCKET_FIELD.get(u.code, 0))] if kids else []) + u.slots[0].lines],
+                   sockets=socket_field(u.code) or 0, set_mask=31,
+                   lists=[([(194, None, MAX_SOCKETS - (socket_field(u.code) or 0))] if kids else []) + u.slots[0].lines],
                    set_lists=[s.lines for s in u.slots[1:6]])
         grp = [rec]
         for j, k in enumerate(kids):
@@ -1941,9 +2065,9 @@ def model_from_plan(P, raw=None):
         if u.kind == 'gear':
             kids = [k for k in P['units'] if k.parent is u]
             if kids:
-                L[0] = [(194, None, MAX_SOCKETS - SOCKET_FIELD.get(u.code, 0))] + L[0]
+                L[0] = [(194, None, MAX_SOCKETS - (socket_field(u.code) or 0))] + L[0]
             set_ids[u.side].add(u.set_id)
-            if u.code in SHIELD_DMG:
+            if is_shield(u.code):
                 shields[u.side] = u.code
             nm = f'{u.code.strip()}@{u.body}'
         elif u.kind == 'jewel':
@@ -2138,6 +2262,7 @@ FIELDS = (
                ('hf_sources', 'HF src', 'int', (0, 49)), ('hf_target', 'HF per src', 'int', (0, ROLL)),
                ('hf_cap', 'HF mastery', 'bool', None), ('thorns_lvl', 'Thorns / lvl', 'int', (0, 2000)))),
     ('Damage', (('damage', 'Smite PvP', 'int', (0, int(DMG_CAP_PVP))), ('smite_max', 'Max smite', 'bool', None),
+                ('shield', 'Smite shield', 'choice', shield_choices),
                 ('holy_shield_cast', 'Holy Shield lvl', 'int', (0, 99)),
                 ('ow', 'Open wounds', 'int', (0, 1000)), ('cb', 'Crushing blow', 'int', (0, 1000)),
                 ('ds', 'Deadly strike', 'int', (0, 1000)), ('target_def', '-% Target def', 'int', (0, 3000)),
@@ -2191,6 +2316,9 @@ HINTS = dict(tk='hard TK points 0-99 (default 31; 31: band 524288, 30: funky 104
              stun_lvl='stun skill level of the attack / strike lines (clones: 0-2; funkies up to 63)',
              deli_attack='Delirium on attack, level 1-63',
              deli_strike='Delirium on strike, level 1-63 (not the attack level)',
+             shield='the shield base Smite uses (its own min-max damage from the game tables); max smite sits at the '
+                    'cap and the hits spread down by (max - min) x the Smite multiplier: Tower Shield 1-5 ~306 PvP, '
+                    'a narrower base less. The base does not change the lists or the file size',
              smite_max='on: the max smite exactly at the cap (min lower by the shield spread); off: within 0.1% of the cap for the fewest bits',
              ow='chance of open wounds % (the bleed finishes a 1 HP target)', cb='crushing blow %',
              ds='deadly strike %', target_def='-% target defense (clones 254-1016)',
@@ -2224,7 +2352,7 @@ def prefill(preset='mock_high', **over):
                   prayer_sources=P['expect_sources'].get(PRAYER, 0), stun=o['stun'], cls=CLASSES[o['cls']],
                   enemy_aura='preset', switch=o['switch'] or 'none', mana_b=int(o.get('mana_b') or 0),
                   damage=int(o['damage']), thorns=P['o']['thorns'], barbs=P['o']['barbs'], dtm=P['o']['dtm'],
-                  mana=P['o']['mana'])
+                  mana=P['o']['mana'], shield=shield_label(P['o']['shield']))
     if P['o'].get('mana_b') is not None:
         solved['mana_b'] = int(P['o']['mana_b'])
     out = {}
@@ -2270,6 +2398,8 @@ def edited(fields, pre):
             raise PlanError(f'{n} outside {ex[0]}-{ex[1]}', key=k)
         if k == 'cls':
             n = CLASSES.index(n) if n in CLASSES else 1
+        elif k == 'shield':
+            n = shield_code(n)
         elif k == 'enemy_aura' and n == 'preset':
             continue
         elif k == 'switch':
