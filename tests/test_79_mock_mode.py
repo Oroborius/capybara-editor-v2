@@ -667,4 +667,18 @@ def old_save_versions_are_refused():
     E.MC.Character(_sample('clones/clone-35.d2s'), E.data)
 
 
+@T.test
+def thorns_override_picks_a_safe_barbs():
+    """Thorns set by the user, Barbs left to the preset: the generator re-picks Barbs so the return stays a positive
+    hit with the target's Energy Shield up and gone (a preset Barbs safe for the preset's Thorns can roll over)."""
+    M = engine().M
+    for th in (3000, 3500, 4000):
+        raw, P = M.generate('mock_high', 'ThOver', thorns=th)
+        o = P['o']
+        dr = M.totals(M.model_from_plan(P))['T'].get(34, 0)
+        on = M.thorns_return(th, int(o['barbs']), dr, int(o['dr_pct']), M.ES_ABSORB)
+        off = M.thorns_return(th, int(o['barbs']), dr, int(o['dr_pct']), 0)
+        T.check(0 < on < M.ROLL * Fraction(99, 100) and off > 0, f'Thorns {th}, Barbs {o["barbs"]}: {on} / {off}')
+
+
 T.main(globals())

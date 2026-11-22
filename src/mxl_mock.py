@@ -1602,6 +1602,15 @@ def barbs_plan(preset, **over):
 def generate(preset='mock_high', name='Mock', **over):
     """(bytes, plan) of a new mock character."""
     P = plan(preset, name, **over)
+    o = P['o']
+    if over.get('thorns') is not None and over.get('barbs') is None and o['barbs']:
+        # Thorns changed by the user, Barbs left to the preset: a preset Barbs safe for the preset's Thorns can roll
+        # the return over with another Thorns level - take the highest safe Barbs under the preset's one instead
+        dr = totals(model_from_plan(P))['T'].get(34, 0)
+        th, ba, pct = int(o['thorns']), int(o['barbs']), int(o['dr_pct'])
+        on = thorns_return(th, ba, dr, pct, ES_ABSORB)
+        if not (0 < on < ROLL * Fraction(99, 100) and thorns_return(th, ba, dr, pct, 0) > 0):
+            P = plan(preset, name, **dict(over, barbs=safe_barbs(th, ba, dr, pct)))
     raw = build(P)
     if len(raw) >= FILE_LIMIT:
         raise PlanError(f'{len(raw)} bytes: over the 8 KB save limit')
