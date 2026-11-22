@@ -527,8 +527,14 @@ def hidden_skill_name(data, sk):
                     if labels:
                         what = f"{kind}: {', '.join(labels[:3])}" + (', ...' if len(labels) > 3 else '')
                         break
-            what = what or next((icons[v] for v in states if v in icons), '')
-            what = what or RN.skill_derived(data, sk) or ''
+            try:                             # Median XL: never a name from vanilla or a file name (states, graphics):
+                import mxl_profile           # what it summons, else the kind of row it is (the user)
+                median = mxl_profile.is_median()
+            except Exception:
+                median = False
+            if not median:
+                what = what or next((icons[v] for v in states if v in icons), '')
+                what = what or RN.skill_derived(data, sk) or ''
             if not what:
                 passive = [v for v in struct.unpack_from('<5h', r, 0x98) if v >= 0]
                 aura = [v for v in struct.unpack_from('<6h', r, 0x54) if v >= 0]

@@ -180,7 +180,7 @@ def every_state_and_skill_row_is_named():
     T.check(len(skills) >= n_skills - 2, f'{len(skills)} of {n_skills} skills offered')
     T.check(len({n for n, _k in skills}) == len(skills), 'skill names are unique')
     plain = [k for n, k in skills if ' skill, func ' in n]
-    T.check(len(plain) < 800, f'{len(plain)} skills named only by their row')   # Median: no 1.14d skill names (kept apart)
+    T.check(len(plain) < (1600 if mxl_profile.is_median() else 600), f'{len(plain)} skills named only by their row')   # Median: by what they do, else the row kind (mostly monster skills) - never vanilla / file names
     T.check(len(SN.param_choices(E.data, 197)) > 2000, 'stat 197 offers the hidden skills too')
     for n, k in skills[::97]:
         T.eq(SN.skill_id(E.data, n), k, f'skill name {n!r} round trip')
