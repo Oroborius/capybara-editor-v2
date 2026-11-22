@@ -237,6 +237,9 @@ def _parse_item(blob, data):
         it['suffix'] = br.read(11)
     elif q in ('set', 'unique'):
         it['set_unique_id'] = br.read(SET_UNIQUE_ID_BITS)
+        if q == 'set' and getattr(data, 'v109', False):      # 1.09: a sets row, not a setitems row (mxl_v109)
+            import mxl_v109
+            it['set_unique_id'] = mxl_v109.set_item_row(data, it['set_unique_id'], code)
     elif q in ('rare', 'crafted'):
         it['rare_names'] = (br.read(8), br.read(8))
         it['rare_affixes'] = [br.read(11) if br.read(1) else None for _ in range(6)]

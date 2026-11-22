@@ -9,7 +9,8 @@ What differs from a version 96 save (the 1.14d game reads both; its reader takes
   107-109 / 181-187 (single skills), 126, 188-193, 195-213 carry packed old forms, and 92, 94, 95, ... are the old
   "fast" twins of 93 / 96 / 99 / 102 / 105. The reader below turns them into the 1.10 ids the tooltips know, like
   the game's own reader (d2-114d-codex specs/items/bitstream-legacy.md section 4).
-- A set item's 12-bit index is a sets.txt row there (not setitems).
+- A set item's 12-bit index is a sets.txt row there (not setitems): set_item_row turns it into the setitems row of
+  that set whose base code is the item's (the first in table order, as the game's reader does).
 
 The editor reads these saves and writes the character values back in the 92 layout; the item records are kept
 byte for byte (no 1.09 item writer): item edits are refused (mxl_char)."""
@@ -85,6 +86,19 @@ class Data109:
 
     def read_stats(self, br):
         return read_item_stats(br, self._data)
+
+
+def set_item_row(data, set_row, code):
+    """The setitems row of a 1.09 set item: the first row (table order = the set's member list) of sets row
+    `set_row` whose item code is `code`, from the selected game folder's tables. No match (the game refuses such
+    an item): `set_row` unchanged, so the item still reads."""
+    try:
+        for i, r in enumerate(unwrap(data).set_items):
+            if r.get('set_id') == set_row and r.get('code') == code:
+                return i
+    except Exception as e:
+        print('1.09 set item:', e)
+    return set_row
 
 
 def unwrap(data):

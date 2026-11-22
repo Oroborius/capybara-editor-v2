@@ -100,6 +100,35 @@ def old_save_item_stats_use_current_ids():
 
 
 @T.test
+def old_set_item_index_is_a_sets_row():
+    """A 1.09 set item's 12-bit index is a sets row: it reads as the setitems row of that set with the item's base
+    code (no sample has one: a record synthesized from a 1.14d set amulet / ring, empty stat lists, which lay out
+    the same in both versions). The same bytes read as 1.14d keep the index; a set without that base keeps it."""
+    E = engine()
+    import mxl_creator as C
+    import mxl_save
+    import mxl_tooltip
+    import mxl_v109
+    d = E.data
+    row = next((i for i, r in enumerate(d.set_items) if r['code'] in ('amu ', 'rin ') and i != r['set_id']
+                and [x['code'] for x in d.set_items if x['set_id'] == r['set_id']].count(r['code']) == 1), None)
+    if row is None:
+        T.skip('no set amulet / ring off its sets row')
+    want = d.set_items[row]
+    cr = C.Creator(d)
+    rec = C.decode_item(bytes(cr.build(cr.new_spec('set', None, row))[0]), d)[0]
+    blob = C.encode_item(dict(rec, stats=[], set_unique_id=want['set_id'], set_mask=0), d)
+    it = mxl_save.blob_item(blob, mxl_v109.Data109(d))
+    T.eq(it['set_unique_id'], row, f"1.09 sets row {want['set_id']} -> setitems row")
+    T.eq(mxl_tooltip.special_name(it, d), want['name'], 'tooltip name')
+    T.eq(mxl_save.blob_item(blob, d)['set_unique_id'], want['set_id'], '1.14d read unchanged')
+    other = next(s for s in range(len(d._rows('sets'))) if not any(
+        x['set_id'] == s and x['code'] == want['code'] for x in d.set_items))
+    blob2 = C.encode_item(dict(rec, stats=[], set_unique_id=other, set_mask=0), d)
+    T.eq(mxl_save.blob_item(blob2, mxl_v109.Data109(d))['set_unique_id'], other, 'no member with that base: kept')
+
+
+@T.test
 def old_save_stats_written_items_refused():
     E = engine()
     path = E.files['clone-44']
