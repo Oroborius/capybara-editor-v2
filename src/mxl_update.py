@@ -142,8 +142,18 @@ rmdir /s /q "%STAGE%" >NUL 2>NUL
 
 def launch_windows_helper(helper):
     import subprocess
-    flags = 0x00000008 | 0x00000200 | 0x08000000      # DETACHED_PROCESS | NEW_PROCESS_GROUP | NO_WINDOW
-    subprocess.Popen(['cmd', '/c', helper], creationflags=flags, close_fds=True)
+    # CREATE_NO_WINDOW alone (with NEW_PROCESS_GROUP): cmd gets a hidden console that tasklist / find / ping /
+    # robocopy share. With DETACHED_PROCESS too (as before) Windows ignores NO_WINDOW, the script has no console,
+    # and each of those programs opens a console window of its own - one sometimes stayed on screen
+    flags = 0x00000200 | 0x08000000                    # CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
+    si = None
+    try:
+        si = subprocess.STARTUPINFO()
+        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        si.wShowWindow = 0                             # SW_HIDE
+    except AttributeError:                             # not Windows (tests)
+        pass
+    subprocess.Popen(['cmd', '/c', helper], creationflags=flags, close_fds=True, startupinfo=si)
 
 
 def install_appimage(rel, progress=None):
