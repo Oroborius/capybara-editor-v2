@@ -1,5 +1,5 @@
-"""Item Editor, "Toggles / upgrades": every in-place recipe of the item is listed (no 40-row cap); a long list
-gets a filter box that narrows it; item-type inputs are named and mod chances shown (engine side: test 76)."""
+"""Item Editor, "Toggles / upgrades": every in-place recipe of the item is reachable through two dropdowns (what
+the recipe takes, then the recipe); only the picked one is written out (engine side: test 76)."""
 import os
 
 import capytest as T
@@ -9,7 +9,7 @@ G = T.G
 
 
 @T.test
-def toggles_list_has_filter_and_no_cap():
+def toggles_in_two_dropdowns():
     import mxl_creator_gui as CG
     import mxl_tabs
     import mxl_creator
@@ -29,24 +29,25 @@ def toggles_list_has_filter_and_no_cap():
     T.pump(12)
     w = mxl_tabs.built_owner('Creator')
     T.check(w is not None and w.edit_item is not None, 'the Item Editor did not open')
-    lst = getattr(w, '_tog_list', None)
-    T.check(lst is not None, 'toggles list built')
-    n_all = len(lst.winfo_children())
-    want = len(cr.inplace_for(w.spec.get('code'), w.spec.get('quality'), w.spec.get('row')))
-    T.eq(n_all, want, 'every recipe listed')
-    flt = getattr(w, '_tog_filter', None)
-    T.check(flt is not None, 'filter box above a long list')
-    flt.set('zzzz-no-such-recipe')
-    T.pump(4)
-    T.eq(len(lst.winfo_children()), 1, 'filter with no match: one "no recipe matches" line')
-    flt.set('')
-    T.pump(4)
-    T.eq(len(lst.winfo_children()), n_all, 'filter cleared: all again')
-    flt.set(f"recipe {cr.inplace_for(w.spec.get('code'), w.spec.get('quality'), w.spec.get('row'))[0]['row']}")
-    T.pump(4)
-    T.check(1 <= len(lst.winfo_children()) < n_all, 'filter by recipe number narrows the list')
+    groups = getattr(w, '_tog_groups', None)
+    T.check(groups, 'recipe dropdowns built')
+    want = cr.inplace_for(w.spec.get('code'), w.spec.get('quality'), w.spec.get('row'))
+    T.eq(sum(len(v) for v in groups.values()), len(want), 'every recipe reachable through the dropdowns')
+    on_group, on_rec = w._tog_sync
+    for g, items in groups.items():                 # each group lists only its own recipes
+        w._tog_gvar.set(f'{g}  ({len(items)})')
+        on_group()
+        T.check(w._tog_cur['rec'] is items[0][1], f'{g}: its first recipe picked')
+        w._tog_rvar.set(items[-1][0])
+        on_rec()
+        T.check(w._tog_cur['rec'] is items[-1][1], f'{g}: picking a recipe selects it')
     shot = os.environ.get('CAPY_SHOT_DIR')
     if shot:
+        try:
+            w.scroll.canvas.yview_moveto(0.62)
+        except Exception:
+            pass
+        T.pump(6)
         os.system(f'import -window root {os.path.join(shot, "v78.png")} 2>/dev/null')
 
 

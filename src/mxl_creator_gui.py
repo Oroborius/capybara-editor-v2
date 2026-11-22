@@ -2246,56 +2246,65 @@ class CreatorWindow:
                   justify='left', wraplength=self._wrap_w(), font=('Segoe UI', 10, 'bold')).grid(
             row=r, column=0, columnspan=2, sticky='w', pady=(8, 0))
         r += 1
-        entries = []
+        # two dropdowns instead of every recipe written out (22 long entries on a plain armor, Occult Effigies and
+        # all): what the recipe takes (grouped by its first input), then the recipe; only the picked one is shown
+        groups = {}
         for (no, _row), rec in marked:
             tx = self.cr.recipe_texts(rec)
-            mark = (T('cr.tog.applies', '[applies now]'), T('cr.tog.applies_char', '[applies if the other conditions hold]'),
-                    T('cr.tog.not_met', '[condition not met]'))[no]
-            lines = [f"{mark}  {T('cr.tog.row', 'recipe {n}', n=rec['row'])}"]
+            first = tx['inputs'][0] if tx['inputs'] else T('cr.tog.alone', '(the item alone)')
+            mark = ('\u2713', '~', '\u2717')[no]
+            short = '; '.join(tx['changes'][:3]) + (' ...' if len(tx['changes']) > 3 else '')
+            label = f"{mark} {T('cr.tog.row', 'recipe {n}', n=rec['row'])}: {short}"
+            lines = [(T('cr.tog.applies', '[applies now]'), T('cr.tog.applies_char', '[applies if the other conditions hold]'),
+                      T('cr.tog.not_met', '[condition not met]'))[no]]
             lines.append(T('cr.tog.with', 'with: {x}', x=', '.join(tx['inputs']) if tx['inputs'] else
                            T('cr.tog.alone', '(the item alone)')))
             if tx['conds']:
                 lines.append(T('cr.tog.if', 'if: {x}', x='; '.join(tx['conds'])))
             lines.append(T('cr.tog.does', 'does: {x}', x='; '.join(tx['changes'])))
-            entries.append((rec, '\n'.join(lines)))
-        flt = None
-        if len(entries) > self.TOGGLES_FILTER_AT:        # long: a filter box (every recipe stays reachable)
-            row = ttk.Frame(parent)
-            row.grid(row=r, column=0, columnspan=2, sticky='we', pady=(2, 0))
-            ttk.Label(row, text=T('cr.tog.filter', 'Filter ({n} recipes):', n=len(entries))).pack(side='left')
-            flt = tk.StringVar()
-            ttk.Entry(row, textvariable=flt, width=24).pack(side='left', padx=(4, 0), fill='x', expand=True)
-            r += 1
-        lst = ttk.Frame(parent)
-        lst.grid(row=r, column=0, columnspan=2, sticky='we')
-        lst.columnconfigure(0, weight=1)
+            groups.setdefault(first, []).append((label, rec, '\n'.join(lines), no))
+        names = sorted(groups, key=lambda g: (min(x[3] for x in groups[g]), g.lower()))
+        glabels = [f'{g}  ({len(groups[g])})' for g in names]
+        box = ttk.Frame(parent)
+        box.grid(row=r, column=0, columnspan=2, sticky='we', pady=(2, 0))
+        box.columnconfigure(1, weight=1)
         r += 1
-        self._tog_list, self._tog_filter = lst, flt
+        ttk.Label(box, text=T('cr.tog.group', 'with')).grid(row=0, column=0, sticky='w')
+        gvar, rvar = tk.StringVar(value=glabels[0]), tk.StringVar()
+        gcb = ttk.Combobox(box, textvariable=gvar, values=glabels, state='readonly')
+        gcb.grid(row=0, column=1, columnspan=2, sticky='we', padx=(4, 0))
+        ttk.Label(box, text=T('cr.tog.recipe', 'recipe')).grid(row=1, column=0, sticky='w', pady=(2, 0))
+        rcb = ttk.Combobox(box, textvariable=rvar, state='readonly')
+        rcb.grid(row=1, column=1, sticky='we', padx=(4, 0), pady=(2, 0))
+        cur = {}
+        D2.button(box, T('cr.tog.apply', 'Apply'), lambda: cur.get('rec') is not None and self.apply_toggle(cur['rec']),
+                  6).grid(row=1, column=2, sticky='e', padx=(4, 0), pady=(2, 0))
+        detail = ttk.Label(box, text='', justify='left', wraplength=self._wrap_w())
+        detail.grid(row=2, column=0, columnspan=3, sticky='w', pady=(2, 0))
+        for w in (gcb, rcb):
+            self.scroll.no_wheel(w)
 
-        def fill(*_a):
-            for w in lst.winfo_children():
-                w.destroy()
-            words = (flt.get() if flt is not None else '').lower().split()
-            k = 0
-            for rec, text in entries:
-                low = text.lower()
-                if any(w not in low for w in words):
-                    continue
-                box = ttk.Frame(lst)
-                box.grid(row=k, column=0, sticky='we', pady=(3, 0))
-                box.columnconfigure(1, weight=1)
-                D2.button(box, T('cr.tog.apply', 'Apply'), lambda x=rec: self.apply_toggle(x), 6).grid(
-                    row=0, column=0, sticky='nw', padx=(0, 4))
-                lab = ttk.Label(box, text=text, justify='left', wraplength=max(self._wrap_w() - 130, 120))
-                lab.grid(row=0, column=1, sticky='w')
-                lab._wrap_less = True                    # beside its button: _rewrap leaves it to its own fit
-                lab._fit = lambda w=lab: w.configure(wraplength=max(self._wrap_w() - 130, 120))
-                k += 1
-            if not k:
-                ttk.Label(lst, text=T('cr.tog.none', 'no recipe matches')).grid(row=0, column=0, sticky='w')
-        fill()
-        if flt is not None:
-            flt.trace_add('write', fill)
+        def group_items():
+            g = names[glabels.index(gvar.get())] if gvar.get() in glabels else names[0]
+            return groups[g]
+
+        def on_rec(*_a):
+            items = group_items()
+            labels = [x[0] for x in items]
+            i = labels.index(rvar.get()) if rvar.get() in labels else 0
+            cur['rec'] = items[i][1]
+            detail.configure(text=items[i][2])
+
+        def on_group(*_a):
+            items = group_items()
+            rcb.configure(values=[x[0] for x in items])
+            rvar.set(items[0][0])
+            on_rec()
+        gcb.bind('<<ComboboxSelected>>', on_group)
+        rcb.bind('<<ComboboxSelected>>', on_rec)
+        on_group()
+        self._tog_groups, self._tog_gvar, self._tog_rvar, self._tog_cur = groups, gvar, rvar, cur
+        self._tog_sync = (on_group, on_rec)
         return r
 
     def apply_toggle(self, rec):
