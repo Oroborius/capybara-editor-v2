@@ -2,8 +2,8 @@
 personal stash (panel 5), Horadric Cube (panel 4) and belt (location 2), in the game's grid sizes from the
 profile's inventory.bin (stash 6 x 8 in LoD 1.10-1.14d, 6 x 4 for a classic character; cube 3 x 4) and belts.bin
 (rows of the equipped belt), with the inventory under them: items move between the stash, the cube and the
-inventory, socket fillers drop into sockets, right-click gives the Socket submenu (each write one Ctrl+Z step);
-the belt is shown only. Median XL keeps its own stash files: install() registers nothing there.
+inventory, socket fillers drop into sockets, right-click gives the Character tab's item menu for the item where it
+is (edit, copy / paste, delete, move to, sockets, library...; each write one Ctrl+Z step); the belt is shown only. Median XL keeps its own stash files: install() registers nothing there.
 
 Also in folder profiles only: the main window's stash pane shows the same personal stash (read-only, no page
 tabs, no shared stash: the game has neither), and the item stats count the runeword list of socketed jewels
@@ -72,8 +72,8 @@ class _Win:
 class ContainersPage:
     """The character's stash, cube and belt, with its inventory under them. Items move by drag and drop between
     the stash, the cube and the inventory (one write of the character, one Ctrl+Z step); a gem / rune / jewel
-    dropped on an item goes into its socket (mxl_socket_insert); right-click: the Socket submenu
-    (mxl_socket_menu). The belt is shown only. Items outside a grid (hacked saves) are listed under it."""
+    dropped on an item goes into its socket (mxl_socket_insert); right-click: the item menu
+    (on_menu). The belt is shown only. Items outside a grid (hacked saves) are listed under it."""
 
     def __init__(self, win, frame):
         self.win, self.frame = win, frame
@@ -89,7 +89,7 @@ class ContainersPage:
         self.body = body
         self.note = ttk.Label(body, text=T('van.note2', 'The character file\'s own stash, cube and belt. Drag items '
                                            'between the stash, the cube and the inventory; drop a gem, rune or jewel '
-                                           'on an item to socket it; right-click: Socket. Hover an item to see it.'),
+                                           'on an item to socket it; right-click: the item menu. Hover an item to see it.'),
                               justify='left', wraplength=520)
         self.note.pack(anchor='w')
         self.row = ttk.Frame(body)
@@ -343,26 +343,260 @@ class ContainersPage:
         return True
 
     def on_menu(self, key, ev):
-        """Right-click on an item: the Socket submenu (Add Sockets / Remove Sockets / Unsocket)."""
+        """Right-click: the Character tab's item menu for the item where it is (stash / cube place kept: the
+        writers use mxl_char.where_of), each write one Ctrl+Z step; an empty cell: Paste here / Create here (the
+        clicked grid, else its first free spot). Belt items: the read-only entries only (the belt is not edited)."""
         e = self._pick(key, ev)
-        if e is None:
-            return
+        cv = self.canvases.get(key)
         self.win.selected = e
         self.refresh()
-        menu = tk.Menu(self.canvases.get(key) or self.frame, tearoff=0)
+        clip = getattr(self.win.app, '_capy_clip', None)
+        menu = tk.Menu(cv or self.frame, tearoff=0)
         try:
-            import mxl_socket_menu
-            win = self.as_win()
-            sub = mxl_socket_menu.add_menu(win, menu, win=win, e=e)
+            self._fill_menu(menu, key, e, ev, clip)
         except Exception as err:
-            print('stash page socket menu:', err)
-            sub = None
-        if sub is None:
+            print('stash page menu:', err)
+        if menu.index('end') is None:
             return
         try:
             menu.tk_popup(ev.x_root, ev.y_root)
         finally:
             menu.grab_release()
+
+    def _fill_menu(self, menu, key, e, ev, clip):
+        import mxl_rc_menu as RC
+        win = self.as_win()
+        rc = RC.rc
+        if e is not None:
+            import mxl_he_stats
+            if key != 'belt':
+                menu.add_command(label=rc('edit', 'Edit item...'), command=lambda: self.edit(e))
+            menu.add_command(label=rc('stats', 'Item stats...'), command=lambda: mxl_he_stats.open_char_item_stats(win, e))
+            if key != 'belt':
+                menu.add_command(label=rc('duplicate', 'Duplicate'), command=lambda: self.duplicate(e, key))
+            menu.add_command(label=rc('copy', 'Copy'), command=lambda: RC._char_copy(win, e))
+            if key != 'belt':
+                menu.add_command(label=rc('cut', 'Cut'), command=lambda: (RC._char_copy(win, e), self.delete(e, ask=False)))
+                if clip is not None:
+                    menu.add_command(label=rc('paste', 'Paste (replaces it; copy: {name})', name=clip[1]),
+                                     command=lambda: self.paste_over(e, clip))
+                RC._char_quantity_cascade(win, menu, e)
+                RC._fill_sockets_entry(win, menu, None, win=win, e=e)
+                RC._socket_cascade(win, menu, win=win, e=e)
+                RC._add_hero_editor_menu(win, menu, win=win, e=e)
+                for k, lab in (('inv', T('van.to_inv', 'To inventory')), ('stash', T('van.to_stash', 'To stash')),
+                               ('cube', T('van.to_cube', 'To Horadric Cube'))):
+                    if k != key and not (k == 'cube' and e.it['code'] == CUBE_CODE):
+                        menu.add_command(label=lab, command=lambda k=k: self.move_to(e, k))
+                menu.add_command(label=rc('delete_short', 'Delete'), command=lambda: self.delete(e))
+            menu.add_command(label=rc('export', 'Export item...'), command=lambda: RC._export_char(win, e))
+            menu.add_command(label=rc('bitedit', 'Open in Bit editor'), command=lambda: RC._inspect_char(win, e))
+            menu.add_command(label=rc('to_library', 'Add to library...'), command=lambda: RC._library_char(win, e))
+        elif key != 'belt':
+            c = self.cell
+            cell = (ev.x // c, ev.y // c)
+            if clip is not None:
+                menu.add_command(label=rc('paste_here', 'Paste here ({name})', name=clip[1]),
+                                 command=lambda: self.paste_here(key, cell, clip))
+            menu.add_command(label=rc('create_here', 'Create here...'), command=lambda: self.create_here(key, cell))
+
+    # ------------------------------------------------------------------ item actions (one undo step each)
+    def _where(self, key, x, y):
+        return ('inv', x, y) if key == 'inv' else ('store', PANEL_CUBE if key == 'cube' else PANEL_STASH, x, y)
+
+    def free_spot(self, key, blob, cell=None):
+        """The place in grid key for an item blob: the clicked cell when it fits there, else the first free one."""
+        import mxl_save
+        ch = self.win.ch
+        it = mxl_save.blob_item(blob, self.win.data)
+        if key == 'cube' and it['code'] == CUBE_CODE:
+            return None
+
+        def ok(x, y):
+            if key == 'inv':
+                return ch.inventory_error(it, x, y) is None
+            return ch.stored_error(it, PANEL_CUBE if key == 'cube' else PANEL_STASH, x, y) is None
+        if cell is not None and ok(*cell):
+            return self._where(key, *cell)
+        cols, rows = next(((cw, rh) for k, _t, cw, rh, _e in self._boxes(ch, self.win.data) if k == key), (0, 0))
+        for y in range(rows):
+            for x in range(cols):
+                if ok(x, y):
+                    return self._where(key, x, y)
+        return None
+
+    def _undoable(self, name, fn):
+        """Runs fn (which writes the character through win.save); a changed file is one 'files' undo step."""
+        before = None
+        try:
+            import mxl_undo
+            before = mxl_undo.snapshot([self.win.ch.path])
+        except Exception as err:
+            print('stash page: not undoable:', err)
+        try:
+            return fn()
+        finally:
+            if before:
+                try:
+                    import mxl_undo
+                    if mxl_undo.record_files(self.win.app, before, _clean(name)):
+                        self.set_status(self.status.cget('text') + T('undo.hint', ' - Ctrl+Z undoes it'))
+                except Exception as err:
+                    print('stash page: undo not recorded:', err)
+            self.refresh()
+
+    def _fail(self, err):
+        self.win.reload()
+        self.set_status(str(err), True)
+        return False
+
+    def _save(self, msg):
+        if not self.win.save(msg):
+            return False
+        self.set_status(msg)
+        return True
+
+    def _current(self, e):
+        try:
+            self.win.sync_file()
+        except Exception as err:
+            print('stash page sync:', err)
+        cur = self.win.current_entry(e, False)
+        if cur is None:
+            self.set_status(T('inv.err.item_gone', 'the item is no longer where it was: select it again'), True)
+        return cur
+
+    def delete(self, e, ask=True):
+        from tkinter import messagebox
+        name = _clean(e.it.get('name') or e.it['code'])
+        if ask and not messagebox.askyesno(T('ch.btn.delete', 'Delete'), T(
+                'ch.delete_ask', 'Delete {item} (and its socketed items) from {name}?\nA backup of the character is '
+                'made first.', item=name, name=self.win.ch.name), parent=self.win.top):
+            return False
+
+        def go():
+            cur = self._current(e)
+            if cur is None:
+                return False
+            self.win.ch.remove(cur, False)
+            return self._save(T('cr.deleted', '{name} deleted', name=name))
+        return self._undoable(name, go)
+
+    def move_to(self, e, key):
+        import mxl_char as MC
+        name = _clean(e.it.get('name') or e.it['code'])
+
+        def go():
+            cur = self._current(e)
+            if cur is None:
+                return False
+            where = self.free_spot(key, bytes(cur.blob))
+            if where is None:
+                self.set_status(T('van.no_room', 'no free place there'), True)
+                return False
+            try:
+                self.win.ch.move(cur, where, False)
+            except MC.CharError as err:
+                return self._fail(err)
+            return self._save(T('ch.moved', '{item} moved', item=name))
+        return self._undoable(name, go)
+
+    def _place(self, key, blob, cell, msg, name):
+        import mxl_char as MC
+
+        def go():
+            try:
+                self.win.sync_file()
+            except Exception as err:
+                print('stash page sync:', err)
+            where = self.free_spot(key, blob, cell)
+            if where is None:
+                self.set_status(T('van.no_room', 'no free place there'), True)
+                return False
+            try:
+                self.win.ch.place(blob, where, False)
+            except (MC.CharError, OSError) as err:
+                return self._fail(err)
+            return self._save(msg)
+        return self._undoable(name, go)
+
+    def duplicate(self, e, key):
+        name = _clean(e.it.get('name') or e.it['code'])
+        return self._place(key, bytes(self.win.ch.stash_blob(e)), None,
+                           T('van.duplicated', '{name} duplicated', name=name), name)
+
+    def paste_here(self, key, cell, clip):
+        ok = self._place(key, clip[0], cell, T('van.pasted', '{name} pasted', name=clip[1]), clip[1])
+        if ok:
+            self.win.app._capy_clip = None
+        return ok
+
+    def paste_over(self, e, clip):
+        import mxl_char as MC
+        import mxl_rc_menu as RC
+
+        def go():
+            cur = self._current(e)
+            if cur is None:
+                return False
+            try:
+                RC._char_replace(self.as_win(), cur, clip[0], MC.where_of(cur), False)
+            except Exception as err:
+                return self._fail(err)
+            if self._save(T('van.pasted_over', '{name} pasted (the previous item is replaced)', name=clip[1])):
+                self.win.app._capy_clip = None
+                return True
+            return False
+        return self._undoable(clip[1], go)
+
+    def _write_at(self, e, where_fn, label, msg):
+        """The Item Editor / Creator target: the new bytes at where_fn() (the item's own place), else the clicked
+        grid's / inventory's first free spot; one undo step."""
+        import mxl_char as MC
+        import mxl_save
+
+        def write(blob):
+            out = {}
+
+            def go():
+                self.win.sync_file()
+                if e is not None:
+                    cur = self.win.current_entry(e, False)
+                    if cur is None:
+                        raise MC.CharError(T('inv.err.item_gone', 'the item is no longer where it was: select it again'))
+                    self.win.ch.remove(cur, False)
+                where = where_fn(blob)
+                try:
+                    if where is None:
+                        raise MC.CharError(T('van.no_room', 'no free place there'))
+                    self.win.ch.place(blob, where, False)
+                except MC.CharError:
+                    spot = self.win.ch.free_inventory_spot(mxl_save.blob_item(blob, self.win.data))
+                    if spot is None:
+                        self.win.reload()
+                        raise
+                    self.win.ch.place(blob, ('inv',) + spot, False)
+                if not self._save(msg):
+                    raise MC.CharError(T('ch.err.not_saved', 'character not saved'))
+                out['msg'] = msg
+            self._undoable(label, go)
+            return out.get('msg', msg)
+        return write
+
+    def edit(self, e):
+        import mxl_char as MC
+        from mxl_creator_gui import CreatorWindow
+        where = MC.where_of(e)
+        name = _clean(e.it.get('name') or e.it['code'])
+        self.win.selected = e
+        write = self._write_at(e, lambda _b: where, name, T('ch.replaced', '{item} replaced', item=name))
+        return CreatorWindow(self.win.app, edit_item=e.it, target=write, target_label=self.win.ch.name)
+
+    def create_here(self, key, cell):
+        from mxl_creator_gui import CreatorWindow
+        write = self._write_at(None, lambda b: self.free_spot(key, b, cell), T('ch.item_created', 'item created'),
+                               T('ch.item_created', 'item created'))
+        return CreatorWindow(self.win.app, target=write, target_label=self.win.ch.name)
 
 
 CUBE_CODE = 'box '

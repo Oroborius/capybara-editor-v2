@@ -581,4 +581,77 @@ def vanilla_page_socket_drop_and_menu_keep_the_stash_place():
     undo_to([(path, raw0)], 'Unsocket on the stash page')
     T.check(not [b for b in G.boxes if b[0] == 'showerror'], f'error boxes: {G.boxes}')
 
+
+@T.test
+def vanilla_page_item_menu_edit_delete_paste_keep_places_and_undo():
+    vanilla()
+    import mxl_creator as C
+    import mxl_tabs
+    cw, _w, _g, _f = _vanilla_char()
+    d = cw.data
+    cr = C.Creator(d)
+    parent, _gem = _vbuild(cr, 3, 1)
+    other, _gem = _vbuild(cr, 2, 0)
+    for x in [x for x in cw.ch.items if x.it.get('location') == 0 and x.it.get('panel') in (4, 5)]:
+        cw.ch.remove(x, False)                         # room in the stash and the cube (a copy of the sample)
+    st = _vfree(cw.ch, 5, parent)
+    cw.ch.place(parent, st, False)
+    cb = _vfree(cw.ch, 4, parent)
+    cw.ch.place(parent, cb, False)
+    T.check(cw.save('test items placed'), 'test items not saved')
+    T.pump(4)
+    page = _vpage(cw)
+    path = cw.ch.path
+    raw0 = T.read(path)
+
+    def menu(key, gx, gy):
+        G.menu = None
+        page.on_menu(key, _pev(page, key, gx, gy))
+        T.pump(2)
+        T.check(G.menu is not None, f'no menu on {key} {gx},{gy}')
+        return G.menu
+    labs = T.menu_labels(menu('stash', st[2], st[3]))
+    for want in ('Edit item', 'Item stats', 'Duplicate', 'Copy', 'Cut', 'Socket', 'To inventory',
+                 'To Horadric Cube', 'Delete', 'Export item', 'Open in Bit editor', 'Add to library'):
+        T.check(any(str(l).startswith(want) for l in labs), f'stash menu has {want!r}: {labs}')
+    T.check(not any(str(l).startswith('To stash') for l in labs), f'no To stash on a stash item: {labs}')
+    # Edit: the editor's write puts the new bytes at the stash / cube place
+    for key, where in (('stash', st), ('cube', cb)):
+        T.invoke(menu(key, where[2], where[3]), 'Edit item')
+        T.pump(6)
+        w = mxl_tabs.built_owner('Creator')
+        T.check(w is not None and w.edit_item is not None and w.target is not None, 'the Item Editor did not open')
+        w.target(other)
+        T.pump(4)
+        e, (rec, kids) = _pat(cw, where)
+        T.check(e is not None and not kids and e.it['code'] == C.decode_item(other, d)[0]['code'],
+                f'edit of the {key} item: replaced at its place')
+        undo_to([(path, raw0)], f'edit on the {key} item')
+    # Delete (the cube item) and undo
+    T.invoke(menu('cube', cb[2], cb[3]), 'Delete')
+    T.pump(4)
+    T.check(_pat(cw, cb)[0] is None and _pat(cw, st)[0] is not None, 'cube item deleted, stash item kept')
+    undo_to([(path, raw0)], 'delete on the cube item')
+    # Copy the stash item, paste into an empty cube cell: placed at that cell
+    T.invoke(menu('stash', st[2], st[3]), 'Copy')
+    T.check(getattr(G.app, '_capy_clip', None) is not None, 'copied')
+    empty = _vfree(cw.ch, 5, parent)
+    T.invoke(menu('stash', empty[2], empty[3]), 'Paste here')
+    T.pump(4)
+    T.check(_pat(cw, empty)[0] is not None and _pat(cw, st)[0] is not None, 'pasted into the clicked stash cell')
+    undo_to([(path, raw0)], 'paste into the stash')
+    # Copy the edited-looking other item over the cube item: replaced at the cube place
+    G.app._capy_clip = (other, 'other')
+    T.invoke(menu('cube', cb[2], cb[3]), 'Paste (replaces')
+    T.pump(4)
+    e, (rec, kids) = _pat(cw, cb)
+    T.check(e is not None and not kids, 'paste over the cube item: replaced at its place')
+    undo_to([(path, raw0)], 'paste over the cube item')
+    # Move to inventory and undo
+    T.invoke(menu('stash', st[2], st[3]), 'To inventory')
+    T.pump(4)
+    T.check(_pat(cw, st)[0] is None, 'stash item moved out')
+    undo_to([(path, raw0)], 'move to the inventory')
+    T.check(not [b for b in G.boxes if b[0] == 'showerror'], f'error boxes: {G.boxes}')
+
 T.main(globals())
