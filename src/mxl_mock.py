@@ -983,8 +983,8 @@ PRESETS = {
     # Beginner B low): 7 Holy Freeze sources capped by cold mastery, Thorns + Barbs return, resist by level
     'mock_high': dict(label='Mock High', role='mock', tk=31, mana=1572500, hf_sources=7, hf_level=3100,
                       res_cold=3528, res_fire=3339,
-                      note='TK31 top of good band 2 (1048576-1572863): 7 capped Holy Freeze, Thorns first (Barbs '
-                           'only if needed), cold / fire resist by level, max absorb'),
+                      note='TK31 high mana in good band 2 (1048576-1572863), capped at the overheal-safe mana: 7 capped '
+                           'Holy Freeze, Thorns first (Barbs only if needed), cold / fire resist by level, absorb to need'),
     'mock_mid': dict(label='Mock Mid', role='mock', tk=31, mana=1310719, hf_sources=7, hf_level=3100,
                      res_cold=3528, res_fire=3528, note='TK31 "1.31" mana (off-screen 4194288), 7 capped Holy Freeze'),
     'mock_low': dict(label='Mock Low', role='mock', tk=31, mana=1211974, hf_sources=7, hf_level=3100,
@@ -993,8 +993,8 @@ PRESETS = {
     'prayer_thorner': dict(label='Prayer/Thorner', role='pt', tk=31, mana=1572863, hf_sources=0, hf_level=0,
                            stun=0, res_cold=3780, res_fire=3780, res_light=3780,
                            target_def=762, itd=True,
-                           note='P/T: 1572863 (the PT mana: no enemy aura), Thorns first (Barbs only '
-                                'if needed), no holy aura, no stun, max absorb'),
+                           note='P/T: 1572863 (the PT mana: no enemy aura) capped at the overheal-safe mana, Thorns '
+                                'first (Barbs only if needed), no holy aura, no stun, absorb to need'),
     'aura_killer': dict(label='Aura Killer', role='ak', tk=31, mana=1211974, hf_sources=28, hf_level=3100,
                         hf_target=8320000, res_cold=4725, res_fire=4725, res_light=4725,
                         target_def=762, pierce=45390, thorns=0, barbs=0, note='reference clone-05 layout: 28 Holy Freeze sources on '
@@ -1012,7 +1012,8 @@ PRESETS = {
                                                              'weapon (198 lists) for the exact product'),
     'balance_switch': dict(label='Balance switch', role='mock', tk=31, mana=1572500, mana_b=1211974, hf_sources=7,
                            hf_level=3100, switch='balance', res_cold=3528,
-                           note='side A High 1.5725M (stun shield), weapon switch to side B Low 1.21M (no stun)'),
+                           note='side A High 1.5725M (capped at the overheal-safe mana, stun shield), weapon switch to side B '
+                                'Low 1.21M (no stun)'),
     # clones2: clone-104 / clone-87 "mid mana" P/T 1377236 (TK31): 40 Prayer charms, Thorns
     # 4278 + Barbs 4154 (ours: Thorns first, Barbs only if needed), no holy aura, no stun
     'pt_mid': dict(label='P/T Mid', role='pt', tk=31, mana=1377236, hf_sources=0, hf_level=0,
@@ -1022,7 +1023,7 @@ PRESETS = {
     # clone-45 / clone-09 / clone-32 hosts: high mana, Host position (DTM 500, no stun), Thorns first
     'host': dict(label='Host', role='host', tk=31, mana=1572500, position='Host', hf_sources=7, hf_level=3100,
                  res_cold=5166, res_fire=5166, cbf=True,
-                 note='Host (clone-45 / clone-09 / clone-32): high mana, no stun, 7 capped Holy Freeze, '
+                 note='Host (clone-45 / clone-09 / clone-32): high mana (overheal-safe cap), no stun, 7 capped Holy Freeze, '
                       'Thorns first, resist by level (no absorb by time)'),
 }
 PRESET_ORDER = ('mock_high', 'mock_mid', 'mock_low', 'prayer_thorner', 'aura_killer', 'funky', 'funky28',
