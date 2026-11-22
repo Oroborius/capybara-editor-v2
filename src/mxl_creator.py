@@ -24,7 +24,8 @@ import struct
 
 import stat_ids as S
 from mxl_format import STAT_GROUPS, SET_UNIQUE_ID_BITS
-from mxl_format_fix import body_kind
+from mxl_format_fix import (body_kind, ILVL_BITS, MAX_ILVL, QUANTITY_BITS, MAX_QUANTITY, SOCKET_FIELD_BITS,  # noqa: F401
+                            SOCKET_FIELD_MAX, SOCKETED_COUNT_BITS, MAX_SOCKETED)   # save-format widths
 from mxl_lang import T
 from mxl_rules import (mod_ranges, mods_stats, item_type_codes, is_innate_damage, runeword_row,
                        stat_range, unique_name, rare_name)
@@ -55,7 +56,6 @@ FLAG_PERSONALIZED = 1 << 24
 FLAG_RUNEWORD = 1 << 26
 LOC_STORED, LOC_SOCKETED = 0, 6
 PANEL_STASH = 5
-MAX_ILVL = 127  # 7 bits in the save format
 CRAFTED_AFFIXES = 4  # crafted items: 4 rare affixes (1-3 prefixes, 1-3 suffixes), as the game's crafted items
 FOLLOWERS = {s for lead, grp in STAT_GROUPS.items() for s in grp}
 
@@ -199,6 +199,18 @@ def _rows(data, name):
     return [b[4 + i * rs:4 + (i + 1) * rs] for i in range(n)]
 
 
+def stat_cap(data, sid):
+    """Largest value the game's ItemStatCost save field of stat sid holds (save bits, minus save add)."""
+    c = data.isc[sid]
+    return (1 << c['bits']) - 1 - c['add']
+
+
+def durability_cap(data):
+    """Most (max) durability an item record holds in this game: the ItemStatCost save fields of maxdurability and
+    durability (8 bits in 1.14d: the 255 the game caps set x2 / unique x3 durability at)."""
+    return min(stat_cap(data, S.MAX_DURABILITY), stat_cap(data, S.DURABILITY))
+
+
 class Tables:
     """Fields of the game tables that mxl_data.Data does not load (offsets of the 1.13c structures,
     checked against the extracted tables)."""
@@ -288,7 +300,7 @@ def encode_item(rec, data):
     if flags & FLAG_SIMPLE:
         bw.write(1, rec.get('socketed_count', 0))
         return b'JM' + bw.bytes()
-    bw.write(3, rec.get('socketed_count', 0))
+    bw.write(SOCKETED_COUNT_BITS, rec.get('socketed_count', 0))
     bw.write(32, rec['id'])
     bw.write(7, rec['ilvl'])
     q = rec['quality']
@@ -346,9 +358,9 @@ def encode_item(rec, data):
         if maxd != cm['add']:
             bw.write(data.isc[S.DURABILITY]['bits'], rec['durability'])
     if base.stack_max is not None:
-        bw.write(9, rec.get('quantity', 1))
+        bw.write(QUANTITY_BITS, rec.get('quantity', 1))
     if flags & FLAG_SOCKETED:
-        bw.write(4, rec.get('sockets', 0))
+        bw.write(SOCKET_FIELD_BITS, rec.get('sockets', 0))
     set_mask = rec.get('set_mask', 0)
     if q == 'set':
         bw.write(5, set_mask)
@@ -423,9 +435,9 @@ def decode_item(blob, data):
     if flags & FLAG_SIMPLE:
         r['socketed_count'] = br.read(1)
         return r, 2 + (br.pos + 7) // 8
-    r['socketed_count'] = br.read(3)
+    r['socketed_count'] = br.read(SOCKETED_COUNT_BITS)
     r['id'] = br.read(32)
-    r['ilvl'] = br.read(7)
+    r['ilvl'] = br.read(ILVL_BITS)
     q = r['quality'] = QUALITY_NAME.get(br.read(4), 'unknown')
     r['image'] = br.read(3) if br.read(1) else None
     r['auto_affix'] = br.read(11) if br.read(1) else None
@@ -465,9 +477,9 @@ def decode_item(blob, data):
         if r['max_durability'] != cm['add']:
             r['durability'] = br.read(data.isc[S.DURABILITY]['bits'])
     if base.stack_max is not None:
-        r['quantity'] = br.read(9)
+        r['quantity'] = br.read(QUANTITY_BITS)
     if flags & FLAG_SOCKETED:
-        r['sockets'] = br.read(4)
+        r['sockets'] = br.read(SOCKET_FIELD_BITS)
     r['set_mask'] = br.read(5) if q == 'set' else 0
     r['stats'] = _read_stats(br, data)
     for i in range(5):
@@ -669,6 +681,12 @@ class Creator:
             if anc & set(ok) and not anc & set(ex) and self.max_sockets(b.code, MAX_ILVL) >= len(runes):
                 out.append(b)
         return out
+
+    def quantity_max(self, code):
+        """Largest quantity of a stackable base: its maxstack (misc / weapons table), at most what the save's
+        quantity field holds. None when the base does not stack."""
+        b = self.data.base(code)
+        return None if b.stack_max is None else min(b.stack_max, MAX_QUANTITY)
 
     def qlvl(self, code):
         return self.t.item.get(code, {}).get('qlvl', 1)
@@ -2002,8 +2020,8 @@ class Creator:
                 raise CreateError(T('cr.err.bad_superior', 'invalid Superior bonus'))
         if b.stack_max is not None:
             qn = spec.get('quantity') or 1
-            if not 1 <= qn <= min(b.stack_max, 511):
-                raise CreateError(T('cr.err.quantity', 'quantity 1 to {n}', n=b.stack_max))
+            if not 1 <= qn <= self.quantity_max(code):
+                raise CreateError(T('cr.err.quantity', 'quantity 1 to {n}', n=self.quantity_max(code)))
         n_img = self.image_count(code)
         if spec.get('image') is not None and not 0 <= spec['image'] < max(n_img, 1):
             raise CreateError(T('cr.err.picture', 'invalid picture'))
@@ -2127,9 +2145,9 @@ class Creator:
             dur = 0 if t.get('nodur') else t.get('dur', 0)
             if dur:
                 if q == 'set':
-                    dur = min(dur * 2, 255)
+                    dur = min(dur * 2, durability_cap(d))
                 elif q == 'unique':
-                    dur = min(dur * 3, 255)
+                    dur = min(dur * 3, durability_cap(d))
                 if spec['ethereal']:
                     dur = dur // 2 + 1
             rec['max_durability'] = dur + cm['add']

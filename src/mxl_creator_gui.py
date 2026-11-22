@@ -1233,7 +1233,7 @@ class CreatorWindow:
         if n_img > 1:
             spin(T('cr.picture', 'Picture'), 1, n_img, (spec.get('image') or 0) + 1, lambda v: self.set_field('image', v - 1))
         if b.stack_max is not None:
-            spin(T('cr.quantity', 'Quantity'), 1, min(b.stack_max, 511), spec.get('quantity') or 1, lambda v: self.set_field('quantity', v))
+            spin(T('cr.quantity', 'Quantity'), 1, cr.quantity_max(code), spec.get('quantity') or 1, lambda v: self.set_field('quantity', v))
         if True:
             autos = cr.auto_choices(code, spec['ilvl'])
             if autos:

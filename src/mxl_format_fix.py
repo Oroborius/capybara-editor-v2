@@ -18,6 +18,18 @@ import mxl_format
 from mxl_format import BitReader, Item, expect, read_stats, SET_UNIQUE_ID_BITS
 import stat_ids as S
 
+# save-format field widths of an item record (the d2s / stash item layout, the same in both profiles): these are
+# limits of the file, not of the game - the game's own limits come from the tables (Creator.quantity_max,
+# Creator.max_sockets, durability_cap, defense_range ...)
+ILVL_BITS = 7
+MAX_ILVL = (1 << ILVL_BITS) - 1                 # 127
+QUANTITY_BITS = 9                               # stackable items: the quantity field
+MAX_QUANTITY = (1 << QUANTITY_BITS) - 1         # 511
+SOCKET_FIELD_BITS = 4                           # socketed items: the socket count field
+SOCKET_FIELD_MAX = (1 << SOCKET_FIELD_BITS) - 1   # 15
+SOCKETED_COUNT_BITS = 3                         # the count of items held in the sockets
+MAX_SOCKETED = (1 << SOCKETED_COUNT_BITS) - 1   # 7
+
 TEMPERED = 'tempered'
 WEAP, ARMO = 'weap', 'armo'
 
@@ -162,10 +174,10 @@ def parse_item(blob, data):
     except Exception:
         it['name'] = it['code'].strip()
     it['stats'] = []
-    it['socketed_count'] = br.read(3)
+    it['socketed_count'] = br.read(SOCKETED_COUNT_BITS)
     if not flags >> 21 & 1:
         it['id'] = br.read(32)
-        it['ilvl'] = br.read(7)
+        it['ilvl'] = br.read(ILVL_BITS)
         it['quality'] = mxl_format.QUALITY.get(br.read(4), 'unknown')
     it.opaque = True                                  # stats not readable with these tables: never re-encoded
     end = _opaque_end(blob, data, br.pos)
@@ -204,9 +216,9 @@ def _parse_item(blob, data):
         it['socketed_count'] = br.read(1)
         _keep_raw(it, blob, br)
         return it, br
-    it['socketed_count'] = br.read(3)
+    it['socketed_count'] = br.read(SOCKETED_COUNT_BITS)
     it['id'] = br.read(32)
-    it['ilvl'] = br.read(7)
+    it['ilvl'] = br.read(ILVL_BITS)
     q = mxl_format.QUALITY.get(br.read(4), 'unknown')
     it['quality'] = q
     if br.read(1):
@@ -250,9 +262,9 @@ def _parse_item(blob, data):
         if maxd != data.isc[S.MAX_DURABILITY]['add']:
             it['durability'] = br.read(data.isc[S.DURABILITY]['bits'])
     if data.base(code).stack_max is not None:
-        it['quantity'] = br.read(9)
+        it['quantity'] = br.read(QUANTITY_BITS)
     if it['has_sockets']:
-        it['sockets'] = br.read(4)
+        it['sockets'] = br.read(SOCKET_FIELD_BITS)
     set_lists = br.read(5) if q == 'set' else 0
     it['stats'] = read_stats(br, data)
     for i in range(5):

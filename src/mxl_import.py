@@ -20,7 +20,7 @@ from collections import Counter
 
 import mxl_char as MC
 from mxl_char import Character, CharError, Entry, INV_W, INV_H
-from mxl_creator import (Creator, encode_item, build_blob, _rows, mods_stats, FLAG_IDENTIFIED, FLAG_ALWAYS, FLAG_SIMPLE,
+from mxl_creator import (Creator, durability_cap, stat_cap, MAX_QUANTITY, encode_item, build_blob, _rows, mods_stats, FLAG_IDENTIFIED, FLAG_ALWAYS, FLAG_SIMPLE,
                          FLAG_ETHEREAL, FLAG_SOCKETED, FLAG_RUNEWORD, LOC_STORED, PANEL_STASH)
 import stat_ids as S
 from mxl_format_fix import body_kind
@@ -455,19 +455,19 @@ class Importer:
             dur = 0 if t.get('nodur') else t.get('dur', 0)
             if dur:
                 if quality == 'set':
-                    dur = min(dur * 2, 255)
+                    dur = min(dur * 2, durability_cap(d))
                 elif quality == 'unique':
-                    dur = min(dur * 3, 255)
+                    dur = min(dur * 3, durability_cap(d))
                 if e.get('eth'):
                     dur = dur // 2 + 1
             rec['max_durability'] = dur + cm['add']
             rec['durability'] = dur + cdur['add']
         if b.stack_max is not None:
-            rec['quantity'] = max(1, min(511, int(e.get('quantity') or 1)))
+            rec['quantity'] = max(1, min(MAX_QUANTITY, int(e.get('quantity') or 1)))
         elif e.get('quantity') and 501 in d.isc and d.isc[501]['bits']:
             # containers / shrine vessels: the count is the stat "Quantity:" (ModItemShrineCount)
             rec['stats'] = [s for s in rec['stats'] if s['id'] != 501] + [
-                dict(id=501, param=None, value=max(1, min(1000, int(e['quantity']))))]
+                dict(id=501, param=None, value=max(1, min(stat_cap(d, 501), int(e['quantity']))))]
         n_sock = self._sockets(e)
         if n_sock or children:
             rec['flags'] |= FLAG_SOCKETED

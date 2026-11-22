@@ -11,10 +11,11 @@ import os
 from mxl_lang import T
 from mxl_save import read_file, item_blob, blob_item, parse_stash, edit_stash, commit_file, EditError
 from mxl_format import FormatError
-from mxl_creator import (decode_item, encode_item, FLAG_SIMPLE, FLAG_SOCKETED, LOC_SOCKETED)
+from mxl_creator import (decode_item, encode_item, FLAG_SIMPLE, FLAG_SOCKETED, LOC_SOCKETED, MAX_SOCKETED,
+                         NUM_SOCKETS)
 
-MAX_COUNT = 7                       # the socketed-item count field of a record is 3 bits
-NUMSOCKETS = 194                    # item_numsockets: the sockets above the save field (1.14d profile)
+MAX_COUNT = MAX_SOCKETED            # save format: the socketed-item count field of a record (3 bits)
+NUMSOCKETS = NUM_SOCKETS            # item_numsockets: the sockets above the save field (1.14d profile)
 
 
 class InsertError(Exception):

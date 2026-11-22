@@ -20,11 +20,12 @@ from mxl_lang import T
 from mxl_save import read_file, item_blob, blob_item, parse_stash, free_spot, edit_stash, commit_file, EditError, \
     STASH_PAGES
 from mxl_format import FormatError
-from mxl_creator import (decode_item, encode_item, CreateError, FLAG_SIMPLE, FLAG_SOCKETED, FLAG_RUNEWORD)
+from mxl_creator import (decode_item, encode_item, CreateError, FLAG_SIMPLE, FLAG_SOCKETED, FLAG_RUNEWORD,
+                         MAX_SOCKETED, SOCKET_FIELD_MAX, NUM_SOCKETS)
 
-MAX_COUNT = 7                      # the socketed-item count field of a record is 3 bits
-FIELD_MAX = 15                     # the save's socket field is 4 bits
-NUMSOCKETS = 194                   # item_numsockets: the 1.14d sockets above the save field
+MAX_COUNT = MAX_SOCKETED           # save format: the socketed-item count field of a record (3 bits)
+FIELD_MAX = SOCKET_FIELD_MAX       # save format: the socket field (4 bits)
+NUMSOCKETS = NUM_SOCKETS           # item_numsockets: the 1.14d sockets above the save field
 LOC_STORED, PANEL_STASH = 0, 5
 
 ERRORS = (EditError, FormatError, CreateError, OSError, KeyError, ValueError, IndexError, AttributeError)
