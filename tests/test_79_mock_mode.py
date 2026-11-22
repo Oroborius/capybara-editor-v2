@@ -77,15 +77,16 @@ def _sample(rel):
 
 
 # (file, side or None = the active one, TK, mana, kind) - mana with the game's percent step (pct_fp, measured in game)
+# and item Energy after it (in game); four clones land exactly on their band top with it (the game shows the integer)
 REFERENCE = [
     ('clones/clone-41.d2s', None, 30, Fraction(1048576), 'funky'),
     ('clones/clone-60.d2s', None, 30, Fraction(1048576), 'funky'),
-    ('clones/clone-35.d2s', None, 99, '1572835.62', 'good'),
-    ('clones/clone-06.d2s', None, 99, '1572835.22', 'good'),
-    ('clones/clone-36.d2s', None, 31, '1572631.00', 'good'),
+    ('clones/clone-35.d2s', None, 99, '1572863.62', 'good'),
+    ('clones/clone-06.d2s', None, 99, '1572863.22', 'good'),
+    ('clones/clone-36.d2s', None, 31, '1572863.00', 'good'),
     ('clones/clone-73.d2s', None, 72, '1572581.37', 'good'),
     ('clones/clone-76.d2s', None, 31, '1572194.27', 'good'),
-    ('clones/clone-28.d2s', None, 30, '3145723.16', 'good'),
+    ('clones/clone-28.d2s', None, 30, '3145727.16', 'good'),
     ('clone-51.d2s', None, 39, '971798.82', 'bad'),
     ('clones/clone-20.d2s', None, 53, '1572005.77', 'good'),
 ]
@@ -106,7 +107,7 @@ def analyzer_matches_the_research_numbers():
         if kind == 'funky':
             T.eq((b['offscreen'], b['stable']), (-8388608, True), f'{rel}: perfect TK30 funky')
         if kind == 'good' and tk >= 31:
-            T.check(1571000 <= v['mana'] <= 1572863, f'{rel}: TK31 high mock at 1571000-1572863')
+            T.check(1571000 <= int(v['mana']) <= 1572863, f'{rel}: TK31 high mock at 1571000-1572863')
     a, m, _ = _analyze(_sample('clone-90.d2s'))
     v = a['values']
     T.eq((v['side'], v['lists'], v['size']), ('B', 178, 8191), 'clone-90: active side B, 178 lists, 8191 bytes')
@@ -173,7 +174,7 @@ def clones2_settle_sockets_funky_bo_and_smite():
                     ('clone-53', 'A'), ('clone-77', 'B')):
         a, m, _ = _analyze(_sample(f'clones2/{n}.d2s'), side)
         g = M.analyze(m, side, bo=True, energy=True)['values']
-        T.check(a['values']['mana'] < 1500000 and 1571000 <= g['mana'] <= 1572863,
+        T.check(a['values']['mana'] < 1500000 and 1571000 <= int(g['mana']) <= 1572863,
                 f"{n}: BO + Energy lift {float(a['values']['mana']):.0f} to {float(g['mana']):.0f} (top of band 2)")
         T.check(any(c[0] == 'ingame' for c in a['checks']), f'{n}: the in-game BO / Energy value is shown')
     a, m, _ = _analyze(_sample('clones2/clone-45.d2s'))
@@ -597,17 +598,17 @@ def form_validation_names_the_field():
 
 @T.test
 def prayer_drain_energy_vitality_and_dtm_ceiling():
-    """Prayer drains 1 + 0.1875 (L - 1) per source per pulse; item Energy stays out of mana (calibrated), item
-    Vitality is boosted with the %; the
+    """Prayer drains 1 + 0.1875 (L - 1) per source per pulse; item Energy (stat 1) / Vitality (stat 3) add after
+    the % boost (in game: sorceress 1000 base, +50%, +90 Energy / Vitality -> 1680 mana and life); the
     DTM ceilings (HPJ without, LPJ with the doubled drain x TK ratio)."""
     M = engine().M
     T.eq((M.prayer_drain(1), M.prayer_drain(17), M.prayer_drain(0)), (1, 4, 0), 'Prayer drain per pulse')
     T.eq(M.prayer_drain(5518), Fraction(16 + 3 * 5517, 16), 'Prayer 5518')
-    t = dict(T={77: 100, 0: 10, 76: 100, 3: 10}, side='A', nonclass={}, aura_lv={})
+    t = dict(T={77: 50, 1: 90, 76: 50, 3: 90}, side='A', nonclass={}, aura_lv={})
     m = dict(cls=1, base_mana_raw=256 * 1000, base_life_raw=256 * 1000, set_ids={None: set(), 'A': set()},
              skills={})
-    T.eq(M.mana_of(m, t)[0], 2000, 'Sorceress: item Energy left out of mana')
-    T.eq(M.life_of(m, t), Fraction(M.pct_fp(256 * (1000 + 10 * 2), 100), 256), 'Sorceress: item Vitality boosted with the %')
+    T.eq(M.mana_of(m, t)[0], 1680, 'Sorceress: item Energy after the % (in game 1680)')
+    T.eq(M.life_of(m, t), 1680, 'Sorceress: item Vitality after the % (in game 1680)')
     hpj = M.dtm_ceiling(1572500, 11214)
     T.eq(round(float(hpj), 2), round((8388607 - 1572500) / ((1426063 - 11214) * 0.5) * 100, 2), 'HPJ ceiling')
     d = M.prayer_drain(5518)

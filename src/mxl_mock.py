@@ -593,17 +593,18 @@ def mana_of(model, t, bo=False, energy=False):
     if energy and model['cls'] < 7:
         v += int(model.get('stat_points', 0) * Fraction(MANA_PER_ENERGY[model['cls']]) * 256)
     v += 256 * (t['T'].get(9, 0) + (SET_BONUS if full else 0))
-    # item Energy is left out: a reference clone with 892 item Energy only fits its mana band without it (a formula
-    # sheet adds it after the % instead); unverified in game
-    return Fraction(pct_fp(v, t['T'].get(77, 0) + (bo_pct(model, t) if bo else 0)), 256), full
+    v = pct_fp(v, t['T'].get(77, 0) + (bo_pct(model, t) if bo else 0))
+    if model['cls'] < 7:          # item Energy (stat 1) adds after the % boost (in game: 1000 base, +50%, +90 Energy
+        v += int(t['T'].get(1, 0) * Fraction(MANA_PER_ENERGY[model['cls']]) * 256)   # sorceress -> 1680)
+    return Fraction(v, 256), full
 
 
 def life_of(model, t, bo=False):
     T = t['T']
     oak = t['aura_lv'].get(OAK, 0)
     vit_life = {0: 3, 1: 2, 2: 2, 3: 3, 4: 4, 5: 2, 6: 3}.get(model['cls'], 2)
-    v = model['base_life_raw'] + 256 * (T.get(7, 0) + vit_life * T.get(3, 0))   # item Vitality: unverified in game
-    return Fraction(pct_fp(v, T.get(76, 0) + oak_pct(oak) + (bo_pct(model, t) if bo else 0)), 256)
+    v = pct_fp(model['base_life_raw'] + 256 * T.get(7, 0), T.get(76, 0) + oak_pct(oak) + (bo_pct(model, t) if bo else 0))
+    return Fraction(v + 256 * vit_life * T.get(3, 0), 256)   # item Vitality adds after the % (in game, like Energy)
 
 
 def solve_fp(target, pct, exact):
