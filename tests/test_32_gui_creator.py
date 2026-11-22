@@ -383,4 +383,17 @@ def create_here_on_the_character_panel():
         T.check(False, f'character file: {problem}')
 
 
+@T.test
+def proc_stat_defaults_to_the_games_skill():
+    """A proc stat picked in the attribute selector (Mega Impact 200, Amazing Grace 371) starts with the skill and
+    level of the game's own row (skill << 6 | 1), not the list's first skill (Absolution)."""
+    w = creator()
+    for sid in (200, 371):
+        p = w._default_param(sid)
+        rows = [t['display']['param'] for t in w.cr.orange_texts() if t['skilldesc'] and t['display']['id'] == sid]
+        T.check(rows, f'stat {sid}: a game row')
+        T.eq(p, rows[0], f'stat {sid}: default param (skill {p >> 6 if p else p})')
+        T.eq(p & 63, 1, f'stat {sid}: level 1')
+
+
 T.main(globals())

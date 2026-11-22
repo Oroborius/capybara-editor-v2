@@ -1860,6 +1860,12 @@ class CreatorWindow:
         kind = param_kind(sid)
         if not kind:
             return None
+        try:            # the proc stats (Mega Impact, Amazing Grace, ...): the skill and level of the game's own row,
+            for t in self.cr.orange_texts():    # not the first skill of the list (Absolution)
+                if t['skilldesc'] and t['display']['id'] == sid and (sid, t['display']['param']) not in taken:
+                    return t['display']['param']
+        except Exception:
+            pass
         first = None
         for nm, _v in list(param_choices(d, sid))[:600]:
             p, _why = encode_skill_param(d, sid, nm, 1 if kind == 'skill' else None)

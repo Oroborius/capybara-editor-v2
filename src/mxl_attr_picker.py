@@ -237,6 +237,11 @@ def _listbox(parent, pal, m, **kw):
     lb = tk.Listbox(parent, font=m['font'], bg=pal['field'], fg=pal['fg'], selectbackground=pal['sel'],
                     selectforeground=pal['sel_fg'], bd=0, highlightthickness=1, highlightbackground=pal['line'],
                     highlightcolor=pal['fg_hi'], activestyle='none', exportselection=False, relief='flat', **kw)
+    try:                                   # the wheel scrolls this list only: the editor page behind it stayed put
+        import mxl_scroll                  # before only when the list's own class binding came last
+        mxl_scroll.bind_wheel(lb, mxl_scroll.WheelHandler(lambda n, _e: (lb.yview_scroll(n, 'units'), 'break')[1]))
+    except Exception:
+        pass
     return lb
 
 
