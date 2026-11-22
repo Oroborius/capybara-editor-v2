@@ -2971,7 +2971,9 @@ class Creator:
         o = self._orb_table().get(orb)
         return max(0, o['max'] - self.orbs_applied(totals).get(orb, 0)) if o else 0
 
-    def orb_deltas(self, orb, count, code=None):
+    ORB_MULT = 289          # "Orb Effects Applied to this Item are Doubled / Quadrupled": the value is the factor
+
+    def orb_deltas(self, orb, count, code=None, mult=1):
         """[(stat, param, value)] that `count` orbs add: each orb's property stats (a ranged one at its max),
         Required Level (stat 92) and the counter (stat 290, param = the orb's row). As in the saves: 5 x
         'MO - Max Dmg Armor' = +10 to stats 22/24/160, +20 to stat 92, stat 290 param 37 = 5. On a weapon (code)
@@ -2993,7 +2995,9 @@ class Creator:
             for x in Mod('orb', prop, param, lo, hi, self.data).stats(self.data):
                 if x.get('value') and x['id'] not in skip:
                     k = (x['id'], x.get('param') or None)
-                    acc[k] = acc.get(k, 0) + x['value'] * count
+                    acc[k] = acc.get(k, 0) + x['value'] * count * max(1, mult)   # x2 / x4 items: the
+                    # orb's own stats only - Required Level and the counter are not multiplied (samples: a sash
+                    # with 289 = 2 and 5 x +5 Energy orbs holds +50 Energy, Required Level 25 orbs x 4 = 100)
         if o['lvl']:
             k = (self.ORB_LEVELREQ, None)
             acc[k] = acc.get(k, 0) + o['lvl'] * count
@@ -3005,7 +3009,8 @@ class Creator:
         if count > self.orb_room(orb, totals):
             raise CreateError(f'{orb}: at most {self.orb_room(orb, totals)} more on this item')
         out = {(k[0], k[1] or None): v for k, v in totals.items()}
-        for sid, pa, v in self.orb_deltas(orb, count, code):
+        mult = totals.get((self.ORB_MULT, None), totals.get(self.ORB_MULT, 1)) or 1
+        for sid, pa, v in self.orb_deltas(orb, count, code, mult):
             nv = out.get((sid, pa), 0) + v
             if nv:
                 out[(sid, pa)] = nv

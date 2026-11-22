@@ -2252,13 +2252,14 @@ class CreatorWindow:
         for (no, _row), rec in marked:
             tx = self.cr.recipe_texts(rec)
             first = tx['inputs'][0] if tx['inputs'] else T('cr.tog.alone', '(the item alone)')
+            # the dropdown line says it all: can it apply now (check / ~ needs the character / x not met), what it
+            # does (the item's own changes, the "Already Enchanted" style markers left out), and its row number
             mark = ('\u2713', '~', '\u2717')[no]
-            short = '; '.join(tx['changes'][:3]) + (' ...' if len(tx['changes']) > 3 else '')
-            label = f"{mark} {T('cr.tog.row', 'recipe {n}', n=rec['row'])}: {short}"
-            lines = [(T('cr.tog.applies', '[applies now]'), T('cr.tog.applies_char', '[applies if the other conditions hold]'),
-                      T('cr.tog.not_met', '[condition not met]'))[no]]
-            lines.append(T('cr.tog.with', 'with: {x}', x=', '.join(tx['inputs']) if tx['inputs'] else
-                           T('cr.tog.alone', '(the item alone)')))
+            does = [c for c in tx['changes'] if not re.match(r'^[+-]1 (Already|Item) ', c)] or tx['changes']
+            short = '; '.join(does[:3]) + (' ...' if len(does) > 3 else '')
+            label = f"{mark}  {short}   (#{rec['row']})"
+            lines = [T('cr.tog.with', 'with: {x}', x=', '.join(tx['inputs']) if tx['inputs'] else
+                       T('cr.tog.alone', '(the item alone)'))]
             if tx['conds']:
                 lines.append(T('cr.tog.if', 'if: {x}', x='; '.join(tx['conds'])))
             lines.append(T('cr.tog.does', 'does: {x}', x='; '.join(tx['changes'])))
@@ -2377,7 +2378,7 @@ class CreatorWindow:
         r += 1
         pick = tk.StringVar(value=labels[0])
         cnt = tk.StringVar(value='1')
-        cb = ttk.Combobox(row, state='readonly', values=labels, textvariable=pick, width=40)
+        cb = ttk.Combobox(row, state='readonly', values=labels, textvariable=pick, width=8)   # stretches with the row
         cb.grid(row=0, column=0, sticky='we')
         sp = ttk.Spinbox(row, from_=1, to=1, textvariable=cnt, width=4)
         sp.grid(row=0, column=1, padx=(4, 0))
@@ -2413,7 +2414,7 @@ class CreatorWindow:
             lines = []
             if n:
                 from mxl_tooltip import stat_lines
-                deltas = [dict(id=sid, param=pa, value=v) for sid, pa, v in self.cr.orb_deltas(c, n, self.spec['code'])
+                deltas = [dict(id=sid, param=pa, value=v) for sid, pa, v in self.cr.orb_deltas(c, n, self.spec['code'], self._edit_totals().get((self.cr.ORB_MULT, None), 1) or 1)
                           if sid not in (self.cr.ORB_COUNTER, self.cr.ORB_LEVELREQ)]
                 try:
                     lines = [str(x[1]).strip() for x in stat_lines(deltas, self.data, None) if str(x[1]).strip()]

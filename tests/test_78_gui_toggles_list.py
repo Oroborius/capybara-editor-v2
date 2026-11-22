@@ -41,6 +41,8 @@ def toggles_in_two_dropdowns():
         w._tog_rvar.set(items[-1][0])
         on_rec()
         T.check(w._tog_cur['rec'] is items[-1][1], f'{g}: picking a recipe selects it')
+    T.check(all(x[0][0] in '\u2713~\u2717' and f"(#{x[1]['row']})" in x[0] for v in groups.values() for x in v),
+            'each entry: applies mark, changes, row number')
     shot = os.environ.get('CAPY_SHOT_DIR')
     if shot:
         try:

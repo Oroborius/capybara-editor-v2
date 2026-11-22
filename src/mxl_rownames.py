@@ -89,6 +89,13 @@ def vanilla_names(data, table):
     if key in c:
         return c[key]
     res = {}
+    try:                        # Median XL: never a 1.14d name (skills, states, missiles, monsters), not even for a
+        import mxl_profile      # row that still matches one (the user: keep the two modes separate - "BattleCry:
+        if mxl_profile.is_median():                         # aura" in a Median skill list)
+            c[key] = res
+            return res
+    except Exception:
+        pass
     van = _vanilla().get(table)
     if van:
         vnames, seen = [], set()

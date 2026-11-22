@@ -136,4 +136,25 @@ def saved_items_match_the_table():
         T.skip('no sample save with orbed items')
 
 
+@T.test
+def doubled_and_quadrupled_items():
+    """Stat 289 "Orb Effects Applied to this Item are Doubled / Quadrupled" holds the factor (2 / 4): the orb's own
+    stats are multiplied, Required Level and the counter are not (samples: a sash with 289 = 2 and five +5 Energy
+    orbs holds +50 Energy; 25 orbs -> Required Level 100)."""
+    E = T.engine()
+    cr = E.cr
+    strength = _orb(cr, 'MO - Strength')
+    spec = cr.new_spec('unique', row=WORMTONGUE)
+    _blob, rec = cr.build(spec)
+    base = _tot(rec['stats'])
+    for mult in (1, 2, 4):
+        old = dict(base)
+        if mult > 1:
+            old[(289, None)] = mult
+        new = cr.orb_result(strength, 5, old, spec['code'])
+        T.eq(new.get((0, None), 0) - old.get((0, None), 0), 25 * mult, f'x{mult}: Strength')
+        T.eq(new.get((92, None), 0) - old.get((92, None), 0), 20, f'x{mult}: Required Level not multiplied')
+        T.eq(new.get((290, None), 0) - old.get((290, None), 0), 5, f'x{mult}: counter not multiplied')
+
+
 T.main(globals())

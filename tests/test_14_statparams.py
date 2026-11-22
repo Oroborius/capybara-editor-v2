@@ -166,16 +166,21 @@ def every_state_and_skill_row_is_named():
     states = SN.state_names_sorted(E.data)
     T.eq(len(states), n_states - 1, 'states offered (every row but 0)')
     T.check(not any(n.startswith('State ') for n, _v in states), 'a state is still named "State N"')
-    T.check(len(RN.vanilla_names(E.data, 'states')) > 100, 'vanilla state keys')
-    T.eq(SN.state_name(E.data, 1), 'freeze', 'state 1: its vanilla key')
+    import mxl_profile
+    if mxl_profile.is_median():                     # Median keeps to its own data: no 1.14d keys (test below)
+        T.eq(RN.vanilla_names(E.data, 'states'), {}, 'no vanilla state keys in Median mode')
+    else:
+        T.check(len(RN.vanilla_names(E.data, 'states')) > 100, 'vanilla state keys')
+    if not mxl_profile.is_median():
+        T.eq(SN.state_name(E.data, 1), 'freeze', 'state 1: its vanilla key')
     plain = [v for n, v in states if n.split(' (#')[0] == RN.state_fallback(E.data, v)]
-    T.check(len(plain) < 130, f'{len(plain)} states named only by their flags')
+    T.check(len(plain) < (200 if mxl_profile.is_median() else 130), f'{len(plain)} states named only by their flags')
     n_skills = len(E.data._rows('skills'))
     skills = SN.skill_names_sorted(E.data, hidden=True)
     T.check(len(skills) >= n_skills - 2, f'{len(skills)} of {n_skills} skills offered')
     T.check(len({n for n, _k in skills}) == len(skills), 'skill names are unique')
     plain = [k for n, k in skills if ' skill, func ' in n]
-    T.check(len(plain) < 600, f'{len(plain)} skills named only by their row')
+    T.check(len(plain) < 800, f'{len(plain)} skills named only by their row')   # Median: no 1.14d skill names (kept apart)
     T.check(len(SN.param_choices(E.data, 197)) > 2000, 'stat 197 offers the hidden skills too')
     for n, k in skills[::97]:
         T.eq(SN.skill_id(E.data, n), k, f'skill name {n!r} round trip')
@@ -225,6 +230,42 @@ def named_choices_name_real_rows():
                 T.check(0 <= value < len(E.data.monster_names), f'stat {sid}: monster {name!r} = {value}')
             elif len(fields) == 1 and fields[0][1] == 'orb':
                 T.check(0 <= value < len(E.cr._orb_table()), f'stat {sid}: orb {name!r} = {value}')
+
+
+@T.test
+def median_lists_carry_no_vanilla_names():
+    """Median XL mode keeps to Median data (user): the skill lists (proc skills, oskills, hidden skills) carry no
+    1.14d skill name taken from a vanilla row of the same number ("BattleCry: aura" for a Median skill)."""
+    E = T.engine()
+    import mxl_profile
+    if not mxl_profile.is_median():
+        T.skip('not the Median XL profile')
+    import mxl_rownames as RN
+    import mxl_statnames as SN
+    T.eq(RN.vanilla_names(E.data, 'skills'), {}, 'no vanilla skill names in Median mode')
+    van = RN._vanilla().get('skills') or {}
+    keys = {n.lower() for n in van.get('names') or [] if len(n) > 3}
+    own = {n.lower() for n in (E.data.skill_names.values() if isinstance(E.data.skill_names, dict) else []) if n}
+    for r in E.data._rows('missiles'):                 # and its own missiles' graphics names ("UnholyBolt")
+        try:
+            own.add(RN._cstr(r, RN.MI_CELFILE).strip().lower())
+        except Exception:
+            pass
+    for tbl in ('skills', 'states', 'missiles', 'monstats', 'overlay'):
+        T.eq(RN.vanilla_names(E.data, tbl), {}, f'no vanilla {tbl} names in Median mode')
+    for _i, ent in E.data.strings.items():             # names Median's own string tables carry are its own data
+        try:
+            own.add(str(ent[1]).strip().lower())
+        except Exception:
+            pass
+    bad = []
+    for name, sk in SN.skill_names_sorted(E.data, hidden=True):
+        if '(hidden #' not in name:
+            continue
+        head = name.split(':')[0].split(' (hidden')[0].strip().lower()
+        if head in keys and head not in own:
+            bad.append(name)
+    T.eq(bad[:5], [], f'hidden skills named after 1.14d rows: {len(bad)}')
 
 
 T.main(globals())
