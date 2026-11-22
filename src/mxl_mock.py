@@ -40,7 +40,7 @@ AURA_NAMES = {PRAYER: 'Prayer', HOLY_FIRE: 'Holy Fire', THORNS: 'Thorns', HOLY_F
 STACKING = {THORNS, MEDITATION, BARBS, OAK}
 
 SMITE, STUN, DELIRIUM, BATTLE_ORDERS = 97, 139, 350, 149
-NV_JUST_HIT, NV_HOLY_SHIELD = 86, 101    # NV states of clone-99 (stat 98)
+NV_JUST_HIT, NV_HOLY_SHIELD = 86, 101    # NV states of a reference funky (stat 98)
 DOPPLEZON = 63                      # NV state Dopplezon: item stat 98 (state), param 63, value 1 (reference clone-05)
 SOR_FIRST_SKILL = 36                # Sorceress class skills 36..65 (30 bytes of the 'if' section)
 TELEKINESIS, WARMTH, ENERGY_SHIELD = 43, 37, 58
@@ -562,7 +562,7 @@ def bo_pct(model, t):
 def pct_fp(v, pct):
     """The game's percent step on a 1/256 fixed-point value: v + (v // 100) x pct (the hundredth is truncated
     first). Measured in 1.14d: generated MockHigh 1572480 (the exact product said 1572500.1), FunkyXXX 1048560
-    (said 1048576); clone-63 and the other v // 100-exact funkies stay at 1048576."""
+    (said 1048576); the v // 100-exact funkies stay at 1048576."""
     return v + (v // 100) * pct
 
 
@@ -725,7 +725,7 @@ def analyze(model, side=None, bo=False, energy=False):
     if stun:
         txt = ', '.join(f"{'att' if k == 195 else 'hit'} {c}% L{lv}" for k, lv, c in stun[:6])
         txt += f', ... ({len(stun)} lines)' if len(stun) > 6 else ''
-        # never 100% on a line (lag); more than 10/10 only for funky / sStun builds (a mock author)
+        # never 100% on a line (lag); more than 10/10 only for funky / sStun builds
         add('stun', 'Stun', f'{txt} (total {stun_total}%)',
             BAD if max(c for _, _, c in stun) >= 100 else GOOD if stun_total <= 20 or b['funky'] else WARN)
     else:
@@ -768,7 +768,7 @@ def sides(model):
 
 # ============================================================================================ generator
 # Presets (doc 9.2 + the user's notes). mana: the target; exact: funky (the product must hit it exactly).
-# the user's clone-99: speeds IAS / FCR -121, FRW -164, stun 90% at level 63, NV states Just Hit + Holy Shield
+# a reference funky: speeds IAS / FCR -121, FRW -164, stun 90% at level 63, NV states Just Hit + Holy Shield
 _FUNKY = dict(ias=-121, frw=-164, fcr=-121, stun_lvl=63, holy_shield=True, just_hit=True, barbs=0)   # barbs: 1 / 7 funkies
 PRESETS = {
     # TK31 mocks (clones2: clone-02 A / clone-80 B / Prototype B high, clone-70 / clone-90 B mid, clone-12 /
@@ -791,7 +791,7 @@ PRESETS = {
                         hf_target=8320000, thorns=3981, barbs=0, res_cold=4725, res_fire=4725, res_light=4725,
                         target_def=762, pierce=45390, note='reference clone-05 layout: 28 Holy Freeze sources on '
                                                         'gear jewels at ~8.32M per source, all 40 charms Prayer'),
-    # funkies: the user's clone-99 (speeds -121 / -164, FHR -36, stun 90 L63, Delirium, curse res, NV
+    # funkies: a reference funky (speeds -121 / -164, FHR -36, stun 90 L63, Delirium, curse res, NV
     # states Just Hit + Holy Shield) on the tested aura plan
     'funky': dict(label='Funky (TK30)', role='funky', tk=30, mana=1048576, exact=True, hf_sources=7, hf_level=3100,
                   thorns=3981, stun=100, **_FUNKY, note='perfect funky: exactly 1048576.000 at TK30 (q even: stable)'),
@@ -867,7 +867,7 @@ CHARM_COUNT = 40
 JEWEL_QUALITY = 2
 CHARM_QUALITY = 3
 # target-neutral bulk lines of the clones, written into the room left under the size budget (charms first, then
-# jewels, then gear; one line per stat per list): replenish life 33 (the field max: clone-99 / README "replenish
+# jewels, then gear; one line per stat per list): replenish life 33 (the field max: the reference funky / clone notes "replenish
 # and DR on almost everything"), then absorb by time 4194303 (cold, fire, lightning: clone-28, Cold, Assault,
 # clone-52, TryToKill*), never on a Host (doc S4: abs-by-time does not work as host): a Host gets resist by
 # level instead (fire, lightning, cold 63: clone-45 82/82/54 lines, clone-32, clone-64; doc S4 "hosts 66k resist").
@@ -1084,7 +1084,7 @@ def _stun_from_slider(s):
 
 
 def _damage_from_slider(s, target):
-    """High stun trades smite damage (a mock author: capped smite -> stun <= 10%; <= 600k smite -> 15/15+)."""
+    """High stun trades smite damage (community notes: capped smite -> stun <= 10%; <= 600k smite -> 15/15+)."""
     if s <= 30:
         return target
     lo = min(Fraction(target), Fraction(600000) / 2)          # 600k PvP smite, after 50% DR
@@ -1286,7 +1286,7 @@ def plan(preset='mock_high', name='Mock', **over):
     sh.slots[3].add(195, DELIRIUM_CHANCE, (DELIRIUM << 6) | max(1, min(63, int(o['deli_attack']))))
     sh.slots[3].add(198, DELIRIUM_CHANCE, (DELIRIUM << 6) | max(1, min(63, int(o['deli_strike']))))
     stun = _stun_from_slider(slider)
-    if stun:                    # clones: one low line on attack and on strike (5-30% at level 0-2; xElite 90% L63)
+    if stun:                    # clones: one low line on attack and on strike (5-30% at level 0-2; a funky 90% L63)
         sh.slots[4].add(195, stun, (STUN << 6) | o['stun_lvl'])
         sh.slots[4].add(198, stun, (STUN << 6) | o['stun_lvl'])
     # ---- the categories every proven clone carries (CLONE_PROFILE): speeds, NV speeds, curse resist, target
@@ -1307,7 +1307,7 @@ def plan(preset='mock_high', name='Mock', **over):
             if s.ok(34):
                 s.add(34, max(1, min(63, int(o['dr']))))
     # ---- NV states on one charm: Dopplezon (with the Delirium reset it steadies and speeds the attack), Just Hit
-    # and Holy Shield (clone-99)
+    # and Holy Shield (reference funky)
     nv = [st for st, on in ((DOPPLEZON, o['dopplezon']), (NV_JUST_HIT, o['just_hit']),
                             (NV_HOLY_SHIELD, o['holy_shield'])) if on]
     for st in nv:
@@ -1394,7 +1394,7 @@ def _fill_absorb(P):
     order = sorted(lists, key=lambda s: {'charm': 0, 'jewel': 1}.get(s.unit.kind, 2))
     o = P['o']
     steps = [(s, sid, 63) for s in lists for sid in (234, 235, 236)] if o['abs_lvl'] else []
-    # the role's bulk first (clone profile): funkies replenish life (clone-99: on every list), mocks absorb by
+    # the role's bulk first (clone profile): funkies replenish life (reference funky: on every list), mocks absorb by
     # time (13 / 22 high mocks; no replenish), a Host resist by level (abs-by-time does not work as Host)
     rep = [BULK_REPLENISH] if o['replenish'] else []
     if o['position'] == 'Host':
@@ -1645,7 +1645,7 @@ def category_totals(model, side=None):
 # of a role carries, and their typical totals (median of the role; line-value sums, per-level stats before x clvl/8)
 _BASE = ('dr', 'dr_pct', 'abs_pct', 'abs_lvl', 'str_lvl', 'damage', 'dtm', 'smite', 'prayer_skill', 'dopplezon',
          'prayer', 'thorns', 'barbs', 'oak', 'meditation', 'life', 'mana', 'mana_pct', 'regen')
-# 'always': carried by >= 2/3 of the role's proven clones (clones2 + clones; clone-99 / clone-48 weighted);
+# 'always': carried by >= 2/3 of the role's proven clones (clones2 + clones; the reference clones weighted);
 # 'typical': the role's median total
 CLONE_PROFILE = {
     'mock': dict(always=_BASE + ('curse_res', 'dodge', 'ias', 'fhr', 'target_def', 'cb', 'nv_ias', 'res_lvl',
@@ -1807,7 +1807,7 @@ HINTS = dict(tk='hard TK points 0-99 (31: band 524288, 30: funky 1048576)', mana
              hf_cap='cold mastery up to the per-source target (the clones: 43k-82k%)',
              thorns_lvl='attacker takes damage per level (sum of the lines)',
              damage='smite PvP damage, at most 713031', stun='0-100: more stun, less smite',
-             stun_lvl='stun skill level of the attack / strike lines (clones: 0-2; xElite 63)',
+             stun_lvl='stun skill level of the attack / strike lines (clones: 0-2; funkies up to 63)',
              deli_attack='Delirium on attack, level 1-63',
              deli_strike='Delirium on strike, level 1-63 (not the attack level)',
              smite_max='on: smite exactly at the cap, every hit the max (thin margin); off: within 0.1% of the cap for the fewest bits',
