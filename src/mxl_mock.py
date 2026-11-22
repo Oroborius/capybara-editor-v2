@@ -630,7 +630,8 @@ def solve_fp(target, pct, exact):
 
 
 def smite_of(model, t):
-    """Smite damage (PvM min, max) with the equipped shield: (shield + flat) x (100 + 15 x slvl + str%) / 100."""
+    """Smite damage (PvM min, max) with the equipped shield: (shield min / max + Damage) x (100 + 15 x slvl + str%) / 100.
+    Only the shield's own range, +Damage (111), strength and the Smite level count (in game; +min / +max lines do not)."""
     T, lvl = t['T'], model['level']
     shield = model['shields'].get(t['side']) or model['shields'].get(None)
     smin, smax = SHIELD_DMG.get(shield, (0, 0))
@@ -640,7 +641,7 @@ def smite_of(model, t):
     mult = 100 + 15 * slvl + strength
     # +min damage (stat 21) does not reach Smite (duel 2026-11-22: hits spread over the whole shield range with it)
     lo = (smin + T.get(111, 0)) * mult // 100
-    hi = (smax + T.get(111, 0) + T.get(22, 0)) * mult // 100
+    hi = (smax + T.get(111, 0)) * mult // 100       # +min / +max damage lines do not reach Smite: only +Damage (111)
     return dict(shield=shield, slvl=slvl, strength=strength, mult=mult, min=lo, max=hi)
 
 
