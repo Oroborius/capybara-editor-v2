@@ -268,4 +268,17 @@ def median_lists_carry_no_vanilla_names():
     T.eq(bad[:5], [], f'hidden skills named after 1.14d rows: {len(bad)}')
 
 
+@T.test
+def mock_mode_is_vanilla_only():
+    """Mock PI / Mock Mode is a vanilla LoD thing (the user): in the Median XL profile its toggle and tab do not
+    exist."""
+    T.engine()
+    import mxl_profile
+    import mxl_mock_gui
+    if mxl_profile.is_median():
+        T.eq(mxl_mock_gui.enabled(), False, 'Mock Mode in Median XL')
+    else:
+        T.eq(mxl_mock_gui.enabled(), True, 'Mock Mode in a vanilla profile')
+
+
 T.main(globals())
