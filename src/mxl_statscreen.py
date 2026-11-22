@@ -251,7 +251,29 @@ class StatEditMixin:
 
     def st_flag(self, key, on=None):
         cur = self.st_sim.flags()[key]
-        return self.st_do('flag', key, (not cur) if on is None else bool(on))
+        new = (not cur) if on is None else bool(on)
+        if key == 'ladder' and new:
+            try:
+                import mxl_profile
+                median = mxl_profile.is_median()
+            except Exception:
+                median = False
+            if median:
+                # Median XL single player loads a ladder character once, then writes it back broken on Save and
+                # Exit (size 1, bad checksum, header 0x29 / 0x2A zeroed): the next load says "Bad inventory data"
+                v = getattr(self, 'sv_type', {}).get('ladder')
+                if v is not None:
+                    v.set(False)
+                msg = T('ss.no_ladder_median', 'Ladder is off for Median XL characters: the game breaks a ladder '
+                        'character when it saves it ("Bad inventory data" on the next load).')
+                try:
+                    from tkinter import messagebox
+                    messagebox.showwarning(T('he.ladder', 'Ladder'), msg, parent=self)
+                except Exception:
+                    pass
+                self.set_bar(msg, error=True)
+                return False
+        return self.st_do('flag', key, new)
 
     def st_done(self, n):
         return self.st_do('done', int(n))

@@ -203,6 +203,8 @@ def flags_roundtrip():
     MC = E.MC
     for tag, _src in samples():
         for flag, bit in MC.STATUS_FLAGS.items():
+            if flag == 'ladder':
+                continue                          # Median profile: saving takes ladder off (test 22)
             p = fresh(tag)
             raw = T.read(p)
             c = MC.Character(p, E.data)

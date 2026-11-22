@@ -586,10 +586,14 @@ class Character:
             if self.merc_items is not None:
                 out += b'JM' + struct.pack('<H', len(self.merc_items)) + b''.join(e.blob for e in self.merc_items)
         out += self.tail
-        if out[0x29] == 0 and out[0x2A] == 0 and _median():
-            # Median XL writes 0x10 0x5F here in every save; a character the game refused ("bad data") comes back
-            # with both zeroed - saving puts them back
-            out[0x29], out[0x2A] = 0x10, 0x5F
+        if (out[0x24] & STATUS_FLAGS['ladder'] or out[0x29] == 0 and out[0x2A] == 0) and _median():
+            # Median XL single player loads a LADDER character once, then its Save and Exit writes it back broken
+            # (size field 1, bad checksum, header 0x29 / 0x2A zeroed - tested in game) and the next load is refused
+            # ("Bad inventory data"). Saving in the Median profile takes the ladder flag off and puts back the two
+            # bytes every Median save has (0x10 0x5F)
+            out[0x24] &= ~STATUS_FLAGS['ladder'] & 0xFF
+            if out[0x29] == 0 and out[0x2A] == 0:
+                out[0x29], out[0x2A] = 0x10, 0x5F
         struct.pack_into('<I', out, 8, len(out))
         struct.pack_into('<I', out, 12, checksum(out))
         return bytes(out)

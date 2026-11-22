@@ -230,6 +230,10 @@ def median_header_bytes_restored_on_save():
     out = bytes(c.build())
     T.eq((out[0x29], out[0x2A]), (0x10, 0x5F), 'zeroed bytes restored')
     T.eq(out[0x2B:], raw[0x2B:], 'the rest unchanged')
+    c.head[0x24] |= 0x40                          # ladder: Median's Save and Exit breaks it - saving clears it
+    out = bytes(c.build())
+    T.eq(out[0x24] & 0x40, 0, 'ladder flag cleared in the Median profile')
+    T.eq(out[0x24] | 0x40, raw[0x24] | 0x40, 'the other status bits kept')
 
 
 T.main(globals())
