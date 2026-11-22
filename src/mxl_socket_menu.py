@@ -115,6 +115,18 @@ def with_max(blob, data, cr, code):
     return new, n
 
 
+
+def _drop_runeword(rec):
+    """A runeword whose runes come out is a plain socketed item again: the runeword flag, its id and the stats the
+    runeword gave (its own stat list) go; the item's own stats stay (the user: "subtract specifically the stats
+    gained from the runeword")."""
+    if rec['flags'] & FLAG_RUNEWORD:
+        rec['flags'] &= ~FLAG_RUNEWORD
+        rec.pop('runeword_id', None)
+        rec.pop('stats_runeword', None)
+        return True
+    return False
+
 def without(blob, data):
     """(new bytes, children deleted): no sockets, no socketed items."""
     rec, kids = children(blob, data)
@@ -123,6 +135,7 @@ def without(blob, data):
     rec['flags'] &= ~FLAG_SOCKETED
     rec['socketed_count'] = 0
     rec.pop('sockets', None)
+    _drop_runeword(rec)
     if _vanilla():
         rec['stats'] = _without_194(rec.get('stats'))
     new = encode_item(rec, data)
@@ -136,7 +149,9 @@ def emptied(blob, data):
     if not kids:
         raise SocketError(_t('err.empty', 'nothing is socketed in the item'))
     total = current(rec)
-    new = encode_item(dict(rec, socketed_count=0), data)
+    rec = dict(rec, socketed_count=0)
+    _drop_runeword(rec)
+    new = encode_item(rec, data)
     _check(new, data, 0, total)
     loose = []
     for k in kids:
@@ -308,7 +323,7 @@ def remove_sockets(holder, it=None, win=None, e=None):
         return False
     msg = _t('remove.done', '{name}: sockets removed ({n} socketed items deleted)', name=_name(holder, it, e), n=n)
     if rec['flags'] & FLAG_RUNEWORD:
-        msg += T('rc.unsock.rw', ' (the runeword keeps its stats, but its runes are gone)')
+        msg += T('rc.unsock.rw2', ' (the runeword and the stats it gave are gone with its runes)')
     return _write_parent(holder, it, win, e, new, msg)
 
 

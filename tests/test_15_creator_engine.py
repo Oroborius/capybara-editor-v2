@@ -390,4 +390,36 @@ def recipe_damage_pair_keeps_its_range():
     T.check(seen, 'a recipe with a damage pair')
 
 
+@T.test
+def unsocket_runeword_drops_its_stats():
+    """Unsocketing a runeword (the user): the runes come out and the stats the runeword gave go with them (its own
+    stat list, flag and id); the item's own stats stay; Remove Sockets the same."""
+    E = T.engine()
+    cr, d = E.cr, E.data
+    import mxl_socket_menu as SM
+    from mxl_creator import FLAG_RUNEWORD, decode_item
+    for row in range(len(d.runewords)):
+        bases = [b for b in cr.runeword_bases(row) if cr.max_sockets(b.code, 99) >= len(d.runewords[row][1])]
+        if bases and len(d.runewords[row][1]) >= 2:
+            break
+    spec = cr.new_spec('runeword', bases[0].code, row)
+    spec['sockets'] = len(d.runewords[row][1])
+    spec['ilvl'] = 99
+    cr.roll(spec, 'max')
+    blob = bytes(cr.build(spec)[0])
+    rec, _n = SM.children(blob, d)
+    T.check(rec['flags'] & FLAG_RUNEWORD and rec.get('stats_runeword'), 'a runeword with its own stat list')
+    own = sorted((s['id'], s.get('param'), s['value']) for s in rec.get('stats') or [])
+    new, loose = SM.emptied(blob, d)
+    r2 = decode_item(new, d)[0]
+    T.eq(bool(r2['flags'] & FLAG_RUNEWORD), False, 'unsocket: no longer a runeword')
+    T.eq(r2.get('stats_runeword'), None, 'unsocket: the runeword stats are gone')
+    T.eq(sorted((s['id'], s.get('param'), s['value']) for s in r2.get('stats') or []), own, 'unsocket: own stats kept')
+    T.eq(len(loose), len(d.runewords[row][1]), 'unsocket: every rune out')
+    T.eq(SM.current(r2), spec['sockets'], 'unsocket: sockets kept')
+    new2, n = SM.without(blob, d)
+    r3 = decode_item(new2, d)[0]
+    T.eq((bool(r3['flags'] & FLAG_RUNEWORD), r3.get('stats_runeword')), (False, None), 'remove sockets: no runeword')
+
+
 T.main(globals())
