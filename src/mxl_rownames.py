@@ -199,7 +199,15 @@ def _stat_name(data, sid):
 
 
 def skill_derived(data, sk):
-    """Name of a skill without a display name: vanilla key, or derived ('Frost Nova: aura'). None if nothing."""
+    """Name of a skill without a display name: vanilla key, or derived ('Frost Nova: aura'). None if nothing.
+    Median XL: None - those names come from vanilla keys and state / missile / graphics file names; a Median hidden
+    skill is named by what it does (mxl_statnames.hidden_skill_name: its aura / passive stats, its summon)."""
+    try:
+        import mxl_profile
+        if mxl_profile.is_median():
+            return None
+    except Exception:
+        pass
     rs = rows(data, 'skills')
     if not 0 <= sk < len(rs):
         return None
