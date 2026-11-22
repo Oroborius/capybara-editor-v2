@@ -9,7 +9,8 @@ Rules used (from the game's code and tables):
 - set items: 15-bit set-item row, no per-item set bonus lists (Median has no aprops), durability x2;
 - uniques: 15-bit unique row, durability x3 (capped at 255);
 - magic: 11-bit prefix/suffix = affix row + 1; rare: names (8+8 bits), up to 3 prefixes + 3 suffixes;
-- runewords: 16-bit id = string-table index of the runeword name key, runes socketed as children;
+- runewords: 16-bit id = string-table index of the runeword name key (vanilla: of the row's 'RunewordN' key, see
+  Creator.rw_string_id), runes socketed as children;
 - ethereal (any item, any quality): stored defense x3/2, max durability /2 + 1;
 - armor with Enhanced Defense: base defense = max + 1;
 - stats are saved sorted by (stat, param), same stat+param from several mods are added together.
@@ -229,6 +230,7 @@ class Tables:
         for r in _rows(data, 'qualityitems'):
             self.superior.append(dict(weapon=bool(r[1] or r[3] or r[6]), armor=bool(r[0] or r[2] or r[8] or r[9])))
         self.rw_complete = [r[128] for r in _rows(data, 'runes')]
+        self.rw_key = [r[:64].split(b'\0')[0].decode('latin1') for r in _rows(data, 'runes')]   # 'RunewordN'
 
 
 # --------------------------------------------------------------------------------------------- encoding
@@ -561,7 +563,7 @@ class Creator:
         self.t = Tables(data)
         data.key('x')                                      # builds data._bykey
         self.rw_list = [i for i, (n, runes, ok, ex) in enumerate(data.runewords)
-                        if runes and self.t.rw_complete[i] and n in data._bykey]
+                        if runes and self.t.rw_complete[i] and self.rw_string_id(i) is not None]
         try:
             data._sn_string_tags_fn = self.orange_effect_tags    # the attribute picker's orange-text labels
         except Exception:
@@ -623,6 +625,26 @@ class Creator:
             if u['code'].strip() and u['code'] in self.data.bases and u['name'] in self.data._bykey:
                 out.append((i, self.data.key(u['name']).replace('\n', ' '), u))
         return sorted(out, key=lambda x: x[1].lower())
+
+    def rw_string_id(self, row):
+        """The item's 16-bit runeword field for runes row `row`: the string-table index of the row's name key.
+        Median XL: the key is the runeword's name (data._bykey). Vanilla 1.10+: the key is the row's Name column
+        ('RunewordN'); the game takes it from patchstring (10000+) before expansionstring (20000+) and string (0+),
+        so the field reads as a 12-bit id plus a 4-bit table part (Spirit 20635 = 155 + 5 << 12; Delirium,
+        redefined in patchstring: 10910 = 2718 + 2 << 12)."""
+        if not self._vanilla():
+            return self.data._bykey.get(self.data.runewords[row][0])
+        ids = getattr(self, '_rw_ids', None)
+        if ids is None:
+            keys = set(self.t.rw_key)
+            rank = {}
+            for i, v in self.data.strings.items():
+                if isinstance(v, tuple) and v[0] in keys and 0 <= i < 0x10000:
+                    r = 0 if 10000 <= i < 20000 else 1 if i >= 20000 else 2
+                    if v[0] not in rank or r < rank[v[0]][0]:
+                        rank[v[0]] = (r, i)
+            ids = self._rw_ids = {k: v[1] for k, v in rank.items()}
+        return ids.get(self.t.rw_key[row]) if row < len(self.t.rw_key) else None
 
     def runewords(self):
         out = []
@@ -2046,8 +2068,7 @@ class Creator:
                 slots += [pre[k] if k < len(pre) else None, suf[k] if k < len(suf) else None]
             rec['rare_affixes'] = slots
         if q == 'runeword':
-            key = d.runewords[spec['row']][0]
-            idx = d._bykey.get(key)
+            idx = self.rw_string_id(spec['row'])
             if idx is None:
                 raise CreateError(T('cr.err.rw_name', 'runeword name not found in the string tables'))
             rec['runeword_id'] = idx
