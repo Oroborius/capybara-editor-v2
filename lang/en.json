@@ -601,5 +601,6 @@
   "tab.stash": "Stash",
   "tab.character": "Character",
   "tab.creator": "Creator",
-  "tab.empty": "{name}: empty - use the matching button in the toolbar above."
+  "tab.empty": "{name}: empty - use the matching button in the toolbar above.",
+  "ss.no_ladder_median": "Ladder is off for Median XL characters: the game breaks a ladder character when it saves it (\"Bad inventory data\" on the next load)."
 }

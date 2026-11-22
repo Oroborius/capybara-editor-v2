@@ -588,5 +588,6 @@
   "cr.raw.clamped": "stat thô #{sid}: {v} không thể lưu, {lo} đến {hi}",
   "cr.warn.unrestricted": "không giới hạn: một giá trị nằm ngoài khoảng của trò chơi, giữ nguyên",
   "tab.stash": "Rương",
-  "tab.character": "Nhân vật"
+  "tab.character": "Nhân vật",
+  "ss.no_ladder_median": "Ladder bị tắt cho nhân vật Median XL: trò chơi làm hỏng nhân vật ladder khi lưu (\"Bad inventory data\" ở lần tải sau)."
 }

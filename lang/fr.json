@@ -587,5 +587,6 @@
   "cr.raw.clamped": "stat brute #{sid} : {v} impossible à stocker, {lo} à {hi}",
   "cr.warn.unrestricted": "sans limites : une valeur est en dehors des plages du jeu, gardée telle quelle",
   "tab.stash": "Coffre",
-  "tab.character": "Personnage"
+  "tab.character": "Personnage",
+  "ss.no_ladder_median": "L'échelle (Ladder) est désactivée pour les personnages Median XL : le jeu abîme un personnage d'échelle en le sauvegardant (« Bad inventory data » au chargement suivant)."
 }
