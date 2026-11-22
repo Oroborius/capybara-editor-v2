@@ -28,8 +28,7 @@ def _saves():
     dst = T.guard(os.path.join(T.tmp(), 'vsaves'), 'vanilla save copies')
     if not os.path.isdir(dst):
         os.makedirs(dst)
-        for f in glob.glob(os.path.join(v, '*.d2s')) + [os.path.join(m, 'clones', 'clone-59.d2s'),
-                                                       os.path.join(m, 'clones', 'clone-26.d2s'),
+        for f in glob.glob(os.path.join(v, '*.d2s')) + [os.path.join(m, 'clones', 'clone-26.d2s'),
                                                        os.path.join(m, 'clones', 'clone-35.d2s')]:
             shutil.copy(f, dst)
     return dst
@@ -139,7 +138,7 @@ def extreme_characters_open_clean():
     (a SAVE without edits writes nothing new)."""
     if _S is None:
         T.skip('no vanilla install / samples')
-    for name in ('clone-35', 'clone-59'):
+    for name in ('clone-35',):                     # clone-59 is a pre-1.10 save (version 92): refused (test 79)
         cw = _open(name)
         T.check(cw.ch is not None and os.path.basename(cw.ch.path) == name + '.d2s', f'{name} opened')
         T.check(not cw.dirty(), f'{name}: nothing pending after loading')

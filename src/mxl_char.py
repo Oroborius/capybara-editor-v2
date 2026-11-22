@@ -490,6 +490,9 @@ class Character:
         if struct.unpack_from('<I', b, 0)[0] != MAGIC:
             raise FormatError(T('ch.err.not_char', 'not a character file'))
         self.version = struct.unpack_from('<I', b, 4)[0]
+        if self.version != 96:                          # 1.10+ (Median XL too); pre-1.10 saves pack the stats apart
+            raise FormatError(T('ch.err.old_version', 'unsupported old save version ({v}); only 1.10+ saves (96)',
+                                v=self.version))
         if b[QUEST_OFF:QUEST_OFF + 4] != b'Woo!' or b[WP_OFF:WP_OFF + 2] != b'WS':
             raise FormatError(T('ch.err.layout', 'unexpected character file layout'))
         # the stats start right after the 52-byte NPC section; searching for 'gf' is only the fallback for an

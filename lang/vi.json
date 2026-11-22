@@ -220,6 +220,7 @@
   "ch.err.exists": "{name} đã tồn tại",
   "ch.err.not_char": "không phải tệp nhân vật",
   "ch.err.layout": "cấu trúc tệp nhân vật không như mong đợi",
+  "ch.err.old_version": "phiên bản lưu cũ không được hỗ trợ ({v}); chỉ hỗ trợ bản lưu 1.10+ (96)",
   "ch.err.no_stats": "không tìm thấy chỉ số ('gf')",
   "ch.err.no_skills": "không tìm thấy kỹ năng ('if') sau phần chỉ số",
   "ch.err.no_corpse": "không tìm thấy danh sách xác",

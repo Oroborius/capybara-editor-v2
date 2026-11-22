@@ -219,6 +219,7 @@
   "ch.err.exists": "{name} existe déjà",
   "ch.err.not_char": "ce n'est pas un fichier de personnage",
   "ch.err.layout": "structure du fichier de personnage inattendue",
+  "ch.err.old_version": "version de sauvegarde ancienne non prise en charge ({v}) ; seules les sauvegardes 1.10+ (96)",
   "ch.err.no_stats": "statistiques ('gf') introuvables",
   "ch.err.no_skills": "compétences ('if') introuvables après les statistiques",
   "ch.err.no_corpse": "liste du cadavre introuvable",

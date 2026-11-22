@@ -220,6 +220,7 @@
   "ch.err.exists": "{name} already exists",
   "ch.err.not_char": "not a character file",
   "ch.err.layout": "unexpected character file layout",
+  "ch.err.old_version": "unsupported old save version ({v}); only 1.10+ saves (96)",
   "ch.err.no_stats": "stats ('gf') not found",
   "ch.err.no_skills": "skills ('if') not found after the stats",
   "ch.err.no_corpse": "corpse list not found",
