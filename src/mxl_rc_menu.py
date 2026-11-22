@@ -124,6 +124,7 @@ def _stash_menu(app, ev):
         menu.add_cascade(label=rc('move', 'Move to page...'), menu=pages)
         _quantity_cascade(app, menu, it)
         _fill_sockets_entry(app, menu, it)
+        _socket_cascade(app, menu, it=it)
         _add_hero_editor_menu(app, menu, it=it)
         menu.add_separator()
         menu.add_command(label=rc('delete', 'Delete item'), command=lambda: delete_selected(app))
@@ -468,6 +469,7 @@ def _char_menu(win, cv, ev):
                              command=lambda: _char_paste_over(win, e, clip))
         _char_quantity_cascade(win, menu, e)
         _fill_sockets_entry(win, menu, None, win=win, e=e)
+        _socket_cascade(win, menu, win=win, e=e)
         _add_hero_editor_menu(win, menu, win=win, e=e)
         menu.add_command(label=rc('to_stash', 'To stash'), command=win.to_stash)
         menu.add_command(label=rc('delete_short', 'Delete'), command=win.delete)
@@ -1415,62 +1417,21 @@ def _record_char_write(win, path, before, name):
         _dbg('undo not recorded:', err)
 
 
+def _socket_cascade(holder, menu, it=None, win=None, e=None):
+    """'Socket' submenu: Add Sockets (N) / Remove Sockets / Unsocket (mxl_socket_menu); never keeps the menu from
+    opening."""
+    try:
+        import mxl_socket_menu
+        mxl_socket_menu.add_menu(holder, menu, it=it, win=win, e=e)
+    except Exception as err:
+        _dbg('socket menu:', err)
+
+
 def _remove_socketed(holder, it, win=None, e=None):
-    """Hero Editor's mnuRemoveSocketed: deletes the item's socketed children (its runes, gems,
-    jewels) and clears the socket fields. The children's bytes live behind the record, so unlike
-    the record-only mutations this writes the record alone - a shorter blob through the same
-    splice writers (the stash entry shrinks; on the character the item is re-placed and refused
-    when it no longer fits)."""
-    data = holder.data
-    try:
-        blob = win.ch.stash_blob(e) if win is not None else item_blob(read_file(holder.path), it)
-        rec, kids = _children_blobs(blob, data)
-    except (EditError, FormatError, OSError, CreateError, AttributeError, ValueError) as err:
-        _say(holder, win, str(err), True)
-        if win is not None:
-            win.reload()
-        return
-    n = len(kids)
-    name = _item_name(holder, it, e)
-    runeword = bool(rec['flags'] & FLAG_RUNEWORD)
-    rec['flags'] &= ~FLAG_SOCKETED
-    rec['socketed_count'] = 0
-    rec.pop('sockets', None)
-    try:
-        new = encode_item(rec, data)
-        blob_item(new, data)             # validates the shrunk entry before anything is written
-    except (FormatError, OSError, CreateError, ValueError) as err:
-        _say(holder, win, str(err), True)
-        if win is not None:
-            win.reload()
-        return
-    msg = rc('unsock.done', '{name}: {n} socketed items removed', name=name, n=n)
-    if runeword:
-        msg += rc('unsock.rw', ' (the runeword keeps its stats, but its runes are gone)')
-    if win is None:
-        try:
-            bak = edit_stash(holder.path, data, remove=[it['_offset']],
-                             insert=[(it['page'], it['x'], it['y'], new)],
-                             backup=holder.needs_backup(holder.path))
-        except (EditError, FormatError, OSError) as err:
-            _status(holder, str(err), True)
-            return
-        holder.backup_made(holder.path, bak)
-        _selected(holder, it['page'], it['x'], it['y'])
-        _status(holder, msg)
-    else:
-        import mxl_char as MC
-        merc = win.is_merc()
-        where = ('slot', e.it['equipped']) if e.it['location'] == MC.LOC_EQUIPPED \
-            else ('inv', e.it['x'], e.it['y'])
-        try:
-            _char_replace(win, e, new, where, merc)
-        except Exception as err:
-            win.reload()
-            win.set_status(str(err), True)
-            return
-        if not win.save(msg):
-            win.set_status(T('ch.err.not_saved', 'character not saved'), True)
+    """Hero Editor's mnuRemoveSocketed: the socket menu's Remove Sockets (mxl_socket_menu: undoable, the 1.14d
+    item_numsockets stat goes too)."""
+    import mxl_socket_menu
+    return mxl_socket_menu.remove_sockets(holder, it, win, e)
 
 
 def _fill_sockets_entry(holder, menu, it, win=None, e=None):

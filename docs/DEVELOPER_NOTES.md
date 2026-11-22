@@ -154,6 +154,11 @@
   called from the release handlers of the main grid, the Stash tab's panel and the Character tab (move undo
   records it). Never adds sockets. Edit mode: `Creator.add_filler` keeps the copied filler's bytes in
   spec['_added'], written by `_carry` after the other children.
+- **Socket menu** (`mxl_socket_menu.py`, right-click > Socket, stash and character items): Add Sockets (N) with
+  N = `Creator.socket_limit` (gemsockets capped by MaxSock1/25/40 at the item level; 1.14d: 7 on the rule types,
+  field + stat 194 via `socket_split`), Remove Sockets (children deleted, 194 stripped; also the Specific-functions
+  entry), Unsocket (children to free stash places, shown page first; 1.14d: personal stash panel 5, then the
+  inventory; refused unchanged when they do not fit). One `mxl_undo` 'files' step each.
 - **Replace keeps the file order** (`mxl_stash_order.py`, installed by `mxl_format_fix.install()`): the host's
   `edit_stash(remove=[..], insert=[..])` appends the inserted item at the end of its page's list, so every
   replace moved the item in the file (add + delete of a stat: same size, same items, hundreds of bytes shifted -
