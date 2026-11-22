@@ -1088,7 +1088,8 @@ CHARM_QUALITY = 3
 # target-neutral bulk lines of the clones, written into the room left under the size budget (charms first, then
 # jewels, then gear; one line per stat per list): replenish life 33 (the field max: the reference funky / clone notes "replenish
 # and DR on almost everything"); the clones' by-time absorb (4194303 = 767 / 767: clone-28, Cold, Assault, clone-52,
-# TryToKill*) is now planned to the need (below), never on a Host (doc S4: abs-by-time does not work as host): a
+# TryToKill*) is now planned to the need (below), Hosts included (an old note said 'not as host'; the game code
+# sums it the same for every player): a
 # Host gets resist by level first (fire, lightning, cold 63: clone-45 82/82/54 lines, clone-32, clone-64; doc S4 "hosts 66k resist").
 # user (2026-11-22): absorb is target-driven (absorb_plan): the need of each element at its Hell resistance, filled
 # with absorb by character level (234-236) first, then absorb by time (288-290, 767 a line) for the rest - "you need
@@ -1669,13 +1670,14 @@ def absorb_plan(o, nl):
     """{element: dict(res, need, lvl (by-clvl lines), time (by-time values), total)} of the plan: the Hell
     resistance the options give, the absorb that soaks a capped hit at that resistance, filled with absorb by
     character level first (one 63 line per list) and the rest by time (767 lines + one remainder line). By time
-    only where the form allows it (never on a Host) and the need is in reach of the lists; an element without
+    only where the form allows it and the need is in reach of the lists; an element without
     resistance (-100) gets the by-clvl lines only (its need is out of reach)."""
     out = {}
     if not o['abs_lvl']:
         return out
     clvl = int(o['level'])
-    by_time = o['abs_time'] and o['position'] != 'Host'
+    by_time = o['abs_time']        # Hosts too: the server sums by-time stats the same for host and joiners (1.13c
+                                   # code, D2Game per-client loop); the old 'not as host' note had no code behind it
     for name, _, _, _, _, _ in ELEMENTS:
         res = element_res(int(o['res_flat']), int(o['res_' + name]), clvl)
         need = absorb_need(res)
@@ -2201,7 +2203,7 @@ HINTS = dict(tk='hard TK points 0-99 (default 31; 31: band 524288, 30: funky 104
              res_fire='fire resist by level', res_light='lightning resist by level',
              res_flat='flat resist, every element (-100: the "-100 res" mocks)', curse_res='curse resistance (511)',
              dodge='dodge / avoid / evade % each', abs_lvl='absorb: the need per element (8388607 x 0.17 x 0.6 x (100 - res) / 100), by character level first',
-             abs_time='absorb by time (767 a line) for the rest of the need after 63 x clvl / 8 per list (never on a Host)', cbf='cannot be frozen',
+             abs_time='absorb by time (767 a line) for the rest of the need after 63 x clvl / 8 per list (Hosts too)', cbf='cannot be frozen',
              ias='increased attack speed', frw='faster run / walk', fhr='faster hit recovery (clones -36)',
              fcr='faster cast rate', nv_ias='non-visible attack rate (stat 68, 97 per line)',
              nv_frw='non-visible velocity (stat 67, 97 per line)', dopplezon='NV state Dopplezon on a charm',

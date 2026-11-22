@@ -846,10 +846,10 @@ def rule_absorb_need_filled_by_level_then_by_time():
             a = A[name]
             T.eq(sum(1 for x in L if x[0] == sid_l), a['lvl'], f'{key} {name}: by-clvl lines')
             T.eq(sum(M.abs_time_value(v) for sid, v in L if sid == sid_t), sum(a['time']), f'{key} {name}: by time')
-            if a['res'] > M.HELL_RES and not host:
+            if a['res'] > M.HELL_RES:                   # Hosts too (by time works the same for every player)
                 T.check(a['total'] >= int(a['need']), f"{key} {name}: {float(a['total']):.0f} >= need")
-            if host or a['res'] <= M.HELL_RES:
-                T.eq(a['time'], [], f'{key} {name}: no by time (Host / no resist)')
+            if a['res'] <= M.HELL_RES:
+                T.eq(a['time'], [], f'{key} {name}: no by time (no resist)')
         st = {c[0]: c[3] for c in M.analyze(M.model_from_plan(P, raw))['checks']}
         T.eq(st.get('absorb'), M.WARN if host else M.GOOD, f'{key}: absorb check')
     P = M.plan('mock_high', 'Abs')
