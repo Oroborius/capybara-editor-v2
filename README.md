@@ -39,6 +39,9 @@ report what you find.
 - **Fill sockets with ...**: copy a gem, rune or jewel, then fill an item's free sockets with copies of it. An item
   with too few sockets gets more first, up to what its base allows (with "Unrestricted", any weapon or armor up
   to 6). Not offered where it cannot work, such as runewords.
+- **Socket an item**: drag a gem, rune, jewel or other socket filler onto an item with a free socket (stash or
+  character, either way) and it goes into that socket, as in the game; Ctrl+Z undoes it. In the Item Editor
+  (Edit item), a free socket offers *Insert copied ...* for a copied socket filler.
 - **Make perfect**: one click raises every roll of an item to the top of its range. Mystic orb additions are
   recognised and kept. It replaces the value sliders of the main window.
 - **Edit items where they are**: equipped, mercenary and inventory items can be edited from the Stash tab, without

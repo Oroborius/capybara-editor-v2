@@ -506,6 +506,12 @@ class CharacterWindow(StatEditMixin):
         if where is None:
             return
         e = d['entry']
+        try:                                              # a gem / rune / jewel onto an item: into its socket
+            import mxl_socket_insert
+            if mxl_socket_insert.char_tab_drop(self, e, cv, fake):
+                return
+        except Exception as err:
+            print('socket insert:', err)
         try:
             self.ch.move(e, where, self.is_merc())
             self.save(T('ch.moved', '{item} moved', item=clean(e.it['name'])))

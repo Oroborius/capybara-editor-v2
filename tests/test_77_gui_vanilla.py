@@ -144,4 +144,60 @@ def extreme_characters_open_clean():
         T.check(not cw.dirty(), f'{name}: nothing pending after loading')
 
 
+@T.test
+def character_tab_drag_gem_into_free_socket():
+    """1.14d: a gem dragged onto an inventory item with a free socket goes into it (mxl_socket_insert, the
+    Character tab's drop); the gem leaves the inventory, the socketed-item count grows, Ctrl+Z undoes it."""
+    if _S is None:
+        T.skip('no vanilla install / samples')
+    import mxl_creator as C
+    import mxl_save
+    import mxl_undo
+    cw = _open('complex')
+    cw.tab.set('inventory')
+    cw.show_tab()
+    cw.merc.set(False)
+    T.pump(4)
+    d = cw.data
+    cr = C.Creator(d)
+    gem = next(c for c, _n in cr.sockets_fillers())
+    base = next((b for b in cr.bases() if b.kind == 'weapons' and b.size[1] <= 3
+                 and cr.max_sockets(b.code, C.MAX_ILVL) >= 2), None)
+    if base is None:
+        T.skip('no weapon base with 2 sockets')
+    spec = cr.new_spec('normal', base.code)
+    spec['ilvl'] = C.MAX_ILVL
+    spec['sockets'] = 2
+    spec['socketed'] = [gem]
+    blob = bytes(cr.build(spec)[0])
+    kid = C.Creator._split(blob, d)[1][0]
+    gem_blob = C.encode_item(dict(C.decode_item(kid, d)[0], location=0, equipped=0, x=0, y=0, panel=1), d)
+    for x in list(cw.ch.inventory()):                  # room for the test items (a copy of the sample)
+        cw.ch.remove(x, False)
+    spots = []
+    for b in (blob, gem_blob):
+        spot = cw.ch.free_inventory_spot(mxl_save.blob_item(b, d))
+        if spot is None:
+            T.skip('inventory full')
+        cw.ch.place(b, ('inv', spot[0], spot[1]), False)
+        spots.append(('inv', spot[0], spot[1]))
+    T.check(cw.save('test items placed'), 'test items not saved')
+    T.pump(4)
+    raw0 = T.read(cw.ch.path)
+    a, b = T.chartab_ev(spots[1]), T.chartab_ev(spots[0])
+    cw.on_press(a)
+    cw.on_drag(b)
+    cw.on_release(b)
+    T.pump(8)
+    T.check(T.read(cw.ch.path) != raw0, f'nothing written: {cw.status.cget("text")!r}')
+    e = next(x for x in cw.ch.inventory() if ('inv', x.it['x'], x.it['y']) == spots[0])
+    rec, kids = C.decode_blob(bytes(e.blob), d)
+    T.eq([k['code'] for k in kids], [gem, gem], 'children of the item')
+    T.eq(rec.get('socketed_count'), 2, 'socketed-item count')
+    T.check(not any(('inv', x.it['x'], x.it['y']) == spots[1] for x in cw.ch.inventory()), 'the gem is still loose')
+    mxl_undo.undo(G.app)
+    T.pump(8)
+    T.eq(T.read(cw.ch.path), raw0, 'character after the undo')
+
+
 T.main(globals())

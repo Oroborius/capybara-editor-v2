@@ -819,6 +819,8 @@ class MainInventory:
         t = self.char_target(ev.x_root, ev.y_root, it, d['dx'], d['dy'], ignore=e)
         if t is not None:
             where, merc, err = t
+            if err and _socket('char_on_char', self, d, ev):  # a gem / rune / jewel onto an item: into its socket
+                return
             if err:
                 self.app.status.configure(text=T('inv.cannot_move', 'Cannot move: {error}', error=err))
                 return
@@ -830,6 +832,8 @@ class MainInventory:
         t = self.stash_target(ev.x_root, ev.y_root, it, d['dx'], d['dy'])
         if t is not None:
             x, y, err = t
+            if err and _socket('char_on_stash', self, d, ev):
+                return
             if err:
                 self.app.status.configure(text=T('inv.cannot_drop', 'Cannot drop here: {error}', error=err))
                 return
@@ -1030,6 +1034,8 @@ class MainInventory:
         if t is None:
             return
         where, merc, err = t
+        if err and _socket('stash_on_char', self, d, ev):
+            return
         if err:
             app.status.configure(text=T('inv.cannot_drop', 'Cannot drop here: {error}', error=err))
             return
@@ -1265,6 +1271,17 @@ class PanelWin:
 
 # ---------------------------------------------------------------------------------------- main window hooks
 
+def _socket(what, holder, d, ev):
+    """mxl_socket_insert.<what>(holder, d, ev): True when the drop was a socket filler onto an item (inserted, or
+    refused with a status message); never breaks the drop handler around it."""
+    try:
+        import mxl_socket_insert
+        return bool(getattr(mxl_socket_insert, what)(holder, d, ev))
+    except Exception as e:
+        print('socket insert:', e)
+        return False
+
+
 def install(App):
     o_build, o_draw, o_click, o_drag, o_release = App._build, App.draw_grid, App.on_click, App.on_drag, App.on_release
 
@@ -1318,6 +1335,10 @@ def install(App):
                 self.canvas.delete('depot')
                 inv.drop_from_stash(d, ev)
                 return
+        if self.drag and self.drag.get('item') is not None and _socket('stash_on_stash', self, self.drag, ev):
+            self.drag = None                              # a socket filler onto a stash item: into its socket
+            self.canvas.delete('depot')
+            return
         o_release(self, ev)
 
     App._build = _build

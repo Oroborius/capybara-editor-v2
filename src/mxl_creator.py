@@ -1942,7 +1942,7 @@ class Creator:
         ms = self.socket_limit(code, ilvl) if q != 'runeword' else self.max_sockets(code, ilvl)
         if spec['sockets'] > ms:
             raise CreateError(T('cr.err.max_sockets', '{base} can have at most {n} socket(s) at item level {ilvl}', base=b.name, n=ms, ilvl=ilvl))
-        if len(spec['socketed']) > spec['sockets']:
+        if len(spec['socketed']) + len(spec.get('_added') or ()) > spec['sockets']:
             raise CreateError(T('cr.err.too_many_socketed', 'more socketed items than sockets'))
         autos = [a for a, _, _ in self.auto_choices(code, ilvl)]
         # Median XL Sigma: uniques and set items get their base's innate (automagic) affix too, like the game's
@@ -2196,12 +2196,50 @@ class Creator:
                 if q not in (None, 'normal'):
                     name = '%s (%s)' % (name, T('cr.quality.' + q, q.capitalize()))
                 out.append(dict(kind='item', index=i, code=c, name=name))
+        for j, raw in enumerate(spec.get('_added') or ()):     # socketables put in while editing (add_filler)
+            rec = decode_item(raw, d)[0]
+            c = rec['code']
+            out.append(dict(kind='item', added=j, code=c, name=d.base(c).name if c in d.bases else c.strip()))
         return out
+
+    def free_sockets(self, spec):
+        """Empty sockets of an edited item (sockets minus runes / picks, kept and added socketed items)."""
+        if spec.get('quality') == 'runeword':
+            used = len(self.data.runewords[spec['row']][1])
+        else:
+            used = len([c for c in spec.get('socketed') or () if c])
+        used += len(spec.get('_kept') or ()) + len(spec.get('_added') or ())
+        return max(0, (spec.get('sockets') or 0) - used)
+
+    def is_socketable(self, code):
+        """A socket filler (its item type descends from 'sock': gems, runes, jewels, other fillers)."""
+        try:
+            return 'sock' in self.type_codes(code)
+        except Exception:
+            return False
+
+    def add_filler(self, spec, blob):
+        """Puts a socketable item (its bytes, e.g. the copied item) into the next free socket of an edited item:
+        written after the item's other socketed items, as the game appends one. Raises CreateError."""
+        if not spec.get('_orig'):
+            raise CreateError(T('cr.err.add_filler_new', 'socketed items can be added to an edited item only'))
+        rec, n = decode_item(bytes(blob), self.data)
+        if n != len(blob) or rec['flags'] & FLAG_SOCKETED:
+            raise CreateError(T('cr.err.add_filler_kids', 'an item with socketed items cannot go into a socket'))
+        if not self.is_socketable(rec['code']):
+            raise CreateError(T('cr.err.add_filler_type', 'the copied item is not a gem, rune, jewel or other socket filler'))
+        if not self.free_sockets(spec):
+            raise CreateError(T('cr.err.add_filler_full', 'the item has no free socket'))
+        spec['_added'] = list(spec.get('_added') or ()) + [bytes(blob)]
 
     def remove_filler(self, spec, n):
         """Takes filler n of fillers(spec) out of its socket (the socket stays, empty)."""
         f = self.fillers(spec)[n]
-        if f['kind'] == 'pick':
+        if f.get('added') is not None:
+            a = list(spec.get('_added') or ())
+            del a[f['added']]
+            spec['_added'] = a
+        elif f['kind'] == 'pick':
             s = list(spec.get('socketed') or [])
             del s[f['slot']]
             spec['socketed'] = s
@@ -2214,6 +2252,7 @@ class Creator:
             spec['socketed'] = []
         if '_kept' in spec:
             spec['_kept'] = []
+        spec.pop('_added', None)
 
     def _original(self, it):
         """What _carry needs of the item as read, or None when its bytes are not known (an item that did not come
@@ -2295,7 +2334,8 @@ class Creator:
         odec = [decode_item(raw, d)[0] for raw in o['kids']]
         fixed = [i for i, k in enumerate(odec) if not k['flags'] & FLAG_SIMPLE]   # jewels...: not in the spec
         keep = fixed if spec.get('_kept') is None else [i for i in fixed if i in spec['_kept']]
-        if nkids == bkids and keep == fixed:
+        added = [bytes(x) for x in spec.get('_added') or ()]       # add_filler: appended after the others
+        if nkids == bkids and keep == fixed and not added:
             kids = list(o['kids'])
         else:
             if nkids == bkids:
@@ -2307,6 +2347,7 @@ class Creator:
                 new = [decode_item(x, d)[0] for x in nkids]
                 room = max(len(new), spec.get('sockets', 0) if out['flags'] & FLAG_SOCKETED else 0)
                 both = (new + keep)[:max(room, len(new))]
+            both = both + added
             kids = []
             for x, k in enumerate(both):
                 if isinstance(k, int):                    # an original child: its own bytes when its place holds
@@ -2314,6 +2355,8 @@ class Creator:
                         kids.append(o['kids'][k])
                         continue
                     k = odec[k]
+                elif isinstance(k, bytes):
+                    k = decode_item(k, d)[0]
                 kids.append(encode_item(dict(k, location=LOC_SOCKETED, equipped=0, x=x, y=0, panel=0), d))
         out['socketed_count'] = len(kids)
         if out == orec and kids == o['kids']:

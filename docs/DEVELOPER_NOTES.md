@@ -149,6 +149,11 @@
   baseline and the current spec over the original record (per header field, flag bit, stat key, socket
   fillers). Nothing changed -> the original bytes. Without `_raw` (a plain dict) the old model-only path runs,
   keeping the item id (`_item_id`). Measured by `tools/audit_game_data.py --save-dir .. --noop-edit`.
+- **Socket insert** (`mxl_socket_insert.py`): a socket filler (item type descends from 'sock') dropped on an item
+  with a free socket is appended as its next child (count + 1, x = socket), the filler removed from its place;
+  called from the release handlers of the main grid, the Stash tab's panel and the Character tab (move undo
+  records it). Never adds sockets. Edit mode: `Creator.add_filler` keeps the copied filler's bytes in
+  spec['_added'], written by `_carry` after the other children.
 - **Replace keeps the file order** (`mxl_stash_order.py`, installed by `mxl_format_fix.install()`): the host's
   `edit_stash(remove=[..], insert=[..])` appends the inserted item at the end of its page's list, so every
   replace moved the item in the file (add + delete of a stat: same size, same items, hundreds of bytes shifted -

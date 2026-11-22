@@ -1063,6 +1063,9 @@ class CreatorWindow:
                 spec['socketed'] = picks[:spec['sockets'] - len(spec['_kept'])]
             else:
                 spec['socketed'] = spec.get('socketed', [])[:spec['sockets']]
+            if spec.get('_added'):                       # socketables put in while editing: after the others
+                used = len([c for c in spec['socketed'] if c]) + len(spec.get('_kept') or ())
+                spec['_added'] = spec['_added'][:max(0, spec['sockets'] - used)]
         b = self.data.base(code)
         if b.stack_max is not None and not spec.get('quantity'):
             spec['quantity'] = b.stack_max
@@ -1184,6 +1187,7 @@ class CreatorWindow:
                 host.grid(row=rr, column=1, sticky='w', pady=2)
                 ttk.Label(host, text=clean(x['name'])).pack(side='left')
                 self._filler_x(host, filled.index(x))
+            self._insert_row(row, f)
         elif ms:
             rr = row(T('cr.sockets', 'Sockets'))
             box = ttk.Frame(f)
@@ -1222,6 +1226,7 @@ class CreatorWindow:
                 host.grid(row=rr, column=1, sticky='w', pady=2)
                 ttk.Label(host, text=clean(x['name'])).pack(side='left')
                 self._filler_x(host, filled.index(x))
+            self._insert_row(row, f)
         n_img = cr.image_count(code)
         if n_img > 1:
             spin(T('cr.picture', 'Picture'), 1, n_img, (spec.get('image') or 0) + 1, lambda v: self.set_field('image', v - 1))
@@ -2674,6 +2679,47 @@ class CreatorWindow:
     def _filler_x(self, host, n):
         """The x button that takes socket filler n (Creator.fillers) out of its socket, right of its field."""
         ttk.Button(host, text='x', width=2, command=lambda n=n: self.remove_filler(n)).pack(side='left', padx=(4, 0))
+
+    def copied_filler(self):
+        """(bytes, name) of the copied item (Copy) when it is a socket filler (gem, rune, jewel...), else None."""
+        clip = getattr(self.app, '_capy_clip', None)
+        if not clip:
+            return None
+        try:
+            from mxl_creator import decode_item
+            rec, n = decode_item(bytes(clip[0]), self.cr.data)
+            if n == len(clip[0]) and self.cr.is_socketable(rec['code']):
+                return bytes(clip[0]), clip[1]
+        except Exception:
+            pass
+        return None
+
+    def _insert_row(self, row, f):
+        """Edit mode, a free socket: the copied socket filler (a jewel... with its own stats) can go into it."""
+        spec = self.spec
+        if spec is None or not spec.get('_orig') or not self.cr.free_sockets(spec):
+            return
+        rr = row(T('cr.socket_add', '  Free socket'))
+        host = ttk.Frame(f)
+        host.grid(row=rr, column=1, sticky='w', pady=2)
+        clip = self.copied_filler()
+        if clip is None:
+            ttk.Label(host, text=T('cr.socket_add_hint', 'copy a jewel / rune / gem, or drag one onto the item')).pack(side='left')
+        else:
+            ttk.Button(host, text=T('cr.socket_add_btn', 'Insert copied {name}', name=clean(clip[1])),
+                       command=self.add_copied_filler).pack(side='left')
+
+    def add_copied_filler(self):
+        """Puts the copied socket filler into the next free socket of the edited item."""
+        clip = self.copied_filler()
+        if self.spec is None or clip is None:
+            return
+        try:
+            self.cr.add_filler(self.spec, clip[0])
+        except CreateError as err:
+            self.set_status(str(err), error=True)
+            return
+        self.render_options()
 
     def filler_rows(self):
         """The filled sockets of the item being made / edited (Creator.fillers)."""
