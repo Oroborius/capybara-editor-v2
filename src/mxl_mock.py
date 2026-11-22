@@ -1035,6 +1035,12 @@ def analyze(model, side=None, bo=False, energy=False):
     elif not b['funky'] and mana and math.floor(mana) < MANA_FLOOR:
         add('mana_floor', 'Mana floor', f"{_num(mana)} is below {MANA_FLOOR:,} (some go as low as "
             f"{MANA_FLOOR_LOW:,}; typed values are kept)", WARN)
+    own = [(sk, lv) for sk, lv in sorted((t.get('nonclass') or {}).items())
+           if lv > 3 and model.get('cls', 9) < 7 and CLASS_FIRST_SKILL[model['cls']] <= sk < CLASS_FIRST_SKILL[model['cls']] + 30]
+    if own:                                    # in game: an own-class skill given by an item skill line (stat 97) runs
+        add('own_class_oskill', 'Own-class item skills',  # at level 3 (Paladin Holy Shield 20 -> 3); hard points count
+            f"{len(own)} class skill(s) of this character come from item skill lines (e.g. skill {own[0][0]} at "
+            f"{own[0][1]}): the game runs them at level 3 - use hard points", WARN)
     if T.get(3, 0):
         add('vitality', 'Item Vitality', f"+{T[3]}: a waste of file size for life (use +life / Oak Sage lines)", WARN)
     if T.get(1, 0):
