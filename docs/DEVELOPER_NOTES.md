@@ -266,6 +266,15 @@ changes of every tab at once; CLOSE asks to save unsaved changes.
   "Mystic Dye" entry in the filter box. Other items that share a name (cycles, Scrolls of Enchantment, crafting
   scrolls, Explorer's Caches, riftstones, ...) are told apart the same way, by their in-game description, and the
   preview shows that description under the tooltip.
+- "Apply Mystic Orb" (Item Editor, Median XL only, below the toggles): the orbs that fit the edited item, a count up
+  to the orb's per-item max minus the ones already on it, the stat change, and Apply (pending until Replace item).
+  What the game records (checked on every orbed item of the sample saves, test_90): the orb's property stats added
+  (x count; on a weapon the min/max damage stats only for the damage kinds the base has), Required Level (stat 92)
+  + mysticorbs.bin @32 per orb, and the counter stat 290 (param = the orb's row, value = how many; max @43).
+  Fit (D2MysticOrbs.cpp): exclude types @39/@41 ('nomo') block it, else an include type @35/@37 must match; @141 /
+  @142 = item quality + 1 the include / exclude are limited to (7: "Rare items only"). A ranged effect (12 orbs,
+  e.g. Crystal of Tears) is put at its maximum; the game rolls it. Corrupted samples carry an extra -10 Required
+  Level from the corruption.
 
 ## Import a character from median-xl.com (Import character… button)
 1. Open the character page (median-xl.com/char/<name>) in your browser while logged in and save it with

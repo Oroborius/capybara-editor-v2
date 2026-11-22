@@ -2841,8 +2841,11 @@ class Creator:
 
     def _orb_table(self):
         """Median XL Sigma mysticorbs.bin: one 143-byte row per mystic orb, in the order of the 'myst' items of
-        misc.txt. Row: name (32 bytes), max orbs of this kind per item (u8 @43), then 6 property blocks of 16 bytes
-        from @45: u16 property, u16 -, i32 param, i32 min, i32 max (property 0xFFFF = none)."""
+        misc.txt. Row: name (32 bytes), Required Level added per orb (u8 @32), u16 string @33 ("(Armor Only)"),
+        2 u16 item types it applies to @35, 2 u16 item types it never applies to @39 ('nomo'), max orbs of this kind
+        per item (u8 @43), then 6 property blocks of 16 bytes from @45: u16 property, u16 -, i32 param, i32 min,
+        i32 max (property 0xFFFF = none); u8 @141 / @142: item quality + 1 the include / exclude types are limited
+        to (7 = rare: "Rare items only"; 0 = any). D2Sigma.dll D2MysticOrbs.cpp (FUN_1008f840) checks the types."""
         if hasattr(self, '_orbs'):
             return self._orbs
         self._orbs = {}
@@ -2867,7 +2870,11 @@ class Creator:
                             continue
                         param, lo, hi = struct.unpack_from('<iii', r, o + 4)
                         mods.append((prop, param, lo, hi))
-                    self._orbs[code] = dict(name=r[:32].split(b'\0')[0].decode('latin1'), max=r[43], mods=mods)
+                    inc = [t for t in struct.unpack_from('<HH', r, 35) if 0 < t < len(d.itypes)]
+                    exc = [t for t in struct.unpack_from('<HH', r, 39) if 0 < t < len(d.itypes)]
+                    self._orbs[code] = dict(name=r[:32].split(b'\0')[0].decode('latin1'), max=r[43], mods=mods,
+                                            row=i, lvl=r[32], inc=inc, exc=exc,
+                                            q_inc=r[141] if len(r) > 142 else 0, q_exc=r[142] if len(r) > 142 else 0)
         except (OSError, struct.error, ZeroDivisionError, AttributeError):
             self._orbs = {}
         return self._orbs
@@ -2927,6 +2934,84 @@ class Creator:
             except Exception:
                 continue
         return lines, o['max']
+
+    # ---- applying mystic orbs to an item (what right-clicking the orb onto it does in game)
+    ORB_COUNTER, ORB_LEVELREQ = 290, 92
+
+    def orb_fits(self, orb, code, quality):
+        """Can this mystic orb (code) go on an item of this base / quality? The game's check: an exclude type
+        ('nomo') of the item blocks it (unless limited to another quality), else one include type must match
+        (limited to one quality for the rare-only orbs)."""
+        o = self._orb_table().get(orb)
+        if code and code not in self.data.bases:
+            code = code.ljust(4)                         # a stash item's code comes without the padding
+        if o is None or not code or code not in self.data.bases:
+            return False
+        anc = self.types_of(code)
+        qv = QUALITY_ID.get(quality, 0) + 1
+        if any(t in anc for t in o['exc']) and o['q_exc'] in (0, qv):
+            return False
+        return any(t in anc for t in o['inc']) and o['q_inc'] in (0, qv)
+
+    def orbs_for(self, code, quality):
+        """[(orb code, orb record)] of the mystic orbs that can go on this item, in the table's order."""
+        return [(c, o) for c, o in self._orb_table().items() if o['max'] and self.orb_fits(c, code, quality)]
+
+    def orbs_applied(self, totals):
+        """{orb code: how many are on the item} from the counter stat 290 (param = row of mysticorbs.bin)."""
+        by_row = {o['row']: c for c, o in self._orb_table().items()}
+        out = {}
+        for (sid, pa), v in totals.items():
+            if sid == self.ORB_COUNTER and (pa or 0) in by_row and v > 0:
+                out[by_row[pa or 0]] = out.get(by_row[pa or 0], 0) + v
+        return out
+
+    def orb_room(self, orb, totals):
+        """How many more of this orb the item can take (its per-item max minus the ones already on it)."""
+        o = self._orb_table().get(orb)
+        return max(0, o['max'] - self.orbs_applied(totals).get(orb, 0)) if o else 0
+
+    def orb_deltas(self, orb, count, code=None):
+        """[(stat, param, value)] that `count` orbs add: each orb's property stats (a ranged one at its max),
+        Required Level (stat 92) and the counter (stat 290, param = the orb's row). As in the saves: 5 x
+        'MO - Max Dmg Armor' = +10 to stats 22/24/160, +20 to stat 92, stat 290 param 37 = 5. On a weapon (code)
+        the min / max damage stats go only to the damage kinds the base has (a dagger: 21/22, no 2-hand / throw:
+        test-druid's Dirk with 2 x 'MO - Max Damage' holds 22 = 12 only)."""
+        o = self._orb_table().get(orb)
+        if o is None or count <= 0:
+            return []
+        acc = {}
+        skip = set()
+        code = code.ljust(4) if code and code not in self.data.bases else code
+        b = self.data.base(code) if code and code in self.data.bases else None
+        if b is not None and b.kind == 'weapons':
+            dmg = getattr(b, 'damage', None) or {}
+            for kind, ids in (('one_hand', (21, 22)), ('two_hand', (23, 24)), ('throw', (159, 160))):
+                if not any(dmg.get(kind) or ()):
+                    skip.update(ids)
+        for prop, param, lo, hi in o['mods']:
+            for x in Mod('orb', prop, param, lo, hi, self.data).stats(self.data):
+                if x.get('value') and x['id'] not in skip:
+                    k = (x['id'], x.get('param') or None)
+                    acc[k] = acc.get(k, 0) + x['value'] * count
+        if o['lvl']:
+            k = (self.ORB_LEVELREQ, None)
+            acc[k] = acc.get(k, 0) + o['lvl'] * count
+        acc[(self.ORB_COUNTER, o['row'] or None)] = count
+        return [(k[0], k[1], v) for k, v in acc.items()]
+
+    def orb_result(self, orb, count, totals, code=None):
+        """New {(stat, param): value} of an item after `count` orbs (CreateError past the per-item max)."""
+        if count > self.orb_room(orb, totals):
+            raise CreateError(f'{orb}: at most {self.orb_room(orb, totals)} more on this item')
+        out = {(k[0], k[1] or None): v for k, v in totals.items()}
+        for sid, pa, v in self.orb_deltas(orb, count, code):
+            nv = out.get((sid, pa), 0) + v
+            if nv:
+                out[(sid, pa)] = nv
+            else:
+                out.pop((sid, pa), None)
+        return out
 
     def describe(self, spec):
         d, q = self.data, spec['quality']

@@ -1508,7 +1508,7 @@ class CreatorWindow:
             self._slots_drop()
             ttk.Label(inner, text=T('cr.no_variable', 'No variable values: everything on this item is fixed.'),
                       wraplength=self._wrap_w(), justify='left').grid(row=0, column=0, sticky='w')
-            self._toggles(inner, 1)
+            self._orbs_ui(inner, self._toggles(inner, 1))
             return
         r = 0
         if raw_extra and not unr and not table:
@@ -1557,7 +1557,7 @@ class CreatorWindow:
             r = self._orange_text(inner, r)               # unique orange text (display + hidden effect)
         else:
             self._slots_drop()
-        self._toggles(inner, r)
+        self._orbs_ui(inner, self._toggles(inner, r))
 
     def _spin_commit(self, spin, setter):
         """Commits a spinbox / entry on Return, focus out and the arrows (keeping the keyboard focus).
@@ -2296,7 +2296,15 @@ class CreatorWindow:
         """Make one in-place recipe's stat changes to the edited item through the delta rows (pending until
         Replace item, which records the undo step)."""
         old = self._edit_totals()
-        new = self.cr.recipe_result(rec, old)
+        changed = self._set_totals(old, self.cr.recipe_result(rec, old))
+        self.render_mods()
+        self.refresh()
+        self.set_status(T('cr.tog.applied', 'recipe {n} applied: {c} stat(s) changed - Replace item to write it',
+                          n=rec['row'], c=changed))
+
+    def _set_totals(self, old, new):
+        """Write new {(stat, param): value} totals of the edited item through the delta rows; returns how many
+        stats changed (a stat that leaves the item is dropped)."""
         changed = 0
         for key in set(old) | set(new):
             if old.get(key, 0) == new.get(key, 0):
@@ -2312,10 +2320,118 @@ class CreatorWindow:
                 if e is not None:
                     self.spec['extra'].remove(e)
                 self._take_over(key)
+        return changed
+
+    # ----------------------------------------------- mystic orbs (edit mode, Median XL)
+    def _orbs_ui(self, parent, r):
+        """Apply Mystic Orb: the orbs that can go on this item (the game's type / quality check), a count up to the
+        orb's per-item max minus the ones already on it (counter stat 290), the stat change, and Apply (pending
+        until Replace item, like the toggles)."""
+        if self.edit_item is None:
+            return r
+        try:
+            import mxl_profile
+            if not mxl_profile.is_median():
+                return r
+            orbs = self.cr.orbs_for(self.spec.get('code'), self.spec.get('quality'))
+        except Exception:
+            return r
+        if not orbs:
+            return r
+        tot = self._edit_totals()
+        have = self.cr.orbs_applied(tot)
+        labels, codes = [], []
+        for c, o in orbs:
+            fx = self.cr.orb_effects(c)
+            name = self.cr.display_name(c).replace(' - Mystic Orb', '').replace(' — Mystic Orb', '')
+            text = '; '.join(fx[0]) if fx and fx[0] else o['name']
+            if name in ('Mystic Orb', 'Soulforged Mystic Orb'):
+                name = (T('cr.orb.rare', 'Rare-only') + ': ' if o['q_inc'] else '') + text
+            else:
+                name = f'{name}: {text}'
+            labels.append(f"{name}  [{have.get(c, 0)}/{o['max']}]")
+            codes.append(c)
+        ttk.Label(parent, text=T('cr.orb.title', 'Apply Mystic Orb'), font=('Segoe UI', 10, 'bold')).grid(
+            row=r, column=0, columnspan=2, sticky='w', pady=(8, 0))
+        r += 1
+        row = ttk.Frame(parent)
+        row.grid(row=r, column=0, columnspan=2, sticky='we')
+        row.columnconfigure(0, weight=1)
+        r += 1
+        pick = tk.StringVar(value=labels[0])
+        cnt = tk.StringVar(value='1')
+        cb = ttk.Combobox(row, state='readonly', values=labels, textvariable=pick, width=40)
+        cb.grid(row=0, column=0, sticky='we')
+        sp = ttk.Spinbox(row, from_=1, to=1, textvariable=cnt, width=4)
+        sp.grid(row=0, column=1, padx=(4, 0))
+        btn = D2.button(row, T('cr.orb.apply', 'Apply'), lambda: self.apply_orb(cur(), count()), 6)
+        btn.grid(row=0, column=2, padx=(4, 0))
+        info = ttk.Label(parent, text='', justify='left', wraplength=self._wrap_w())
+        info.grid(row=r, column=0, columnspan=2, sticky='w')
+        r += 1
+        self._orb_widgets = (cb, sp, btn, info)
+
+        def cur():
+            return codes[labels.index(pick.get())] if pick.get() in labels else codes[0]
+
+        def count():
+            try:
+                return max(0, int(cnt.get()))
+            except ValueError:
+                return 0
+
+        def update(*_a):
+            c = cur()
+            room = self.cr.orb_room(c, tot)
+            sp.configure(from_=min(1, room), to=room)
+            n = min(count(), room)
+            if room and n < 1:
+                n = 1
+            if str(n) != cnt.get():
+                cnt.set(str(n))
+                return
+            o = self.cr._orb_table()[c]
+            head = T('cr.orb.room', '{have} of {max} on the item, {room} more can go on',
+                     have=have.get(c, 0), max=o['max'], room=room)
+            lines = []
+            if n:
+                from mxl_tooltip import stat_lines
+                deltas = [dict(id=sid, param=pa, value=v) for sid, pa, v in self.cr.orb_deltas(c, n, self.spec['code'])
+                          if sid not in (self.cr.ORB_COUNTER, self.cr.ORB_LEVELREQ)]
+                try:
+                    lines = [str(x[1]).strip() for x in stat_lines(deltas, self.data, None) if str(x[1]).strip()]
+                except Exception:
+                    lines = [f"stat {x['id']}: +{x['value']}" for x in deltas]
+                if o['lvl']:
+                    lines.append(T('cr.orb.req', '+{n} to Required Level', n=o['lvl'] * n))
+                if any(lo != hi for _p, _pa, lo, hi in o['mods']):
+                    lines.append(T('cr.orb.ranged', '(a ranged effect is set at its maximum; the game rolls it)'))
+            info.configure(text=head + ('\n' + T('cr.orb.adds', 'x{n} adds: {x}', n=n, x='; '.join(lines))
+                                        if lines else ''))
+            try:
+                btn.configure(state='normal' if n else 'disabled')
+            except tk.TclError:
+                pass
+        pick.trace_add('write', update)
+        cnt.trace_add('write', update)
+        update()
+        return r
+
+    def apply_orb(self, orb, count):
+        """Put `count` mystic orbs on the edited item: their stats, Required Level and the counter."""
+        old = self._edit_totals()
+        try:
+            new = self.cr.orb_result(orb, count, old, self.spec.get('code'))
+        except CreateError as e:
+            self.set_status(str(e), error=True)
+            return
+        if not count:
+            return
+        changed = self._set_totals(old, new)
         self.render_mods()
         self.refresh()
-        self.set_status(T('cr.tog.applied', 'recipe {n} applied: {c} stat(s) changed - Replace item to write it',
-                          n=rec['row'], c=changed))
+        self.set_status(T('cr.orb.applied', '{n} x {orb} applied: {c} stat(s) changed - Replace item to write it',
+                          n=count, orb=self.cr._orb_table()[orb]['name'], c=changed))
 
     # ----------------------------------------------- the item's own stats (edit mode)
     def _edit_made(self):
