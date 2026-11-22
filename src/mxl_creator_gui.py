@@ -2281,7 +2281,7 @@ class CreatorWindow:
         D2.button(box, T('cr.tog.apply', 'Apply'), lambda: cur.get('rec') is not None and self.apply_toggle(cur['rec']),
                   6).grid(row=1, column=2, sticky='e', padx=(4, 0), pady=(2, 0))
         detail = ttk.Label(box, text='', justify='left', wraplength=max(self._wrap_w() - 40, 120))
-        detail.grid(row=2, column=0, columnspan=3, sticky='w', pady=(2, 0))
+        # (not shown: the dropdown entry says what the recipe does - the user asked for no text under it)
         detail._wrap_less = True                         # its own fit (the rewrap pass would widen it again)
         detail._fit = lambda w=detail: w.configure(wraplength=max(self._wrap_w() - 40, 120))
         for w in (gcb, rcb):
@@ -2385,7 +2385,8 @@ class CreatorWindow:
         btn = D2.button(row, T('cr.orb.apply', 'Apply'), lambda: self.apply_orb(cur(), count()), 6)
         btn.grid(row=0, column=2, padx=(4, 0))
         info = ttk.Label(parent, text='', justify='left', wraplength=self._wrap_w())
-        info.grid(row=r, column=0, columnspan=2, sticky='w')
+        # (not shown: the orb's entry says it, "+5 to Strength [0/5]" - the user asked for no text under it;
+        # the text is still made, the status line repeats it after Apply)
         r += 1
         self._orb_widgets = (cb, sp, btn, info)
 
