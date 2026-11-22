@@ -808,22 +808,25 @@ def sides(model):
 # Presets (doc 9.2 + the user's notes). mana: the target; exact: funky (the product must hit it exactly).
 # a reference funky: speeds IAS / FCR -121, FRW -164, stun 90% at level 63, NV states Just Hit + Holy Shield
 _FUNKY = dict(ias=-121, frw=-164, fcr=-121, stun_lvl=63, holy_shield=True, just_hit=True, barbs=0)   # barbs: 1 / 7 funkies
+# Barbs (barbs_plan): the highest level whose Thorns 4278 + Barbs return stays a positive hit with the target's
+# ES up and gone (DR 11214, DR% 50: windows 1-887, 1836-2784, 3734-4278) and that the free stat lists take
+# (one aura line per list): 2784 on the mocks / host (~112 lists), 3906 on the P/T (126 lists)
 PRESETS = {
     # TK31 mocks (clones2: clone-02 A / clone-80 B / clone-79 B high, clone-70 / clone-90 B mid, clone-12 /
     # Beginner B low): 7 Holy Freeze sources capped by cold mastery, Thorns + Barbs return, resist by level
     'mock_high': dict(label='Mock High', role='mock', tk=31, mana=1572500, hf_sources=7, hf_level=3100,
                       thorns=4278, res_cold=3528, res_fire=3339,
                       note='TK31 top of good band 2 (1048576-1572863): 7 capped Holy Freeze, Thorns 4278 + Barbs '
-                           '3100, cold / fire resist by level, max absorb'),
+                           '2784, cold / fire resist by level, max absorb'),
     'mock_mid': dict(label='Mock Mid', role='mock', tk=31, mana=1310719, hf_sources=7, hf_level=3100, thorns=4278,
                      res_cold=3528, res_fire=3528, note='TK31 "1.31" mana (off-screen 4194288), 7 capped Holy Freeze'),
     'mock_low': dict(label='Mock Low', role='mock', tk=31, mana=1211974, hf_sources=7, hf_level=3100, thorns=4278,
                      res_cold=4158, res_fire=4158, note='TK31 low mana 1.21M, 7 capped Holy Freeze, more resist'),
     # P/T (clone-76, clone-104, clone-87): no holy aura, no stun, high return, all three res/lvl
     'prayer_thorner': dict(label='Prayer/Thorner', role='pt', tk=31, mana=1572863, hf_sources=0, hf_level=0,
-                           thorns=4278, barbs=3100, stun=0, res_cold=3780, res_fire=3780, res_light=3780,
+                           thorns=4278, barbs=3906, stun=0, res_cold=3780, res_fire=3780, res_light=3780,
                            target_def=762, itd=True,
-                           note='P/T: 1572863 (the PT mana: no enemy aura), Thorns 4278 + Barbs 3100 (capped '
+                           note='P/T: 1572863 (the PT mana: no enemy aura), Thorns 4278 + Barbs 3906 (capped '
                                 'return), no holy aura, no stun, max absorb'),
     'aura_killer': dict(label='Aura Killer', role='ak', tk=31, mana=1211974, hf_sources=28, hf_level=3100,
                         hf_target=8320000, thorns=3981, barbs=0, res_cold=4725, res_fire=4725, res_light=4725,
@@ -844,16 +847,16 @@ PRESETS = {
                            hf_level=3100, thorns=4278, switch='balance', res_cold=3528,
                            note='side A High 1.5725M (stun shield), weapon switch to side B Low 1.21M (no stun)'),
     # clones2: clone-104 / clone-87 "mid mana" P/T 1377236 (TK31): 40 Prayer charms, Thorns
-    # 4278 + Barbs 4154 (ours 3100: the room left at 31 per line), no holy aura, no stun
+    # 4278 + Barbs 4154 (ours 3906: the room left at 31 per line), no holy aura, no stun
     'pt_mid': dict(label='P/T Mid', role='pt', tk=31, mana=1377236, hf_sources=0, hf_level=0, thorns=4278,
-                   barbs=3100, stun=0, res_cold=2898, res_fire=2898, res_light=2898, target_def=762, itd=True,
-                   note='clone-104 mid-mana Prayer/Thorner: 1377236, Thorns 4278 + Barbs 3100, no holy aura, '
+                   barbs=3906, stun=0, res_cold=2898, res_fire=2898, res_light=2898, target_def=762, itd=True,
+                   note='clone-104 mid-mana Prayer/Thorner: 1377236, Thorns 4278 + Barbs 3906, no holy aura, '
                         'no stun'),
     # clone-45 / clone-09 / clone-32 hosts: high mana, Host position (DTM 500, no stun), Thorns + Barbs
     'host': dict(label='Host', role='host', tk=31, mana=1572500, position='Host', hf_sources=7, hf_level=3100,
-                 thorns=4278, barbs=3100, res_cold=5166, res_fire=5166, cbf=True,
+                 thorns=4278, barbs=2784, res_cold=5166, res_fire=5166, cbf=True,
                  note='Host (clone-45 / clone-09 / clone-32): high mana, no stun, 7 capped Holy Freeze, '
-                      'Thorns 4278 + Barbs 3100, resist by level (no absorb by time)'),
+                      'Thorns 4278 + Barbs 2784, resist by level (no absorb by time)'),
 }
 PRESET_ORDER = ('mock_high', 'mock_mid', 'mock_low', 'prayer_thorner', 'aura_killer', 'funky', 'funky28',
                 'funky26', 'funky24', 'balance_switch', 'pt_mid', 'host')
@@ -874,7 +877,7 @@ DEFAULTS = dict(cls=1, level=127, position='LPJ', life=7300000, damage=Fraction(
                 size_budget=FILE_LIMIT - 1 - SIZE_MARGIN,
                 # every category the proven clones carry (docs/review/mock-pi-data/clone-profile.txt, CLONE_PROFILE):
                 # the clone median unless a preset says otherwise
-                barbs=3100, hf_cap=True, hf_target=HF_MOCK_TARGET, thorns_lvl=0,
+                barbs=2784, hf_cap=True, hf_target=HF_MOCK_TARGET, thorns_lvl=0,
                 ias=107, frw=107, fhr=-36, fcr=0, nv_ias=97, nv_frw=97,      # IAS 93, FRW 96, FHR 99, FCR 105, 68, 67
                 curse_res=511, target_def=381, dodge=127, ow=127, cb=127, ds=0, itd=False, cbf=False,
                 dr=63, dr_pct=255, mdr=0, abs_pct=127, abs_flat=0, abs_lvl=True, abs_time=True, replenish=True,
@@ -1564,6 +1567,37 @@ def build(P):
     struct.pack_into('<I', out, 8, len(out))
     struct.pack_into('<I', out, 12, checksum(out))
     return bytes(out)
+
+
+def safe_barbs(thorns_lvl, cap, dr, dr_pct, es=ES_ABSORB):
+    """Highest Barbs level <= cap whose Thorns + Barbs return stays a positive hit both with the target's Energy
+    Shield up (es) and gone (ES 0), and under 99% of 8388607 with ES up; 0 when none."""
+    for lv in range(int(cap), 0, -1):
+        on = thorns_return(thorns_lvl, lv, dr, dr_pct, es)
+        if 0 < on < ROLL * Fraction(99, 100) and thorns_return(thorns_lvl, lv, dr, dr_pct, 0) > 0:
+            return lv
+    return 0
+
+
+def barbs_plan(preset, **over):
+    """(Barbs level, flat DR) the preset can carry: the most Barbs the free stat lists take (one aura line per
+    list, generate() succeeds), then the highest safe level under it (safe_barbs, against the plan's own DR)."""
+    def ok(lv):
+        try:
+            generate(preset, 'Barbs', **dict(over, barbs=lv))
+            return True
+        except PlanError:
+            return False
+    lo, hi = 1, AURA_LINE_MAX * 400
+    if not ok(lo):
+        return 0, 0
+    while lo < hi:                                     # the most Barbs the lists take
+        mid = (lo + hi + 1) // 2
+        lo, hi = (mid, hi) if ok(mid) else (lo, mid - 1)
+    o = options(preset, **over)
+    P = plan(preset, 'Barbs', **dict(over, barbs=lo))
+    dr = totals(model_from_plan(P))['T'].get(34, 0)
+    return safe_barbs(int(o['thorns']), lo, dr, int(o['dr_pct'])), dr
 
 
 def generate(preset='mock_high', name='Mock', **over):

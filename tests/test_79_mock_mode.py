@@ -620,4 +620,32 @@ def prayer_drain_energy_vitality_and_dtm_ceiling():
         T.check(c and c[0][3] == M.GOOD, f'{key}: DTM under the ceiling ({c[0][2] if c else "no check"})')
 
 
+@T.test
+def thorns_barbs_safe_window():
+    """Thorns + Barbs return wraps at 2^24 (negative above 2^23): with Thorns 4278 against DR 11214 / 50% and ES
+    off the positive Barbs windows are 1-887, 1836-2784, 3734-4278; every preset's Barbs is the highest safe level
+    its free lists take (recomputed), and its written save's return check is good."""
+    M = engine().M
+    pos = [lv for lv in range(1, 4279) if M.thorns_return(4278, lv, 11214, 255) > 0]
+    runs, start = [], pos[0]
+    for a, b in zip(pos, pos[1:] + [None]):
+        if b != a + 1:
+            runs.append((start, a))
+            start = b
+    T.eq(runs, [(1, 887), (1836, 2784), (3734, 4278)], 'ES-off windows')
+    T.eq(M.safe_barbs(4278, 3472, 11214, 255), 2784, '112 lists -> 2784')
+    T.eq(M.safe_barbs(4278, 2784, 11214, 255), 2784, 'the window edge itself')
+    T.eq(M.safe_barbs(4278, 3500, 11214, 255), 2784, 'the ES-off gap is skipped')
+    for key in M.PRESET_ORDER:
+        o = M.options(key)
+        if o['thorns'] and o['barbs']:
+            T.eq(M.barbs_plan(key)[0], int(o['barbs']), f'{key}: baked Barbs = recomputed')
+        raw, P = M.generate(key, 'Thorn')
+        c = [x for x in M.analyze(M.model_from_plan(P))['checks'] if x[0] == 'thorns_return']
+        T.check(c and c[0][3] == M.GOOD, f'{key}: return a positive hit ({c[0][2] if c else "no check"})')
+    m = M.model_from_plan(M.plan('mock_high', 'Thorn', barbs=3100))
+    c = [x for x in M.analyze(m)['checks'] if x[0] == 'thorns_return']
+    T.eq(c[0][3], M.WARN, 'Barbs 3100: the return rolls over with ES off')
+
+
 T.main(globals())
