@@ -446,11 +446,20 @@ def read_only_clone_stays_read_only_after_an_editor_save():
 
 @T.test
 def smite_max_and_efficient_modes():
-    """Max smite: max = 8388607 exactly and min = max (+min damage closes the shield spread); efficient: within
-    0.1% of the cap, never over it."""
+    """Max smite: max = 8388607 exactly, min = (shield min + damage) x mult (no +min line: stat 21 does not reach
+    Smite in game, duel 2026-11-22); the analyzer ignores stat 21 too. Efficient: within 0.1% of the cap."""
     M = engine().M
-    mx = M.plan('mock_high', 'X', smite_max=True)['smite']
-    T.eq((mx['max'], mx['min']), (M.ROLL, M.ROLL), 'max mode: every smite is the cap')
+    P = M.plan('mock_high', 'X', smite_max=True)
+    mx = P['smite']
+    smin = M.SHIELD_DMG['tow '][0]
+    T.eq((mx['max'], mx['min']), (M.ROLL, (smin + mx['dmg']) * mx['mult'] // 100), 'max mode: max at the cap')
+    T.check(mx['min'] < mx['max'], 'max mode: the shield spread stays')
+    T.check(not any(l[0] == 21 for u in P['units'] for s in u.slots for l in s.lines), 'no +min damage line')
+    m = M.model_from_plan(P)
+    t = M.totals(m)
+    a = M.smite_of(m, t)
+    t['T'][21] = t['T'].get(21, 0) + 4
+    T.eq(M.smite_of(m, t)['min'], a['min'], 'stat 21 does not change the smite min')
     ef = M.plan('mock_high', 'X')['smite']
     T.check(M.ROLL * 0.999 <= ef['max'] <= M.ROLL, f"efficient mode within 0.1%: {ef['max']}")
 

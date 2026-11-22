@@ -638,7 +638,8 @@ def smite_of(model, t):
     slvl = min(99, t['nonclass'].get(SMITE, 0) + (model['skills'].get(SMITE, 0)))
     strength = model['base_str'] + T.get(0, 0) + T.get(220, 0) * lvl // 8
     mult = 100 + 15 * slvl + strength
-    lo = (smin + T.get(111, 0) + T.get(21, 0)) * mult // 100
+    # +min damage (stat 21) does not reach Smite (duel 2026-11-22: hits spread over the whole shield range with it)
+    lo = (smin + T.get(111, 0)) * mult // 100
     hi = (smax + T.get(111, 0) + T.get(22, 0)) * mult // 100
     return dict(shield=shield, slvl=slvl, strength=strength, mult=mult, min=lo, max=hi)
 
@@ -1044,10 +1045,10 @@ def solve_smite(target_pvm, level, shield, max_lines, base_str=1023, slvl=63, mo
     if not cands:
         return None
     if mode == 'max':
-        # the largest max under the target, then fewest bits; +min damage closes the shield's min-max spread
+        # the largest max under the target, then fewest bits; the min stays the shield's min (+min damage does
+        # not reach Smite in game), so hits spread over (smax - smin) x mult / 100 below the max
         gap, cost, S, D, hi, mult = min(cands, key=lambda c: (c[0], c[1]))
-        lo_add = smax - smin
-        return dict(str_points=S, dmg=D, max=hi, min=(smax + D) * mult // 100, mult=mult, min_add=lo_add)
+        return dict(str_points=S, dmg=D, max=hi, min=(smin + D) * mult // 100, mult=mult, min_add=0)
     # efficient: fewest bits among the plans within 0.1% of the target, then the closest
     near = [c for c in cands if c[4] * 1000 >= target_pvm * 999] or cands
     gap, cost, S, D, hi, mult = min(near, key=lambda c: (c[1], c[0]))
@@ -1320,8 +1321,6 @@ def plan(preset='mock_high', name='Mock', **over):
         s.add(220, v)
     for s, v in zip(free(111), split(sm['dmg'], 491)):
         s.add(111, v)
-    if sm.get('min_add'):
-        free(21)[0].add(21, sm['min_add'])                   # +min damage: every smite rolls the max
     # ---- attack reset: Delirium on attack and on strike at two different levels; stun per the slider
     sh.slots[3].add(195, DELIRIUM_CHANCE, (DELIRIUM << 6) | max(1, min(63, int(o['deli_attack']))))
     sh.slots[3].add(198, DELIRIUM_CHANCE, (DELIRIUM << 6) | max(1, min(63, int(o['deli_strike']))))
@@ -1890,7 +1889,7 @@ HINTS = dict(tk='hard TK points 0-99 (31: band 524288, 30: funky 1048576)', mana
              stun_lvl='stun skill level of the attack / strike lines (clones: 0-2; funkies up to 63)',
              deli_attack='Delirium on attack, level 1-63',
              deli_strike='Delirium on strike, level 1-63 (not the attack level)',
-             smite_max='on: smite exactly at the cap, every hit the max (thin margin); off: within 0.1% of the cap for the fewest bits',
+             smite_max='on: the max smite exactly at the cap (min lower by the shield spread); off: within 0.1% of the cap for the fewest bits',
              ow='chance of open wounds % (the bleed finishes a 1 HP target)', cb='crushing blow %',
              ds='deadly strike %', target_def='-% target defense (clones 254-1016)', dtm='damage taken goes to mana %',
              itd="ignore target's defense", pierce='-% enemy cold resist (clone-05: 255 on every list)', weapon='a socketed weapon (198 lists)',
