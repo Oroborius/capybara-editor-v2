@@ -84,6 +84,21 @@ def vanilla_inventory_and_containers():
         T.pump(10)
         os.system(f'import -window root {os.path.join(shot, "v77b.png")} 2>/dev/null')
     T.eq(sorted(page.canvases), ['belt', 'cube', 'inv', 'stash'], 'stash, cube, belt and the inventory')
+    # the game's own panel art from the game folder: TradeStash.dc6 (6 x 8) and supertransmogrifier.dc6 (3 x 4),
+    # grid origins from inventory.bin rows 12 / 9, the grid canvases placed there
+    for key, origin in (('stash', (74, 82)), ('stash_classic', (74, 273)), ('cube', (118, 139))):
+        art = VP.container_art(key, cw.data)
+        T.check(art is not None and os.path.isfile(art[0]), f'{key} panel art loaded')
+        T.eq((art[1], art[2], art[3]), (origin, (320, 432), 29), f'{key} panel grid origin / size / cell')
+    T.eq(sorted(page.arts), ['cube', 'stash'], 'stash and cube drawn on their panel art')
+    c = page.cell
+    for key, gx, gy in (('stash', 74, 82), ('cube', 118, 139)):
+        cv = page.canvases[key]
+        T.check(cv.master is page.arts[key]['bg'], f'{key} grid sits on the panel')
+        T.eq((cv.winfo_x(), cv.winfo_y()), (round(gx * c / 29), round(gy * c / 29)), f'{key} grid at the art origin')
+        for x0, y0, w, h, e in page.hits.get(key, ())[:3]:
+            T.check(page.entry_at(key, x0 * c + c // 2, y0 * c + c // 2) is e, f'{key} item cell hit-tests')
+    T.check(page.hits.get('stash') or page.hits.get('cube'), 'items drawn on the art grids')
 
 
 @T.test

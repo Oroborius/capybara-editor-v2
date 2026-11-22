@@ -39,6 +39,64 @@ def containers(ch, data):
             ('belt', T('van.belt', 'Belt'), 4, rows, belt)]
 
 
+# The game's own stash / cube panels (left panels, 320 x 432 in 4 tiles like invchar6.dc6): TradeStash.dc6 is the
+# expansion's 6 x 8 stash, Bank.dc6 the classic 6 x 4 one, supertransmogrifier.dc6 the Horadric Cube. The grid
+# origin and cell come from the panel's low-resolution inventory.bin row (12 Big Bank Page 1, 8 Bank Page 1,
+# 9 Transmogrify Box: gridLeft / gridTop at 20 / 28, box width at 36; left panels start at 0,0). No art for the
+# belt: the game shows it in the control panel only.
+CONTAINER_ART = {'stash': ('TradeStash', 12), 'stash_classic': ('Bank', 8), 'cube': ('supertransmogrifier', 9)}
+
+
+def _inv_row(data, i):
+    """(gridLeft - invLeft, gridTop, box width) of inventory.bin row i: the profile's folder, else the game's
+    archives."""
+    import os
+    import struct
+    b = None
+    try:
+        with open(os.path.join(data.folder, 'inventory.bin'), 'rb') as f:
+            b = f.read()
+    except (OSError, AttributeError):
+        pass
+    if b is None:
+        import mxl_d2look
+        b = mxl_d2look.char_art().read_base('data\\global\\excel\\inventory.bin')
+    n = struct.unpack_from('<I', b)[0]
+    rs = (len(b) - 4) // n
+    r = b[4 + i * rs:4 + (i + 1) * rs]
+    inv_left, = struct.unpack_from('<i', r, 0)
+    left, _right, top, _bottom = struct.unpack_from('<4i', r, 20)
+    return left - max(0, inv_left), top, r[36] or 29
+
+
+def container_art(key, data):
+    """(png path, (grid x, grid y), (panel w, panel h), native cell) of a container panel (CONTAINER_ART key),
+    or None (Median XL, game folder unknown, files missing): the page then draws its plain grids."""
+    import mxl_profile
+    if mxl_profile.is_median() or key not in CONTAINER_ART:
+        return None
+    try:
+        import mxl_d2look
+        a = mxl_d2look.char_art()
+        if a is None:
+            return None
+        name, row = CONTAINER_ART[key]
+        import mxl_d2ui_dc6 as DC6
+
+        def build():
+            fr = DC6.dc6_frames(a.read_base(f'data\\global\\ui\\PANEL\\{name}.dc6'))
+            return DC6.compose(fr[:4], a.pal(), 2)
+        path = a._cached(f'panel-d2-{name.lower()}-native', build)
+        from PIL import Image
+        with Image.open(path) as im:
+            size = im.size
+        gx, gy, cell = _inv_row(data, row)
+        return path, (gx, gy), size, cell
+    except Exception as err:
+        print(f'{key} panel art:', err)
+        return None
+
+
 class _Win:
     """The Character window as the item actions (mxl_socket_insert / mxl_socket_menu / mxl_rc_menu) see it from
     this page: entry_at hit-tests the page's grids, is_merc() is False (these grids are the character's own),
@@ -82,6 +140,8 @@ class ContainersPage:
         self.canvases = {}
         self.hits = {}
         self.frames = {}
+        self.arts = {}
+        self._art_cache = {}
         self.drag = None
         self._sig = None
         body = ttk.Frame(frame, padding=4)
@@ -134,21 +194,73 @@ class ContainersPage:
         return containers(ch, d) + [('inv', T('ch.inventory_t', 'Inventory'), mxl_char.INV_W, mxl_char.INV_H,
                                      ch.inventory())]
 
+    def _art_for(self, key, cols, rows):
+        """The game's panel for grid key when its art matches the grid size (else None: plain grid)."""
+        if key == 'stash':
+            g = None
+            try:
+                import mxl_profile
+                g = (mxl_profile.active() or {}).get('grids') or mxl_profile.grid_sizes(self.win.data.folder)
+            except Exception:
+                pass
+            akey = 'stash_classic' if g and (cols, rows) == tuple(g['stash_classic']) != tuple(g['stash']) else 'stash'
+        elif key == 'cube':
+            akey = 'cube'
+        else:
+            return None
+        if akey not in self._art_cache:
+            self._art_cache[akey] = container_art(akey, self.win.data)
+        return self._art_cache[akey]
+
+    def _art_cell(self):
+        """Cell size with panel art: the native 29 px, smaller on short screens (the panels are 432 px high)."""
+        try:
+            top = self.frame.winfo_toplevel()
+            h = top.winfo_height() if top.winfo_ismapped() and top.winfo_height() > 300 else top.winfo_screenheight()
+        except tk.TclError:
+            h = 1000
+        return max(14, min(29, int(29 * (h - 330) / 432)))
+
     def _build(self, boxes):
         """The grids' widgets, made again only when their sizes change: a refresh in the middle of a drag (the
-        file read again on the press) keeps the canvas that gets the release."""
+        file read again on the press) keeps the canvas that gets the release. Stash and cube: the game's panel
+        art on a canvas of their own, the grid canvas placed on it at the panel's grid origin (inventory.bin)."""
         for row in (self.row, self.row2):
             for w in row.winfo_children():
                 w.destroy()
-        self.canvases, self.frames = {}, {}
+        self.canvases, self.frames, self.arts = {}, {}, {}
+        arts = {key: self._art_for(key, cols, rows) for key, _t, cols, rows, _e in boxes}
+        self.cell = self._art_cell() if any(arts.values()) else 30
         c = self.cell
+        col = None
+        if any(arts.values()):
+            col = ttk.Frame(self.row)
         for key, title, cols, rows, _e in boxes:
-            fr = ttk.Frame(self.row2 if key == 'inv' else self.row)
-            fr.pack(side='left', anchor='nw', padx=(0, 10))
+            if col is not None and key in ('belt', 'inv') and not col.winfo_manager():
+                col.pack(side='left', anchor='nw')
+            if col is not None and key in ('belt', 'inv'):       # with the tall panels: belt over the inventory
+                fr = ttk.Frame(col)
+                fr.pack(side='top', anchor='nw', pady=(0, 6))
+            else:
+                fr = ttk.Frame(self.row2 if key == 'inv' else self.row)
+                fr.pack(side='left', anchor='nw', padx=(0, 10))
             lab = ttk.Label(fr, text=f'{title} ({cols} x {rows})')
             lab.pack(anchor='w')
-            cv = tk.Canvas(fr, width=cols * c + 1, height=rows * c + 1, bg='#101010', highlightthickness=0)
-            cv.pack(anchor='nw')
+            art = arts.get(key)
+            if art is not None:
+                import mxl_d2look as D2
+                path, (gx, gy), (pw, ph), native = art
+                k = c / native
+                bg = tk.Canvas(fr, width=round(pw * k), height=round(ph * k), bg='#101010', highlightthickness=0, bd=0)
+                bg.pack(anchor='nw')
+                bg.create_image(0, 0, anchor='nw', image=D2.photo(path, (round(pw * k), round(ph * k))))
+                cv = tk.Canvas(bg, width=cols * c, height=rows * c, bg='#101010', highlightthickness=0, bd=0)
+                cv.place(x=round(gx * k), y=round(gy * k))
+                grid = D2.photo(path, (cols * c, rows * c), (gx, gy, gx + cols * native, gy + rows * native))
+                self.arts[key] = dict(bg=bg, origin=(round(gx * k), round(gy * k)), grid=grid)
+            else:
+                cv = tk.Canvas(fr, width=cols * c + 1, height=rows * c + 1, bg='#101010', highlightthickness=0)
+                cv.pack(anchor='nw')
             out = ttk.Label(fr, text='', wraplength=max(120, cols * c))
             out.pack(anchor='w')
             cv.bind('<Motion>', lambda ev, k=key: self._hover(k, ev))
@@ -181,9 +293,13 @@ class ContainersPage:
         for key, _title, cols, rows, entries in boxes:
             cv = self.canvases[key]
             cv.delete('all')
-            for x in range(cols):
-                for y in range(rows):
-                    cv.create_rectangle(x * c, y * c, (x + 1) * c, (y + 1) * c, fill='#181818', outline='#404040')
+            art = self.arts.get(key)
+            if art is not None:
+                cv.create_image(0, 0, anchor='nw', image=art['grid'])
+            else:
+                for x in range(cols):
+                    for y in range(rows):
+                        cv.create_rectangle(x * c, y * c, (x + 1) * c, (y + 1) * c, fill='#181818', outline='#404040')
             hits, outside = [], []
             for e in entries:
                 it = e.it
