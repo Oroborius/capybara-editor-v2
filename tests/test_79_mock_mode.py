@@ -597,7 +597,8 @@ def form_validation_names_the_field():
 
 @T.test
 def prayer_drain_energy_vitality_and_dtm_ceiling():
-    """Prayer drains 1 + 0.1875 (L - 1) per source per pulse; item Energy / Vitality add after the % boost; the
+    """Prayer drains 1 + 0.1875 (L - 1) per source per pulse; item Energy stays out of mana (calibrated), item
+    Vitality is boosted with the %; the
     DTM ceilings (HPJ without, LPJ with the doubled drain x TK ratio)."""
     M = engine().M
     T.eq((M.prayer_drain(1), M.prayer_drain(17), M.prayer_drain(0)), (1, 4, 0), 'Prayer drain per pulse')
@@ -605,8 +606,8 @@ def prayer_drain_energy_vitality_and_dtm_ceiling():
     t = dict(T={77: 100, 0: 10, 76: 100, 3: 10}, side='A', nonclass={}, aura_lv={})
     m = dict(cls=1, base_mana_raw=256 * 1000, base_life_raw=256 * 1000, set_ids={None: set(), 'A': set()},
              skills={})
-    T.eq(M.mana_of(m, t)[0], 2000 + 10 * 2, 'Sorceress: 10 item Energy add 20 mana after the %')
-    T.eq(M.life_of(m, t), 2000 + 10 * 2, 'Sorceress: 10 item Vitality add 20 life after the %')
+    T.eq(M.mana_of(m, t)[0], 2000, 'Sorceress: item Energy left out of mana')
+    T.eq(M.life_of(m, t), Fraction(M.pct_fp(256 * (1000 + 10 * 2), 100), 256), 'Sorceress: item Vitality boosted with the %')
     hpj = M.dtm_ceiling(1572500, 11214)
     T.eq(round(float(hpj), 2), round((8388607 - 1572500) / ((1426063 - 11214) * 0.5) * 100, 2), 'HPJ ceiling')
     d = M.prayer_drain(5518)
