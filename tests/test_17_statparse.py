@@ -65,4 +65,19 @@ def merge_and_subtract():
     T.eq(SP.canon('ÿc4+10%  Fire   Resist'), SP.canon('10% fire resist'), 'canon ignores colour codes, "+" and spacing')
 
 
+@T.test
+def page_lines_min_above_max_and_percent():
+    """Lines the median-xl.com page shows that the import missed: a damage pair with min above max ("Adds 20-10
+    Damage", as stored) and a stat the page writes with a "%" the game text has not."""
+    E = T.engine()
+    import mxl_statparse as P
+    p = P.StatParser(E.data)
+    st, miss = p.parse(['Adds 20-10 Damage'])
+    T.eq(miss, [], 'min above max read')
+    T.eq(sorted((x['id'], x['value']) for x in st), [(21, 20), (22, 10)], 'stored as shown')
+    st, miss = p.parse(['Additional Strength Damage Bonus: +46%'])
+    T.eq(miss, [], 'trailing % read')
+    T.eq([(x['id'], x['value']) for x in st], [(442, 46)], 'stat 442')
+
+
 T.main(globals())

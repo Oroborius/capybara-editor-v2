@@ -143,6 +143,13 @@ class StatParser:
                         self.rules.append((re.compile('^' + pat + '$'), 'cast', (sid,)))
                         break
                 continue
+            if s.get('func') in (1, 2) and s.get('val') == 2 and s.get('pos') and \
+                    not self._one([dict(id=sid, param=None, value=SAMPLE)]):
+                # a stat our tooltip leaves out but the game / the page prints "Text: +N%" (descval 2: the
+                # number after the text), e.g. 442 "Additional Strength Damage Bonus: +46%"
+                pat = re.escape(_norm(s['pos']).rstrip(': ')) + r':? \+?' + NUM + ('%' if s['func'] == 2 else '')
+                self.rules.append((re.compile('^' + pat + '$'), 'literal', (sid,)))
+                continue
             for v in (SAMPLE, -SAMPLE):
                 t = self._one([dict(id=sid, param=None, value=v)])
                 if not t:
@@ -164,7 +171,7 @@ class StatParser:
             fixed.append((re.compile(pat, re.I), kind, ids))
         self.rules = fixed
         # groups and pairs first, longer patterns before shorter ones
-        order = {'pair': 0, 'pair_eq': 0, 'group': 1, 'cast': 2, 'cooldown': 2, 'param': 3, 'single': 4, 'skill': 5, 'reanimate': 6, 'flag': 7}
+        order = {'pair': 0, 'pair_eq': 0, 'group': 1, 'cast': 2, 'cooldown': 2, 'param': 3, 'single': 4, 'literal': 4, 'skill': 5, 'reanimate': 6, 'flag': 7}
         self.rules.sort(key=lambda r: (order[r[1]], -len(r[0].pattern)))
 
     def _any_skill(self):
@@ -192,6 +199,14 @@ class StatParser:
 
     def match(self, line):
         """Stats [dict(id, param, value)] of one tooltip line, or None."""
+        out = self._match(line)
+        if out is None:
+            n = _norm(line)
+            if n.endswith('%') and re.search(r'\d%$', n):
+                out = self._match(n[:-1])   # the page adds a "%" the game text has not ("...Damage Bonus: +46%")
+        return out
+
+    def _match(self, line):
         line = _norm(line)
         m = re.fullmatch(r'\+?(-?\d+)% Enhanced Damage', line)
         if m:                                           # weapon ED: min and max damage % together
@@ -221,6 +236,8 @@ class StatParser:
                 st += [dict(id=e, param=None, value=50) for e in ids[2:]]
                 if self._same(st, line):
                     return st
+                if a > b:                               # min above max: the page prints the pair as stored
+                    return st                           # ("Adds 20-10 Damage"), our text puts it another way
                 continue
             if kind == 'pair_eq':
                 a = int(m.group(1))
@@ -278,6 +295,8 @@ class StatParser:
                     if self._same(st, line):
                         return st
                 continue
+            if kind == 'literal':                       # no game text of ours to compare with: the number as shown
+                return [dict(id=ids[0], param=None, value=int(m.group(1)))]
             # single
             nums = [int(x) for x in m.groups() if x is not None and re.fullmatch(r'-?\d+', x)]
             if not nums:
