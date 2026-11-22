@@ -586,6 +586,10 @@ class Character:
             if self.merc_items is not None:
                 out += b'JM' + struct.pack('<H', len(self.merc_items)) + b''.join(e.blob for e in self.merc_items)
         out += self.tail
+        if out[0x29] == 0 and out[0x2A] == 0 and _median():
+            # Median XL writes 0x10 0x5F here in every save; a character the game refused ("bad data") comes back
+            # with both zeroed - saving puts them back
+            out[0x29], out[0x2A] = 0x10, 0x5F
         struct.pack_into('<I', out, 8, len(out))
         struct.pack_into('<I', out, 12, checksum(out))
         return bytes(out)
@@ -1206,6 +1210,14 @@ def set_read_only(path, on):
         os.chmod(path, (m & ~(stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH)) if on else (m | stat.S_IWUSR))
     except OSError:
         pass
+
+
+def _median():
+    try:
+        import mxl_profile
+        return mxl_profile.is_median()
+    except Exception:
+        return False
 
 
 # ------------------------------------------------------------------ the collector's character reader

@@ -215,4 +215,21 @@ def launcher_save_dir_search():
                 os.environ[k] = v
 
 
+@T.test
+def median_header_bytes_restored_on_save():
+    """A character Median XL refused ("bad data") comes back from the game with header 0x29 / 0x2A zeroed (every
+    Median save has 0x10 0x5F there): building it in the Median profile puts them back; a normal save keeps its bytes."""
+    E = T.engine()
+    import glob
+    path = sorted(glob.glob(os.path.join(T.fresh_saves(1), '*.d2s')))[0]
+    raw = T.read(path)
+    T.eq((raw[0x29], raw[0x2A]), (0x10, 0x5F), 'fixture header bytes')
+    c = E.MC.Character(path, E.data)
+    T.eq(bytes(c.build()), raw, 'a normal save rebuilds byte for byte')
+    c.head[0x29] = c.head[0x2A] = 0
+    out = bytes(c.build())
+    T.eq((out[0x29], out[0x2A]), (0x10, 0x5F), 'zeroed bytes restored')
+    T.eq(out[0x2B:], raw[0x2B:], 'the rest unchanged')
+
+
 T.main(globals())
