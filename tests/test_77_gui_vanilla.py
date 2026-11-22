@@ -129,7 +129,7 @@ def mock_character_opens():
     if _S is None:
         T.skip('no vanilla install / samples')
     cw = _open('clone-26')
-    T.check(cw.ch is not None and cw.ch.name.lower() == 'clone-26', 'hacked clone character opened')
+    T.check(cw.ch is not None and os.path.basename(cw.ch.path) == 'clone-26.d2s', 'hacked clone character opened')
     T.check(any(getattr(e.it, 'ear', None) for e in cw.ch.items), 'player ears read')
 
 
@@ -141,7 +141,7 @@ def extreme_characters_open_clean():
         T.skip('no vanilla install / samples')
     for name in ('clone-35', 'clone-59'):
         cw = _open(name)
-        T.check(cw.ch is not None and cw.ch.name.lower() == name.lower(), f'{name} opened')
+        T.check(cw.ch is not None and os.path.basename(cw.ch.path) == name + '.d2s', f'{name} opened')
         T.check(not cw.dirty(), f'{name}: nothing pending after loading')
 
 

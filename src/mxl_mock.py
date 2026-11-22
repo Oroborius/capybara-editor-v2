@@ -57,7 +57,7 @@ SHIELD_DMG = {'buc ': (1, 3), 'sml ': (2, 3), 'lrg ': (2, 4), 'kit ': (2, 5), 't
               'pab ': (22, 70), 'pac ': (35, 58), 'pad ': (10, 82), 'pae ': (46, 46), 'paf ': (5, 87)}
 # user (2026-11-20): the smite cap is 8388607 before any penalty / reduction; one point over rolls over and deals 1
 # (as bad as no damage), so the analyzer scores > 8388607 BAD. The in-game rounding is unverified (Equilibrium's
-# README 713029.5 PvP is ~113 PvM under our formula), so the generator aims SMITE_SLACK under the cap.
+# clone notes: 713029.5 PvP is ~113 PvM under our formula), so the generator aims SMITE_SLACK under the cap.
 SMITE_SLACK = 100
 SMITE_TARGET = ROLL - SMITE_SLACK
 
@@ -771,7 +771,7 @@ def sides(model):
 # a reference funky: speeds IAS / FCR -121, FRW -164, stun 90% at level 63, NV states Just Hit + Holy Shield
 _FUNKY = dict(ias=-121, frw=-164, fcr=-121, stun_lvl=63, holy_shield=True, just_hit=True, barbs=0)   # barbs: 1 / 7 funkies
 PRESETS = {
-    # TK31 mocks (clones2: clone-02 A / clone-80 B / Prototype B high, clone-70 / clone-90 B mid, clone-12 /
+    # TK31 mocks (clones2: clone-02 A / clone-80 B / clone-79 B high, clone-70 / clone-90 B mid, clone-12 /
     # Beginner B low): 7 Holy Freeze sources capped by cold mastery, Thorns + Barbs return, resist by level
     'mock_high': dict(label='Mock High', role='mock', tk=31, mana=1572500, hf_sources=7, hf_level=3100,
                       thorns=4278, res_cold=3528, res_fire=3339,
@@ -805,7 +805,7 @@ PRESETS = {
     'balance_switch': dict(label='Balance switch', role='mock', tk=31, mana=1572500, mana_b=1211974, hf_sources=7,
                            hf_level=3100, thorns=4278, switch='balance', res_cold=3528,
                            note='side A High 1.5725M (stun shield), weapon switch to side B Low 1.21M (no stun)'),
-    # clones2 (README): clone-104 / clone-87 "mid mana" P/T 1377236 (TK31): 40 Prayer charms, Thorns
+    # clones2: clone-104 / clone-87 "mid mana" P/T 1377236 (TK31): 40 Prayer charms, Thorns
     # 4278 + Barbs 4154 (ours 3100: the room left at 31 per line), no holy aura, no stun
     'pt_mid': dict(label='P/T Mid', role='pt', tk=31, mana=1377236, hf_sources=0, hf_level=0, thorns=4278,
                    barbs=3100, stun=0, res_cold=2898, res_fire=2898, res_light=2898, target_def=762, itd=True,

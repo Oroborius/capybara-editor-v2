@@ -39,7 +39,7 @@ def _open(name):
     G.app.open_view(keep_page=True)
     T.pump(20, 0.02)
     cw = T.chartab()
-    T.check(cw is not None and cw.ch is not None and cw.ch.name == name, f'{name} opened')
+    T.check(cw is not None and cw.ch is not None and os.path.basename(cw.ch.path) == name + '.d2s', f'{name} opened')
     return cw
 
 

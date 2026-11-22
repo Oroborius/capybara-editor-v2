@@ -212,8 +212,8 @@ def vanilla_item_codec_round_trips_every_sample_item():
             if b''.join(E.M.encode_item(r, isc, base) for r in recs) != e.blob:
                 bad.append(f"{rel}: {e.it.get('code')}")
     T.eq(bad, [], 'items not given back byte for byte')
-    T.eq(sorted(skipped), [('clone-68.d2s', True, 0)] + [('clone-20.d2s', True, 0)] * 6
-         + [('clone-100.d2s', True, 0)] * 14, 'items the codec cannot read (all opaque to the editor too)')
+    T.eq(sorted(skipped), sorted([('clone-68.d2s', True, 0)] + [('clone-20.d2s', True, 0)] * 6
+         + [('clone-100.d2s', True, 0)] * 14), 'items the codec cannot read (all opaque to the editor too)')
     T.check(n > 1500, f'{n} items checked')
 
 
