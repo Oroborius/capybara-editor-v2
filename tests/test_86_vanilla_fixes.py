@@ -200,7 +200,9 @@ def hover_panel_shows_jewel_totals():
 def by_time_and_per_level_stats_read_like_the_game():
     cw = _open('clone-02')
     import mxl_format_fix as F
-    T.eq(F.bytime_parts(4194303), (3, 1023, 1023), 'all bits set: dawn, 1023 to 1023')
+    T.eq(F.bytime_parts(4194303), (3, 767, 767), 'all bits set: dawn, 767 to 767 (fields carry +256)')
+    T.eq(F.bytime_parts(256 << 2 | 356 << 12 | 1), (1, 0, 100), 'dusk, 0 to 100')
+    T.eq(F.bytime_parts(0), (0, -256, -256), 'zero bits: -256')
     seen = 0
     for e in cw.ch.items:
         it = e.it
@@ -211,6 +213,8 @@ def by_time_and_per_level_stats_read_like_the_game():
         txt = '\n'.join(_tip(it, cw.data))
         T.check(str(own[288]) not in txt, f'no raw by-time value: {txt[:300]!r}')
         T.check('(Increases Near Dawn)' in txt, f'by-time period shown: {txt[:300]!r}')
+        if own[288] == 4194303:
+            T.check('+767' in txt and '+1023' not in txt, f'by-time value less the 256 offset: {txt[:300]!r}')
         if 234 in own:
             T.check('Absorbs Cold Damage (Based on Character Level)' in txt, 'per-level absorb line')
         break

@@ -393,7 +393,8 @@ def _install_no_socket_breakdown():
 
 # ---------------------------------------------------------------------------------------- by-time stats
 # itemstatcost op 6 ("by time"), descfunc 17 / 18: the 22 saved bits are 2 bits time of day, 10 bits the start and
-# 10 bits the end value (d2s format notes; low bits first). The host printed the raw number ("+4194303 Absorbs Cold
+# 10 bits the end value (low bits first), each stored with 256 added (value = field - 256: -256..767, so the bulk
+# 4194303 is +767). The host printed the raw number ("+4194303 Absorbs Cold
 # Damage"); the game prints the value and "(Increases Near Dawn)" etc. Periods 0-3: day, dusk, night, dawn.
 TIME_KEYS = ('ModStre9e', 'ModStre9g', 'ModStre9d', 'ModStre9f')
 TIME_DEFAULT = ('(Increases During Daytime)', '(Increases Near Dusk)', '(Increases During Nighttime)',
@@ -403,7 +404,7 @@ TIME_DEFAULT = ('(Increases During Daytime)', '(Increases Near Dusk)', '(Increas
 def bytime_parts(v):
     """(period, start, end) of a by-time stat value."""
     v = int(v or 0)
-    return v & 3, (v >> 2) & 1023, (v >> 12) & 1023
+    return v & 3, ((v >> 2) & 1023) - 256, ((v >> 12) & 1023) - 256
 
 
 def bytime_text(c, v, data):
@@ -414,7 +415,7 @@ def bytime_text(c, v, data):
         when = TIME_DEFAULT[period]
     desc = (c.get('pos') or c.get('desc') or '').strip()
     pct = '%' if c.get('func') == 18 else ''
-    num = f'+{hi}{pct}' if lo == hi else f'+{min(lo, hi)}{pct} to {max(lo, hi)}{pct}'
+    num = f'{hi:+d}{pct}' if lo == hi else f'{min(lo, hi):+d}{pct} to {max(lo, hi)}{pct}'
     return f'{num} {desc} {when}'.strip()
 
 
@@ -469,7 +470,7 @@ def install():
     except Exception:
         pass
     try:
-        _install_bytime_text()            # by-time stats: "+1023 Absorbs Cold Damage (Increases Near Dawn)"
+        _install_bytime_text()            # by-time stats: "+767 Absorbs Cold Damage (Increases Near Dawn)"
     except Exception:
         pass
     try:
