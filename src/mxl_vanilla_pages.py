@@ -235,6 +235,12 @@ def stash_view(ch, data):
     """(cols, rows, [item dict]) of the character's personal stash for the main window's grid: copies with
     page 0 (the collector's grid draws one page); items outside the grid are left out (the Character window's
     page lists them)."""
+    cols, rows, pairs = stash_pairs(ch, data)
+    return cols, rows, [it for it, _e in pairs]
+
+
+def stash_pairs(ch, data):
+    """(cols, rows, [(item dict, Entry)]) behind stash_view: the Entry gives the item's bytes (Ctrl+C)."""
     _k, _t, cols, rows, entries = containers(ch, data)[0]
     items = []
     for e in entries:
@@ -245,8 +251,14 @@ def stash_view(ch, data):
             w, h = 1, 1
         x, y = it.get('x', 0), it.get('y', 0)
         if 0 <= x and 0 <= y and x + w <= cols and y + h <= rows:
-            items.append(dict(it, page=0))
+            items.append((dict(it, page=0), e))
     return cols, rows, items
+
+
+def readonly_text():
+    """Why the main window's stash pane takes no drop / paste / delete in a folder profile."""
+    return T('van.stash_readonly', "the 1.14d stash is part of the character: edit it on the character's "
+             'Stash / Cube / Belt page')
 
 
 def install_main(App):
@@ -261,6 +273,7 @@ def install_main(App):
     mxl_gui.COLS, mxl_gui.ROWS = g.get('stash') or (6, 8)
     mxl_gui.NB_PAGES = 1
     o_build, o_click, o_status, o_watch = App._build, App.on_click, App.show_status, App.watch_files
+    o_lang = getattr(App, 'change_language', None)
 
     def _build(self):
         o_build(self)
@@ -283,10 +296,14 @@ def install_main(App):
         self.path, self.char_file = None, cf
         self.van_sig = mxl_gui.file_signature(cf)
         items, err, cols, rows = [], None, mxl_gui.COLS, mxl_gui.ROWS
+        self.van_ch, self.van_entries = None, {}
         if os.path.exists(cf):
             try:
                 import mxl_char
-                cols, rows, items = stash_view(mxl_char.Character(cf, self.data), self.data)
+                self.van_ch = mxl_char.Character(cf, self.data)
+                cols, rows, pairs = stash_pairs(self.van_ch, self.data)
+                items = [it for it, _e in pairs]
+                self.van_entries = {id(it): e for it, e in pairs}
             except Exception as e:
                 err = f'{type(e).__name__}: {e}'
             try:
@@ -313,11 +330,8 @@ def install_main(App):
                     self.canvas.configure(width=cols * self.cell + 1, height=rows * self.cell + 1)
             except Exception:
                 pass
-        try:
-            self.van_title.configure(text=T('van.main_stash', 'Stash ({cols} x {rows}) - shown, not edited here',
-                                            cols=cols, rows=rows))
-        except Exception:
-            pass
+        self.van_dims = (cols, rows)
+        retitle(self)
         self.root.title(mxl_gui.tr('app.title_file', file=os.path.basename(cf)))
         self.draw_grid()
         self.set_detail(self.selected)
@@ -360,16 +374,98 @@ def install_main(App):
             pass
         o_watch(self)
 
+    def retitle(self):
+        cols, rows = getattr(self, 'van_dims', None) or (mxl_gui.COLS, mxl_gui.ROWS)
+        try:
+            self.van_title.configure(text=T('van.main_stash', 'Stash ({cols} x {rows}) - shown, not edited here',
+                                            cols=cols, rows=rows))
+        except Exception:
+            pass
+
+    def change_language(self, *a, **k):
+        result = o_lang(self, *a, **k)
+        retitle(self)                                 # a text with fields: mxl_lang.retranslate leaves it
+        return result
+
     App._build, App.open_view, App.show_status = _build, open_view, show_status
     App.on_click, App.watch_files = on_click, watch_files
-    import mxl_rc_menu                                # its stash menu edits the stash file: none here
-    o_menu = mxl_rc_menu._stash_menu
+    if o_lang is not None:
+        App.change_language = change_language
+    install_main_readonly()
+
+
+def _readonly(app):
+    """The main window shows the read-only view (no stash file)."""
+    return not getattr(app, 'path', None) and getattr(app, 'van_entries', None) is not None
+
+
+def _say(app, msg):
+    try:
+        app.status.configure(text=msg)
+    except Exception:
+        pass
+
+
+def install_main_readonly():
+    """The stash writers that act on the pane, on the read-only view: a drop says why it is refused
+    (readonly_text), Ctrl+C / Ctrl+Shift+C copy from the view (the character file's bytes), Ctrl+V /
+    Ctrl+Shift+V / Delete are refused with the same text, the right-click menu is not offered."""
+    import types
+    import mxl_inv_gui
+    import mxl_rc_menu
+    import mxl_undo
+    o_menu, o_hot, o_del = mxl_rc_menu._stash_menu, mxl_rc_menu._stash_hot, mxl_undo.delete_item
+    o_target = mxl_inv_gui.MainInventory.stash_target
 
     def _stash_menu(app, ev):
         if app.path is None:
             return None
         return o_menu(app, ev)
-    mxl_rc_menu._stash_menu = _stash_menu
+
+    def stash_target(self, x_root, y_root, it, dx, dy):
+        t = o_target(self, x_root, y_root, it, dx, dy)
+        if t is not None and _readonly(self.app):
+            return t[0], t[1], readonly_text()
+        return t
+
+    def _stash_hot(app, what):
+        if not _readonly(app):
+            return o_hot(app, what)
+        ev = mxl_rc_menu._canvas_at_pointer([app.canvas])
+        if ev is None:
+            return
+        if what in ('paste', 'magic_paste'):
+            _say(app, readonly_text())
+            return
+        try:
+            it = app.item_at(ev)
+        except Exception:
+            it = None
+        e = app.van_entries.get(id(it)) if it is not None else None
+        if e is None or app.van_ch is None:
+            _say(app, mxl_rc_menu.rc('hot.none', 'no item under the mouse cursor'))
+            return
+        name = mxl_rc_menu.clean_name(None, e)
+        if what == 'copy':
+            try:
+                app._capy_clip = (app.van_ch.stash_blob(e), name)
+            except Exception as err:
+                _say(app, f'{type(err).__name__}: {err}')
+                return
+            _say(app, mxl_rc_menu.rc('copied', '{name} copied (right-click an empty cell to paste it)',
+                                     name=name))
+        elif what == 'magic_copy':
+            win = types.SimpleNamespace(ch=app.van_ch, app=app, set_status=lambda m, error=False: _say(app, m))
+            mxl_rc_menu._add_magic_to_buffer(app, None, win=win, e=e)
+
+    def delete_item(app, it):
+        if it is not None and _readonly(app):
+            _say(app, readonly_text())
+            return
+        return o_del(app, it)
+
+    mxl_rc_menu._stash_menu, mxl_rc_menu._stash_hot, mxl_undo.delete_item = _stash_menu, _stash_hot, delete_item
+    mxl_inv_gui.MainInventory.stash_target = stash_target
 
 
 # The game's own inventory screen at its native size (invchar6.dc6, 320 x 432: paperdoll + the 10 x 4 grid +
