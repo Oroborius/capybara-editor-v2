@@ -396,4 +396,16 @@ def proc_stat_defaults_to_the_games_skill():
         T.eq(p & 63, 1, f'stat {sid}: level 1')
 
 
+@T.test
+def items_the_game_makes_itself_are_listed():
+    """Normal quality lists every real item, also ones the game never drops (not spawnable: Pulsating Worldstone
+    Shard / Crystal) and quest items - the user could not find them before."""
+    w = creator()
+    import mxl_profile
+    names = {b.name for b in w._bases()}
+    if mxl_profile.is_median():
+        T.check('Pulsating Worldstone Shard' in names, 'Pulsating Worldstone Shard listed')
+    T.check(not any(n.lower() in ('unused', 'dummy') for n in names), 'no placeholder rows')
+
+
 T.main(globals())

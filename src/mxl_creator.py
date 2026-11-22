@@ -595,7 +595,7 @@ class Creator:
         """Base items that can be created (weapons, armor, misc with a name and an icon), sorted by name."""
         out = []
         for code, b in self.data.bases.items():
-            if not code.strip() or not b.name or b.quest:
+            if not code.strip() or not b.name:      # quest items too (keys, quest drops): the editor makes anything
                 continue
             if 'POLAR BUFFALO' in b.name.upper():
                 continue                    # 15 unused item rows whose name string is the game's placeholder

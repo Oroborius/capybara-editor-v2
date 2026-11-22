@@ -904,7 +904,9 @@ class CreatorWindow:
             for b in self.cr.bases():
                 t = self.cr.t.item.get(b.code, {})
                 name = clean(b.name)
-                if not t.get('spawnable') or not name or name.lower() in ('unused', 'dummy'):
+                # every real item, also the ones the game makes itself instead of dropping (not spawnable: the
+                # Pulsating Worldstone Shards / Crystal, event and cube results) - only placeholder rows are left out
+                if not name or name.lower() in ('unused', 'dummy'):
                     continue
                 out.append(b)
             self.cr._good_bases = out
