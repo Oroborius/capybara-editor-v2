@@ -61,7 +61,7 @@ _SHIELD_NAMES = {}                   # code -> item name, filled by shield_choic
 
 
 def _data_folder():
-    """The selected game folder's extracted tables (the vanilla profile), or None (no profile: fallback tables)."""
+    """The selected game folder's extracted tables (the vanilla profile), or None (Median / none: fallback)."""
     try:
         import mxl_profile
         st = mxl_profile.active()
@@ -69,11 +69,7 @@ def _data_folder():
             return st['data_dir']
     except Exception:
         pass
-    try:
-        import paths
-        return getattr(paths, 'DATA_DIR', None)
-    except Exception:
-        return None
+    return None                      # Median XL / no folder profile: never its tables (SHIELD_DMG fallback)
 
 
 def _bin_rows(folder, name):
@@ -1555,7 +1551,8 @@ def plan(preset='mock_high', name='Mock', **over):
     # first (side B re-tunes the shield copy)
     pref = sorted(lists, key=lambda s: {'charm': 0, 'jewel': 1}.get(s.unit.kind, 2))
     order = pref if not o['switch'] else sorted(
-        lists, key=lambda s: (s.unit.name != 'shield' and (s.unit.parent is None or s.unit.parent.name != 'shield'),
+        lists, key=lambda s: (s.unit.name.rstrip("'") != 'shield'
+                              and (s.unit.parent is None or s.unit.parent.name.rstrip("'") != 'shield'),
                               s.unit.kind == 'charm'))      # the shield and its jewels first
     for s, v in zip(order, split(mana['flat'], 223)):
         s.add(9, v)
