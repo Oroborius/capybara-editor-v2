@@ -511,10 +511,59 @@ def aura_text(data, param, value):
         fmt = data.isc[151]['pos']
     except Exception:
         fmt = 'Level %d %s Aura When Equipped'
-    nm = (data.skill_names.get(param) if isinstance(data.skill_names, dict) else None) or f'skill {param}'
+    nm = (data.skill_names.get(param) if isinstance(data.skill_names, dict) else None) or \
+        (evil_force(data) if _is_skill_row(data, param) else f'skill {param}')
     if '%d' in fmt and '%s' in fmt:
         return fmt.replace('%d', str(value), 1).replace('%s', str(nm), 1)
     return f'Level {value} {nm} Aura When Equipped'
+
+
+def evil_force(data):
+    """The game's text for a string that is not there ('dummy' row of the tables: 'an evil force')."""
+    return _string(data, 'dummy') or 'an evil force'
+
+
+def _is_skill_row(data, sid):
+    sc = getattr(data, 'skill_class', None)
+    return isinstance(sid, int) and isinstance(sc, dict) and sid in sc
+
+
+def _stat_skill(st):
+    """Skill id of a skill-carrying stat line: 97 (+n to a skill), 151 (aura), 195-213 (chance to cast, charges)."""
+    sid, p = st.get('id'), st.get('param')
+    if p is None:
+        return None
+    if sid in (97, 151):
+        return p
+    if 195 <= sid <= 213:
+        return p >> 6
+    return None
+
+
+def unnamed_skill_text(data, st):
+    """A skill stat whose skill is a row of skills.bin without a name (monster skills: hacked clone items): the game
+    prints the line with 'an evil force' for the name, the host dropped it. None for named skills / other stats."""
+    sk = _stat_skill(st)
+    if sk is None or not _is_skill_row(data, sk):
+        return None
+    names = data.skill_names if isinstance(getattr(data, 'skill_names', None), dict) else {}
+    if names.get(sk):
+        return None
+    sid, v, nm = st['id'], int(st.get('value') or 0), evil_force(data)
+    c = data.isc.get(sid) or {}
+    fmt = str(c.get('pos') or '')
+    if sid == 151:
+        return aura_text(data, st.get('param'), v)
+    if sid == 97:                                          # descfunc 28
+        return f'{v:+d} to {nm}'
+    lvl = st['param'] & 63
+    if c.get('func') == 24:                                # charges: 'Level 2 <skill> (1/3 Charges)'
+        tail = fmt.replace('%d', str(v & 255), 1).replace('%d', str(v >> 8 & 255), 1) if '%d' in fmt else \
+            f'({v & 255}/{v >> 8 & 255} Charges)'
+        return f"{data.key('ModStre10b') or 'Level'} {lvl} {nm} {tail}"
+    if c.get('func') == 15 and fmt.count('%d') == 2 and '%s' in fmt:     # '%d%% Chance to cast level %d %s on ...'
+        return fmt.replace('%d', str(v), 1).replace('%%', '%').replace('%d', str(lvl), 1).replace('%s', nm, 1)
+    return None
 
 
 def _string(data, key, prefer_newline=False):
@@ -563,6 +612,9 @@ def _patch_text():
     OWN = (188, 151, 252)
 
     def own_text(data, st):
+        t = unnamed_skill_text(data, st)
+        if t:
+            return t
         if st.get('id') == 188:
             return skill_tab_text(data, st.get('param'), st.get('value'))
         if st.get('id') == 252:
@@ -572,8 +624,9 @@ def _patch_text():
     def stat_lines(stats, data, *a, **k):
         _fix_isc(data)
         stats = list(stats or ())
-        mine = [x for x in stats if isinstance(x, dict) and x.get('id') in OWN]
-        rest = [x for x in stats if not (isinstance(x, dict) and x.get('id') in OWN)]
+        own = [isinstance(x, dict) and (x.get('id') in OWN or unnamed_skill_text(data, x) is not None) for x in stats]
+        mine = [x for x, o in zip(stats, own) if o]
+        rest = [x for x, o in zip(stats, own) if not o]
         out = list(o_lines(rest, data, *a, **k)) if rest or not mine else []
         prio_on = k.get('prio', a[2] if len(a) > 2 else False)
         ti = 2 if prio_on else 1                          # index of the text in a line tuple
@@ -593,7 +646,8 @@ def _patch_text():
         for st in sorted(mine, key=lambda x: -(data.isc.get(x['id']) or {}).get('prio', 0)):
             t = own_text(data, st)
             if not t or t in seen:
-                continue
+                if not t or unnamed_skill_text(data, st) is None:
+                    continue                           # skills without a name: one line per stat, like the game
             pr = (data.isc.get(st['id']) or {}).get('prio', 0)
             hi = [x for x in rest if (data.isc.get(x.get('id')) or {}).get('prio', 0) > pr]
             try:
