@@ -2094,21 +2094,26 @@ class CreatorWindow:
         labels = [t['label'] for t in texts]
         st = {'i': 0}
 
-        # the hidden-effect dropdown: the correlated option first, then (for the skill-proc texts)
-        # every skilldesc name - the param of those stats indexes the skilldesc table directly
-        sd_rows = []
-        try:
-            sd_rows = d._rows('skilldesc')
-        except Exception:
-            pass
-        sd_names = []
-        for i in range(len(sd_rows)):
-            sd_names.append(skilldesc_name(d, i) or f'skilldesc #{i}')
+        # the hidden-effect dropdown: the correlated option first, then (for the skill-proc texts, Mega
+        # Impact / Thunderfury / Area Effect Attack / Amazing Grace) every skill: their param packs
+        # skill << 6 | level like the "on event" properties (the game's own rows: a hidden skill, level 1)
+        import mxl_statnames
+        sk_names = []
+
+        def skill_choices():
+            if not sk_names:
+                sk_names.extend(f'{n}  (skill {k})' for n, k in mxl_statnames.skill_names_sorted(d, hidden=True))
+            return sk_names
+
+        def proc_label(param):
+            k = param >> 6
+            n = mxl_statnames.skill_label(d, k)
+            return f'{n}  (skill {k})' if n else None
 
         def hidden_choices(i):
             t = texts[i]
             if t['skilldesc']:
-                return [f'{sk}  (param {i2})' for i2, sk in enumerate(sd_names) if sk]
+                return skill_choices()
             return [T('cr.orange.no_hidden', '(no hidden stat - the text is the whole effect)')] \
                 + [h['label'] for h in t['hidden']]
 
@@ -2151,8 +2156,8 @@ class CreatorWindow:
             cb.show(labels[i])
             ch = hid['choices'] = hidden_choices(i)
             t = texts[i]
-            if t['skilldesc'] and t['display']['param'] < len(sd_names):
-                hvar.set(f"{sd_names[t['display']['param']]}  (param {t['display']['param']})")   # the game's own pairing
+            if t['skilldesc'] and proc_label(t['display']['param']):
+                hvar.set(proc_label(t['display']['param']))     # the game's own pairing (skill of its row)
             else:
                 hvar.set(ch[1 if t['hidden'] else 0])
             hb.show(hvar.get())
@@ -2170,9 +2175,9 @@ class CreatorWindow:
             value = vv.get()
             param = t['display']['param']
             if t['skilldesc']:
-                m = re.search(r'\(param (\d+)\)', hvar.get())
-                if m:
-                    param = int(m.group(1))          # a skill picked in the hidden dropdown overrides
+                m = re.search(r'\(skill (\d+)\)', hvar.get())
+                if m:                                # a skill picked in the hidden dropdown overrides; the level
+                    param = int(m.group(1)) << 6 | ((param & 63) or 1)   # stays the game row's (1)
             entries = self.spec.setdefault('extra', [])
             entries.append(dict(id=t['display']['id'], param=param, value=value))
             if not t['skilldesc']:

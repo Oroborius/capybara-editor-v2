@@ -1594,7 +1594,9 @@ class Creator:
             out = []
             for m in mods or []:
                 for s, f in zip(d.props[m['prop']], d.prop_funcs[m['prop']]):
-                    if s >= 0:
+                    if s >= 0 and f == 11:      # "on event" (the procs): param = skill << 6 | level (max), value = min
+                        out.append((s, ((m['param'] or 0) << 6) | ((m.get('max') or 1) & 63), m['min']))
+                    elif s >= 0:
                         out.append((s, m['param'], m['min']))
             return out
 
@@ -1625,8 +1627,9 @@ class Creator:
                 except (IndexError, KeyError, TypeError):
                     continue
                 desc = _clean_orange(ic.get('desc') or f'(stat #{sid})')
-                sk = skilldesc_name(d, param) or f'skilldesc #{param}'
-                label = f'{desc} (skill: {sk})'
+                import mxl_statnames                  # param = skill << 6 | level (an "on event" packing)
+                sk = mxl_statnames.skill_label(d, param >> 6) or f'skill #{param >> 6}'
+                label = f'{desc} (skill: {sk}, level {param & 63})'
                 out.append(dict(label=label, display=dict(id=sid, param=param, value=val),
                                 hidden=[], effects=[], skilldesc=True))
                 continue

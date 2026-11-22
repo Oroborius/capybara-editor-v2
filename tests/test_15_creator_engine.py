@@ -350,4 +350,20 @@ def any_item_can_be_ethereal():
         break
 
 
+@T.test
+def proc_texts_name_their_skill_and_level():
+    """Mega Impact / Thunderfury / Area Effect Attack / Amazing Grace: the param packs skill << 6 | level (the game's
+    own rows: a hidden skill at level 1). The creator's label names that skill, not a skilldesc entry; adding one
+    with another skill keeps the level bits (an unpacked index wrote level 0 and a wrong skill)."""
+    E = T.engine()
+    import mxl_statnames
+    procs = [t for t in E.cr.orange_texts() if t['skilldesc']]
+    T.check(len(procs) >= 4, f'proc texts: {len(procs)}')
+    for t in procs:
+        p = t['display']['param']
+        T.eq(p & 63, 1, f"{t['label']}: level 1")
+        T.check(mxl_statnames.skill_label(E.data, p >> 6) is not None, f"{t['label']}: a real skill id {p >> 6}")
+        T.check(f'level {p & 63}' in t['label'] and 'skilldesc' not in t['label'], t['label'])
+
+
 T.main(globals())
