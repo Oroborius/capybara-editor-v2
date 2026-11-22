@@ -161,6 +161,7 @@ def engine_n_from_the_game_tables():
     T.check(seen > 20, 'socketable bases checked')
     if VANILLA:
         boots = next((b for b in cr.bases() if 'boot' in cr.type_codes(b.code)), None)
+        T.check(boots is not None, 'a boots base in the 1.14d tables')
         if boots is not None:
             T.check(SM.max_sockets(cr, boots.code, dict(flags=0, ilvl=99)) == cr.max_sockets(boots.code, 99) < 7,
                     'boots keep the data value (no 7-socket rule)')
@@ -382,6 +383,62 @@ def vanilla_unsocket_into_personal_stash_and_undo():
     T.check(not kids and not rec.get('sockets') and not [s for s in rec['stats'] if s['id'] == 194],
             '1.14d: sockets removed')
     undo_to([(cw.ch.path, raw0)], '1.14d remove')
+
+
+
+@T.test
+def vanilla_menu_only_on_socketable_items():
+    vanilla()
+    import mxl_creator as C
+    import mxl_save
+    cw, where, _gem, _f = _vanilla_char()
+    d = cw.data
+    cr = C.Creator(d)
+    kid = C.Creator._split(bytes(cw.ch.stash_blob(_ventry(cw, where))), d)[1][0]
+    loose = [C.encode_item(dict(C.decode_item(kid, d)[0], location=0, equipped=0, x=0, y=0, panel=1), d)]
+    boots = next((b for b in cr.bases() if 'boot' in cr.type_codes(b.code)), None)
+    if boots is not None:
+        spec = cr.new_spec('normal', boots.code)
+        spec['ilvl'] = C.MAX_ILVL
+        loose.append(bytes(cr.build(spec)[0]))
+    spots = []
+    for b in loose:
+        spot = cw.ch.free_inventory_spot(mxl_save.blob_item(b, d))
+        if spot is None:
+            T.skip('inventory full')
+        cw.ch.place(b, ('inv', spot[0], spot[1]), False)
+        spots.append(('inv', spot[0], spot[1]))
+    T.check(cw.save('test items placed'), 'test items not saved')
+    T.pump(4)
+    T.check(socket_labels(T.chartab_menu(spots[0])) is None, 'Socket menu on a gem')
+    if boots is not None:
+        T.check(socket_labels(T.chartab_menu(spots[1])) is None, 'Socket menu on 1.14d boots (no sockets in the data)')
+
+
+@T.test
+def vanilla_unsocket_refused_without_room():
+    vanilla()
+    import mxl_socket_menu as SM
+    cw, where, gem, _f = _vanilla_char()
+    raw0 = T.read(cw.ch.path)
+    ch = cw.ch
+    orig = SM._personal_stash_free
+    SM._personal_stash_free = lambda ch, data: (0, 0, set())
+    ch.free_inventory_spot = lambda it: None
+    try:
+        T.invoke(T.chartab_menu(where), 'Unsocket', under='Socket')
+    finally:
+        SM._personal_stash_free = orig
+        ch.__dict__.pop('free_inventory_spot', None)
+    T.pump(4)
+    T.eq(T.read(cw.ch.path), raw0, 'the character after a refused Unsocket')
+    T.check('not enough free room' in cw.status.cget('text'), f"status: {cw.status.cget('text')!r}")
+    _rec, kids = _vitem(cw, where)
+    T.eq([k['code'] for k in kids], [gem, gem], 'the gems are still socketed (in memory too)')
+
+
+def _ventry(cw, where):
+    return next(x for x in cw.ch.inventory() if ('inv', x.it['x'], x.it['y']) == where)
 
 
 T.main(globals())
