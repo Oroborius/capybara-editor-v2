@@ -126,6 +126,24 @@ MERC_SLOTS = (1, 2, 3, 4, 5, 8, 9, 10)
 INV_W, INV_H = 15, 10
 LOC_STORED, LOC_EQUIPPED, LOC_BELT = 0, 1, 2
 PANEL_INVENTORY, PANEL_CUBE = 1, 4
+# (cols, rows) of a stored panel other than the inventory (cube 4, personal stash 5) for a Character, or None:
+# set by a folder profile whose character file holds them (mxl_vanilla_pages, from the game's inventory.bin).
+# Median XL keeps its stash in files: no hook, ('store', ...) places are refused.
+PANEL_SIZE = None
+
+
+def where_of(e):
+    """An entry's place as Character.place / move take it: ('slot', n), ('inv', x, y) or, for an item stored in
+    another panel (1.14d cube / personal stash), ('store', panel, x, y); a belt item ('belt', x, y), which place /
+    move refuse (the belt is not edited)."""
+    it = e.it
+    if it['location'] == LOC_EQUIPPED:
+        return ('slot', it['equipped'])
+    if it['location'] == LOC_STORED and it.get('panel') not in (None, PANEL_INVENTORY):
+        return ('store', it['panel'], it['x'], it['y'])
+    if it['location'] == LOC_BELT:
+        return ('belt', it['x'], it['y'])
+    return ('inv', it['x'], it['y'])
 
 
 class CharError(Exception):
@@ -1171,6 +1189,23 @@ class Character:
                 return T('ch.err.overlaps', 'overlaps {item}', item=e.it['name'])
         return None
 
+    def stored_error(self, it, panel, x, y, ignore=None):
+        """None if the item fits at (x, y) of stored panel `panel` (PANEL_SIZE), else the reason."""
+        size = PANEL_SIZE(self, panel) if PANEL_SIZE is not None else None
+        if not size:
+            return T('ch.err.no_panel', 'this game keeps no such grid in the character file')
+        w, h = self.data.base(it['code']).size
+        if not (0 <= x and 0 <= y and x + w <= size[0] and y + h <= size[1]):
+            return T('ch.err.outside_grid', 'outside the grid')
+        for e in self.items:
+            if e is ignore or e.it['location'] != LOC_STORED or e.it.get('panel') != panel:
+                continue
+            ow, oh = self.data.base(e.it['code']).size
+            ex, ey = e.it['x'], e.it['y']
+            if x < ex + ow and ex < x + w and y < ey + oh and ey < y + h:
+                return T('ch.err.overlaps', 'overlaps {item}', item=e.it['name'])
+        return None
+
     def free_inventory_spot(self, it):
         w, h = self.data.base(it['code']).size
         for x in range(INV_W - w + 1):
@@ -1184,11 +1219,21 @@ class Character:
         ('inv', x, y). Returns the new Entry."""
         d = self.data
         it = blob_item(blob, d)
+        if where[0] == 'belt':
+            raise CharError(T('ch.err.belt', 'the belt is not edited here'))
         if where[0] == 'slot':
             err = self.slot_error(it, where[1], merc)
             if err:
                 raise CharError(err)
             new = Entry(None, Entry(it, blob).moved(d, location=LOC_EQUIPPED, equipped=where[1], x=where[1], y=0, panel=0))
+        elif where[0] == 'store':
+            if merc:
+                raise CharError(T('ch.err.merc_no_inv', 'the mercenary has no inventory'))
+            err = self.stored_error(it, where[1], where[2], where[3])
+            if err:
+                raise CharError(err)
+            new = Entry(None, Entry(it, blob).moved(d, location=LOC_STORED, equipped=0, x=where[2], y=where[3],
+                                                    panel=where[1]))
         else:
             if merc:
                 raise CharError(T('ch.err.merc_no_inv', 'the mercenary has no inventory'))
@@ -1209,14 +1254,23 @@ class Character:
         lst.remove(entry)
 
     def move(self, entry, where, merc=False):
-        """Moves an item inside the character (slot <-> inventory)."""
+        """Moves an item inside the character (slot <-> inventory <-> a stored panel of the file, see where_of)."""
         d = self.data
         it = entry.it
+        if where[0] == 'belt':
+            raise CharError(T('ch.err.belt', 'the belt is not edited here'))
         if where[0] == 'slot':
             err = self.slot_error(it, where[1], merc, ignore=entry)
             if err:
                 raise CharError(err)
             entry.blob = entry.moved(d, location=LOC_EQUIPPED, equipped=where[1], x=where[1], y=0, panel=0)
+        elif where[0] == 'store':
+            if merc:
+                raise CharError(T('ch.err.merc_no_inv', 'the mercenary has no inventory'))
+            err = self.stored_error(it, where[1], where[2], where[3], ignore=entry)
+            if err:
+                raise CharError(err)
+            entry.blob = entry.moved(d, location=LOC_STORED, equipped=0, x=where[2], y=where[3], panel=where[1])
         else:
             err = self.inventory_error(it, where[1], where[2], ignore=entry)
             if err:

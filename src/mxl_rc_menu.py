@@ -573,7 +573,7 @@ def _char_set_quantity(win, e, newq):
     from mxl_char import CharError
     from mxl_creator import decode_item, encode_item, CreateError
     merc = win.is_merc()
-    where = ('slot', e.it['equipped']) if e.it['location'] == MC.LOC_EQUIPPED else ('inv', e.it['x'], e.it['y'])
+    where = MC.where_of(e)
     path, before = win.ch.path, bytes(win.ch.raw)
     try:
         blob = win.ch.stash_blob(e)
@@ -697,7 +697,7 @@ def _mutate_char(win, e, fn, msg):
     import mxl_char as MC
     from mxl_char import CharError
     merc = win.is_merc()
-    where = ('slot', e.it['equipped']) if e.it['location'] == MC.LOC_EQUIPPED else ('inv', e.it['x'], e.it['y'])
+    where = MC.where_of(e)
     path, before, name = win.ch.path, bytes(win.ch.raw), _item_name(win, None, e)
     try:
         blob = win.ch.stash_blob(e)
@@ -1359,8 +1359,7 @@ def _fill_sockets(holder, it, win=None, e=None):
         _status(holder, msg + T('undo.hint_any', ' - Ctrl+Z undoes it'))
     else:
         merc = win.is_merc()
-        where = ('slot', e.it['equipped']) if e.it['location'] == MC.LOC_EQUIPPED \
-            else ('inv', e.it['x'], e.it['y'])
+        where = MC.where_of(e)
         path, before = win.ch.path, bytes(win.ch.raw)      # what is on disk: save() refuses anything else
         name = _item_name(holder, None, e)
         try:
@@ -1670,8 +1669,7 @@ def _char_paste_over(win, e, clip):
     import mxl_char as MC
     from mxl_char import CharError
     merc = win.is_merc()
-    where = ('slot', e.it['equipped']) if e.it['location'] == MC.LOC_EQUIPPED \
-        else ('inv', e.it['x'], e.it['y'])
+    where = MC.where_of(e)
     path, before, name = win.ch.path, bytes(win.ch.raw), clean_name(win, e)
     try:
         _char_replace(win, e, clip[0], where, merc)

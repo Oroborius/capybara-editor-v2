@@ -723,7 +723,7 @@ class CharacterWindow(StatEditMixin):
             self.set_status(T('ch.select_first', 'Select an item of the character first.'), True)
             return
         merc = self.is_merc()
-        where = ('slot', e.it['equipped']) if e.it['location'] == MC.LOC_EQUIPPED else ('inv', e.it['x'], e.it['y'])
+        where = MC.where_of(e)
 
         def write(blob):
             self.sync_file()                  # the file may have been written while the editor was open
@@ -734,7 +734,7 @@ class CharacterWindow(StatEditMixin):
             try:
                 self.ch.place(blob, where, merc)
             except CharError:
-                if where[0] == 'inv':
+                if where[0] in ('inv', 'store'):
                     spot = self.ch.free_inventory_spot(mxl_save.blob_item(blob, self.data))
                     if spot is None:
                         self.reload()

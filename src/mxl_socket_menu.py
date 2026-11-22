@@ -249,7 +249,7 @@ def _blob(holder, it, win, e):
 
 def _where(e):
     import mxl_char as MC
-    return ('slot', e.it['equipped']) if e.it['location'] == MC.LOC_EQUIPPED else ('inv', e.it['x'], e.it['y'])
+    return MC.where_of(e)
 
 
 def _record(app, before, name):

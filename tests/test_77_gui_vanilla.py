@@ -83,7 +83,7 @@ def vanilla_inventory_and_containers():
         mxl_tabs._state['nb'].select(mxl_tabs._state['pages']['Stash'])
         T.pump(10)
         os.system(f'import -window root {os.path.join(shot, "v77b.png")} 2>/dev/null')
-    T.eq(sorted(page.canvases), ['belt', 'cube', 'stash'], 'three grids')
+    T.eq(sorted(page.canvases), ['belt', 'cube', 'inv', 'stash'], 'stash, cube, belt and the inventory')
 
 
 @T.test

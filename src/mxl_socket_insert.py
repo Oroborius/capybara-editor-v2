@@ -154,7 +154,7 @@ ERRORS = (InsertError, EditError, FormatError, OSError, KeyError, ValueError)
 
 def _where(e):
     import mxl_char as MC
-    return ('slot', e.it['equipped']) if e.it['location'] == MC.LOC_EQUIPPED else ('inv', e.it['x'], e.it['y'])
+    return MC.where_of(e)
 
 
 # ------------------------------------------------------------------------------------------ main stash grid

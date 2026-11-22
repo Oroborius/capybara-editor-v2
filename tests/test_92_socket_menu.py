@@ -441,4 +441,144 @@ def _ventry(cw, where):
     return next(x for x in cw.ch.inventory() if ('inv', x.it['x'], x.it['y']) == where)
 
 
+
+# ------------------------------------------------------------------- 1.14d: Stash / Cube / Belt page
+def _vbuild(cr, sockets, n_gems):
+    import mxl_creator as C
+    gem = next(c for c, _n in cr.sockets_fillers())
+    base = next((b for b in cr.bases() if b.kind == 'weapons' and b.size[0] <= 2 and b.size[1] <= 3
+                 and sockets <= cr.max_sockets(b.code, C.MAX_ILVL) < 7), None)
+    if base is None:
+        T.skip(f'no 2 x 3 weapon base with {sockets} sockets')
+    spec = cr.new_spec('normal', base.code)
+    spec['ilvl'] = C.MAX_ILVL
+    spec['sockets'] = sockets
+    spec['socketed'] = [gem] * n_gems
+    return bytes(cr.build(spec)[0]), gem
+
+
+def _vfree(ch, panel, blob, skip=()):
+    import mxl_save
+    it = mxl_save.blob_item(blob, ch.data)
+    for y in range(12):
+        for x in range(12):
+            if (x, y) not in skip and ch.stored_error(it, panel, x, y) is None:
+                return ('store', panel, x, y)
+    T.skip(f'panel {panel} full')
+
+
+def _vpage(cw):
+    cw.tab.set('containers')
+    cw.show_tab()
+    page = cw.extra.get('containers')
+    T.check(page is not None, 'Stash / Cube / Belt page built')
+    page.refresh()
+    T.pump(4)
+    return page
+
+
+def _pev(page, key, gx, gy):
+    c = page.cell
+    return T.ev(page.canvases[key], (gx + .5) * c, (gy + .5) * c)
+
+
+def _pkey(where):
+    return ('inv', where[1], where[2]) if where[0] == 'inv' else ({4: 'cube', 5: 'stash'}[where[1]], where[2], where[3])
+
+
+def _pdrag(page, src, dst):
+    page.on_press(src[0], _pev(page, *src))
+    b = _pev(page, *dst)
+    page.on_drag(b)
+    page.on_release(b)
+    T.pump(6)
+
+
+def _pat(cw, where):
+    import mxl_char as MC
+    import mxl_creator as C
+    e = next((x for x in cw.ch.items if MC.where_of(x) == where), None)
+    return (e, C.decode_blob(bytes(e.blob), cw.data)) if e is not None else (None, None)
+
+
+@T.test
+def vanilla_page_moves_stash_cube_inventory_and_undo():
+    vanilla()
+    cw, where, gem, _f = _vanilla_char()
+    page = _vpage(cw)
+    T.eq(sorted(page.canvases), ['belt', 'cube', 'inv', 'stash'], 'grids of the page')
+    blob = bytes(cw.ch.stash_blob(_ventry(cw, where)))
+    path = cw.ch.path
+    raw0 = T.read(path)
+    st = _vfree(cw.ch, 5, blob)
+    _pdrag(page, _pkey(where), _pkey(st))
+    e, _r = _pat(cw, st)
+    T.check(e is not None and _pat(cw, where)[0] is None, 'inventory -> stash: moved')
+    raw1 = T.read(path)
+    T.check(raw1 != raw0, 'inventory -> stash written')
+    cb = _vfree(cw.ch, 4, blob)
+    _pdrag(page, _pkey(st), _pkey(cb))
+    e, (rec, kids) = _pat(cw, cb)
+    T.check(e is not None and _pat(cw, st)[0] is None, 'stash -> cube: moved')
+    T.eq([k['code'] for k in kids], [gem, gem], 'socketed items move with it')
+    _pdrag(page, _pkey(cb), _pkey(where))
+    T.check(_pat(cw, where)[0] is not None and _pat(cw, cb)[0] is None, 'cube -> inventory: moved')
+    T.eq(T.read(path), raw0, 'back where it was: byte-identical')
+    import mxl_undo
+    mxl_undo.undo(G.app)
+    T.pump(8)
+    undo_to([(path, raw1)], 'cube move undone, then stash -> cube')
+    undo_to([(path, raw0)], 'inventory -> stash')
+    _pdrag(page, _pkey(where), ('belt', 0, 0))
+    T.eq(T.read(path), raw0, 'a drop on the belt writes nothing')
+    T.check('belt' in page.status.cget('text'), f"belt drop status: {page.status.cget('text')!r}")
+    T.check(not [b for b in G.boxes if b[0] == 'showerror'], f'error boxes: {G.boxes}')
+
+
+@T.test
+def vanilla_page_socket_drop_and_menu_keep_the_stash_place():
+    vanilla()
+    import mxl_creator as C
+    import mxl_save
+    import mxl_socket_insert as SI
+    cw, where, _g, _f = _vanilla_char()
+    d = cw.data
+    cr = C.Creator(d)
+    parent, gem = _vbuild(cr, 3, 1)
+    st = _vfree(cw.ch, 5, parent)
+    cw.ch.place(parent, st, False)
+    loose = C.Creator._split(parent, d)[1][0]
+    loose = C.encode_item(dict(C.decode_item(loose, d)[0], location=0, equipped=0, x=0, y=0, panel=4), d)
+    cb = _vfree(cw.ch, 4, loose)
+    cw.ch.place(loose, cb, False)
+    T.check(cw.save('test items placed'), 'test items not saved')
+    T.pump(4)
+    page = _vpage(cw)
+    path = cw.ch.path
+    raw0 = T.read(path)
+    _pdrag(page, _pkey(cb), _pkey(st))
+    e, (rec, kids) = _pat(cw, st)
+    T.check(e is not None, 'the parent stays in the stash at its place')
+    T.eq([k['code'] for k in kids], [gem, gem], 'cube gem socketed into the stash item')
+    T.check(_pat(cw, cb)[0] is None, 'the gem left the cube')
+    undo_to([(path, raw0)], 'socket drop on the stash page')
+    G.menu = None
+    page.on_menu('stash', _pev(page, 'stash', st[2], st[3]))
+    T.pump(2)
+    labs = socket_labels(G.menu)
+    T.check(labs is not None and labs[0] == ('Add Sockets (7)', 'normal'), f'page Socket menu: {labs}')
+    T.invoke(G.menu, 'Add Sockets', under='Socket')
+    e, (rec, kids) = _pat(cw, st)
+    T.check(e is not None, 'Add Sockets: still in the stash at its place')
+    T.eq(SI.socket_total(rec), 7, 'sockets in all')
+    undo_to([(path, raw0)], 'Add Sockets on the stash page')
+    G.menu = None
+    page.on_menu('stash', _pev(page, 'stash', st[2], st[3]))
+    T.pump(2)
+    T.invoke(G.menu, 'Unsocket', under='Socket')
+    e, (rec, kids) = _pat(cw, st)
+    T.check(e is not None and not kids, 'Unsocket: emptied in place')
+    undo_to([(path, raw0)], 'Unsocket on the stash page')
+    T.check(not [b for b in G.boxes if b[0] == 'showerror'], f'error boxes: {G.boxes}')
+
 T.main(globals())

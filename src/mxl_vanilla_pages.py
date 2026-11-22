@@ -1,8 +1,9 @@
 """Character window page "Stash / Cube / Belt" for folder profiles (vanilla Diablo II): the character file's own
 personal stash (panel 5), Horadric Cube (panel 4) and belt (location 2), in the game's grid sizes from the
 profile's inventory.bin (stash 6 x 8 in LoD 1.10-1.14d, 6 x 4 for a classic character; cube 3 x 4) and belts.bin
-(rows of the equipped belt). Shown, not edited: hovering an item shows it in the preview panel. Median XL keeps
-its own stash files: install() registers nothing there.
+(rows of the equipped belt), with the inventory under them: items move between the stash, the cube and the
+inventory, socket fillers drop into sockets, right-click gives the Socket submenu (each write one Ctrl+Z step);
+the belt is shown only. Median XL keeps its own stash files: install() registers nothing there.
 
 Also in folder profiles only: the main window's stash pane shows the same personal stash (read-only, no page
 tabs, no shared stash: the game has neither), and the item stats count the runeword list of socketed jewels
@@ -38,8 +39,41 @@ def containers(ch, data):
             ('belt', T('van.belt', 'Belt'), 4, rows, belt)]
 
 
+class _Win:
+    """The Character window as the item actions (mxl_socket_insert / mxl_socket_menu / mxl_rc_menu) see it from
+    this page: entry_at hit-tests the page's grids, is_merc() is False (these grids are the character's own),
+    the status goes to the page's line too; everything else is the window."""
+
+    def __init__(self, page):
+        object.__setattr__(self, '_page', page)
+        object.__setattr__(self, '_win', page.win)
+
+    def __getattr__(self, name):
+        return getattr(self._win, name)
+
+    def __setattr__(self, name, value):
+        setattr(self._win, name, value)
+
+    def is_merc(self):
+        return False
+
+    def entry_at(self, cv, ev):
+        key = next((k for k, c in self._page.canvases.items() if c is cv), None)
+        return (self._page.entry_at(key, ev.x, ev.y) if key else None), None
+
+    def set_status(self, text, error=False):
+        self._page.set_status(text, error)
+        try:
+            self._win.set_status(text, error)
+        except Exception:
+            pass
+
+
 class ContainersPage:
-    """Read-only grids; items outside a grid (hacked saves) are listed under it, never dropped."""
+    """The character's stash, cube and belt, with its inventory under them. Items move by drag and drop between
+    the stash, the cube and the inventory (one write of the character, one Ctrl+Z step); a gem / rune / jewel
+    dropped on an item goes into its socket (mxl_socket_insert); right-click: the Socket submenu
+    (mxl_socket_menu). The belt is shown only. Items outside a grid (hacked saves) are listed under it."""
 
     def __init__(self, win, frame):
         self.win, self.frame = win, frame
@@ -47,15 +81,33 @@ class ContainersPage:
         self.icons = {}
         self.canvases = {}
         self.hits = {}
+        self.frames = {}
+        self.drag = None
+        self._sig = None
         body = ttk.Frame(frame, padding=4)
         body.pack(fill='both', expand=True)
         self.body = body
-        self.note = ttk.Label(body, text=T('van.note', 'The character file\'s own stash, cube and belt (shown, not '
-                                           'edited). Hover an item to see it.'), justify='left')
+        self.note = ttk.Label(body, text=T('van.note2', 'The character file\'s own stash, cube and belt. Drag items '
+                                           'between the stash, the cube and the inventory; drop a gem, rune or jewel '
+                                           'on an item to socket it; right-click: Socket. Hover an item to see it.'),
+                              justify='left', wraplength=520)
         self.note.pack(anchor='w')
         self.row = ttk.Frame(body)
         self.row.pack(anchor='nw', fill='x', pady=(4, 0))
+        self.row2 = ttk.Frame(body)
+        self.row2.pack(anchor='nw', fill='x', pady=(6, 0))
+        self.status = ttk.Label(body, text='', justify='left', wraplength=520)
+        self.status.pack(anchor='w', pady=(4, 0))
         self.refresh()
+
+    def as_win(self):
+        return _Win(self)
+
+    def set_status(self, text, error=False):
+        try:
+            self.status.configure(text=text, foreground='#e06060' if error else '')
+        except tk.TclError:
+            pass
 
     # ------------------------------------------------------------------ drawing
     def _icon(self, it, bg):
@@ -77,25 +129,58 @@ class ContainersPage:
         except Exception:
             return None
 
+    def _boxes(self, ch, d):
+        import mxl_char
+        return containers(ch, d) + [('inv', T('ch.inventory_t', 'Inventory'), mxl_char.INV_W, mxl_char.INV_H,
+                                     ch.inventory())]
+
+    def _build(self, boxes):
+        """The grids' widgets, made again only when their sizes change: a refresh in the middle of a drag (the
+        file read again on the press) keeps the canvas that gets the release."""
+        for row in (self.row, self.row2):
+            for w in row.winfo_children():
+                w.destroy()
+        self.canvases, self.frames = {}, {}
+        c = self.cell
+        for key, title, cols, rows, _e in boxes:
+            fr = ttk.Frame(self.row2 if key == 'inv' else self.row)
+            fr.pack(side='left', anchor='nw', padx=(0, 10))
+            lab = ttk.Label(fr, text=f'{title} ({cols} x {rows})')
+            lab.pack(anchor='w')
+            cv = tk.Canvas(fr, width=cols * c + 1, height=rows * c + 1, bg='#101010', highlightthickness=0)
+            cv.pack(anchor='nw')
+            out = ttk.Label(fr, text='', wraplength=max(120, cols * c))
+            out.pack(anchor='w')
+            cv.bind('<Motion>', lambda ev, k=key: self._hover(k, ev))
+            cv.bind('<Button-1>', lambda ev, k=key: self.on_press(k, ev))
+            cv.bind('<B1-Motion>', self.on_drag)
+            cv.bind('<ButtonRelease-1>', self.on_release)
+            cv.bind('<ButtonRelease-3>', lambda ev, k=key: self.on_menu(k, ev))
+            self.canvases[key], self.frames[key] = cv, (fr, out)
+
     def refresh(self):
-        for w in self.row.winfo_children():
-            w.destroy()
-        self.canvases, self.hits = {}, {}
+        self.hits = {}
         ch, d = self.win.ch, self.win.data
         if ch is None:
             return
         try:
-            boxes = containers(ch, d)
+            boxes = self._boxes(ch, d)
         except Exception as err:
+            for row in (self.row, self.row2):
+                for w in row.winfo_children():
+                    w.destroy()
+            self.canvases, self._sig = {}, None
             ttk.Label(self.row, text=f'{type(err).__name__}: {err}').pack(anchor='w')
             return
+        sig = tuple((k, cols, rows) for k, _t, cols, rows, _e in boxes)
+        if sig != self._sig or any(not cv.winfo_exists() for cv in self.canvases.values()):
+            self._build(boxes)
+            self._sig = sig
         c = self.cell
-        for key, title, cols, rows, entries in boxes:
-            fr = ttk.Frame(self.row)
-            fr.pack(side='left', anchor='nw', padx=(0, 10))
-            ttk.Label(fr, text=f'{title} ({cols} x {rows})').pack(anchor='w')
-            cv = tk.Canvas(fr, width=cols * c + 1, height=rows * c + 1, bg='#101010', highlightthickness=0)
-            cv.pack(anchor='nw')
+        sel = getattr(self.win, 'selected', None)
+        for key, _title, cols, rows, entries in boxes:
+            cv = self.canvases[key]
+            cv.delete('all')
             for x in range(cols):
                 for y in range(rows):
                     cv.create_rectangle(x * c, y * c, (x + 1) * c, (y + 1) * c, fill='#181818', outline='#404040')
@@ -113,19 +198,17 @@ class ContainersPage:
                     outside.append(e)
                     continue
                 x0, y0 = x * c, y * c
-                cv.create_rectangle(x0 + 1, y0 + 1, x0 + w * c - 1, y0 + h * c - 1, fill='#1c2a40', outline='')
+                cv.create_rectangle(x0 + 1, y0 + 1, x0 + w * c - 1, y0 + h * c - 1, fill='#1c2a40',
+                                    outline='#d4b062' if e is sel else '', width=2 if e is sel else 0)
                 img = self._icon(it, '#1c2a40')
                 if img is not None:
                     cv.create_image(x0 + w * c / 2, y0 + h * c / 2, image=img)
                 else:
                     cv.create_text(x0 + w * c / 2, y0 + h * c / 2, text=it['code'].strip(), fill='#c0c0c0')
                 hits.append((x, y, w, h, e))
-            if outside:
-                ttk.Label(fr, text=T('van.outside', 'outside the grid: {items}',
-                                     items=', '.join(e.it.get('name') or e.it['code'] for e in outside)),
-                          wraplength=max(120, cols * c)).pack(anchor='w')
-            cv.bind('<Motion>', lambda ev, k=key: self._hover(k, ev))
-            self.canvases[key], self.hits[key] = cv, hits
+            self.frames[key][1].configure(text=T('van.outside', 'outside the grid: {items}', items=', '.join(
+                e.it.get('name') or e.it['code'] for e in outside)) if outside else '')
+            self.hits[key] = hits
 
     def entry_at(self, key, x, y):
         c = self.cell
@@ -136,11 +219,172 @@ class ContainersPage:
         return None
 
     def _hover(self, key, ev):
+        if self.drag is not None:
+            return
         e = self.entry_at(key, ev.x, ev.y)
         try:
             self.win.panel.show(e.it if e is not None else None)
         except Exception:
             pass
+
+    # ------------------------------------------------------------------ mouse
+    def _pick(self, key, ev):
+        """The entry under the pointer in the file as it is now (the window reads it again when someone else
+        wrote it; the grids are drawn again then)."""
+        try:
+            self.win.sync_file()
+        except Exception as err:
+            print('stash page sync:', err)
+        cv = self.canvases.get(key)
+        if cv is None:
+            return None
+        return self.entry_at(key, ev.x_root - cv.winfo_rootx(), ev.y_root - cv.winfo_rooty())
+
+    def on_press(self, key, ev):
+        self.drag = None
+        e = self._pick(key, ev)
+        self.win.selected = e
+        if e is not None and key != 'belt':
+            c = self.cell
+            self.drag = dict(entry=e, key=key, dx=ev.x // c - e.it['x'], dy=ev.y // c - e.it['y'], moved=False)
+        self.refresh()
+        try:
+            self.win.panel.show(e.it if e is not None else None)
+        except Exception:
+            pass
+
+    def on_drag(self, _ev):
+        if self.drag:
+            self.drag['moved'] = True
+            try:
+                self.frame.configure(cursor='fleur')
+            except tk.TclError:
+                pass
+
+    def target(self, x_root, y_root):
+        """(key, canvas, x, y) of the grid under a screen point, or None."""
+        for key, cv in self.canvases.items():
+            try:
+                x, y = x_root - cv.winfo_rootx(), y_root - cv.winfo_rooty()
+                if 0 <= x < cv.winfo_width() and 0 <= y < cv.winfo_height():
+                    return key, cv, x, y
+            except tk.TclError:
+                continue
+        return None
+
+    def on_release(self, ev):
+        try:
+            self.frame.configure(cursor='')
+        except tk.TclError:
+            pass
+        d, self.drag = self.drag, None
+        if not d or not d['moved']:
+            return
+        t = self.target(ev.x_root, ev.y_root)
+        if t is None:
+            return
+        key, cv, x, y = t
+        import mxl_char as MC
+        e, win = d['entry'], self.win
+        name = e.it.get('name') or e.it['code']
+        try:
+            import mxl_undo
+            before = mxl_undo.snapshot([win.ch.path])
+        except Exception as err:
+            print('stash page: move not undoable:', err)
+            before = None
+        done = False
+        try:
+            done = self._drop(d, key, cv, x, y)
+        finally:
+            if done and before:
+                try:
+                    import mxl_undo
+                    if mxl_undo.record_files(win.app, before, _clean(name)):
+                        self.set_status(self.status.cget('text') + T('undo.move_hint', ' - Ctrl+Z moves it back'))
+                except Exception as err:
+                    print('stash page: undo not recorded:', err)
+        return done
+
+    def _drop(self, d, key, cv, x, y):
+        """True when the character file was written."""
+        import mxl_char as MC
+        e, win, c = d['entry'], self.win, self.cell
+        adapter = self.as_win()
+        fake = type('E', (), {'x': x, 'y': y, 'x_root': cv.winfo_rootx() + x, 'y_root': cv.winfo_rooty() + y})()
+        raw = bytes(win.ch.raw)
+        try:                                              # a gem / rune / jewel onto an item: into its socket
+            import mxl_socket_insert
+            if mxl_socket_insert.char_tab_drop(adapter, e, cv, fake):
+                self.refresh()
+                return bytes(win.ch.raw) != raw
+        except Exception as err:
+            print('socket insert:', err)
+        gx, gy = x // c - d['dx'], y // c - d['dy']
+        if key == 'belt':
+            self.set_status(T('van.belt_ro', 'The belt is shown only: potions go there in the game.'), True)
+            return False
+        where = ('inv', gx, gy) if key == 'inv' else ('store', PANEL_CUBE if key == 'cube' else PANEL_STASH, gx, gy)
+        if MC.where_of(e) == where:
+            return False
+        if key == 'cube' and e.it['code'] == CUBE_CODE:
+            self.set_status(T('van.cube_in_cube', 'The Horadric Cube cannot go into itself.'), True)
+            return False
+        try:
+            win.ch.move(e, where, False)
+        except MC.CharError as err:
+            self.set_status(T('inv.cannot_drop', 'Cannot drop here: {error}', error=err), True)
+            win.reload()
+            return False
+        msg = T('ch.moved', '{item} moved', item=_clean(e.it['name']))
+        if not win.save(msg):
+            return False
+        self.set_status(msg)
+        return True
+
+    def on_menu(self, key, ev):
+        """Right-click on an item: the Socket submenu (Add Sockets / Remove Sockets / Unsocket)."""
+        e = self._pick(key, ev)
+        if e is None:
+            return
+        self.win.selected = e
+        self.refresh()
+        menu = tk.Menu(self.canvases.get(key) or self.frame, tearoff=0)
+        try:
+            import mxl_socket_menu
+            win = self.as_win()
+            sub = mxl_socket_menu.add_menu(win, menu, win=win, e=e)
+        except Exception as err:
+            print('stash page socket menu:', err)
+            sub = None
+        if sub is None:
+            return
+        try:
+            menu.tk_popup(ev.x_root, ev.y_root)
+        finally:
+            menu.grab_release()
+
+
+CUBE_CODE = 'box '
+
+
+def _clean(name):
+    try:
+        from mxl_creator_gui import clean
+        return clean(name)
+    except Exception:
+        return name
+
+
+def panel_size(ch, panel):
+    """mxl_char.PANEL_SIZE for folder profiles: the cube's / personal stash's grid of this character."""
+    key = {PANEL_CUBE: 'cube', PANEL_STASH: 'stash'}.get(panel)
+    if key is None:
+        return None
+    for k, _t, cols, rows, _e in containers(ch, ch.data):
+        if k == key:
+            return cols, rows
+    return None
 
 
 def install():
@@ -148,6 +392,8 @@ def install():
     import mxl_profile
     if mxl_profile.is_median():
         return
+    import mxl_char
+    mxl_char.PANEL_SIZE = panel_size
     import mxl_char_gui
     mxl_char_gui.register_page('containers', T('van.tab', 'Stash / Cube / Belt'), ContainersPage)
     try:                       # main window inventory: the standard D2 screen, not Median's 15 x 10 panel art
