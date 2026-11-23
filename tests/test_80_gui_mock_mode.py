@@ -1,4 +1,4 @@
-"""Mock Mode in the window (vanilla profile): the "Mock Mode" toggle sits at the right end of the top bar, turns
+"""Mock Mode in the window (vanilla profile): the character Menu’s "Mock Mode" command turns
 the Mock tab on / off and is kept in the settings; the analyzer lists colour-coded checks and the summary of the
 loaded mock per weapon switch; the generator's fields are prefilled, an edited field reaches the plan, a bad value
 is reported next to its field, the summary panel follows the switch selector; Generate writes a NEW save (no
@@ -73,15 +73,11 @@ def toggle_tab_analyzer_generator_crafter():
     import mxl_mock_gui as MG
     import mxl_mock as M
     import settings
-    b = MG._state['button']
-    T.check(b is not None, 'Mock Mode toggle built')
-    T.eq(b.cget('text'), 'Mock Mode', 'toggle text')
-    bar = G.app.char_combo.master
-    T.pump(10, 0.02)
-    right = max((w for w in bar.pack_slaves() if w.winfo_ismapped()), key=lambda w: w.winfo_x())
-    T.check(right is b, 'the toggle is the right-most item of the top bar')
+    cw = T.chartab()
+    T.check(cw.top.winfo_ismapped(), 'Character is the landing view')
+    T.check(not G.app.char_combo.master.winfo_ismapped(), 'collector toolbar is hidden on Character')
     T.check('Mock' not in _tab_names(), 'no Mock tab while off')
-    b.invoke()
+    cw.he_menu.invoke('Mock Mode')
     T.pump(10, 0.02)
     T.check('Mock' in _tab_names(), 'Mock tab after the toggle')
     T.eq(settings.get('mock_mode'), True, 'setting kept')
@@ -207,7 +203,7 @@ def toggle_tab_analyzer_generator_crafter():
     G.app.select_character('clone-41', G.app.view.get())
     T.pump(10, 0.02)
     # ---- off again
-    b.invoke()
+    T.chartab().he_menu.invoke('Mock Mode')
     T.pump(10, 0.02)
     T.check('Mock' not in _tab_names(), 'Mock tab gone')
     T.eq(settings.get('mock_mode'), False, 'setting kept off')

@@ -101,6 +101,11 @@ def _install_stash_hover(app):
 
 def _install_char_hover(win):
     st = {'e': 'unset', 'job': None}
+    if getattr(win, 'vanilla_he', False):
+        from mxl_vanilla_he import item_hint
+        hint = item_hint(win.doll)
+    else:
+        hint = None
 
     def entry_now():
         for cv in (win.doll, win.inv):
@@ -130,10 +135,24 @@ def _install_char_hover(win):
             e, _slot = win.entry_at(ev.widget, ev)
         except Exception:
             e = None
+        if hint is not None:
+            win.inventory_description(e is not None and ev.widget is win.doll)
+            if e is None:
+                hint.hide()
+            else:
+                hint.show(ev.widget, key=id(e))
         if e is st['e']:
             return
         st['e'] = e
         show()                                     # instant: no visible delay of any kind
 
+    def hide_hint(_event):
+        hint.hide()
+        win.inventory_description(False)
+
     for cv in (win.doll, win.inv):
         cv.bind('<Motion>', on_motion, add='+')
+        if hint is not None:
+            for event in ('<ButtonPress>', '<Leave>', '<Unmap>'):
+                cv.bind(event, hide_hint, add='+')
+            cv.bind('<Destroy>', lambda _event: hint.hide(), add='+')

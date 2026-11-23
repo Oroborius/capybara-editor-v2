@@ -70,17 +70,23 @@ def apply(root=None):
     When a Tk root exists the FONT constant is also replaced by a family this system actually has
     (the collector's 'Segoe UI' / HE's Times do not exist everywhere)."""
     import mxl_he_theme as TH
+    import mxl_vanilla_he as V
+    vanilla = V.active()
+    palette = _LIGHT
+    if vanilla:
+        palette = dict(_LIGHT, BG=V.FORM, TIP_BG='#ffffe1', DETAIL_BG=V.DESCRIPTION,
+                       DETAIL_FG=V.BLACK, GAME_COLORS=dict(_LIGHT_GAME, **{'2': V.SET_GREEN, ':': V.SET_GREEN}))
     fam = None
     if root is not None:
         TH.families(root)
-        fam = TH.safe_family('Times New Roman')
+        fam = V.font()[0] if vanilla else TH.safe_family('Times New Roman')
     touched = {}
     for name in _MODULES:
         try:
             mod = __import__(name)
         except ImportError:
             continue
-        for k, v in _LIGHT.items():
+        for k, v in palette.items():
             if hasattr(mod, k):
                 setattr(mod, k, v)
                 touched[k] = True
@@ -95,13 +101,16 @@ def install(App):
     o_init = App.__init__
 
     def __init__(self, *a, **k):
+        import mxl_vanilla_he as V
+
         try:
             o_init(self, *a, **k)
             fam = apply(self.root)
             f = getattr(self, 'cell_font', None)
             if f is not None:
                 d = f.actual()
-                opts = dict(family=fam if fam else d.get('family'), size=d.get('size', 10))
+                family, size = V.font() if V.active() else (fam or d.get('family'), d.get('size', 10))
+                opts = dict(family=family, size=size)
                 if d.get('weight') == 'bold':
                     opts['weight'] = 'bold'
                 if d.get('slant') == 'italic':

@@ -169,7 +169,11 @@ def character_tab_drag_gem_into_free_socket():
     import mxl_creator as C
     import mxl_save
     import mxl_undo
+    # Enter Inventory from the legacy transfer page, whose person canvas is hidden.
     cw = _open('complex')
+    T.select_tab('Character')
+    cw.tab.set('containers')
+    cw.show_tab()
     cw.tab.set('inventory')
     cw.show_tab()
     cw.merc.set(False)

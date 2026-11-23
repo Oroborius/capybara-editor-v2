@@ -311,6 +311,8 @@ def skill_trees(data):
     (byte 0 = class, byte 1 = tab - 1, u16 at 2 = its string). Tabs are in game order."""
     if hasattr(data, '_skill_trees'):
         return data._skill_trees
+    import mxl_profile
+    median = mxl_profile.is_median()
     srows = data._rows('skills')
     sd_rows = data._rows('skilldesc')
     trees = {c: {} for c in range(7)}
@@ -321,7 +323,9 @@ def skill_trees(data):
         if not 0 < sd < len(sd_rows):
             continue
         r = sd_rows[sd]
-        trees[cls].setdefault(r[2], []).append((r[3], r[4], sid, struct.unpack_from('<H', r, 22)[0]))
+        # LoD's 288-byte skilldesc rows store IconCel in one byte at offset 7.
+        icon = r[7] if not median and len(r) == 288 else struct.unpack_from('<H', r, 22)[0]
+        trees[cls].setdefault(r[2], []).append((r[3], r[4], sid, icon))
     notes = {}
     try:
         with open(os.path.join(data.folder, 'skilltabs.bin'), 'rb') as f:
@@ -336,7 +340,7 @@ def skill_trees(data):
         pass
     out = {}
     cnames = class_names(data)
-    short_names = _skill_tab_names()
+    short_names = _skill_tab_names() if median else {}
     for cls in range(7):
         tabs = []
         for tab in sorted(trees[cls]):

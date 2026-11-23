@@ -39,6 +39,9 @@ _state = {'theme': None, 'images': [], 'elements': False}
 
 def theme():
     """'d2' or 'he' (read once per run: the look cannot change while windows exist)."""
+    import mxl_vanilla_he
+    if mxl_vanilla_he.active():
+        return 'he'
     if _state['theme'] is None:
         t = (os.environ.get('MXL_THEME') or '').strip().lower()
         if t not in ('d2', 'he'):
@@ -278,6 +281,9 @@ def _add_toggle(app):
 
 
 def install_toggle(App):
+    from mxl_vanilla_he import active
+    if active():
+        return
     o_build = App._build
 
     def _build(self):

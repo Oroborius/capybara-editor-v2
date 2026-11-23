@@ -20,6 +20,8 @@ are untouched (the item grid and the D2 panels stay as they are).
 import tkinter as tk
 from tkinter import ttk, font as tkfont
 
+import mxl_vanilla_he as V
+
 HE_BG = '#f0f0f0'          # Hero-Editor grey window
 HE_BTN = '#e1e1e1'         # plain buttons of the HE windows
 HE_ENTRY = '#ffffff'
@@ -160,6 +162,20 @@ def _walk(w):
     if getattr(w, '_he_exempt', False):
         return
     cls = w.winfo_class()
+    if V.active():
+        try:
+            if cls == 'Menu':
+                _theme_menu(w)
+                return
+            if cls == 'Canvas':
+                _fix_canvas_fonts(w)
+            else:
+                V.paint(w)
+        except (tk.TclError, AttributeError):
+            pass
+        for child in w.winfo_children():
+            _walk(child)
+        return
     if cls == 'Canvas':
         _fix_canvas_fonts(w)
         for c in w.winfo_children():
@@ -206,6 +222,12 @@ def _menu_colours(m):
         return
     want = dict(bg=HE_BG, fg=HE_FG, activebackground='#000000', activeforeground=HE_GOLD,
                 disabledforeground='#999999')
+    if V.active():
+        want = dict(bg=V.WHITE, fg=V.BLACK, activebackground=V.SELECT, activeforeground=V.WHITE,
+                    disabledforeground=V.DESCRIPTION)
+        if getattr(m, '_vanilla_he_menu', False) is False:
+            m.configure(font=V.font(), borderwidth=1, activeborderwidth=0, relief='solid')
+            m._vanilla_he_menu = True
     new = {k: v for k, v in want.items() if str(m.cget(k)).lower() != v.lower()}
     if new:
         m.configure(**new)
@@ -252,6 +274,8 @@ def _theme_top(top):
 # ---------------------------------------------------------------------------------------------- ttk
 def _style(root):
     """ttk widgets in the Hero-Editor palette (the collector's main window is mostly ttk)."""
+    if V.active():
+        return V.style(root)
     st = ttk.Style(root)
     try:
         st.theme_use('clam')
@@ -336,6 +360,8 @@ def install(App):
             o_build(self)
         finally:
             try:
+                if V.active() and isinstance(getattr(self, 'detail', None), tk.Text):
+                    V.role(self.detail, 'description')
                 self.root.after_idle(_start, self.root)
             except (tk.TclError, AttributeError):
                 pass

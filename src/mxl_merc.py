@@ -212,6 +212,7 @@ class MercPage:
     def __init__(self, win, frame):
         from mxl_char_gui import HE_FONT, HE_FONT_S, HE_FONT_I
         self.win, self.frame = win, frame
+        self.vanilla_he = getattr(win, 'vanilla_he', False)
         self.types = hirelings(win.data)
         self.ids = sorted(self.types)
         self.busy = False
@@ -225,7 +226,10 @@ class MercPage:
         self.v_adv = tk.BooleanVar(value=False)
         box = tk.LabelFrame(frame, text=' ' + T('merc.title', 'Mercenary'), font=HE_FONT_I, bd=2, relief='groove',
                             padx=6, pady=3)
-        box.pack(anchor='nw', padx=4, pady=4)
+        if self.vanilla_he:
+            box.pack(side='left', fill='y', anchor='nw', padx=(0, 4))
+        else:
+            box.pack(anchor='nw', padx=4, pady=4)
         self.box = box
         r = 0
         self.cb_hired = tk.Checkbutton(box, text=T('merc.hired', 'Hired'), variable=self.v_hired, font=HE_FONT,
@@ -238,7 +242,7 @@ class MercPage:
         tk.Label(box, text=T('merc.type_c', 'Type:'), font=HE_FONT).grid(row=r, column=0, sticky='e', padx=(0, 4), pady=1)
         self.labels = {i: self.types[i].label() for i in self.ids}
         self.type_box = ttk.Combobox(box, state='readonly', textvariable=self.v_type, values=[self.labels[i] for i in self.ids],
-                                     width=max([len(s) for s in self.labels.values()] + [20]), height=16)
+                                     width=34 if self.vanilla_he else max([len(s) for s in self.labels.values()] + [20]), height=16)
         self.type_box.grid(row=r, column=1, columnspan=4, sticky='w', pady=1)
         self.type_box.bind('<<ComboboxSelected>>', lambda _e: self.on_type())
         r += 1
@@ -281,11 +285,54 @@ class MercPage:
                  text=T('merc.note', 'Changes are written with SAVE. Level = experience by the game\'s own table; '
                         'the game does not let a mercenary outlevel the character. Not tested in the running game: '
                         'keep the backup.')).grid(row=r, column=0, columnspan=5, sticky='w')
+        if self.vanilla_he:
+            self._vanilla_controls(r + 1)
         frame.bind('<Configure>', self._wrap, add='+')
         self.refresh()
 
+    def _vanilla_controls(self, row):
+        from mxl_char import difficulty_name
+        from mxl_vanilla_he import FORM, FONT, font
+
+        portrait = tk.LabelFrame(self.box, text='Portrait', bg=FORM, padx=2, pady=2)
+        portrait.grid(row=row, column=0, columnspan=2, sticky='nw')
+        self.vanilla_portrait = tk.Label(portrait, width=14, height=5, font=font(FONT),
+                                         relief='sunken', bg=FORM, wraplength=85)
+        self.vanilla_portrait.pack()
+        self.vanilla_seed = ttk.Button(portrait, text='Create New ID', command=self.b_seed.invoke)
+        self.vanilla_seed.pack(fill='x', pady=(3, 0))
+
+        facts = ttk.LabelFrame(self.box, text='Mercenary information', padding=4)
+        facts.grid(row=row, column=2, columnspan=3, sticky='nsew', padx=(4, 0))
+        self.vanilla_facts = ttk.Label(facts, justify='left')
+        self.vanilla_facts.pack(anchor='w')
+
+        group = ttk.LabelFrame(self.frame, text='Class', padding=4)
+        group.pack(side='right', fill='both', expand=True)
+        self.class_tree = tree = ttk.Treeview(group, show='tree', height=18)
+        tree.column('#0', width=202, minwidth=150)
+        scroll = ttk.Scrollbar(group, command=tree.yview)
+        tree.configure(yscrollcommand=scroll.set)
+        scroll.pack(side='right', fill='y')
+        tree.pack(fill='both', expand=True)
+        root = tree.insert('', 'end', text='Mercenary', open=True)
+        modes = {k: tree.insert(root, 'end', text=difficulty_name(k - 1)) for k in range(1, 4)}
+        for key, kind in self.types.items():
+            tree.insert(modes.get(kind.diff, root), 'end', iid=f'type-{key}',
+                        text=f'{kind.cls_name} · {kind.variant}')
+
+        def choose(_event):
+            selected = tree.selection()
+            if selected and selected[0].startswith('type-') and self.v_hired.get():
+                key = int(selected[0].partition('-')[2])
+                if self.v_type.get() != self.labels[key]:
+                    self.v_type.set(self.labels[key])
+                    self.on_type()
+
+        tree.bind('<<TreeviewSelect>>', choose)
+
     def _wrap(self, e):
-        w = max(240, min(560, e.width - 40))
+        w = max(240, min(360 if self.vanilla_he else 560, e.width - 40))
         for lab in self.box.grid_slaves():
             if isinstance(lab, tk.Label) and lab.cget('wraplength'):
                 lab.configure(wraplength=w)
@@ -402,6 +449,17 @@ class MercPage:
             if lv is not None and lv > ch.level:
                 text += ' ' + T('merc.above', 'Level {lv} is above the character\'s.', lv=lv)
         self.info.configure(text=text)
+        if self.vanilla_he:
+            from mxl_char import difficulty_name
+
+            kind = self.types.get(self.cur_type())
+            self.vanilla_seed.state(['!disabled'] if on else ['disabled'])
+            self.vanilla_portrait.configure(text=kind.cls_name if on and kind is not None else '')
+            mode = difficulty_name(kind.diff - 1) if kind is not None and 1 <= kind.diff <= 3 else ''
+            code = self.cur_type() if on else ''
+            self.vanilla_facts.configure(text=(
+                f'ID: {self.v_seed.get()}\nCode: {code}\nName: {self.v_name.get()}\n'
+                f'Attributes: {kind.variant if kind is not None else ""}\nDifficulty: {mode}') if on else '')
 
     def show_adv(self):
         if self.v_adv.get():

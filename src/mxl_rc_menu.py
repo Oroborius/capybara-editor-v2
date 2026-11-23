@@ -454,6 +454,7 @@ def _char_menu(win, cv, ev):
     e, slot = win.entry_at(cv, ev)
     _dbg('char menu:', e.it['code'] if e is not None else 'empty spot')
     clip = getattr(win.app, '_capy_clip', None)
+    vanilla = getattr(win, 'vanilla_he', False)
     if e is not None or slot is not None:
         win.sel_slot = slot
         win.selected = e
@@ -462,6 +463,8 @@ def _char_menu(win, cv, ev):
         menu.add_command(label=rc('edit', 'Edit item...'), command=win.edit)
         menu.add_command(label=rc('stats', 'Item stats...'), command=lambda: mxl_he_stats.open_char_item_stats(win, e))
         menu.add_command(label=rc('duplicate', 'Duplicate'), command=lambda: _char_duplicate(win, e))
+        if vanilla:
+            menu.add_separator()
         menu.add_command(label=rc('copy', 'Copy'), command=lambda: _char_copy(win, e))
         menu.add_command(label=rc('cut', 'Cut'), command=lambda: (_char_copy(win, e), win.delete()))
         if clip is not None:
@@ -471,6 +474,8 @@ def _char_menu(win, cv, ev):
         _fill_sockets_entry(win, menu, None, win=win, e=e)
         _socket_cascade(win, menu, win=win, e=e)
         _add_hero_editor_menu(win, menu, win=win, e=e)
+        if vanilla:
+            menu.add_separator()
         menu.add_command(label=rc('to_stash', 'To stash'), command=win.to_stash)
         menu.add_command(label=rc('delete_short', 'Delete'), command=win.delete)
         menu.add_command(label=rc('export', 'Export item...'), command=lambda: _export_char(win, e))

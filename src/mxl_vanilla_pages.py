@@ -135,6 +135,7 @@ class ContainersPage:
 
     def __init__(self, win, frame):
         self.win, self.frame = win, frame
+        self.he_container = 'transfer'
         self.cell = 30
         self.icons = {}
         self.canvases = {}
@@ -159,6 +160,17 @@ class ContainersPage:
         self.status = ttk.Label(body, text='', justify='left', wraplength=520)
         self.status.pack(anchor='w', pady=(4, 0))
         self.refresh()
+
+    def show_container(self, key):
+        self.he_container = key
+        if key == 'transfer':
+            self.note.pack(anchor='w', before=self.row)
+        else:
+            self.note.pack_forget()
+        for name, (frame, _out) in self.frames.items():
+            frame.pack_forget()
+            if key == 'transfer' or name == ('belt' if key == 'merc' else key):
+                frame.pack(side='left', anchor='nw', padx=(0, 4))
 
     def as_win(self):
         return _Win(self)
@@ -230,7 +242,7 @@ class ContainersPage:
                 w.destroy()
         self.canvases, self.frames, self.arts = {}, {}, {}
         arts = {key: self._art_for(key, cols, rows) for key, _t, cols, rows, _e in boxes}
-        self.cell = self._art_cell() if any(arts.values()) else 30
+        self.cell = 29 if getattr(self.win, 'vanilla_he', False) else (self._art_cell() if any(arts.values()) else 30)
         c = self.cell
         col = None
         if any(arts.values()):
@@ -269,6 +281,8 @@ class ContainersPage:
             cv.bind('<ButtonRelease-1>', self.on_release)
             cv.bind('<ButtonRelease-3>', lambda ev, k=key: self.on_menu(k, ev))
             self.canvases[key], self.frames[key] = cv, (fr, out)
+        if getattr(self.win, 'vanilla_he', False):
+            self.show_container(self.he_container)
 
     def refresh(self):
         self.hits = {}
@@ -381,6 +395,8 @@ class ContainersPage:
         """(key, canvas, x, y) of the grid under a screen point, or None."""
         for key, cv in self.canvases.items():
             try:
+                if not cv.winfo_ismapped():
+                    continue
                 x, y = x_root - cv.winfo_rootx(), y_root - cv.winfo_rooty()
                 if 0 <= x < cv.winfo_width() and 0 <= y < cv.winfo_height():
                     return key, cv, x, y

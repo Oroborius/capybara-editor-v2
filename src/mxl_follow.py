@@ -56,6 +56,10 @@ def _follow(app):
             return
         page = getattr(owner, 'tab', None)               # stay on the page the user was on
         sub = page.get() if page is not None and str(page.get()) in getattr(owner, 'pages', {}) else 'stats'
-        mxl_char_gui.CharacterWindow(app, sub)           # rebuilds into the tab with the new data
+        notebook = owner.top.master if owner.vanilla_he else None
+        previous = notebook.select() if notebook is not None else None
+        mxl_char_gui.CharacterWindow(app, sub)
+        if previous:
+            notebook.select(previous)
     except Exception as err:
         print('mxl_follow: character tab refresh failed:', err)

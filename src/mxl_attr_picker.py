@@ -165,6 +165,12 @@ def category_name(key):
 def palette():
     """Colours of the active look, taken from its theme module: dark Diablo (mxl_d2_theme) or the light
     Hero Editor one (mxl_he_theme)."""
+    import mxl_vanilla_he as V
+    if V.active():
+        return dict(bg=V.PEACH, field=V.WHITE, fg=V.BLACK, fg_hi=V.HEX_TITLE, dim=V.DESCRIPTION,
+                    sel=V.SELECT, sel_fg=V.WHITE, line=V.EDGE, head=V.FORM, alt=V.WHITE,
+                    btn=V.FORM, btn_hi=V.LIGHT, bar=V.FORM, bar_fg=V.BLACK, changed='#754000',
+                    error='#b00000', sel_dim='#c5d5ea', dark=False)
     try:
         import mxl_d2_theme as D
         if D.dark():
@@ -200,6 +206,7 @@ _metrics = {}
 def metrics(widget):
     """Fonts and font-relative sizes: dict(font, bold, small, row (list row height in px), ch (width of '0'),
     line (linespace)). Everything in the picker and the slot list is sized from these, never in fixed pixels."""
+    from mxl_vanilla_he import active, font as vanilla_font
     if _metrics:
         return _metrics
     try:
@@ -216,6 +223,8 @@ def metrics(widget):
         size = -max(10, -size)
     else:
         size = max(8, min(size, 11))
+    if active():
+        fam, size = vanilla_font()
     font = tkfont.Font(root=widget, family=fam, size=size)
     bold = tkfont.Font(root=widget, family=fam, size=size, weight='bold')
     line = font.metrics('linespace')

@@ -9,7 +9,8 @@ its detail panel become the first tab; the Character button opens or focuses the
 and every Creator / Item Editor opens as its own tab (reusing the Creator tab).
 
 The fixed tabs (Stash, Character, Creator, Library, Bit editor) exist from the start: an empty page shows a hint
-until its window builds into it, so the tabs never appear or disappear while working.
+until its window builds into it. In vanilla, Character is the startup workspace. Its menu opens the tool pages,
+which show the notebook strip and the collector's controls.
 
 install() wraps App._build as the FIRST of the install chain, so its wrapper runs after every
 other module has built the main window; it then turns the built layout into
@@ -74,7 +75,44 @@ def _make_host(app):
     for name in FIXED[1:]:                   # the tabs exist from the start, empty until used
         TabPage(nb, name, fixed_name=True).placeholder()
     nb.select(stash)
+    import mxl_vanilla_he
+    if mxl_vanilla_he.active():
+        app.root.after_idle(lambda: _vanilla_host(app, nb))
     app.root.after_idle(lambda: _autoload_later(app))
+
+
+def _vanilla_host(app, nb):
+    # Save the collector chrome after all App._build wrappers have added their controls.
+    root = app.root
+    if app.character_file():
+        root.geometry('760x620')
+    chrome = []
+    before_notebook = True
+    for widget in root.pack_slaves():
+        if widget is nb:
+            before_notebook = False
+        else:
+            layout = widget.pack_info()
+            layout.pop('in', None)
+            chrome.append((widget, layout, before_notebook))
+
+    character = str(_state['pages']['Character'])
+
+    def update(_event=None):
+        editing = nb.select() == character
+        nb.configure(style='CharacterHost.TNotebook' if editing else 'TNotebook')
+        trailing = nb
+        for widget, layout, before in chrome:
+            if editing:
+                widget.pack_forget()
+            elif before:
+                widget.pack(before=nb, **layout)
+            else:
+                widget.pack(after=trailing, **layout)
+                trailing = widget
+
+    nb.bind('<<NotebookTabChanged>>', update, add='+')
+    update()
 
 
 def _autoload_later(app):
@@ -141,7 +179,10 @@ def _autoload(app):
         mxl_creator_gui.CreatorWindow(app)
     except Exception as e:
         print('creator tab autoload failed:', e)
-    try:                                             # each window selected its own tab: the editor starts on Stash
+    import mxl_vanilla_he
+    if mxl_vanilla_he.active() and focus_existing('Character'):
+        return
+    try:
         _state['nb'].select(_state['pages']['Stash'])
     except (tk.TclError, KeyError, AttributeError):
         pass

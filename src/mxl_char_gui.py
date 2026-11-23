@@ -21,6 +21,7 @@ from mxl_char import slot_name, difficulty_name
 from mxl_lang import T
 from mxl_creator_gui import CreatorWindow, PreviewPanel, PreviewHost, clean, clamp_window
 from mxl_statscreen import StatEditMixin
+import mxl_vanilla_he as V
 
 # the Skills tab's game-like look: near-black stone, the icons and colours of the game itself
 SK_BG = '#0b0a08'
@@ -71,6 +72,7 @@ def register_page(key, title, factory):
 class CharacterWindow(StatEditMixin):
     def __init__(self, app, tab='stats'):
         self.app = app
+        self.vanilla_he = V.active()
         self.data = app.data
         path = app.character_file()
         if not path or not os.path.exists(path):
@@ -103,20 +105,24 @@ class CharacterWindow(StatEditMixin):
             self.top = mxl_tabs.host_window(app, 'Character', owner=self, replace=True)
         else:
             self.top = mxl_tabs.host_window(app, 'Character', owner=self)
-        self.top.title(f'Median XL Capybara Editor V2 - {self.ch.name}')
-        self.top.geometry('1180x930')
-        self.top.configure(bg=HE_BG)
-        self.top.after_idle(lambda: clamp_window(self.top, size=(1180, 930)))
-        try:
-            import mxl_he_art
-            import sys
-            if sys.platform == 'win32':
-                import mxl_app_icon
-                self.top.wm_iconbitmap(mxl_app_icon.ico_path('hero_editor.ico', mxl_he_art.ICO_FILE))
-            self._icon = tk.PhotoImage(master=self.top, data=mxl_he_art.ICON)
-            self.top.iconphoto(False, self._icon)
-        except Exception:
-            pass
+        if self.vanilla_he:
+            self.top.configure(bg=V.FORM)
+            self.app.root.title(f'Capybara Editor - {self.ch.name}')
+        else:
+            self.top.title(f'Median XL Capybara Editor V2 - {self.ch.name}')
+            self.top.geometry('1180x930')
+            self.top.configure(bg=HE_BG)
+            self.top.after_idle(lambda: clamp_window(self.top, size=(1180, 930)))
+            try:
+                import mxl_he_art
+                import sys
+                if sys.platform == 'win32':
+                    import mxl_app_icon
+                    self.top.wm_iconbitmap(mxl_app_icon.ico_path('hero_editor.ico', mxl_he_art.ICO_FILE))
+                self._icon = tk.PhotoImage(master=self.top, data=mxl_he_art.ICON)
+                self.top.iconphoto(False, self._icon)
+            except Exception:
+                pass
         self.cell = app.cell
         self.icons = {}
         self._fit_job = None
@@ -127,23 +133,34 @@ class CharacterWindow(StatEditMixin):
         tabbar.pack(side='top', fill='x')
         actions = tk.Frame(bottom, bg='#000000')
         actions.pack(side='top', fill='x', padx=4, pady=(1, 2))
-        StoneButton(actions, 'SAVE', self.save_progress).pack(side='left', padx=(0, 6))
-        StoneButton(actions, 'RELOAD', self.discard).pack(side='left', padx=(0, 6))
-        StoneButton(actions, 'CLOSE', self.close).pack(side='right')
-        # packed before the credit line: in a narrow window the credit is what gets cut, not the status
-        self.bar_status = tk.Label(actions, text='', font=HE_FONT, bg='#000000', fg=HE_GOLD, anchor='w')
-        self.bar_status.pack(side='left', fill='x', expand=True, padx=6)
-        tk.Label(actions, text=T('ch.glory', 'Glory to the real Heroes ZonFire99 and Mastadex'), font=('Times New Roman', 12, 'italic'),
-                 bg='#000000', fg=HE_GOLD).pack(side='right', padx=8)
-        self.top.protocol('WM_DELETE_WINDOW', self.close)
+        if self.vanilla_he:
+            V.role(bottom, 'art')
+            V.role(tabbar, 'art')
+            V.role(actions, 'art')
+            V.chrome(self, bottom, actions)
+        else:
+            StoneButton(actions, 'SAVE', self.save_progress).pack(side='left', padx=(0, 6))
+            StoneButton(actions, 'RELOAD', self.discard).pack(side='left', padx=(0, 6))
+            StoneButton(actions, 'CLOSE', self.close).pack(side='right')
+            # packed before the credit line: in a narrow window the credit is what gets cut, not the status
+            self.bar_status = tk.Label(actions, text='', font=HE_FONT, bg='#000000', fg=HE_GOLD, anchor='w')
+            self.bar_status.pack(side='left', fill='x', expand=True, padx=6)
+            tk.Label(actions, text=T('ch.glory', 'Glory to the real Heroes ZonFire99 and Mastadex'), font=('Times New Roman', 12, 'italic'),
+                     bg='#000000', fg=HE_GOLD).pack(side='right', padx=8)
+        window = self.app.root if self.vanilla_he else self.top
+        window.protocol('WM_DELETE_WINDOW', self.close)
         import mxl_scroll                            # the pages scroll when the window is smaller than they are
         self.scroll = mxl_scroll.Scrolled(self.top, bg=HE_BG)
-        self.scroll.pack(fill='both', expand=True, padx=2, pady=(2, 0))
+        self.scroll.pack(fill='both', expand=True, padx=8 if self.vanilla_he else 2,
+                         pady=(7, 7) if self.vanilla_he else (2, 0))
         body = self.scroll.inner
         self.body = body
         self.scroll.bind('<Configure>', self._fit_later, add='+')
         self.st_tab = tk.Frame(body, bg=HE_BG)
         self.eq_tab = ttk.Frame(body, padding=3)
+        if self.vanilla_he:
+            self.inv_canvas_column = ttk.Frame(self.eq_tab)
+            self.inv_canvas_column.pack(side='left', anchor='n')
         self.sk_tab = tk.Frame(body, bg=HE_BG)
         self.wp_tab = tk.Frame(body, bg=HE_BG)
         self.q_tab = tk.Frame(body, bg=HE_BG)
@@ -155,17 +172,33 @@ class CharacterWindow(StatEditMixin):
         self._extra_frames = {}
         extra_pages = [page for page in EXTRA_PAGES if not (self.ch.early and page[0] == 'hotkeys')]
         for key, _title, _factory in extra_pages:
-            self._extra_frames[key] = self.pages[key] = tk.Frame(body, bg=HE_BG)
-        for key, text in (('stats', T('ch.tab.stats', 'Stats')), ('inventory', T('ch.tab.inventory', 'Inventory')),
-                          ('skills', T('ch.tab.skills', 'Skills')),
-                          ('waypoints', T('ch.tab.waypoints', 'Waypoints')), ('quests', T('ch.tab.quests', 'Quests')),
-                          *((k, t) for k, t, _f in extra_pages)):
+            parent = self.inv_canvas_column if self.vanilla_he and key == 'containers' else body
+            self._extra_frames[key] = self.pages[key] = tk.Frame(parent, bg=HE_BG)
+        tabs = (('stats', T('ch.tab.stats', 'Stats')), ('inventory', T('ch.tab.inventory', 'Inventory')),
+                ('skills', T('ch.tab.skills', 'Skills')), ('waypoints', T('ch.tab.waypoints', 'Waypoints')),
+                ('quests', T('ch.tab.quests', 'Quests')), *((k, t) for k, t, _f in extra_pages))
+        if self.vanilla_he:
+            for key, _title in V.TABS:
+                if key not in self.pages:
+                    self.pages[key] = tk.Frame(body, bg=V.FORM)
+            reference = dict(V.TABS)
+            tabs = (*V.TABS, *((k, t) for k, t in tabs if k not in reference and k != 'containers'))
+        mnemonics = {'m'} if self.vanilla_he else set()
+        for key, text in tabs:
             rb = tk.Radiobutton(tabbar, text=text, value=key, variable=self.tab, indicatoron=0, font=('Times New Roman', 12),
                                 underline=0, bd=1, relief='raised', padx=6, pady=0, bg='#e8e8e8', selectcolor='#ffffff',
                                 activebackground='#ffffff', command=self.show_tab)
-            rb.pack(side='left', padx=(2 if key == 'stats' else 0, 0), pady=(0, 1))
+            underline = 0
+            if self.vanilla_he:
+                V.role(rb, 'tab')
+                underline = next((i for i, ch in enumerate(text.lower())
+                                  if ch.isascii() and ch.isalpha() and ch not in mnemonics), -1)
+                rb.configure(font=V.font(), underline=underline, padx=4)
+            if not self.vanilla_he or key in reference:
+                rb.pack(side='left', padx=(2 if key == 'stats' else 0, 0), pady=(0, 1))
             self.tab_buttons.append(rb)
-            ch0 = text[:1].lower()
+            ch0 = text[underline:underline + 1].lower() if underline >= 0 else ''
+            mnemonics.add(ch0)
             if ch0.isascii() and ch0.isalpha():              # Alt + first letter (a translated label may not have one)
                 try:
                     self.top.bind(f'<Alt-{ch0}>', lambda e, k=key: (self.tab.set(k), self.show_tab()))
@@ -187,6 +220,8 @@ class CharacterWindow(StatEditMixin):
             except Exception as e:                   # a broken plug-in page never keeps the window from opening
                 print(f'character page {key!r} disabled:', e)
                 tk.Label(self._extra_frames[key], text=str(e), bg=HE_BG).pack(padx=8, pady=8)
+        if self.vanilla_he:
+            V.build_reference_pages(self)
         self.apply_theme(save=False)
         self.tab.set({'equipment': 'inventory', 'progress': 'stats'}.get(tab, tab))
         self.show_tab()
@@ -202,10 +237,16 @@ class CharacterWindow(StatEditMixin):
                 self.save_progress()
                 if self.dirty():
                     return
-        self.top.destroy()
+        window = self.app.root if self.vanilla_he else self.top
+        window.destroy()
 
     def apply_theme(self, save=True):
         """Light (Hero Editor grey) or dark colours for the Stats, Inventory, Waypoints and Quests tabs."""
+        if self.vanilla_he:
+            from mxl_he_theme import _walk
+            self.scroll.set_bg(V.FORM)
+            _walk(self.top)
+            return
         dark = bool(self.dark.get())
         t = THEMES[dark]
 
@@ -245,10 +286,19 @@ class CharacterWindow(StatEditMixin):
 
     def show_tab(self):
         for key, page in self.pages.items():
-            if key == self.tab.get():
+            if self.vanilla_he and key == 'containers':
+                continue
+            if key == self.tab.get() or (self.vanilla_he and key == 'inventory' and self.tab.get() == 'containers'):
                 page.pack(fill='both', expand=True)
             else:
                 page.pack_forget()
+        if self.vanilla_he and self.tab.get() in ('inventory', 'containers'):
+            view = self.inv_view.get()
+            if self.tab.get() == 'containers':
+                view = 'transfer'
+            elif view == 'transfer':
+                view = 'person'
+            self._show_inventory(view)
         self._fit_stats()
         self._fit_skills()
         self.scroll.refresh()
@@ -257,10 +307,18 @@ class CharacterWindow(StatEditMixin):
     # ================================================================== equipment tab
     def _build_equipment(self):
         f = self.eq_tab
-        left = ttk.Frame(f)
-        left.pack(side='left', fill='y')
-        row = ttk.Frame(left)
-        row.pack(fill='x', pady=(0, 2))
+        left = ttk.Frame(self.inv_canvas_column if self.vanilla_he else f)
+        left.pack(side='top' if self.vanilla_he else 'left', fill='y')
+        if self.vanilla_he:
+            self.person_panel = left
+            self.inv_view = tk.StringVar(value='person')
+            self.inv_tabs = V.InventoryTabs(f, self.inv_view, self._show_inventory)
+            self.inv_tabs.pack(side='left', fill='y', padx=(2, 0))
+        if self.vanilla_he:
+            right = ttk.Frame(f)
+        row = ttk.Frame(right if self.vanilla_he else left)
+        if not self.vanilla_he:
+            row.pack(fill='x', pady=(0, 2))
         for text, val in ((T('ch.character', 'Character'), False), (T('ch.mercenary', 'Mercenary'), True)):
             b = ttk.Radiobutton(row, text=text, value=val, variable=self.merc, command=self.on_view)
             b.pack(side='left', padx=2)
@@ -272,13 +330,33 @@ class CharacterWindow(StatEditMixin):
             rb = ttk.Radiobutton(row, text='I' if n == 1 else 'II', value=n, variable=self.wset, command=self.redraw)
             rb.pack(side='left', padx=2)
             self.wset_rbs.append(rb)
+        if self.vanilla_he:
+            self.cell = 29
+            left.configure(style='Equipment.TFrame')
+            ttk.Style(left).configure('Equipment.TFrame', background='#423b33')
         c = self.cell
-        self.doll = tk.Canvas(left, width=int(DOLL_W * c) + 1, height=int(DOLL_H * c) + 1, bg=BG, highlightthickness=0)
+        self.doll_layout = DOLL
+        doll_width, doll_height = int(DOLL_W * c) + 1, int(DOLL_H * c) + 1
+        if self.vanilla_he:
+            import mxl_d2look as D2
+            from mxl_vanilla_pages import NATIVE_GRID, NATIVE_PANEL, _n
+            self.doll_layout = {slot: tuple(_n(value) / c for value in geometry)
+                                for slot, geometry in D2.GEAR_D2.items()}
+            doll_width, doll_height = NATIVE_PANEL[0], NATIVE_GRID[1]
+            self.he_inventory_art = {}
+        self.doll = tk.Canvas(left, width=doll_width, height=doll_height, bg=BG, highlightthickness=0)
         self.doll.pack(anchor='w')
         self.inv_label = ttk.Label(left, text=T('ch.tab.inventory', 'Inventory'))
         self.inv_label.pack(anchor='w', pady=(3, 1))
         self.inv = tk.Canvas(left, width=INV_W * c + 1, height=INV_H * c + 1, bg=BG, highlightthickness=0)
-        self.inv.pack(anchor='w')
+        self.inv.pack(anchor='w', padx=(NATIVE_GRID[0], 0) if self.vanilla_he else 0)
+        if self.vanilla_he:
+            self.inv_label.pack_forget()
+            self.he_footer_height = max(28, NATIVE_PANEL[1] - NATIVE_GRID[1] - INV_H * c)
+            self.he_inventory_footer = tk.Canvas(left, width=doll_width, height=self.he_footer_height,
+                                                  bg='#423b33', highlightthickness=0)
+            self.he_inventory_footer.pack()
+            self.he_inventory_art = V.inventory_images(self.inv)
         for cv in (self.doll, self.inv):
             cv.bind('<Button-1>', self.on_press)
             cv.bind('<B1-Motion>', self.on_drag)
@@ -287,22 +365,36 @@ class CharacterWindow(StatEditMixin):
         # window-level binding: the tab-hosted page forwards it to the root window, so Del works
         # wherever the focus is; the handler only acts when the pointer is over these canvases
         self.top.bind('<Delete>', self.on_delete_key, add='+')
-        btns = ttk.Frame(left)
-        btns.pack(fill='x', pady=(3, 0))
-        for text, cmd in ((T('ch.btn.to_stash', 'To stash'), self.to_stash), (T('ch.btn.from_stash', 'From stash'), self.from_stash),
+        btns = None if self.vanilla_he else ttk.Frame(left)
+        if btns is not None:
+            btns.pack(fill='x', pady=(3, 0))
+        item_actions = ((T('ch.btn.to_stash', 'To stash'), self.to_stash), (T('ch.btn.from_stash', 'From stash'), self.from_stash),
                           (T('ch.btn.edit', 'Edit...'), self.edit), (T('ch.btn.create_here', 'Create here...'), self.create_here),
-                          (T('ch.btn.delete', 'Delete'), self.delete)):
-            ttk.Button(btns, text=text, command=cmd).pack(side='left', padx=1)
-        self.status = ttk.Label(left, text=T('ch.inv_hint', 'Drag items between the slots and the inventory. '
+                          (T('ch.btn.delete', 'Delete'), self.delete))
+        if btns is not None:
+            for text, command in item_actions:
+                ttk.Button(btns, text=text, command=command).pack(side='left', padx=1)
+        self.status = ttk.Label(right if self.vanilla_he else left, text=T('ch.inv_hint', 'Drag items between the slots and the inventory. '
                                              '"From stash" takes the item selected in the main window.'),
                                 wraplength=max(260, INV_W * c), justify='left')
-        self.status.pack(anchor='w', pady=(2, 0))
+        if not self.vanilla_he:
+            self.status.pack(anchor='w', pady=(2, 0))
         if getattr(self.ch, 'old', False):           # a 1.09 save: said up front
             import mxl_char
             self.set_status(mxl_char.old_save_note(self.ch.version))
-        right = ttk.Frame(f)
+        if not self.vanilla_he:
+            right = ttk.Frame(f)
         right.pack(side='left', fill='both', expand=True, padx=(4, 0))
         d = self.app.detail
+        if self.vanilla_he:
+            self.inv_right = right
+            ttk.Label(right, text='Description', font=V.font(V.LEGEND_FONT)).pack(anchor='w')
+            preview_host = ttk.Frame(right)
+            preview_host.pack(fill='both', expand=True)
+            right = preview_host
+            for cv in (self.doll, self.inv):
+                cv.configure(bg='#423b33')
+            self.status.configure(wraplength=305)
         self.preview = tk.Text(right, width=16, wrap='word', bg=d.cget('bg'), fg=d.cget('fg'), bd=0,
                                padx=int(str(d.cget('padx'))), pady=8, font=d.cget('font'), cursor='arrow',
                                highlightthickness=0)
@@ -311,7 +403,50 @@ class CharacterWindow(StatEditMixin):
         self.preview.pack(side='left', fill='both', expand=True)
         sb.pack(side='left', fill='y')
         setup_detail_tags(self.preview)
+        if self.vanilla_he:
+            for tag in ('title', 'sub', 'section'):
+                self.preview.tag_configure(tag, font=V.font(V.SMALL_FONT), spacing1=0, spacing3=0)
+            self.preview.tag_configure('dim', foreground=V.BLACK)
+            self.preview.tag_configure('tip', background=V.DESCRIPTION, justify='left',
+                                       font=V.font(V.SMALL_FONT), spacing1=0, spacing3=0, lmargin1=0, rmargin=0)
+            self.preview.tag_configure('bold', font=(*V.font(V.SMALL_FONT), 'bold'))
+            self.preview.tag_configure('g0', foreground=V.BLACK)
         self.panel = PreviewPanel(self.preview, PreviewHost(self.app))
+        if self.vanilla_he:
+            V.role(self.preview, 'description')
+            self.preview.configure(width=32, height=19, bd=2, relief='sunken', pady=2, padx=4)
+            controls = ttk.LabelFrame(self.inv_right, text='Item actions', padding=2)
+            controls.pack(fill='x', pady=(4, 0))
+            for i, (text, command) in enumerate(item_actions):
+                ttk.Button(controls, text=text, command=command).grid(
+                    row=i // 2, column=i % 2, sticky='ew', padx=1, pady=1)
+            row.pack(fill='x', pady=(2, 0))
+            self.status.pack(anchor='w', pady=(2, 0))
+            self.he_inventory_controls = [(widget, widget.pack_info()) for widget in (controls, row, self.status)]
+
+    def inventory_description(self, expanded):
+        for widget, layout in self.he_inventory_controls:
+            if not widget.winfo_exists():
+                continue
+            if expanded and widget.winfo_manager():
+                widget.pack_forget()
+            elif not expanded and not widget.winfo_manager():
+                widget.pack(**layout)
+
+    def _show_inventory(self, key):
+        page = self.extra.get('containers')
+        self.inv_view.set(key)
+        self.person_panel.pack_forget()
+        if page is not None:
+            page.frame.pack_forget()
+        if page is None or key in ('person', 'merc'):
+            self.person_panel.pack(side='top', anchor='nw')
+        if page is not None and key != 'person':
+            page.show_container(key)
+            page.frame.pack(side='top', anchor='nw')
+        self.merc.set(key == 'merc' and self.ch.merc_hired)
+        self.on_view()
+        self.scroll.refresh()
 
     def is_merc(self):
         return bool(self.merc.get())
@@ -322,7 +457,7 @@ class CharacterWindow(StatEditMixin):
         return SET2.get(box, box) if self.wset.get() == 2 and not self.is_merc() else box
 
     def visible_boxes(self):
-        return [b for b in DOLL if not self.is_merc() or b in MERC_SLOTS]
+        return [b for b in self.doll_layout if not self.is_merc() or b in MERC_SLOTS]
 
     def on_view(self):
         self.selected = None
@@ -355,6 +490,8 @@ class CharacterWindow(StatEditMixin):
     def fit_cell(self, _e=None):
         """Cell size of the Inventory page from the room the page has (called when the page is resized)."""
         self._fit_job = None
+        if self.vanilla_he:
+            return
         try:
             W, H = self.scroll.winfo_width(), self.scroll.winfo_height()
             if W < 50 or H < 50 or not hasattr(self, 'inv') or not self.doll.winfo_exists():
@@ -393,6 +530,8 @@ class CharacterWindow(StatEditMixin):
         d = self.data
         unmet = (not self.is_merc()) and self.app.char is not None and requirements_unmet(it, d, self.app.char)
         bg = CELL_KO if unmet else CELL_OK
+        if self.vanilla_he:
+            bg = '#5b1d12' if unmet else '#141414'
         fill = blend(SELECTION, bg, 0.12) if selected else bg
         col = item_color(it, d)
         cv.create_rectangle(x0 + 1, y0 + 1, x1 - 1, y1 - 1, fill=fill, outline=col if selected else '',
@@ -417,29 +556,52 @@ class CharacterWindow(StatEditMixin):
         eq = self.ch.equipped(merc)
         cv = self.doll
         cv.delete('all')
+        native = self.vanilla_he and self.he_inventory_art and not merc
+        if native:
+            cv.create_image(0, 0, image=self.he_inventory_art['doll'], anchor='nw')
+            V.weapon_tabs(self)
         for box in self.visible_boxes():
-            x, y, w, h = DOLL[box]
+            x, y, w, h = self.doll_layout[box]
             slot = self.slot_of(box)
             x0, y0, x1, y1 = x * c, y * c, (x + w) * c, (y + h) * c
-            cv.create_rectangle(x0, y0, x1, y1, fill=EMPTY, outline='#d4b062' if slot == self.sel_slot else GRID_LINE,
-                                width=2 if slot == self.sel_slot else 1)
+            if not native or slot == self.sel_slot:
+                cv.create_rectangle(x0, y0, x1, y1,
+                                    fill='' if native else ('#29231c' if self.vanilla_he else EMPTY),
+                                    outline='#d4b062' if slot == self.sel_slot else ('#a18350' if self.vanilla_he else GRID_LINE),
+                                    width=2 if slot == self.sel_slot else 1)
             e = eq.get(slot)
             if e is not None:
-                self.draw_item(cv, e.it, x0, y0, x1, y1, e is self.selected)
-            elif box in (4, 5) and not merc:
+                inset = 3 if native else 0
+                self.draw_item(cv, e.it, x0 + inset, y0 + inset, x1 - inset, y1 - inset, e is self.selected)
+            elif box in (4, 5) and not merc and not native:
                 cv.create_text((x0 + x1) / 2, (y0 + y1) / 2, text='I' if self.wset.get() == 1 else 'II',
                                fill='#444444', font=('Segoe UI', 14))
         inv = self.inv
         inv.delete('all')
+        if self.vanilla_he:
+            footer = self.he_inventory_footer
+            footer.delete('all')
+            footer.configure(height=1 if merc else self.he_footer_height)
+            if not merc:
+                if native:
+                    footer.create_image(0, 0, image=self.he_inventory_art['footer'], anchor='nw')
+                footer.create_text(109, 31, anchor='w', text=f'{self.ch.stat(14):,}',
+                                   font=V.font(), fill='#ecca79')
         if merc:
-            self.inv_label.configure(text=T('ch.merc_no_inv', '(the mercenary has no inventory)'))
+            if not self.vanilla_he:
+                self.inv_label.configure(text=T('ch.merc_no_inv', '(the mercenary has no inventory)'))
             inv.configure(height=1)
         else:
-            self.inv_label.configure(text=T('ch.inv_label', 'Inventory - {name}, level {level}', name=self.ch.name, level=self.ch.level))
+            if not self.vanilla_he:
+                self.inv_label.configure(text=T('ch.inv_label', 'Inventory - {name}, level {level}', name=self.ch.name, level=self.ch.level))
             inv.configure(height=INV_H * c + 1)
-            for x in range(INV_W):
-                for y in range(INV_H):
-                    inv.create_rectangle(x * c, y * c, (x + 1) * c, (y + 1) * c, fill=EMPTY, outline=GRID_LINE)
+            if native:
+                inv.create_image(0, 0, image=self.he_inventory_art['grid'], anchor='nw')
+            else:
+                for x in range(INV_W):
+                    for y in range(INV_H):
+                        inv.create_rectangle(x * c, y * c, (x + 1) * c, (y + 1) * c, fill='#29231c' if self.vanilla_he else EMPTY,
+                                             outline='#a18350' if self.vanilla_he else GRID_LINE)
             for e in self.ch.inventory():
                 w, h = self.data.base(e.it['code']).size
                 x0, y0 = e.it['x'] * c, e.it['y'] * c
@@ -451,7 +613,7 @@ class CharacterWindow(StatEditMixin):
         c = self.cell
         if cv is self.doll:
             for box in self.visible_boxes():
-                x, y, w, h = DOLL[box]
+                x, y, w, h = self.doll_layout[box]
                 if x * c <= ev.x < (x + w) * c and y * c <= ev.y < (y + h) * c:
                     return ('slot', self.slot_of(box))
             return None
@@ -474,6 +636,12 @@ class CharacterWindow(StatEditMixin):
     # ---- mouse
     def on_press(self, ev):
         cv = ev.widget
+        if self.vanilla_he and cv is self.doll and not self.is_merc() and self.he_inventory_art:
+            weapon_set = V.weapon_tabs(self, ev)
+            if weapon_set:
+                self.wset.set(weapon_set)
+                self.redraw()
+                return 'break'
         self.sync_file()                  # the item is picked from the file as it is now (see save)
         e, slot = self.entry_at(cv, ev)
         self.selected = e
@@ -496,15 +664,15 @@ class CharacterWindow(StatEditMixin):
         d, self.drag = self.drag, None
         if not d or not d['moved']:
             return
-        x = ev.x_root - self.doll.winfo_rootx()
-        y = ev.y_root - self.doll.winfo_rooty()
-        cv = self.doll
-        if not (0 <= x < self.doll.winfo_width() and 0 <= y < self.doll.winfo_height()):
-            cv = self.inv
-            x = ev.x_root - self.inv.winfo_rootx()
-            y = ev.y_root - self.inv.winfo_rooty()
-            if not (0 <= x < self.inv.winfo_width() and 0 <= y < self.inv.winfo_height()):
-                return
+        for cv in (self.doll, self.inv):
+            if self.vanilla_he and not cv.winfo_ismapped():
+                continue
+            x = ev.x_root - cv.winfo_rootx()
+            y = ev.y_root - cv.winfo_rooty()
+            if 0 <= x < cv.winfo_width() and 0 <= y < cv.winfo_height():
+                break
+        else:
+            return
         fake = type('E', (), {'x': x, 'y': y})()
         where = self.target_at(cv, fake, dx=d['dx'], dy=d['dy'])
         if where is None:
@@ -858,7 +1026,11 @@ class CharacterWindow(StatEditMixin):
                                   command=lambda: self.sktree.toggle_other())
         self.sk_other.pack(side='left', padx=4)
         self.sk_top = top
-        self.sktree = mxl_skilltree.SkillTree(f, self)
+        if self.vanilla_he:
+            from mxl_vanilla_he_skills import VanillaSkillTree
+            self.sktree = VanillaSkillTree(f, self)
+        else:
+            self.sktree = mxl_skilltree.SkillTree(f, self)
         self.sktree.frame.pack(fill='both', expand=True)
         self.scroll.bind('<Configure>', self._fit_skills, add='+')
 
@@ -1083,6 +1255,12 @@ class CharacterWindow(StatEditMixin):
         # ---------------------------------------------------------------- Waypoints / Quests
         self.wp_trees = []
         self.q_trees = []
+        if self.vanilla_he:
+            quest_detail = V.quest_details(self, self.q_tab)
+            quest_frame = ttk.LabelFrame(self.q_tab, text='Game Modes', padding=3)
+            quest_frame.pack(side='right', fill='both', expand=True, padx=(4, 0))
+            quest_tree = CheckTree(quest_frame, self.on_tree_change)
+            quest_tree.tv.bind('<<TreeviewSelect>>', lambda _event: quest_detail(quest_tree))
         for k, _dn in enumerate(DIFFICULTIES):
             dn = difficulty_name(k)
             self.wp_tab.grid_columnconfigure(k, weight=1, uniform='he')
@@ -1101,9 +1279,12 @@ class CharacterWindow(StatEditMixin):
                     t.add(a, name + (T('he.hell_suffix', ' (Hell)') if n in MC.HELL_ONLY_WAYPOINTS else ''), key=('wp', k, n), locked=(n == 0))
             t.open(root)
             self.wp_trees.append(t)
-            fr = tk.LabelFrame(self.q_tab, text=dn, font=HE_FONT_I, bg=SK_STONE, bd=2, relief='groove', padx=2, pady=2)
-            fr.grid(row=0, column=k, sticky='nsew', padx=2, pady=2)
-            t = CheckTree(fr, self.on_tree_change)
+            if self.vanilla_he:
+                t = quest_tree
+            else:
+                fr = tk.LabelFrame(self.q_tab, text=dn, font=HE_FONT_I, bg=SK_STONE, bd=2, relief='groove', padx=2, pady=2)
+                fr.grid(row=0, column=k, sticky='nsew', padx=2, pady=2)
+                t = CheckTree(fr, self.on_tree_change)
             root = t.add('', T('he.mode_quests', '{mode} Mode Quests', mode=dn))
             for act, intro, quests, done in self.ch.quest_acts():
                 a = t.add(root, act)
@@ -1118,25 +1299,56 @@ class CharacterWindow(StatEditMixin):
                     t.add(a, clean(d.key(key)) + extra, key=('q', k, word))
             t.open(root)
             self.q_trees.append(t)
+        if self.vanilla_he:
+            first_quest = next(iter(quest_tree.keys), None)
+            if first_quest is not None:
+                quest_tree.open(quest_tree.tv.parent(first_quest))
+                quest_tree.tv.selection_set(first_quest)
+                quest_detail(quest_tree)
         self.wp_tab.grid_rowconfigure(0, weight=1)
-        self.q_tab.grid_rowconfigure(0, weight=1)
-        tk.Label(self.wp_tab, text=T('he.wp_note', 'Waypoints marked (Hell) are Median XL areas that only exist in Hell. '
-                                     'Click a box to tick it; a mode or act box ticks everything under it.'),
-                 font=HE_FONT_S, bg=SK_STONE, justify='left', wraplength=note_w * 2).grid(row=1, column=0, columnspan=3, sticky='w', padx=4)
-        tk.Label(self.q_tab, text=T('he.q_note', 'Ticking a quest gives its reward in that difficulty (shown in brackets). '
-                                    'Quests completed in game stay ticked and cannot be changed here.'),
-                 font=HE_FONT_S, bg=SK_STONE, justify='left', wraplength=note_w * 2).grid(row=1, column=0, columnspan=3, sticky='w', padx=4)
+        if not self.vanilla_he:
+            self.q_tab.grid_rowconfigure(0, weight=1)
+        if not self.vanilla_he:
+            tk.Label(self.wp_tab, text=T('he.wp_note', 'Waypoints marked (Hell) are Median XL areas that only exist in Hell. '
+                                         'Click a box to tick it; a mode or act box ticks everything under it.'),
+                     font=HE_FONT_S, bg=SK_STONE, justify='left', wraplength=note_w * 2).grid(
+                row=1, column=0, columnspan=3, sticky='w', padx=4)
+            tk.Label(self.q_tab, text=T('he.q_note', 'Ticking a quest gives its reward in that difficulty (shown in brackets). '
+                                        'Quests completed in game stay ticked and cannot be changed here.'),
+                     font=HE_FONT_S, bg=SK_STONE, justify='left', wraplength=note_w * 2).grid(row=1, column=0, columnspan=3, sticky='w', padx=4)
         self.refresh_progress()
 
     def _build_stats_grey(self, f, note_w):
         """The Hero-Editor style page (light look, or no game art): the same values, edited through the same engine."""
         ch, d = self.ch, self.data
 
-        def frame(parent, text, **grid):
-            """One of the character screen's sections: stone box, gold title, gold game-font text."""
+        if self.vanilla_he:
+            note_w = 190
+            self.he_portrait = V.character_portrait(f)
+            self.he_portrait.grid(row=0, column=0, sticky='nsew', padx=(0, 5))
+            f = tk.Frame(f, bg=V.FORM)
+            f.grid(row=0, column=1, sticky='nsew')
+            self.st_tab.grid_columnconfigure(1, weight=1)
+            self.st_tab.grid_rowconfigure(0, weight=1)
+            sections = (tk.Frame(f), tk.Frame(f))
+            for column, section in enumerate(sections):
+                section.grid(row=0, column=column, sticky='nsew')
+                section.columnconfigure(0, weight=1)
+
+        def frame(parent, text, he_position=None, **grid):
+            """Build a section in the profile's form layout."""
+            if self.vanilla_he:
+                column, row = he_position
+                grid = dict(row=row, column=0)
+                if column is None:
+                    grid.update(columnspan=2)
+                else:
+                    parent = sections[column]
             fr = tk.LabelFrame(parent, text=' ' + text, font=HE_FONT_I, bg=SK_STONE, fg=HE_GOLD,
                                bd=2, relief='groove', padx=4, pady=1,
                                highlightbackground=SK_EDGE, highlightthickness=1)
+            if self.vanilla_he:
+                fr.configure(bd=1, highlightthickness=0, font=V.font(V.LEGEND_FONT))
             fr.grid(sticky='nsew', padx=2, pady=1, **grid)
             return fr
 
@@ -1155,6 +1367,10 @@ class CharacterWindow(StatEditMixin):
                     e.bind('<Down>', lambda ev, k=key: self._grey_step(k, -10 if ev.state & 1 else -1))
             else:
                 e.configure(state='readonly')
+            if self.vanilla_he:
+                e.configure(font=V.font(), justify='center' if key != 'name' else 'left', bd=1)
+                if key == 'name':
+                    V.role(e, 'name')
             self.sv[key] = e
             return e
 
@@ -1162,41 +1378,48 @@ class CharacterWindow(StatEditMixin):
             tk.Label(parent, text=label, font=HE_FONT, bg=SK_STONE).grid(row=r, column=col, sticky='e', padx=(0, 4), pady=1)
             return entry(parent, key, width, row=r, column=col + 1, sticky='w', pady=1)
 
-        for c in range(3):
+        for c in range(2 if self.vanilla_he else 3):
             f.grid_columnconfigure(c, weight=1, uniform='he')
-        fr = frame(f, T('he.name', 'Name'), row=0, column=0)
+        fr = frame(f, T('he.name', 'Name'), he_position=(0, 0), row=0, column=0)
         e = entry(fr, 'name', 16, justify='left', row=0, column=0, columnspan=3, sticky='w')
-        e.configure(font=('Times New Roman', 13, 'bold'))
+        if self.vanilla_he:
+            tk.Button(fr, text='Rename', command=lambda: self._grey_commit('name')).grid(row=0, column=3)
+        else:
+            e.configure(font=('Times New Roman', 13, 'bold'))
         tk.Label(fr, text=T('he.copy_as', 'Copy as'), font=HE_FONT, bg=SK_STONE).grid(row=1, column=0, sticky='w', pady=(4, 0))
         tk.Entry(fr, textvariable=self.copy_name, width=11, font=HE_FONT, relief='sunken', bd=2).grid(row=1, column=1, pady=(4, 0))
         tk.Button(fr, text=T('he.copy', 'Copy'), font=HE_FONT, command=self.copy_char, bg=HE_BTN).grid(row=1, column=2, padx=4, pady=(4, 0))
 
-        fr = frame(f, T('he.class', 'Class'), row=1, column=0)
+        fr = frame(f, T('he.class', 'Class'), he_position=(1, 0), row=1, column=0)
         tk.Label(fr, text=T('he.class_c', 'Class:'), font=HE_FONT, bg=SK_STONE).grid(row=0, column=0, sticky='e', padx=(0, 4), pady=1)
         self.class_box = ttk.Combobox(fr, state='readonly', width=14, textvariable=self.new_class,
                                       values=self.class_names)
         self.class_box.grid(row=0, column=1, sticky='w', pady=1)
         self.class_box.bind('<<ComboboxSelected>>', lambda _e: self.on_class_change())
-        tk.Label(fr, text=T('he.class_note', 'Changing the class resets the skill levels\n(the save keeps one skill list per class).'),
-                 font=HE_FONT_S, bg=SK_STONE, justify='left', wraplength=note_w).grid(row=1, column=0, columnspan=2, sticky='w', pady=(2, 0))
-        fr = frame(f, T('he.level', 'Level'), row=2, column=0)
+        if not self.vanilla_he:
+            tk.Label(fr, text=T('he.class_note', 'Changing the class resets the skill levels\n(the save keeps one skill list per class).'),
+                     font=HE_FONT_S, bg=SK_STONE, justify='left', wraplength=note_w).grid(row=1, column=0, columnspan=2, sticky='w', pady=(2, 0))
+        fr = frame(f, T('he.level', 'Level'), he_position=(0, 1), row=2, column=0)
         field(fr, 0, T('he.level_c', 'Level:'), 'level', 6)
-        tk.Label(fr, text=T('he.level_up_c', 'Level up to:'), font=HE_FONT, bg=SK_STONE).grid(row=1, column=0, sticky='e', padx=(0, 4))
+        levelup_row, levelup_column = (0, 2) if self.vanilla_he else (1, 0)
+        tk.Label(fr, text=T('he.level_up_c', 'Level up to:'), font=HE_FONT, bg=SK_STONE).grid(
+            row=levelup_row, column=levelup_column, sticky='e', padx=(4 if self.vanilla_he else 0, 4))
         self.new_level = tk.StringVar(value='')
         self.level_box = ttk.Combobox(fr, state='readonly', width=6, textvariable=self.new_level)
-        self.level_box.grid(row=1, column=1, sticky='w')
+        self.level_box.grid(row=levelup_row, column=levelup_column + 1, sticky='w')
         self.level_box.bind('<<ComboboxSelected>>', lambda _e: self._grey_levelup())
-        tk.Label(fr, text=T('he.level_note2', 'The Level box is written as typed. "Level up to" works like the game: '
-                            'experience, 5 stat points and 1 skill point per level, life / mana / stamina per level.'),
-                 font=HE_FONT_S, bg=SK_STONE, justify='left', wraplength=note_w).grid(row=2, column=0, columnspan=2, sticky='w', pady=(2, 0))
-        fr = frame(f, T('he.experience', 'Experience'), row=3, column=0)
+        if not self.vanilla_he:
+            tk.Label(fr, text=T('he.level_note2', 'The Level box is written as typed. "Level up to" works like the game: '
+                                'experience, 5 stat points and 1 skill point per level, life / mana / stamina per level.'),
+                     font=HE_FONT_S, bg=SK_STONE, justify='left', wraplength=note_w).grid(row=2, column=0, columnspan=2, sticky='w', pady=(2, 0))
+        fr = frame(f, T('he.experience', 'Experience'), he_position=(0, 2), row=3, column=0)
         field(fr, 0, T('he.experience_c', 'Experience:'), 'experience', 14)
         tk.Button(fr, text=T('ss.match', 'Match to level'), font=HE_FONT_S, command=self.st_match_exp, bg=HE_BTN,
                   pady=0).grid(row=1, column=1, sticky='w')
         self.exp_note = tk.Label(fr, text='', font=HE_FONT_S, bg=SK_STONE, justify='left', wraplength=note_w)
         self.exp_note.grid(row=2, column=0, columnspan=2, sticky='w')
 
-        fr = frame(f, T('he.characteristics', 'Characteristics'), row=0, column=1, rowspan=2)
+        fr = frame(f, T('he.characteristics', 'Characteristics'), he_position=(1, 2), row=0, column=1, rowspan=2)
         for r, (lab, key) in enumerate(((T('he.str', 'Strength:'), 'strength'), (T('he.dex', 'Dexterity:'), 'dexterity'),
                                         (T('he.vit', 'Vitality:'), 'vitality'), (T('he.ene', 'Energy:'), 'energy'),
                                         (T('he.statpts', 'Stat Points Left:'), 'stat_points'),
@@ -1207,7 +1430,7 @@ class CharacterWindow(StatEditMixin):
                 b.grid(row=r, column=2, padx=(3, 0))
                 b.bind('<ButtonRelease-1>', lambda ev, k=key: self._grey_plus(k, ev))
                 b.bind('<ButtonRelease-3>', lambda ev, k=key: self._grey_plus(k, ev, take=True))
-        fr = frame(f, T('he.constitution', 'Constitution'), row=2, column=1, rowspan=2)
+        fr = frame(f, T('he.constitution', 'Constitution'), he_position=(0, 3), row=2, column=1, rowspan=2)
         tk.Label(fr, text=T('he.current', 'Current'), font=HE_FONT_S, bg=SK_STONE).grid(row=0, column=1)
         tk.Label(fr, text=T('he.max', 'Max'), font=HE_FONT_S, bg=SK_STONE).grid(row=0, column=3)
         for r, (lab, key) in enumerate(((T('he.life', 'Life:'), 'life'), (T('he.mana', 'Mana:'), 'mana'),
@@ -1216,33 +1439,49 @@ class CharacterWindow(StatEditMixin):
             tk.Label(fr, text='/', font=HE_FONT, bg=SK_STONE).grid(row=r, column=2, padx=2)
             entry(fr, key + '_max', 8, row=r, column=3, sticky='w')
 
-        fr = frame(f, T('he.gold', 'Gold'), row=0, column=2)
+        fr = frame(f, T('he.gold', 'Gold'), he_position=(0, 4), row=0, column=2)
         field(fr, 0, T('he.person', 'Person:'), 'gold', 12)
         field(fr, 1, T('he.stash', 'Stash:'), 'gold_stash', 12)
-        fr = frame(f, T('he.char_type', 'Character Type'), row=1, column=2)
+        if self.vanilla_he:
+            for row, key in enumerate(('gold', 'gold_stash')):
+                tk.Button(fr, text='Max', command=lambda key=key: self.st_set(key, self.st_range(key)[1]),
+                          pady=0).grid(row=row, column=2, padx=3)
+        fr = frame(f, T('he.char_type', 'Character Type'), he_position=(1, 3), row=1, column=2)
         self.sv_type = {}
         for r, (text, key) in enumerate(((T('he.expansion', 'Expansion'), 'expansion'), (T('he.ladder', 'Ladder'), 'ladder'),
                                          (T('he.hardcore', 'Hardcore'), 'hardcore'), (T('he.dead', 'You were Dead'), 'died'))):
             v = tk.BooleanVar()
             tk.Checkbutton(fr, text=text, variable=v, font=HE_FONT, bg=SK_STONE,
-                           command=lambda k=key, v=v: self.st_flag(k, v.get())).grid(row=r, column=0, sticky='w')
+                           command=lambda k=key, v=v: self.st_flag(k, v.get())).grid(
+                row=r // 2 if self.vanilla_he else r, column=r % 2 if self.vanilla_he else 0, sticky='w')
             self.sv_type[key] = v
-        fr = frame(f, T('he.char_diff', 'Character Difficulty'), row=2, column=2)
+        fr = frame(f, T('he.char_diff', 'Character Difficulty'), he_position=(1, 1), row=2, column=2)
         self.sv_diff = tk.IntVar()
         names = [difficulty_name(r) for r in range(len(DIFFICULTIES))] + [T('ss.hell_done', 'Hell finished')]
         for r, n in enumerate(names):
             tk.Radiobutton(fr, text=n, value=r, variable=self.sv_diff, font=HE_FONT, bg=SK_STONE,
                            command=lambda: self.st_done(self.sv_diff.get())).grid(row=r, column=0, sticky='w')
-        tk.Label(fr, text=T('he.diff_note', '(highest difficulty unlocked)'), font=HE_FONT_S, bg=SK_STONE).grid(row=4, column=0, sticky='w')
-        field(fr, 5, T('ss.progression_c', 'Progression:'), 'progression', 5)
-        fr = frame(f, T('he.misc', 'Miscellaneous Info.'), row=3, column=2)
+        if not self.vanilla_he:
+            tk.Label(fr, text=T('he.diff_note', '(highest difficulty unlocked)'), font=HE_FONT_S, bg=SK_STONE).grid(row=4, column=0, sticky='w')
+            field(fr, 5, T('ss.progression_c', 'Progression:'), 'progression', 5)
+        fr = frame(f, T('he.misc', 'Miscellaneous Info.'), he_position=(None, 1), row=3, column=2)
         field(fr, 0, T('he.file_size', 'File Size:'), 'size', 10)
         field(fr, 1, T('he.version', 'Version:'), 'version', 10)
-        tk.Label(f, text=T('he.stats_note2', 'Type any value in the boxes (Enter stores it, Up / Down step by 1, '
-                           'Shift: 10) and click SAVE. The + buttons spend stat points like the game (Shift +10, '
-                           'Ctrl all, right click gives a point back, Alt leaves the stat points alone).'),
-                 font=HE_FONT_S, bg=SK_STONE, justify='left', wraplength=note_w * 2).grid(
-            row=4, column=0, columnspan=3, sticky='w', padx=4, pady=(2, 0))
+        if self.vanilla_he:
+            field(fr, 0, 'Checksum:', 'checksum', 10, col=2)
+            field(fr, 1, 'Recorded File:', 'reported_size', 10, col=2)
+            field(fr, 2, T('ss.progression_c', 'Progression:'), 'progression', 5)
+            field(fr, 3, 'Header level:', 'header_level', 6)
+            if not ch.early:
+                field(fr, 2, 'Map ID:', 'map_id', 10, col=2)
+                field(fr, 3, 'Timestamp:', 'timestamp', 10, col=2)
+        if not self.vanilla_he:
+            tk.Label(f, text=T('he.stats_note2', 'Type any value in the boxes (Enter stores it, Up / Down step by 1, '
+                               'Shift: 10) and click SAVE. The + buttons spend stat points like the game (Shift +10, '
+                               'Ctrl all, right click gives a point back, Alt leaves the stat points alone).'),
+                     font=HE_FONT_S, bg=SK_STONE, justify='left', wraplength=note_w * 2).grid(
+                row=4, column=0, columnspan=3,
+                sticky='w', padx=4, pady=(2, 0))
 
     def _grey_commit(self, key, leaving=False):
         e = self.sv.get(key)
@@ -1288,6 +1527,13 @@ class CharacterWindow(StatEditMixin):
         vals = {k: self.st_value(k) for k in self.GREY_KEYS}
         vals['size'] = f'{len(ch.raw):,}'
         vals['version'] = str(struct.unpack_from('<I', ch.raw, 4)[0])
+        if self.vanilla_he:
+            V.update_portrait(self.he_portrait, sim.cls, self.data)
+            size, checksum = struct.unpack_from('<II', ch.raw, 8)
+            vals.update(checksum=f'{checksum:08X}', reported_size=str(size), header_level=ch.level)
+            if not ch.early:
+                vals['map_id'] = f'{struct.unpack_from("<I", ch.raw, 171)[0]:08X}'
+                vals['timestamp'] = f'{struct.unpack_from("<I", ch.raw, 48)[0]:08X}'
         for key, e in self.sv.items():
             e.configure(state='normal')
             e.delete(0, 'end')
@@ -1349,6 +1595,8 @@ class CharacterWindow(StatEditMixin):
         kind, k, n = key
         st = self.wstate[k] if kind == 'wp' else self.qstate[k]
         (st.add if value else st.discard)(n)
+        if self.vanilla_he and kind == 'q':
+            self.q_trees[k].tv.event_generate('<<TreeviewSelect>>', when='tail')
         self.update_dirty()
 
     def _extra_call(self, name, *args, default=None, collect=False):
@@ -1433,6 +1681,8 @@ class CharacterWindow(StatEditMixin):
             for _, _, qs, _ in self.ch.quest_acts():
                 for w, _ in qs:
                     self.q_trees[k].set_locked(('q', k, w), w in self.qlocked[k])
+        if self.vanilla_he:
+            self.q_trees[0].tv.event_generate('<<TreeviewSelect>>', when='tail')
         self.update_dirty()
 
     def all_waypoints(self):
@@ -1539,6 +1789,10 @@ class CharacterWindow(StatEditMixin):
         self.app.select_character(self.app.char_combo.get(), self.app.view.get())
 
     def set_bar(self, text, error=False):
+        if self.vanilla_he:
+            self.bar_status.configure(text=text or 'Character Open: ' + self.ch.path,
+                                      fg='#b00000' if error else V.BLACK)
+            return
         self.bar_status.configure(text=text, fg='#ff6060' if error else HE_GOLD)
 
 
@@ -1667,9 +1921,12 @@ class CheckTree:
             row_h = max(16, tkfont.Font(font=HE_FONT).metrics('linespace') + 3)
         except tk.TclError:
             row_h = 20
+        if V.active():
+            row_h = 16
         style.configure('HE.Treeview', background='#ffffff', fieldbackground='#ffffff', foreground='#000000',
-                        font=HE_FONT, rowheight=row_h, borderwidth=0, indent=20)
-        style.map('HE.Treeview', background=[('selected', '#ffffff')], foreground=[('selected', '#000000')])
+                        font=V.font() if V.active() else HE_FONT, rowheight=row_h, borderwidth=0, indent=20)
+        style.map('HE.Treeview', background=[('selected', V.SELECT if V.active() else '#ffffff')],
+                  foreground=[('selected', V.WHITE if V.active() else '#000000')])
         style.layout('HE.Treeview', [('Treeview.treearea', {'sticky': 'nswe'})])
         wrap = tk.Frame(parent, bg='#ffffff', bd=2, relief='sunken')
         self.wrap = wrap
