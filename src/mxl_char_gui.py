@@ -386,7 +386,8 @@ class CharacterWindow(StatEditMixin):
             self.status.pack(anchor='w', pady=(2, 0))
         if getattr(self.ch, 'old', False):           # a 1.09 save: said up front
             import mxl_char
-            self.set_status(mxl_char.old_save_note(self.ch.version))
+            if not self.vanilla_he or V.option('version_warning', 'show') == 'show':
+                self.set_status(mxl_char.old_save_note(self.ch.version))
         if not self.vanilla_he:
             right = ttk.Frame(f)
         right.pack(side='left', fill='both', expand=True, padx=(4, 0))
@@ -441,12 +442,19 @@ class CharacterWindow(StatEditMixin):
                 ttk.Button(actions, text=text, command=lambda key=target: delete_inventory(self, key)).pack(fill='x')
             decode = ttk.LabelFrame(controls, text='Item Decode', padding=2)
             decode.pack(side='left', anchor='n', padx=(3, 0))
-            ttk.Label(decode, text='1.10-1.13' if not self.ch.old else str(self.ch.version)).pack(padx=6)
-            ttk.Button(decode, text='Edit…', command=lambda: V.extras(self, entry=self.selected)).pack(fill='x')
+            self.he_decode_version = V.decode_version(self.ch.version)
+            self.he_decode_label = tk.StringVar(decode, value=V.ITEM_DECODE_VERSIONS[self.he_decode_version])
+            ttk.Label(decode, textvariable=self.he_decode_label).pack(padx=6)
+            ttk.Button(decode, text='Change', command=lambda: V.change_item_decode(self)).pack(fill='x')
+            self.he_expansion_label = tk.StringVar(decode)
+            ttk.Entry(decode, textvariable=self.he_expansion_label, width=5, state='readonly',
+                      justify='center').pack(pady=2)
             self.he_golem = ttk.Button(decode, text='Iron Golem', command=lambda: golem_menu(self, self.he_golem))
             self.he_golem.pack(fill='x', pady=(3, 0))
             self.he_golem.bind('<ButtonRelease-3>', lambda event: golem_menu(self, self.he_golem, event))
-            self.he_inventory_controls = [(controls, controls.pack_info())]
+            bonus, self.he_show_damage = V.bonus_weapon_controls(self.inv_right, self)
+            bonus.pack(fill='x')
+            self.he_inventory_controls = [(controls, controls.pack_info()), (bonus, bonus.pack_info())]
             if not self.he_inventory_art:
                 row.pack(fill='x', pady=2)
                 self.he_inventory_controls.append((row, row.pack_info()))
@@ -500,6 +508,8 @@ class CharacterWindow(StatEditMixin):
             from mxl_gfx import icon_layers, icon_name, ICON_CELL
             from paths import ICONS_DIR
             d = self.data
+            if self.vanilla_he:
+                it = V.picture_item(it)
             key = (it['code'], icon_name(it, d), it.get('image'), it.get('ethereal'), it.get('sockets'),
                    tuple(icon_name(x, d) for x in it.get('socketed', [])), bg, self.cell)
             if key not in self.icons:
@@ -633,10 +643,15 @@ class CharacterWindow(StatEditMixin):
                 w, h = self.data.base(e.it['code']).size
                 x0, y0 = e.it['x'] * c, e.it['y'] * c
                 self.draw_item(inv, e.it, x0, y0, x0 + w * c, y0 + h * c, e is self.selected)
-        self.panel.show(self.selected.it if self.selected else None)
+        item = None
+        if self.selected:
+            item = V.description_item(V.decoded_item(self, self.selected)) if self.vanilla_he else self.selected.it
+        self.panel.show(item)
         if self.vanilla_he:
             V.draw_pickup(self)
-            self.he_golem.state(['!disabled' if self.ch.tail.startswith(b'kf\x01JM') and not self.ch.old
+            self.he_show_damage()
+            self.he_expansion_label.set('LOD' if self.ch.flags()['expansion'] else 'NOX')
+            self.he_golem.state(['!disabled' if self.ch.tail.startswith(b'kf\x01JM') and not self.ch.early
                                  else 'disabled'])
 
     # ---- hit tests
@@ -703,12 +718,19 @@ class CharacterWindow(StatEditMixin):
             if 0 <= x < cv.winfo_width() and 0 <= y < cv.winfo_height():
                 break
         else:
+            if (self.vanilla_he and self.he_pickup.winfo_ismapped()
+                    and V.clipboard_point((self.he_pickup, (ev.x_root, ev.y_root))) is not None):
+                from mxl_vanilla_he_items import cut_item
+
+                cut_item(self, d['entry'])
             return
         fake = type('E', (), {'x': x, 'y': y})()
         where = self.target_at(cv, fake, dx=d['dx'], dy=d['dy'])
         if where is None:
             return
         e = d['entry']
+        if not V.allows(self, 'transfer'):
+            return
         try:                                              # a gem / rune / jewel onto an item: into its socket
             import mxl_socket_insert
             if mxl_socket_insert.char_tab_drop(self, e, cv, fake):
@@ -716,8 +738,18 @@ class CharacterWindow(StatEditMixin):
         except Exception as err:
             print('socket insert:', err)
         try:
+            if self.vanilla_he:
+                from mxl_vanilla_he_items import move_over
+                from mxl_vanilla_he_extras import put_picked_up
+
+                target, _slot = self.entry_at(cv, fake)
+                if target is not None and target is not e:
+                    move_over(self, e, target)
+                    return
+                clip = self.ch.stash_blob(e)
             self.ch.move(e, where, self.is_merc())
-            self.save(T('ch.moved', '{item} moved', item=clean(e.it['name'])))
+            if self.save(T('ch.moved', '{item} moved', item=clean(e.it['name'])), operation='transfer') and self.vanilla_he:
+                put_picked_up(self, clip)
         except CharError as err:
             self.set_status(str(err), True)
             self.reload()
@@ -734,6 +766,9 @@ class CharacterWindow(StatEditMixin):
         plug-in pages - stay pending on top of the file as it is now. keep=False is the RELOAD button: the file
         as it is, nothing pending."""
         self.ch = Character(self.ch.path, self.data)
+        if self.vanilla_he and not keep:
+            self.he_decode_version = V.decode_version(self.ch.version)
+            self.he_decode_label.set(V.ITEM_DECODE_VERSIONS[self.he_decode_version])
         self.selected = None
         self.redraw()
         self._init_state(keep)
@@ -794,7 +829,7 @@ class CharacterWindow(StatEditMixin):
         except tk.TclError:
             pass
 
-    def save(self, msg):
+    def save(self, msg, *, operation='item'):
         """Writes the character as it is in memory (an item action: the pages' pending edits are not part of
         it and stay pending; save_progress applies them first).
 
@@ -803,6 +838,10 @@ class CharacterWindow(StatEditMixin):
         other writer's change (the Stash tab's panel, an undo, the game). Then nothing is written, the file is
         read again (pending edits kept) and False is returned: the action is to be done again."""
         app = self.app
+        if not V.allows(self, operation):
+            self.reload()
+            self.set_status('This change is disabled in the Hero Editor Options tab.', True)
+            return False
         if self.changed_on_disk():
             self.reload()
             self.set_status(T('ch.err.changed_on_disk', 'The character file changed on disk since this item was '
@@ -860,7 +899,7 @@ class CharacterWindow(StatEditMixin):
             return
         self.ch.remove(e, merc)
         if not self.save(T('ch.sent', '{item} sent to {file}, page {page}', item=clean(e.it['name']),
-                           file=os.path.basename(app.path), page=spot[0] + 1)):
+                           file=os.path.basename(app.path), page=spot[0] + 1), operation='transfer'):
             try:                       # character not written: put the stash back as it was
                 commit_file(app.path, before, lambda tmp: None, backup=False)
             except Exception as rb:
@@ -899,7 +938,7 @@ class CharacterWindow(StatEditMixin):
             self.reload()
             return
         before_char = self.ch.raw
-        if not self.save(T('ch.taken', '{item} taken from the stash', item=clean(it['name']))):
+        if not self.save(T('ch.taken', '{item} taken from the stash', item=clean(it['name'])), operation='transfer'):
             return
         try:
             bak = edit_stash(app.path, self.data, remove=[it['_offset']], backup=app.needs_backup(app.path))
@@ -1315,6 +1354,7 @@ class CharacterWindow(StatEditMixin):
         self.q_trees = []
         if self.vanilla_he:
             self.he_quest_names = {}
+            self.he_act_notes = {}
             quest_detail = V.quest_details(self, self.q_tab)
             quest_frame = ttk.LabelFrame(self.q_tab, text='Game Modes', padding=3)
             quest_frame.pack(side='right', fill='both', expand=True, padx=(4, 0))
@@ -1348,6 +1388,8 @@ class CharacterWindow(StatEditMixin):
             root = t.add(quest_root if self.vanilla_he else '', T('he.mode_quests', '{mode} Mode Quests', mode=dn))
             for act, intro, quests, done in self.ch.quest_acts():
                 a = t.add(root, act)
+                if self.vanilla_he:
+                    self.he_act_notes[a] = k, intro
                 for index, (word, key) in enumerate(quests):
                     r = MC.QUEST_REWARDS.get(word)
                     extra = ''
@@ -1615,6 +1657,14 @@ class CharacterWindow(StatEditMixin):
         for k in range(3):
             self.qstate[k] |= self.qlocked[k]
         if self.vanilla_he:
+            old_notes = getattr(self, 'he_quest_notes', {}) if keep else {}
+            self.he_quest_notes = {(difficulty, word, bit): enabled
+                                   for (difficulty, word, bit), enabled in old_notes.items()
+                                   if bool(ch.quest_word(difficulty, word) & (1 << bit)) != enabled}
+            self.he_binary_edits = getattr(self, 'he_binary_edits', {}) if keep else {}
+            old_header = getattr(self, 'he_header_bytes', {}) if keep else {}
+            self.he_header_bytes = {offset: value for offset, value in old_header.items()
+                                    if offset < ch.offsets[0] and ch.raw[offset] != value}
             stages = getattr(self, 'he_quest_stages', {}) if keep else {}
             words = {word for _act, _intro, quests, _travel in ch.quest_acts() for word, _name in quests}
             self.he_quest_stages = {
@@ -1668,6 +1718,9 @@ class CharacterWindow(StatEditMixin):
         typed = any(e.get() != str(self.st_value(k)) for k, e in getattr(self, 'sv', {}).items() if self._grey_editable(k))
         return (self.qstate != self.q0 or self.wstate != self.w0 or self.st_dirty() or typed
                 or bool(getattr(self, 'he_quest_stages', {}))
+                or bool(getattr(self, 'he_header_bytes', {}))
+                or bool(getattr(self, 'he_binary_edits', {}))
+                or bool(getattr(self, 'he_quest_notes', {}))
                 or getattr(self, 'pending_cls', None) is not None or sk_typed)
 
     @staticmethod
@@ -1738,6 +1791,9 @@ class CharacterWindow(StatEditMixin):
         self.refresh_progress()
 
     def save_progress(self):
+        if not V.allows(self, 'character'):
+            self.set_bar('Character saving is disabled in Options.')
+            return
         ch = self.ch
         if not self.st_flush():               # a value still being typed is refused: nothing is written
             return
@@ -1769,9 +1825,27 @@ class CharacterWindow(StatEditMixin):
                 for (difficulty, word), stage in self.he_quest_stages.items():
                     if word not in self.qstate[difficulty]:
                         ch.set_quest_word(difficulty, word, V.QUEST_STAGE_WORDS[stage])
+                for (difficulty, word, bit), enabled in self.he_quest_notes.items():
+                    raw = ch.quest_word(difficulty, word)
+                    mask = 1 << bit
+                    ch.set_quest_word(difficulty, word, raw | mask if enabled else raw & ~mask)
+            if self.vanilla_he and self.he_header_bytes:
+                if not V.allows(self, 'header'):
+                    raise CharError('Character hex editing is disabled in Options.')
+                from mxl_vanilla_he_extras import apply_character_header
+
+                original_name = ch.name
+                apply_character_header(ch, self.he_header_bytes)
+                if ch.name != original_name:
+                    MC.check_name(ch.name)
+                    new_name = ch.name
+            if self.vanilla_he and self.he_binary_edits:
+                from mxl_vanilla_he_extras import apply_staged_binary
+
+                apply_staged_binary(self)
             if typed and ch.progression != prog:      # a value set by hand in the same save wins over the rule
                 ch.set_progression(prog)
-        except CharError as e:
+        except (CharError, FormatError) as e:
             messagebox.showerror(T('ch.title', 'Character'), str(e), parent=self.top)
             self.reload()
             return
@@ -1799,7 +1873,7 @@ class CharacterWindow(StatEditMixin):
             before = mxl_undo.snapshot([ch.path])
         except Exception as e:
             print('character save not undoable:', e)
-        ok = self.save(T('he.saved', '{name} saved', name=ch.name))
+        ok = self.save(T('he.saved', '{name} saved', name=ch.name), operation='character')
         if ok and before:
             mxl_undo.record_files(self.app, before, T('undo.char_save', 'SAVE of {name}', name=ch.name))
         return ok

@@ -12,6 +12,7 @@ EXE_NAME = 'Hero Editor.exe'
 # VB6 StdPicture payload sizes in Hero Editor 1.04. Button pictures all
 # have the same size and are stored as five defaults followed by pairs.
 PICTURES = {
+    78917: ('quests', (2016, 86)),
     829682: ('splash', (638, 433)),
     152655: ('about', (638, 433)),
     120469: ('person', (320, 432)),

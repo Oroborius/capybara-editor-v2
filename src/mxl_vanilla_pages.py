@@ -189,6 +189,10 @@ class ContainersPage:
             from mxl_gfx import icon_layers, icon_name, ICON_CELL
             import paths
             d = self.win.data
+            if self.win.vanilla_he:
+                from mxl_vanilla_he import picture_item
+
+                it = picture_item(it)
             key = (it['code'], icon_name(it, d), it.get('image'), it.get('ethereal'), self.cell)
             if key not in self.icons:
                 layers = icon_layers(it, d, bg, paths.ICONS_DIR)
@@ -354,7 +358,9 @@ class ContainersPage:
             return
         e = self.entry_at(key, ev.x, ev.y)
         try:
-            self.win.panel.show(e.it if e is not None else None)
+            from mxl_vanilla_he import description_item
+
+            self.win.panel.show(description_item(e.it) if e is not None else None)
         except Exception:
             pass
 
@@ -380,7 +386,9 @@ class ContainersPage:
             self.drag = dict(entry=e, key=key, dx=ev.x // c - e.it['x'], dy=ev.y // c - e.it['y'], moved=False)
         self.refresh()
         try:
-            self.win.panel.show(e.it if e is not None else None)
+            from mxl_vanilla_he import description_item
+
+            self.win.panel.show(description_item(e.it) if e is not None else None)
         except Exception:
             pass
 
@@ -415,6 +423,13 @@ class ContainersPage:
             return
         t = self.target(ev.x_root, ev.y_root)
         if t is None:
+            if self.win.vanilla_he:
+                from mxl_vanilla_he import clipboard_point
+                from mxl_vanilla_he_items import cut_item
+
+                paper = self.win.he_pickup
+                if paper.winfo_ismapped() and clipboard_point((paper, (ev.x_root, ev.y_root))) is not None:
+                    cut_item(self.as_win(), d['entry'])
             return
         key, cv, x, y = t
         import mxl_char as MC
@@ -460,6 +475,12 @@ class ContainersPage:
         where = ('inv', gx, gy) if key == 'inv' else ('store', PANEL_CUBE if key == 'cube' else PANEL_STASH, gx, gy)
         if MC.where_of(e) == where:
             return False
+        if win.vanilla_he:
+            from mxl_vanilla_he_items import move_over
+
+            target = self.entry_at(key, x, y)
+            if target is not None and target is not e:
+                return move_over(adapter, e, target, record_undo=False)
         if key == 'cube' and e.it['code'] == CUBE_CODE:
             self.set_status(T('van.cube_in_cube', 'The Horadric Cube cannot go into itself.'), True)
             return False
@@ -470,7 +491,7 @@ class ContainersPage:
             win.reload()
             return False
         msg = T('ch.moved', '{item} moved', item=_clean(e.it['name']))
-        if not win.save(msg):
+        if not win.save(msg, operation='transfer'):
             return False
         self.set_status(msg)
         return True
@@ -501,18 +522,17 @@ class ContainersPage:
         win = self.as_win()
         rc = RC.rc
         if self.win.vanilla_he:
-            from mxl_vanilla_he_items import paste_one
+            from mxl_vanilla_he_items import paste_belt, paste_one
 
             cell = (ev.x // self.cell, ev.y // self.cell)
-            paste = None
-            if key != 'belt':
-                if e is None:
-                    paste = lambda: self.paste_here(key, cell, clip)
-                else:
-                    paste = lambda: paste_one(win, e, clip, lambda: self.paste_over(e, clip))
+            if key == 'belt':
+                paste = lambda: paste_belt(win, cell, clip)
+            elif e is None:
+                paste = lambda: self.paste_here(key, cell, clip)
+            else:
+                paste = lambda: paste_one(win, e, clip, lambda: self.paste_over(e, clip))
             RC._vanilla_char_commands(win, menu, e, clip, paste=paste,
-                                      delete=lambda: self.delete(e), extensions=False,
-                                      cut=lambda: self.delete(e, ask=False))
+                                      delete=lambda: self.delete(e), extensions=False)
             menu.add_separator()
         if e is not None:
             import mxl_he_stats
@@ -601,8 +621,8 @@ class ContainersPage:
         self.set_status(str(err), True)
         return False
 
-    def _save(self, msg):
-        if not self.win.save(msg):
+    def _save(self, msg, *, operation='item'):
+        if not self.win.save(msg, operation=operation):
             return False
         self.set_status(msg)
         return True
@@ -649,10 +669,10 @@ class ContainersPage:
                 self.win.ch.move(cur, where, False)
             except MC.CharError as err:
                 return self._fail(err)
-            return self._save(T('ch.moved', '{item} moved', item=name))
+            return self._save(T('ch.moved', '{item} moved', item=name), operation='transfer')
         return self._undoable(name, go)
 
-    def _place(self, key, blob, cell, msg, name):
+    def _place(self, key, blob, cell, msg, name, *, operation='item'):
         import mxl_char as MC
 
         def go():
@@ -668,7 +688,7 @@ class ContainersPage:
                 self.win.ch.place(blob, where, False)
             except (MC.CharError, OSError) as err:
                 return self._fail(err)
-            return self._save(msg)
+            return self._save(msg, operation=operation)
         return self._undoable(name, go)
 
     def duplicate(self, e, key):
@@ -699,10 +719,10 @@ class ContainersPage:
         except Exception as err:
             return self._fail(err)
         name = os.path.basename(path)
-        return self._place(key, blob, cell, T('rc.imp.done', 'item imported from {file}', file=name), name)
+        return self._place(key, blob, cell, T('rc.imp.done', 'item imported from {file}', file=name), name, operation='transfer')
 
     def paste_here(self, key, cell, clip):
-        ok = self._place(key, clip[0], cell, T('van.pasted', '{name} pasted', name=clip[1]), clip[1])
+        ok = self._place(key, clip[0], cell, T('van.pasted', '{name} pasted', name=clip[1]), clip[1], operation='transfer')
         if ok and not self.win.vanilla_he:
             self.win.app._capy_clip = None
         return ok
@@ -719,7 +739,8 @@ class ContainersPage:
                 RC._char_replace(self.as_win(), cur, clip[0], MC.where_of(cur), False)
             except Exception as err:
                 return self._fail(err)
-            if self._save(T('van.pasted_over', '{name} pasted (the previous item is replaced)', name=clip[1])):
+            if self._save(T('van.pasted_over', '{name} pasted (the previous item is replaced)', name=clip[1]),
+                          operation='transfer'):
                 if not self.win.vanilla_he:
                     self.win.app._capy_clip = None
                 return True

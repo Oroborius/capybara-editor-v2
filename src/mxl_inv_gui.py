@@ -1167,7 +1167,7 @@ class PanelWin:
         self.panel.reload()
         self._ch, self._sel = self.panel.ch, None
 
-    def save(self, msg):
+    def save(self, msg, *, operation='item'):
         """Writes the character (changed in memory by the caller) through the panel's writer; False when nothing
         was written. The item standing where the picked one stood is selected again."""
         p = self.panel

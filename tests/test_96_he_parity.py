@@ -213,4 +213,289 @@ def vanilla_special_records_keep_their_sections_and_undo():
         T.eq(bytes(win.ch.raw), before, 'the item edit can be undone byte for byte')
 
 
+@T.test
+def vanilla_beta_character_round_trip():
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    from mxl_char import Character
+    from mxl_newchar import build, write
+    from mxl_save import load_character
+
+    win = T.chartab()
+    raw, _ = build(win.data, 'ama_none', 0, 1, version=95)
+    path = write(raw, SAVES, 'ama_none')
+    ch = Character(path, win.data)
+    T.eq((ch.version, ch.cls, ch.level, len(ch.items)), (95, 0, 1, 0), 'beta Amazon template')
+    T.eq(ch.build(), raw, 'beta file reads back byte for byte')
+    T.eq(load_character(path, win.data)['name'], 'ama_none', 'collector opens beta save')
+    ch.set_stat(14, 7)
+    ch.save(backup=False)
+    T.eq(Character(path, win.data).stat(14), 7, 'beta stats survive an edit')
+
+
+@T.test
+def vanilla_options_apply_access_and_display_prefs():
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    import settings
+    from mxl_vanilla_he import allows, description_item, picture_item
+
+    win = T.chartab()
+    saved = {key: settings.get('vanilla_he_' + key) for key in
+             ('item_access', 'character_access', 'set_attributes', 'unique_pictures')}
+    try:
+        settings.put('vanilla_he_item_access', 'transfer')
+        settings.put('vanilla_he_character_access', 'stats')
+        T.check(allows(win, 'transfer') and not allows(win, 'item'), 'transfer-only item access')
+        T.check(allows(win, 'character') and not allows(win, 'header'), 'stats-only character access')
+        settings.put('vanilla_he_character_access', 'view')
+        previous = win.ch.raw
+        win.save_progress()
+        T.eq(win.ch.raw, previous, 'view-only mode preserves the file')
+        item = {'quality': 'unique', 'set_unique_id': 4, 'set_stats_0': [{'id': 0}]}
+        settings.put('vanilla_he_unique_pictures', 'hide')
+        settings.put('vanilla_he_set_attributes', 'hide')
+        T.check('set_unique_id' not in picture_item(item), 'base picture preference')
+        T.check('set_stats_0' not in description_item(item), 'set attributes can be hidden')
+        T.check('set_unique_id' in item and 'set_stats_0' in item, 'display options preserve the item')
+    finally:
+        for key, value in saved.items():
+            settings.put('vanilla_he_' + key, value)
+
+
+@T.test
+def vanilla_reference_clone_and_legacy_corpse():
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    import struct
+    from mxl_char import Character, checksum
+    from mxl_newchar import build, create_reference_clone
+    from mxl_save import load_character
+    from mxl_vanilla_he_items import special_sections, write_special_sections
+
+    win = T.chartab()
+    clone = Path(create_reference_clone(win.app))
+    try:
+        character = Character(clone, win.data)
+        raw = clone.read_bytes()
+        T.eq((len(raw), checksum(raw)), (8075, 0x87B4672B), 'example payload with a neutral name')
+        T.eq((character.name, character.level, len(character.items)), ('HeroExample', 99, 50), 'clone details')
+        T.eq(character.build(), raw, 'opaque clone items survive a round trip')
+        T.eq(load_character(str(clone), win.data)['name'], character.name, 'the collector can open the example')
+    finally:
+        clone.unlink()
+
+    raw, old = build(win.data, 'LegacyCorpse', 0, 1, version=92)
+    item = old.items[0]
+    old.corpse = b'JM' + struct.pack('<H', 1) + bytes(12) + b'JM' + struct.pack('<H', 1) + old._old_blob(item)
+    old.parse(old.build())
+    name, start, end, entries = special_sections(old)[0]
+    T.eq((name, len(entries), entries[0].it['code']), ('corpse', 1, item.it['code']), 'legacy corpse decodes')
+    write_special_sections(old, [(name, start, end, [])])
+    old.parse(old.build())
+    T.eq(special_sections(old)[0][3], [], 'legacy corpse can be cleared with its metadata intact')
+
+
+@T.test
+def vanilla_extended_pickers_and_socket_child_replacement():
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    from mxl_creator import Creator, decode_item, encode_item
+    from mxl_vanilla_he import QUEST_NOTES, next_decode_version
+    from mxl_vanilla_he_extras import (
+        BASIC_FLAGS, create_item_blob, header_catalog, move_attribute, pack_time_values, skill_tab_choices, time_values,
+    )
+    from mxl_vanilla_he_items import SocketChild, character_report, extras_entries, replace_item
+
+    win = T.chartab()
+    versions = [96]
+    for _ in range(5):
+        versions.append(next_decode_version(versions[-1]))
+    T.eq(versions, [96, 71, 87, 92, 95, 96], 'reference decode cycle')
+    T.eq(time_values(pack_time_values(3, -7, 8)), (3, -7, 8), 'time and signed min/max values')
+    grouped = [{'id': sid} for sid in (54, 55, 56, 31)]
+    T.eq(move_attribute(grouped, 1, 1), 2, 'moving a component moves its group')
+    T.eq([row['id'] for row in grouped], [31, 54, 55, 56], 'cold components stay together')
+    T.eq(BASIC_FLAGS['identified'], (4, 1), 'identified bit')
+    fields = header_catalog(win.ch)
+    T.check((56, 64, 'Skill IDs for hotkeys') in fields, 'reference header field length')
+    T.check(any(start == win.ch.offsets[2] and length == 4 for start, length, _ in fields),
+            'hex catalog includes the detected item list offset')
+    T.eq(QUEST_NOTES[4][1][0], 10, 'cow level note bit')
+    T.eq(len(skill_tab_choices(win.data)), 21, 'vanilla skill tabs have named class and tree fields')
+    made, _ = decode_item(create_item_blob(Creator(win.data), 'hax '), win.data)
+    T.eq((made['quality'], made['subquality'], made['ilvl']), ('superior', 1, 90), 'creation defaults')
+    report = character_report(win)
+    T.check(all(section in report for section in ('Character Stats:', 'Skills:', 'Normal Magic', 'SUMMARY of')),
+            'report includes individual and combined attributes')
+    child, owner = next((entry, owner) for entry, owner in extras_entries(win.ch, include_socketed=True)
+                        if isinstance(owner, SocketChild))
+    original = bytes(win.ch.raw)
+    record, _ = decode_item(child.blob, win.data)
+    updated = encode_item(dict(record, flags=record['flags'] ^ (1 << 17)), win.data)
+    try:
+        replace_item(win, child, child.blob, updated, 'Edited socket child', owner)
+        T.check(any(entry.blob == updated for entry, owner in extras_entries(win.ch, include_socketed=True)
+                    if isinstance(owner, SocketChild)), 'socket edit survives reloading')
+    finally:
+        Path(win.ch.path).write_bytes(original)
+        win.reload()
+
+
+@T.test
+def vanilla_hex_nibbles_stage_before_saving():
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    import tkinter as tk
+    from mxl_vanilla_he import extras
+
+    win = T.chartab()
+    top = extras(win)
+    nb = next(child for child in top.winfo_children() if child.winfo_class() == 'TNotebook')
+    tab = top.nametowidget(nb.tabs()[0])
+    nb.select(tab)
+    T.pump(3)
+    entry = next(child for child in tab.winfo_children() if child.winfo_class() == 'TEntry')
+    shell = next(child for child in tab.winfo_children() if child.winfo_class() == 'TFrame')
+    fields = next(child for child in shell.winfo_children() if isinstance(child, tk.Listbox))
+    index = fields.get(0, 'end').index('1 Char Initial Displayed Level')
+    fields.selection_set(index)
+    fields.event_generate('<<ListboxSelect>>')
+    T.pump(2)
+    initial = win.ch.head[43]
+    digit = '5' if initial >> 4 != 5 else '6'
+    entry.focus_force()
+    entry.icursor(0)
+    entry.event_generate('<KeyPress>', keysym=digit)
+    T.pump(2)
+    T.eq(win.he_header_bytes.get(43), int(digit, 16) << 4 | initial & 15, 'one nibble stages immediately')
+    T.eq(win.ch.head[43], initial, 'the live save still has the original header')
+    top.destroy()
+    win.discard()
+    T.eq(win.he_header_bytes, {}, 'Reload abandons staged header bytes')
+
+
+@T.test
+def vanilla_mouse_belt_and_weapon_supplement():
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    from mxl_char import LOC_BELT, blob_item
+    from mxl_creator import Creator
+    from mxl_vanilla_he import weapon_bonus_ranges
+    from mxl_vanilla_he_extras import create_item_blob
+    from mxl_vanilla_he_items import belt_item
+
+    win = T.chartab()
+    creator = Creator(win.data)
+    potion = create_item_blob(creator, 'hp1 ')
+    initial = win.ch.items[:]
+    try:
+        belt_item(win, potion, 3)
+        placed = win.ch.items[-1].it
+        T.eq((placed['code'], placed['location'], placed['x']), ('hp1 ', LOC_BELT, 3), 'belt paste uses the clicked slot')
+    finally:
+        win.ch.items[:] = initial
+    axe = blob_item(create_item_blob(creator, 'hax '), win.data)
+    axe['equipped'] = 4
+    without = weapon_bonus_ranges(axe, win.data, 1, 0, 0)[0]
+    with_bonus = weapon_bonus_ranges(axe, win.data, 1, 0, 0, extra=5)[0]
+    T.eq(without[1], with_bonus[1], 'supplement does not change the stored item bonus')
+    T.eq(tuple(b - a for a, b in zip(without[2], with_bonus[2])), (5, 5), 'manual damage adds to each endpoint')
+
+
+@T.test
+def vanilla_binary_bits_stage_on_character_save():
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    from mxl_creator import decode_item, encode_item
+    from mxl_vanilla_he_extras import reverse_bits, stage_binary
+
+    win = T.chartab()
+    entry = win.ch.items[0]
+    record, size = decode_item(entry.blob, win.data)
+    record['flags'] ^= 1 << 17
+    blob = encode_item(record, win.data) + entry.blob[size:]
+    original = bytes(win.ch.raw)
+    try:
+        stage_binary(win, entry, False, reverse_bits(blob).replace(' ', ''))
+        T.check(win.dirty() and win.he_binary_edits, 'bit editing stages a character change')
+        T.eq(Path(win.ch.path).read_bytes(), original, 'the staged bits wait for Save')
+        win.save_progress()
+        T.check(any(item.blob == blob for item in win.ch.items), 'character Save commits the staged bits')
+        T.eq(win.he_binary_edits, {}, 'successful Save clears the binary changes')
+    finally:
+        Path(win.ch.path).write_bytes(original)
+        win.reload(keep=False)
+
+
+@T.test
+def vanilla_open_obeys_version_and_decode_policies():
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    import struct
+    from unittest.mock import patch
+    import settings
+    from mxl_vanilla_he import check_open_version, report_open_issues
+
+    win = T.chartab()
+    original = win.ch.raw
+    unsupported = SAVES / 'unknown-version.bin'
+    unsupported.write_bytes(original[:4] + struct.pack('<I', 98))
+    keys = ('vanilla_he_version_warning', 'vanilla_he_decode_check', 'vanilla_he_error_response')
+    saved = {key: settings.get(key) for key in keys}
+    try:
+        with patch('tkinter.messagebox.showwarning') as warning:
+            settings.put(keys[0], 'hide')
+            T.check(not check_open_version(win, unsupported), 'unsupported save is refused quietly')
+            T.check(not warning.called, 'version warning is suppressed')
+            settings.put(keys[0], 'show')
+            T.check(not check_open_version(win, unsupported) and warning.called, 'version warning is shown')
+        with patch('mxl_creator.decode_blob', side_effect=ValueError('bad item')) as decode:
+            settings.put(keys[1], 'basic')
+            report_open_issues(win)
+            T.check(not decode.called, 'basic Open skips item-codec validation')
+            settings.put(keys[1], 'complete')
+            settings.put(keys[2], 'status')
+            report_open_issues(win)
+            T.check(decode.called, 'complete Open checks item bytes')
+    finally:
+        unsupported.unlink()
+        for key, value in saved.items():
+            settings.put(key, value)
+
+
+@T.test
+def vanilla_extras_quality_picker_and_quest_note_write():
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    import tkinter as tk
+    from mxl_creator import FLAG_PERSONALIZED
+    from mxl_vanilla_he_extras import ItemEdit
+    from mxl_vanilla_he_items import extras_entries
+
+    win = T.chartab()
+    entries = extras_entries(win.ch)
+    entry = next(e for e, owner in entries if owner is False and e.it.get('quality') == 'set')
+    top = tk.Toplevel(win.top)
+    editor = ItemEdit(top, win, entries, entry, 'Quality:magic', tk.StringVar(top))
+    try:
+        T.eq(editor.record['quality'], 'magic', 'conversion is staged')
+        T.eq(editor.tree.selection(), ('Quality:prefix',), 'magic conversion selects the prefix control')
+        editor.stage_structural_flag('personalized', True)
+        T.check(editor.record['flags'] & FLAG_PERSONALIZED, 'Personalized control sets the flag')
+        T.eq(editor.record['personalized_name'], win.ch.name, 'personalization starts with the character name')
+    finally:
+        top.destroy()
+
+    original = bytes(win.ch.raw)
+    word = win.ch.quest_word(0, 1)
+    try:
+        win.he_quest_notes[0, 1, 4] = not bool(word & 16)
+        win.save_progress()
+        T.eq(win.ch.quest_word(0, 1), word ^ 16, 'saving a note changes only its bit')
+    finally:
+        Path(win.ch.path).write_bytes(original)
+        win.reload(keep=False)
+
+
 T.main(globals())

@@ -244,16 +244,27 @@ def choose_character(win):
         if win.dirty() and not messagebox.askyesno('Open', 'Discard unsaved changes?', parent=dialog):
             return
         name = names.get(selection[0])
-        dialog.destroy()
-        if name == win.app.char_combo.get():
+        previous = win.app.char_combo.get()
+        if name == previous:
+            dialog.destroy()
             win.discard()
+            report_open_issues(win)
             return
+        win.app.char_combo.set(name)
+        if not check_open_version(win, win.app.character_file()):
+            win.app.char_combo.set(previous)
+            return
+        dialog.destroy()
         if win.dirty():
             win.discard()
-        win.app.char_combo.set(name)
         win.app.select_character(name, win.app.view.get())
         from mxl_char_gui import CharacterWindow
+        from mxl_tabs import built_owner
+
         CharacterWindow(win.app)
+        opened = built_owner('Character')
+        if opened is not None and hasattr(opened, 'ch'):
+            report_open_issues(opened)
 
     buttons = ttk.Frame(dialog)
     buttons.pack(fill='x', padx=8, pady=6)
@@ -264,6 +275,58 @@ def choose_character(win):
     dialog.bind('<Escape>', lambda _event: dialog.destroy())
     names.focus_set()
     center_mouse(dialog)
+
+
+def check_open_version(win, path):
+    import struct
+    from mxl_char import MAGIC
+    from mxl_newchar import SAVE_VERSIONS
+    from tkinter import messagebox
+
+    if not path:
+        return True
+    try:
+        with open(path, 'rb') as file:
+            signature, version = struct.unpack('<II', file.read(8))
+    except (OSError, struct.error):
+        return True
+    if signature != MAGIC or version in SAVE_VERSIONS:
+        return True
+    text = f'This character uses unsupported save version {version}.'
+    if option('version_warning', 'show') == 'show':
+        messagebox.showwarning('Save version', text, parent=win.top)
+    win.set_status(text, True)
+    return False
+
+
+def report_open_issues(win):
+    import struct
+    from mxl_char import checksum
+    from mxl_creator import decode_blob
+    from mxl_vanilla_he_items import ITEM_ERRORS, extras_entries
+    from tkinter import messagebox
+
+    issues = []
+    raw = win.ch.raw
+    response = option('error_response', 'normal')
+    if response != 'status' and not win.ch.early:
+        size, saved_checksum = struct.unpack_from('<II', raw, 8)
+        if size != len(raw):
+            issues.append(f'Recorded size is {size} bytes. The file contains {len(raw)} bytes.')
+        if checksum(raw) != saved_checksum:
+            issues.append('The character checksum does not match the file.')
+    if option('decode_check', 'complete') == 'complete':
+        for entry, _owner in extras_entries(win.ch):
+            try:
+                decode_blob(entry.blob, win.data)
+            except ITEM_ERRORS as error:
+                issues.append(f'{entry.it.get("code", "?").strip()} — {error}')
+    if issues:
+        win.set_status(f'Open found {len(issues)} issues.', True)
+        if response == 'inspect':
+            extras(win)
+        elif response == 'normal':
+            messagebox.showwarning('Open Character', '\n'.join(issues), parent=win.top)
 
 
 def center_mouse(window):
@@ -635,6 +698,21 @@ def stats(win, page, entry):
             box(fr, key, x + (113 if x == 7 else 104), y, 80)
 
 
+def character_title(ch):
+    flags = ch.flags()
+    female = ch.cls in (0, 1, 6)
+    if flags['expansion']:
+        titles = ('<NONE>', 'Destroyer', 'Conqueror', 'Guardian') if flags['hardcore'] else (
+            '<NONE>', 'Slayer', 'Champion', 'Matriarch' if female else 'Patriarch')
+        rank = min(3, ch.progression // 5)
+    else:
+        titles = ('<NONE>', 'Countess', 'Duchess', 'Queen') if female else ('<NONE>', 'Count', 'Duke', 'King')
+        if not flags['hardcore']:
+            titles = ('<NONE>', 'Dame', 'Lady', 'Baroness') if female else ('<NONE>', 'Sir', 'Lord', 'Baron')
+        rank = min(3, ch.progression // 4)
+    return titles[rank]
+
+
 def refresh_stats(win):
     import struct
     import mxl_early_save
@@ -644,17 +722,7 @@ def refresh_stats(win):
     vals.update(size=len(ch.raw), version=mxl_early_save.VERSIONS.get(ch.version,
                 '1.09' if ch.old else '1.10-1.13'), header_level=sim.head[0x2B], character=sim.progression)
     flags = sim.flags()
-    female = sim.cls in (0, 1, 6)
-    if flags['expansion']:
-        titles = ('<NONE>', 'Destroyer', 'Conqueror', 'Guardian') if flags['hardcore'] else (
-            '<NONE>', 'Slayer', 'Champion', 'Matriarch' if female else 'Patriarch')
-        rank = min(3, sim.progression // 5)
-    else:
-        titles = ('<NONE>', 'Countess', 'Duchess', 'Queen') if female else ('<NONE>', 'Count', 'Duke', 'King')
-        if not flags['hardcore']:
-            titles = ('<NONE>', 'Dame', 'Lady', 'Baroness') if female else ('<NONE>', 'Sir', 'Lord', 'Baron')
-        rank = min(3, sim.progression // 4)
-    vals['character_title'] = titles[rank]
+    vals['character_title'] = character_title(sim)
     if not ch.early:
         size, checksum = struct.unpack_from('<II', ch.raw, 8)
         vals.update(checksum=f'{checksum:08X}', reported_size=size,
@@ -767,6 +835,7 @@ def bind_inventory(win):
             cv.bind(sequence, remember, add='+')
         cv.bind('<Leave>', forget, add='+')
 
+    bind_pickup(win)
     for cv in (win.inv, win.doll):
         cv.bind('<ButtonRelease-3>', lambda event: rc._char_menu(win, event.widget, anchored_event(event)))
         cv.bind('<ButtonRelease-1>', lambda event: win.on_release(anchored_event(event)))
@@ -807,6 +876,8 @@ def inventory_shortcut(root, event, caption):
         return 'break'
     if pointer is None or not pointer[0].winfo_exists() or not pointer[0].winfo_ismapped():
         return
+    if not allows(win, 'transfer'):
+        return 'break'
     cv = pointer[0]
     xy = clipboard_point(pointer)
     if xy is None:
@@ -847,10 +918,79 @@ def clipboard_point(pointer):
         return x, y
 
 
+def paste_at(win, canvas, xy, clip):
+    from types import SimpleNamespace
+    import mxl_rc_menu as rc
+    from mxl_vanilla_he_items import paste_belt, paste_one
+
+    if not allows(win, 'transfer'):
+        return
+    win.sync_file()
+    if not canvas.winfo_exists():
+        return
+    point = SimpleNamespace(widget=canvas, x=xy[0], y=xy[1])
+    if canvas in (win.inv, win.doll):
+        entry, slot = win.entry_at(canvas, point)
+        if entry is not None:
+            paste_one(win, entry, clip, lambda: rc._char_paste_over(win, entry, clip))
+        elif canvas is win.inv and not win.is_merc():
+            rc._char_paste(win, point, clip)
+        elif slot is not None:
+            rc._char_paste_slot(win, slot, clip)
+    else:
+        page = win.extra.get('containers')
+        if page is None:
+            return
+        key = next((key for key, candidate in page.canvases.items() if candidate is canvas), None)
+        if key is None:
+            return
+        cell = tuple(value // page.cell for value in xy)
+        if key == 'belt':
+            paste_belt(win, cell, clip)
+            return
+        entry = page.entry_at(key, *xy)
+        if entry is not None:
+            paste_one(page.as_win(), entry, clip, lambda: page.paste_over(entry, clip))
+        else:
+            page.paste_here(key, cell, clip)
+
+
+def bind_pickup(win):
+    paper = win.he_pickup
+    dragged = False
+
+    def start(_event):
+        nonlocal dragged
+        dragged = False
+
+    def motion(_event):
+        nonlocal dragged
+        if allows(win, 'transfer') and getattr(win.app, '_capy_clip', None):
+            dragged = True
+            paper.configure(cursor='fleur')
+
+    def drop(event):
+        paper.configure(cursor='')
+        if not dragged:
+            return
+        clip = getattr(win.app, '_capy_clip', None)
+        if clip is None:
+            return
+        page = win.extra.get('containers')
+        grids = tuple(page.canvases.values()) if page is not None else ()
+        for canvas in (win.doll, win.inv, *grids):
+            if canvas.winfo_ismapped() and (point := clipboard_point((canvas, screen_point(event)))) is not None:
+                paste_at(win, canvas, point, clip)
+                return
+
+    paper.bind('<ButtonPress-1>', start)
+    paper.bind('<B1-Motion>', motion)
+    paper.bind('<ButtonRelease-1>', drop)
+
+
 def inventory_clipboard(root, event, paste):
     from types import SimpleNamespace
     import mxl_rc_menu as rc
-    from mxl_vanilla_he_items import paste_one
 
     win = root._he_window()
     pointer = getattr(win, 'he_pointer', None)
@@ -867,38 +1007,26 @@ def inventory_clipboard(root, event, paste):
     if not cv.winfo_exists():
         return 'break'
     clip = getattr(win.app, '_capy_clip', None)
-    if cv in (win.inv, win.doll):
-        entry, slot = win.entry_at(cv, point)
-        if not paste:
-            if entry is None:
-                win.set_status(rc.rc('hot.none', 'no item under the mouse cursor'), True)
-            else:
-                win.selected = entry
-                rc._char_copy(win, entry)
-        elif clip is None:
-            win.set_status(rc.rc('hot.noclip', 'the item clipboard is empty (copy an item first)'), True)
+    if paste:
+        if clip is not None:
+            paste_at(win, cv, xy, clip)
         else:
-            if entry is not None:
-                paste_one(win, entry, clip, lambda: rc._char_paste_over(win, entry, clip))
-            elif cv is win.inv and not win.is_merc():
-                rc._char_paste(win, point, clip)
-            elif slot is not None:
-                rc._char_paste_slot(win, slot, clip)
+            win.set_status(rc.rc('hot.noclip', 'the item clipboard is empty (copy an item first)'), True)
+    elif cv in (win.inv, win.doll):
+        entry, _slot = win.entry_at(cv, point)
+        if entry is not None:
+            win.selected = entry
+            rc._char_copy(win, entry)
+        else:
+            win.set_status(rc.rc('hot.none', 'no item under the mouse cursor'), True)
     else:
         page = win.extra.get('containers')
         if page is not None:
             key = next((key for key, canvas in page.canvases.items() if canvas is cv), None)
-            if key is not None:
-                entry = page.entry_at(key, *xy)
-                if not paste:
-                    if entry is not None:
-                        win.selected = entry
-                        rc._char_copy(page.as_win(), entry)
-                elif clip is not None and key != 'belt':
-                    if entry is not None:
-                        paste_one(page.as_win(), entry, clip, lambda: page.paste_over(entry, clip))
-                    else:
-                        page.paste_here(key, tuple(value // page.cell for value in xy), clip)
+            entry = page.entry_at(key, *xy) if key is not None else None
+            if entry is not None:
+                win.selected = entry
+                rc._char_copy(page.as_win(), entry)
     return 'break'
 
 
@@ -970,6 +1098,211 @@ def draw_cover(panel, key):
                           fill=WHITE, anchor='w', font=font())
 
 
+def option(key, default=None):
+    import settings
+
+    value = settings.get('vanilla_he_' + key)
+    return default if value is None else value
+
+
+def allows(win, operation):
+    if not getattr(win, 'vanilla_he', False):
+        return True
+    if operation in ('character', 'header'):
+        mode = option('character_access', 'all')
+        return mode == 'all' or mode == 'stats' and operation == 'character'
+    mode = option('item_access', 'all')
+    return mode == 'all' or mode == 'transfer' and operation == 'transfer'
+
+
+def description_item(item):
+    if item is None or not active():
+        return item
+    bonuses = [stat for index in range(5) for stat in item.get(f'set_stats_{index}', ())]
+    if not bonuses:
+        return item
+    from copy import copy
+
+    result = copy(item)
+    if option('set_attributes', 'show') == 'show':
+        result['stats'] = [*item.get('stats', ()), *bonuses]
+    for index in range(5):
+        result.pop(f'set_stats_{index}', None)
+    return result
+
+
+def picture_item(item):
+    if not active() or item.get('quality') not in ('unique', 7) or option('unique_pictures', 'show') == 'show':
+        return item
+    from copy import copy
+
+    result = copy(item)
+    result.pop('set_unique_id', None)
+    return result
+
+
+ITEM_DECODE_VERSIONS = {
+    71: '1.03', 87: '1.07', 92: '1.09D', 95: '1.10s beta', 96: '1.10–1.13',
+}
+
+
+def decode_version(version):
+    return 87 if version == 89 else version
+
+
+def next_decode_version(version):
+    versions = tuple(ITEM_DECODE_VERSIONS)
+    return versions[(versions.index(decode_version(version)) + 1) % len(versions)]
+
+
+def change_item_decode(win):
+    from tkinter import messagebox
+
+    if not getattr(win, 'he_decode_warned', False):
+        messagebox.showwarning('Item Decode', 'Using a different layout can make items unreadable. '
+                               'Reload the character to restore its detected item format.', parent=win.top)
+        win.he_decode_warned = True
+    current = getattr(win, 'he_decode_version', decode_version(win.ch.version))
+    win.he_decode_version = next_decode_version(current)
+    win.he_decode_label.set(ITEM_DECODE_VERSIONS[win.he_decode_version])
+    win.redraw()
+
+
+def decoded_item(win, entry):
+    detected = decode_version(win.ch.version)
+    selected = getattr(win, 'he_decode_version', detected)
+    if selected == detected:
+        return entry.it
+    from mxl_early_save import ClassicData
+    from mxl_v109 import Data109
+    from mxl_char import blob_item
+    from mxl_vanilla_he_items import ITEM_ERRORS
+
+    data = win.data
+    if selected == 71:
+        data = ClassicData(data)
+    elif selected in (87, 92):
+        data = Data109(data, selected)
+    try:
+        return blob_item(win.ch._old_blob(entry) if win.ch.old else entry.blob, data)
+    except ITEM_ERRORS as error:
+        win.set_status(f'Item Decode {ITEM_DECODE_VERSIONS[selected]}: {error}', True)
+        return None
+
+
+def weapon_bonus_ranges(item, data, level, strength, dexterity, extra=0, *, version=96, cls=0):
+    from collections import Counter
+    from mxl_tooltip import all_stats
+    from mxl_vanilla_he_extras import time_values
+
+    if item is None or item.get('equipped') not in (4, 5, 9, 11, 12):
+        return ()
+    base = data.base(item['code'])
+    damage = getattr(base, 'damage', None)
+    special = None
+    if not damage and base.kind == 'armor':
+        types = {data.itypes[index][0] for index in data.type_ancestors(base.type)}
+        special = 'kick' if 'boot' in types else 'smite' if 'shld' in types else None
+        if special:
+            code = base.code.encode('latin1')
+            row = next((row for row in data._rows('armor') if row[128:132] == code), None)
+            if row is not None:
+                damage = {special: (row[0xFE], row[0xFF])}
+    if not damage:
+        return ()
+    values = Counter()
+    time_ranges = {'flat': [0, 0], 'percent': [0, 0], 'kick': [0, 0]}
+    timed = {272: 'flat', 273: 'percent' if version >= 95 else 'flat', 302: 'kick'}
+    for stat in all_stats(item, data):
+        sid, amount = stat['id'], stat.get('value') or 0
+        if sid in timed:
+            _, lo, hi = time_values(amount)
+            pair = time_ranges[timed[sid]]
+            pair[0] += lo
+            pair[1] += hi
+        else:
+            values[sid] += amount
+    strength_pct, dexterity_pct = getattr(base, 'dmg_bonus', None) or (0, 0)
+    raw_scale = (strength * strength_pct + dexterity * dexterity_pct) / 100
+    overflow = 1 << 24
+    if raw_scale >= overflow:
+        raw_scale %= overflow
+    percent = raw_scale + 100 + values[25] + (123 if cls == 4 else 0)
+
+    def endpoint(total, flat):
+        calculated = total * percent + flat * 100
+        if version < 95:
+            if calculated >= overflow:
+                calculated %= overflow
+            if calculated >= overflow // 2:
+                return 0
+        return calculated / (200 if special else 100)
+
+    ranges = []
+    for kind, minimum, maximum in (
+        ('one_hand', 21, 22), ('two_hand', 23, 24), ('throw', 159, 160), ('smite', 21, 22), ('kick', 137, 137),
+    ):
+        low, high = damage.get(kind) or (0, 0)
+        if not low and not high:
+            continue
+        enhance = (values[18] or values[17]) + time_ranges['percent'][0]
+        enhanced = low * enhance / 100 + 2 if enhance else 0
+        lo = enhanced + values[minimum] + time_ranges['flat'][0]
+        hi = enhanced + values[maximum] + time_ranges['flat'][1]
+        if kind == 'kick':
+            kick = values[249] * level / 8
+            lo += kick + time_ranges['kick'][0]
+            hi += kick + time_ranges['kick'][1]
+        hi += values[218] * level / 8 + high * values[219] * level / 800
+        magic = values[111] if kind != 'throw' else 0
+        actual_lo = endpoint(low + (lo % overflow if lo >= overflow else lo) + extra, magic)
+        actual_hi = endpoint(high + (hi % overflow if hi >= overflow else hi) + extra, magic)
+        if kind in ('one_hand', 'kick', 'smite') and 0.1 < actual_hi < actual_lo:
+            actual_hi = actual_lo + 1
+        ranges.append((kind, (round(lo), round(hi)), (round(actual_lo), round(actual_hi))))
+    return ranges
+
+
+def bonus_weapon_controls(parent, win):
+    from tkinter import messagebox
+
+    box = ttk.LabelFrame(parent, text='Bonus Weapon Damage', padding=2)
+    bonus = tk.StringVar(box, value='0')
+    ranges = tk.StringVar(box)
+    real = tk.StringVar(box)
+    ttk.Label(box, textvariable=ranges).grid(row=0, column=0, columnspan=3, sticky='w')
+    ttk.Label(box, textvariable=real).grid(row=1, column=0, columnspan=3, sticky='w')
+
+    def redraw():
+        selected = win.selected
+        sim = getattr(win, 'st_sim', win.ch)
+        rows = weapon_bonus_ranges(selected.it if selected else None, win.data, sim.level,
+                                   sim.stat(0), sim.stat(2), int(bonus.get() or 0),
+                                   version=sim.version, cls=sim.cls)
+        labels = {'one_hand': '1-H', 'two_hand': '2-H', 'throw': 'Throw', 'kick': 'Kick', 'smite': 'Smite'}
+        ranges.set('    '.join(f'{labels[kind]} Bonus {lo} to {hi}' for kind, (lo, hi), _ in rows[:2]))
+        real.set('    '.join(f'{labels[kind]} Damage {lo} to {hi}' for kind, _, (lo, hi) in rows
+                             if sim.version != 96 or kind not in ('kick', 'smite')))
+
+    def edit(*_args):
+        entered = bonus.get()
+        if entered:
+            try:
+                bounded = str(min(256, max(0, int(entered))))
+            except ValueError:
+                bounded = '0'
+            if bounded != entered:
+                bonus.set(bounded)
+        redraw()
+
+    bonus.trace_add('write', edit)
+    ttk.Label(box, text='Extra Bonus').grid(row=2, column=0)
+    ttk.Entry(box, textvariable=bonus, width=5).grid(row=2, column=1, padx=2)
+    ttk.Button(box, text='Calculate', command=lambda: messagebox.showinfo(
+        'Bonus Weapon Damage', 'Calculation is unfinished. Enter a bonus manually.', parent=box)).grid(row=2, column=2)
+    return box, redraw
+
+
 def options(win):
     import mxl_mock_gui
     import mxl_profile
@@ -984,23 +1317,43 @@ def options(win):
     ttk.Button(game, text='Hero Editor folder...', command=lambda: choose_art_folder(win)).pack(anchor='w')
     ttk.Button(game, text='Use drawn Hero Editor art', command=lambda: set_art_folder(win, '')).pack(anchor='w')
 
-    editing = ttk.LabelFrame(page, text='Character Editing', padding=6)
-    editing.grid(row=1, column=1, sticky='nsew')
+    def radio_group(row, column, key, caption, choices):
+        frame = ttk.LabelFrame(page, text=caption, padding=2)
+        frame.grid(row=row, column=column, sticky='nsew', padx=2, pady=2)
+        selected = tk.StringVar(frame, value=option(key, choices[0][0]))
+        for value, label in choices:
+            ttk.Radiobutton(frame, text=label, value=value, variable=selected,
+                            command=lambda: settings.put('vanilla_he_' + key, selected.get())).pack(anchor='w')
+
+    radio_group(1, 1, 'item_access', 'Item Edit Options',
+                (('all', 'All editing, including binary'), ('transfer', 'Move, import and export'),
+                 ('view', 'View only')))
+    radio_group(2, 0, 'character_access', 'Character Edit Options',
+                (('all', 'All editing, including hex'), ('stats', 'Attributes and stats'), ('view', 'View only')))
+    radio_group(2, 1, 'error_response', 'Error Reporting and Response',
+                (('normal', 'Normal error response'), ('inspect', 'Show errors in Extras'),
+                 ('status', 'Report errors in status bar')))
+    radio_group(3, 0, 'decode_check', 'Check Item Decode on Open',
+                (('complete', 'Complete checking'), ('basic', 'Basic checking')))
+    radio_group(3, 1, 'version_warning', 'Version Warning Messages',
+                (('show', 'Show version warnings'), ('hide', 'Hide version warnings')))
+    radio_group(4, 0, 'set_attributes', 'Display Set Magic Attributes',
+                (('show', 'Show in Description'), ('hide', 'Hide in Description')))
+    radio_group(4, 1, 'unique_pictures', 'Display Unique Item Pictures',
+                (('show', 'Use unique pictures'), ('hide', 'Use base pictures')))
+
+    tools = ttk.LabelFrame(page, text='Item and Character Tools', padding=3)
+    tools.grid(row=5, column=0, columnspan=2, sticky='ew', pady=2)
     mock_mode = mxl_mock_gui._state['var']
     if mock_mode is not None:
-        ttk.Checkbutton(editing, text='Mock Mode', variable=mock_mode,
-                        command=lambda: mxl_mock_gui.set_mode(mock_mode.get(), select=False)).pack(anchor='w')
+        ttk.Checkbutton(tools, text='Mock Mode', variable=mock_mode,
+                        command=lambda: mxl_mock_gui.set_mode(mock_mode.get(), select=False)).pack(side='left')
     if 'quests_adv' in win.pages:
-        ttk.Button(editing, text='Advanced quest words…',
-                   command=lambda: set_tab(win, 'quests_adv')).pack(anchor='w')
-
-    tools = ttk.LabelFrame(page, text='Item and Character Tools', padding=6)
-    tools.grid(row=2, column=0, columnspan=2, sticky='ew', pady=4)
-    ttk.Button(tools, text='Extras…', command=lambda: extras(win)).pack(anchor='w')
+        ttk.Button(tools, text='Quest words…', command=lambda: set_tab(win, 'quests_adv')).pack(side='left')
     center = tk.BooleanVar(page, value=bool(settings.get(CENTER_MOUSE)))
-    ttk.Checkbutton(tools, text='Center mouse when opening a dialog', variable=center,
-                    command=lambda: settings.put(CENTER_MOUSE, center.get())).pack(anchor='w')
-    levels = ('Game default', '90', '99')
+    ttk.Checkbutton(tools, text='Center mouse', variable=center,
+                    command=lambda: settings.put(CENTER_MOUSE, center.get())).pack(side='left')
+    levels = ('90', '10', '99')
     saved_level = str(settings.get(ITEM_LEVEL))
     row = ttk.Frame(tools)
     row.pack(anchor='w')
@@ -1009,7 +1362,7 @@ def options(win):
     level.set(saved_level if saved_level in levels else levels[0])
     level.pack(side='left')
     level.bind('<<ComboboxSelected>>', lambda _event: settings.put(
-        ITEM_LEVEL, int(level.get()) if level.current() else None))
+        ITEM_LEVEL, int(level.get())))
     modes = {'Use app settings': '', 'Keep one backup': 'one', 'Keep all backups': 'all', 'Skip new backups': 'off'}
     row = ttk.Frame(tools)
     row.pack(anchor='w', pady=(2, 0))
@@ -1165,6 +1518,32 @@ QUEST_STAGES = ('Not Started', 'Looking For', 'Just Finished', 'Long Finished')
 QUEST_STAGE_WORDS = (0, 0x0004, 0x2000)
 
 
+QUEST_NOTES = {
+    1: ((4, 'Entered the Den of Evil'),),
+    2: ((4, 'Entered the Burial Grounds'),),
+    3: ((6, 'Picked up the Horadric Malus'),),
+    4: ((4, 'Entered Tristram'), (10, 'Completed the Secret Cow Level'), (14, 'The Rogues rescued Cain')),
+    5: ((2, 'Read the Moldy Tome'), (6, 'Entered the Forgotten Tower')),
+    9: ((4, 'Found Radament'),),
+    10: ((4, 'Cain identified the Viper Amulet'), (5, 'Cain identified the Staff of Kings'),
+         (10, 'Cain discussed the Horadric Staff'), (11, 'Assembled the Horadric Staff')),
+    11: ((2, 'The sun went dark'), (3, 'Talked to Drognan about the sun')),
+    14: ((3, 'Talked to Tyrael'), (4, 'Talked to Jerhyn'), (5, 'Killed Duriel'),
+         *((bit, f'{npc} offered congratulations') for bit, npc in
+           enumerate(('Atma', 'Warriv', 'Drognan', 'Lysander', 'Cain', 'Fara'), 6))),
+    19: ((2, 'Picked up the Gidbinn'), (3, 'Hratli asked for the Gidbinn')),
+    20: ((2, 'Cain discussed the Jade Figurine'), (4, 'Cain discussed the Golden Bird'),
+         (5, 'Received the Potion of Life'), (6, 'Found the Jade Figurine')),
+    35: ((3, 'Found Shenk'), (5, 'Larzuk offered to socket an item')),
+    37: ((7, 'Read the Scroll of Resistance'), (8, 'Rescued Anya and talked to Malah')),
+    38: ((4, 'Anya offered to personalize an item'),),
+    40: tuple((bit, f'{npc} offered congratulations') for bit, npc in
+              enumerate(('Larzuk', 'Cain', 'Malah', 'Tyrael', 'Qual-Kehk', 'Anya'), 4)),
+}
+ACT_NOTES = {0: 'Met Warriv', 8: 'Met Jerhyn', 16: 'Met Hratli', 24: 'Introduced to Act IV',
+             32: 'Introduced to Act V by Cain'}
+
+
 def quest_stage(word):
     return 3 if word & 1 else 2 if word & 0x2000 else int(bool(word))
 
@@ -1177,11 +1556,28 @@ def quest_details(win, parent):
     left.pack_propagate(False)
     details = ttk.LabelFrame(left, text='Quest', padding=6)
     details.pack(fill='both', expand=True)
-    wrap = pixels(parent, 300)[0]
-    title = ttk.Label(details, wraplength=wrap, justify='left')
-    title.pack(anchor='w', pady=(6, 8))
-    notes = ttk.Label(details, wraplength=wrap, justify='left')
+    quest = ttk.Frame(details)
+    quest.pack(side='left', fill='y')
+    badge = ttk.Label(quest)
+    badge.pack(pady=(5, 0))
+    title = ttk.Label(quest, wraplength=pixels(parent, 100)[0], justify='center')
+    title.pack(pady=(3, 4))
+    notes = ttk.Label(quest, wraplength=pixels(parent, 100)[0], justify='left')
     notes.pack(anchor='w')
+    flags = ttk.LabelFrame(details, text='Extra Notes', padding=2)
+    flags.pack(side='left', fill='both', expand=True, anchor='n', padx=(6, 0))
+    all_quests = (1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14, 17, 18, 19, 20, 21, 22,
+                  25, 26, 27, 35, 36, 37, 38, 39, 40)
+    quest_index = {word: index for index, word in enumerate(all_quests)}
+
+    def show_picture(word):
+        sprites = picture('quests')
+        if sprites is None:
+            return
+        x = 72 * quest_index.get(word, 27)
+        badge.image = photo(badge, sprites.crop((x, 0, x + 72, 86)), pixels(badge, 72, 86))
+        badge.configure(image=badge.image)
+
     selected = {}
     value = tk.IntVar()
 
@@ -1211,7 +1607,7 @@ def quest_details(win, parent):
         win.update_dirty()
         refresh(tree)
 
-    status = ttk.Frame(details)
+    status = ttk.Frame(quest)
     status.pack(side='bottom', fill='x')
     states = []
     for state, text in enumerate(QUEST_STAGES):
@@ -1251,7 +1647,28 @@ def quest_details(win, parent):
         button.pack(fill='x', pady=(10, 2))
         buttons[scope] = button
 
+    def show_flags(difficulty, word, options):
+        raw = win.ch.quest_word(difficulty, word)
+        for bit, caption in options:
+            key = difficulty, word, bit
+            saved = bool(raw & (1 << bit))
+            checked = tk.BooleanVar(flags, value=getattr(win, 'he_quest_notes', {}).get(key, saved))
+
+            def toggle(key=key, checked=checked, saved=saved):
+                if checked.get() == saved:
+                    win.he_quest_notes.pop(key, None)
+                else:
+                    win.he_quest_notes[key] = checked.get()
+                win.update_dirty()
+
+            button = ttk.Checkbutton(flags, text=caption, variable=checked, command=toggle)
+            button.pack(anchor='w')
+            if not allows(win, 'character'):
+                button.state(['disabled'])
+
     def refresh(tree):
+        for child in flags.winfo_children():
+            child.destroy()
         selection = tree.tv.selection()
         iid = selection[0] if selection else ''
         selected.update(tree=tree, iid=iid)
@@ -1264,12 +1681,20 @@ def quest_details(win, parent):
             raw = win.ch.quest_word(difficulty, word)
             saved_stage = quest_stage(raw)
             notes.configure(text=f'Saved status: {QUEST_STAGES[saved_stage]}')
+            show_picture(word)
+            show_flags(difficulty, word, QUEST_NOTES.get(word, ()))
+            if word == 1 and not win.ch.early:
+                show_flags(difficulty, 41, ((0, 'Akara reset stat and skill points'),))
             value.set(3 if tree.value[iid] else win.he_quest_stages.get(
                 (difficulty, word), 0 if saved_stage == 3 else saved_stage))
         else:
             details.configure(text='Quest')
             title.configure(text=tree.tv.item(iid, 'text') if iid else 'Select a quest')
             notes.configure(text='')
+            show_picture(None)
+            if iid in win.he_act_notes:
+                difficulty, intro = win.he_act_notes[iid]
+                show_flags(difficulty, intro, ((0, ACT_NOTES[intro]),))
             value.set(-1)
         for radio in states:
             radio.state(['!disabled'] if key and iid not in tree.locked else ['disabled'])

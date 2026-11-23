@@ -112,7 +112,7 @@ def _ends_with_terminator(blob, end):
     return (v >> (n - k - 9)) & 0x1FF == 0x1FF if n - k >= 9 else False
 
 
-def _opaque_end(blob, data, start_bit):
+def _opaque_end(blob, data, start_bit, socketed_count=0):
     """Byte offset (in blob, 'JM' at 0) where an item whose stats cannot be read ends: the first later 'JM' that
     follows a stat-list end (0x1FF + zero padding) and starts an item header of the same item version (or the
     corpse list after the last item, or the 'jf' / 'kf' section after a corpse / mercenary list's last item)."""
@@ -124,6 +124,11 @@ def _opaque_end(blob, data, start_bit):
         if not hits:
             raise mxl_format.FormatError('item stats do not fit the game tables')
         i = min(hits)
+        if (socketed_count and b[i:i + 2] == b'JM' and len(b) >= i + 14):
+            header = int.from_bytes(b[i + 2:i + 14], 'little')
+            child_code = (header >> 60 & 0xFFFFFFFF).to_bytes(4, 'little').decode('latin1')
+            if header >> 42 & 7 == 6 and (header >> 32 & 0x3FF in (ver, 100, 101)) and child_code in data.bases:
+                return i
         if _ends_with_terminator(b, i):
             if b[i:i + 2] != b'JM':
                 return i
@@ -185,7 +190,7 @@ def parse_item(blob, data):
     it.opaque = True                                  # stats not readable with these tables: never re-encoded
     if getattr(data, 'v109', False):
         it.v109 = True
-    end = _opaque_end(blob, data, br.pos)
+    end = _opaque_end(blob, data, br.pos, it['socketed_count'] if it['has_sockets'] else 0)
     br.pos = (end - 2) * 8
     _keep_raw(it, blob, br)
     return it, br

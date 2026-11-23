@@ -502,22 +502,24 @@ def _char_menu(win, cv, ev):
         menu.grab_release()
 
 
-def _vanilla_char_commands(win, menu, entry, clip, *, paste=None, delete=None, cut=None, extensions=True):
+def _vanilla_char_commands(win, menu, entry, clip, *, paste=None, delete=None, extensions=True):
     from tkinter import filedialog, messagebox
     from mxl_statnames import stat_text
-    from mxl_vanilla_he import set_tab
+    from mxl_vanilla_he import allows, set_tab
+
+    can_transfer = allows(win, 'transfer')
 
     def copy():
-        return _char_copy(win, entry)
+        return can_transfer and _char_copy(win, entry)
 
     if delete is None:
         def delete():
             win.selected = entry
             win.delete()
 
-    def selected(label, action, accelerator=''):
+    def selected(label, action, accelerator='', enabled=True):
         menu.add_command(label=label, command=action, accelerator=accelerator,
-                         state='normal' if entry is not None else 'disabled')
+                         state='normal' if entry is not None and enabled else 'disabled')
 
     def view_buffer():
         rows = getattr(win.app, '_capy_he_buffer', ())
@@ -548,49 +550,29 @@ def _vanilla_char_commands(win, menu, entry, clip, *, paste=None, delete=None, c
         win.set_status('Item imported into Picked Up.')
 
     def export_character():
-        from mxl_creator import decode_blob
-        from mxl_vanilla_he_items import ITEM_ERRORS, extras_entries
+        from mxl_vanilla_he_items import ITEM_ERRORS, character_report
 
+        if win.dirty():
+            messagebox.showwarning('Save Character Information', 'Save or reload your pending changes first.',
+                                   parent=win.top)
+            return
         path = filedialog.asksaveasfilename(title='Save Character Information', initialfile=win.ch.name + '.txt',
+                                            initialdir=os.path.dirname(win.ch.path),
                                             defaultextension='.txt', filetypes=[('Text file', '*.txt')],
                                             parent=win.top)
         if not path:
             return
         win.sync_file()
-        lines = [f'{win.ch.name} — Level {win.ch.level}', f'Save version {win.ch.version}', '']
-        for label in ('Strength', 'Energy', 'Dexterity', 'Vitality'):
-            lines.append(f'{label}  {win.ch.field(label.lower())}')
-        sections = {}
-        for item, owner in extras_entries(win.ch):
-            title = {'corpse': 'Corpse', 'tail': 'Iron Golem'}[owner[0]] if isinstance(owner, tuple) else (
-                'Mercenary' if owner else 'Character')
-            report = sections.setdefault(title, [])
-            report.append(clean_name(win, item))
-            try:
-                record, children = decode_blob(item.blob, win.data)
-            except ITEM_ERRORS:
-                continue
-            if 'ilvl' in record:
-                report.append(f'  Item level {record["ilvl"]}')
-            for record in (record, *children):
-                if record.get('location') == LOC_SOCKETED:
-                    report.append(f'  Socketed  {win.data.base(record["code"]).name}')
-                for key, values in record.items():
-                    if key in ('stats', 'stats_runeword') or key.startswith('set_stats_'):
-                        report.extend(f'    {stat_text(win.data, stat["id"], stat.get("param"), stat["value"])}'
-                                      for stat in values)
-        for title, report in sections.items():
-            lines.extend(('', f'{title} items', *report))
         try:
             with open(path, 'w', encoding='utf-8') as output:
-                output.write('\n'.join(lines))
-        except OSError as error:
+                output.write(character_report(win))
+        except ITEM_ERRORS as error:
             win.set_status(str(error), True)
             return
         win.set_status(f'Character information saved to {os.path.basename(path)}.')
 
     from mxl_vanilla_he_items import (add_specific, add_favorites, buffer_attributes,
-                                     edit_item, mutate, paste_attributes, paste_one, submenu)
+                                     cut_item, edit_item, mutate, paste_attributes, paste_one, submenu)
 
     selected('General Edit of Item (in Extras Window)', lambda: edit_item(win, entry), 'Ctrl+G')
     if entry is None:
@@ -608,21 +590,22 @@ def _vanilla_char_commands(win, menu, entry, clip, *, paste=None, delete=None, c
     menu.add_command(label='VIEW what is in Buffer', accelerator='Ctrl+P', command=view_buffer)
     menu.add_command(label='DELETE Buffer', accelerator='Ctrl+B', command=delete_buffer)
     menu.add_separator()
-    selected('Export Item to File…', lambda: _export_char(win, entry), 'Ctrl+E')
-    menu.add_command(label='Import Item from File…', accelerator='Ctrl+I', command=import_item)
+    selected('Export Item to File…', lambda: _export_char(win, entry), 'Ctrl+E', can_transfer)
+    menu.add_command(label='Import Item from File…', accelerator='Ctrl+I', command=import_item,
+                     state='normal' if can_transfer else 'disabled')
     menu.add_separator()
-    selected('Cut Item (move to Picked Up)', lambda: copy() and (cut or delete)(), 'Ctrl+X')
-    selected('Copy Item (copy into Picked Up)', copy, 'Ctrl+C')
+    selected('Cut Item (move to Picked Up)', lambda: cut_item(win, entry), 'Ctrl+X', can_transfer)
+    selected('Copy Item (copy into Picked Up)', copy, 'Ctrl+C', can_transfer)
     if paste is None and entry is not None:
         paste = lambda: paste_one(win, entry, clip, lambda: _char_paste_over(win, entry, clip))
     menu.add_command(label='Paste Item (copy of Picked Up)', accelerator='Ctrl+V',
-                     state='normal' if clip and paste else 'disabled', command=paste)
+                     state='normal' if clip and paste and can_transfer else 'disabled', command=paste)
     from mxl_vanilla_he_items import fill, fill_count
 
     can_fill = entry is not None and fill_count(win, entry, clip)
     menu.add_command(label='Fill Item Sockets (copy of Picked Up)', accelerator='Ctrl+Z',
                      state='normal' if can_fill else 'disabled', command=lambda: fill(win, entry, clip))
-    selected('Delete Item (remove)', delete, 'Del')
+    selected('Delete Item (remove)', delete, 'Del', allows(win, 'item'))
     menu.add_separator()
     menu.add_command(label='Save Character Information to Text file', command=export_character)
     menu.add_command(label='Help', accelerator='F1', command=lambda: set_tab(win, 'info'))
@@ -779,7 +762,7 @@ def _char_paste(win, ev, clip):
     except (CharError, FormatError, OSError) as err:
         win.set_status(str(err), True)
         return
-    if win.save(rc('pasted', '{name} pasted', name=clip[1])) and not getattr(win, 'vanilla_he', False):
+    if win.save(rc('pasted', '{name} pasted', name=clip[1]), operation='transfer') and not getattr(win, 'vanilla_he', False):
         _clear_char_clip(win)
 
 
@@ -793,7 +776,7 @@ def _char_paste_slot(win, slot, clip):
     except (CharError, FormatError, OSError) as err:
         win.set_status(str(err), True)
         return
-    if win.save(rc('pasted', '{name} pasted', name=clip[1])) and not getattr(win, 'vanilla_he', False):
+    if win.save(rc('pasted', '{name} pasted', name=clip[1]), operation='transfer') and not getattr(win, 'vanilla_he', False):
         _clear_char_clip(win)
 
 
@@ -1845,7 +1828,7 @@ def _char_paste_over(win, e, clip):
         win.reload()
         win.set_status(str(err), True)
         return
-    if win.save(rc('pasted_over', '{name} pasted (the previous item is replaced)', name=clip[1])):
+    if win.save(rc('pasted_over', '{name} pasted (the previous item is replaced)', name=clip[1]), operation='transfer'):
         if not getattr(win, 'vanilla_he', False):
             _clear_char_clip(win)
         _record_char_write(win, path, before, name)

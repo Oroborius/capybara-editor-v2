@@ -1,4 +1,5 @@
 """Vanilla item commands and persistent magic-attribute favorites."""
+from dataclasses import dataclass
 import json
 from pathlib import Path
 import struct
@@ -25,19 +26,33 @@ def special_sections(ch):
     """Return each vanilla corpse item list and the optional Iron Golem record."""
     from mxl_char import Entry, read_item_list
 
-    if ch.old:
-        return []
+    from mxl_early_save import ClassicData
+    from mxl_v109 import Data109
+
+    if ch.version == 71:
+        data = ClassicData(ch.data)
+    elif ch.old:
+        data = Data109(ch.data, ch.version)
+    else:
+        data = ch.data
+
+    def entry(item, content):
+        if ch.old:
+            return ch._entry_old(item, content)
+        start = item['_offset']
+        return Entry(item, content[start:start + ch._full_size(item)])
+
     sections = []
     pos = 4
     for _ in range(int.from_bytes(ch.corpse[2:4], 'little')):
         start = pos + 14  # corpse metadata and the item list's JM marker
         count = int.from_bytes(ch.corpse[start:start + 2], 'little')
-        items, pos = read_item_list(ch.corpse, start + 2, count, ch.data)
-        entries = [Entry(it, ch.corpse[it['_offset']:it['_offset'] + ch._full_size(it)]) for it in items]
+        items, pos = read_item_list(ch.corpse, start + 2, count, data)
+        entries = [entry(it, ch.corpse) for it in items]
         sections.append(('corpse', start, pos, entries))
-    if ch.tail.startswith(b'kf\x01JM'):
-        items, end = read_item_list(ch.tail, 3, 1, ch.data)
-        sections.append(('tail', 2, end, [Entry(items[0], ch.tail[3:end])]))
+    if not ch.early and ch.tail.startswith(b'kf\x01JM'):
+        items, end = read_item_list(ch.tail, 3, 1, data)
+        sections.append(('tail', 2, end, [entry(items[0], ch.tail)]))
     return sections
 
 
@@ -45,17 +60,56 @@ def write_special_sections(ch, sections):
     for name, start, end, entries in reversed(sections):
         content = getattr(ch, name)
         count = bytes([len(entries)]) if name == 'tail' else struct.pack('<H', len(entries))
-        setattr(ch, name, content[:start] + count + b''.join(e.blob for e in entries) + content[end:])
+        setattr(ch, name, content[:start] + count + b''.join(ch._old_blob(e) if ch.old else e.blob for e in entries) + content[end:])
 
 
-def extras_entries(ch):
+@dataclass
+class SocketChild:
+    parent: object
+    owner: object
+    index: int
+
+
+def socket_parts(blob, data):
+    from mxl_socket_insert import children
+
+    _record, parts = children(blob, data)
+    return blob[:len(blob) - sum(map(len, parts))], parts
+
+
+def extras_entries(ch, *, include_socketed=False):
     entries = [(entry, merc) for merc in (False, True) for entry in ch.entries(merc)]
     for section, (name, _, _, items) in enumerate(special_sections(ch)):
         entries.extend((entry, (name, section, index)) for index, entry in enumerate(items))
-    return entries
+    if not include_socketed:
+        return entries
+    from mxl_char import Entry
+
+    expanded = []
+    for entry, owner in entries:
+        expanded.append((entry, owner))
+        if not entry.it.get('socketed'):
+            continue
+        try:
+            _, parts = socket_parts(entry.blob, ch.data)
+            expanded.extend((Entry(item, blob), SocketChild(entry, owner, index))
+                            for index, (item, blob) in enumerate(zip(entry.it['socketed'], parts)))
+        except ITEM_ERRORS:
+            pass
+    return expanded
 
 
 def current_extras_entry(win, entry, owner):
+    if isinstance(owner, SocketChild):
+        from mxl_char import Entry
+
+        parent = current_extras_entry(win, owner.parent, owner.owner)
+        if parent is not None:
+            _, parts = socket_parts(parent.blob, win.data)
+            index = owner.index
+            if index < len(parts) and parts[index] == entry.blob:
+                return Entry(parent.it['socketed'][index], parts[index])
+        return None
     if not isinstance(owner, tuple):
         return win.current_entry(entry, owner)
     name, section, index = owner
@@ -118,7 +172,7 @@ def edit_item(win, entry, group='Basic1'):
     return extras(win, entry=entry, group=group)
 
 
-def replace_item(win, entry, before, blob, caption, owner=None):
+def replace_item(win, entry, before, blob, caption, owner=None, *, allow_type_change=False, commit=True):
     """Verify a replacement and preserve its position, including belt items."""
     import mxl_profile
     from mxl_rc_menu import _record_char_write
@@ -126,7 +180,8 @@ def replace_item(win, entry, before, blob, caption, owner=None):
     if mxl_profile.is_median():
         raise CharError('This command requires a vanilla character.')
     original = win.ch
-    win.sync_file()
+    if commit:
+        win.sync_file()
     if original.path != win.ch.path:
         raise CharError('The selected character has changed.')
     if owner is None:
@@ -143,10 +198,26 @@ def replace_item(win, entry, before, blob, caption, owner=None):
         raise CharError('The bytes do not form one complete item and its socketed items.')
     item = blob_item(blob, win.data)
     if item['code'] != current.it['code']:
-        raise CharError('The replacement changes the item type.')
+        if not allow_type_change:
+            raise CharError('The replacement changes the item type.')
+        validate_replacement_size(win, current, item, owner)
     position = ('location', 'equipped', 'x', 'y', 'panel')
     if any(item.get(key) != current.it.get(key) for key in position):
         raise CharError('The replacement changes the item location.')
+    if isinstance(owner, SocketChild):
+        from mxl_char import Entry
+
+        if socketed:
+            raise CharError('A socket filler must be a single item record.')
+        parent = current_extras_entry(win, owner.parent, owner.owner)
+        header, parts = socket_parts(parent.blob, win.data)
+        parts[owner.index] = blob
+        updated = header + b''.join(parts)
+        replace_item(win, parent, bytes(parent.blob), updated, caption, owner.owner, commit=commit)
+        actual = current_extras_entry(win, Entry(parent.it, updated), owner.owner)
+        if commit:
+            owner.parent = actual
+        return actual
     ch = win.ch
     snapshot = bytes(ch.raw)
     corpse, tail = ch.corpse, ch.tail
@@ -163,13 +234,127 @@ def replace_item(win, entry, before, blob, caption, owner=None):
             part = special_sections(ch)[section]
             part[3][index] = current
             write_special_sections(ch, [part])
-        if not win.save(caption):
+        if commit and not win.save(caption):
             raise CharError('The item could not be saved.')
     except ITEM_ERRORS:
         current.blob, current.it = before, old_item
         ch.corpse, ch.tail = corpse, tail
         raise
-    _record_char_write(win, original.path, snapshot, caption)
+    if commit:
+        _record_char_write(win, original.path, snapshot, caption)
+
+
+def character_report(win):
+    from pathlib import Path
+    from mxl_char import LOC_BELT, LOC_EQUIPPED, LOC_STORED, PANEL_CUBE, PANEL_INVENTORY, class_names, slot_name
+    from mxl_creator import FLAG_ETHEREAL, PANEL_STASH
+    from mxl_creator import decode_blob, merge_stats
+    from mxl_rc_menu import clean_name
+    from mxl_statnames import stat_text
+    from mxl_vanilla_he import ITEM_DECODE_VERSIONS, character_title, decode_version
+
+    ch, data = win.ch, win.data
+    version = ITEM_DECODE_VERSIONS[decode_version(ch.version)]
+    expansion = 'LOD' if ch.flags()['expansion'] else 'NOX'
+    title = character_title(ch)
+    lines = [Path(ch.path).name, f'Version: {version}, {expansion}',
+             f'Title: {title}', f'Type: {class_names(data)[ch.cls]}',
+             f'File Size: {len(ch.raw)} bytes', '', 'Character Stats:']
+    lines.extend((f'  Level = {ch.stat(12)}', f'  Experience = {ch.stat(13)}'))
+    for name, sid in (('Life', 6), ('Mana', 8), ('Stamina', 10)):
+        whole, fraction = divmod(ch.stat(sid + 1), 256)
+        lines.extend((f'  Current {name} = {ch.stat(sid) // 256}', f'  Max {name} = {whole}',
+                      f'  Max {name} Fraction = {fraction}'))
+    for name, sid in (('Strength', 0), ('Energy', 1), ('Dexterity', 2), ('Vitality', 3)):
+        lines.append(f'  {name} = {ch.stat(sid)}')
+    lines.extend(('', 'Skills:'))
+    lines.extend(f'  {data.skill_names.get(sid, sid)} = {level}' for sid, level in ch.skill_levels().items())
+    entries = extras_entries(ch)
+    lines.extend(('', 'Items (SUMMARY follows the individual item list):', f' Number of Items = {len(entries)}'))
+    non_weapons = 'Charms in Inventory + Equipped (not in hands)'
+    sections = {non_weapons: []}
+    weapon_names = {4: 'Right Hand', 5: 'Left Hand', 11: 'Alternate Right Hand', 12: 'Alternate Left Hand'}
+    magic_lists = {'stats': 'Normal Magic', **{f'set_stats_{i}': f'Set{i + 1} Magic' for i in range(5)},
+                   'stats_runeword': 'Runeword Magic'}
+
+    def stat_line(stat):
+        return stat_text(data, stat['id'], stat.get('param'), stat['value'])
+
+    def area(entry, owner):
+        it = entry.it
+        if isinstance(owner, tuple):
+            return 'Corpse' if owner[0] == 'corpse' else 'Iron Golem'
+        if it['location'] == LOC_EQUIPPED:
+            return ('Mercenary ' if owner else '') + slot_name(it['equipped'], 'Equipped')
+        if it['location'] == LOC_BELT:
+            return f'Belt({it["x"] % 4 + 1},{it["x"] // 4 + 1})'
+        panel = {PANEL_INVENTORY: 'Inv', PANEL_STASH: 'Stash', PANEL_CUBE: 'Cube'}.get(it.get('panel'))
+        return f'{panel}({it["x"] + 1},{it["y"] + 1})' if panel else 'Character'
+
+    for entry, owner in entries:
+        name = clean_name(win, entry)
+        details = f'{len(entry.blob)} {area(entry, owner)}: {name}'
+        lines.extend(('', details))
+        try:
+            record, children = decode_blob(entry.blob, data)
+        except ITEM_ERRORS:
+            continue
+        combined = []
+        for index, part in enumerate((record, *children)):
+            base = data.base(part['code'])
+            lines.append(f'  Socket {index}: {base.name}' if index else name)
+            if 'ilvl' in part:
+                lines.append(f'  Item level = {part["ilvl"]}')
+            damage = getattr(base, 'damage', None) or {}
+            for key, label in (('one_hand', 'One-Handed Damage'), ('two_hand', 'Two-Handed Damage'),
+                               ('throw', 'Throw Damage')):
+                low, high = damage.get(key) or (0, 0)
+                if low or high:
+                    lines.append(f'  {label}: {low} to {high}')
+            for key, label in (('defense', 'Defense'), ('quantity', 'Quantity')):
+                if key in part:
+                    lines.append(f'  {label} = {part[key]}')
+            if part['flags'] & FLAG_ETHEREAL:
+                lines.append('  Ethereal')
+            for key, label in magic_lists.items():
+                if key in part:
+                    lines.append(f'    {label}')
+                    lines.extend(f'      {stat_line(stat)}' for stat in part[key])
+                    combined.extend(part[key])
+        if owner is False:
+            slot = record.get('equipped') if record.get('location') == LOC_EQUIPPED else None
+            if slot in weapon_names:
+                sections[weapon_names[slot]] = combined
+            elif slot is not None or (record.get('location') == LOC_STORED
+                                     and record.get('panel') == PANEL_INVENTORY
+                                     and record['code'] in ('cm1 ', 'cm2 ', 'cm3 ')):
+                sections[non_weapons].extend(combined)
+
+    for title, rows in sections.items():
+        lines.extend(('', f'SUMMARY of {title}:'))
+        lines.extend(f'  {stat_line(stat)}' for stat in merge_stats(rows))
+    return '\n'.join(lines) + '\n'
+
+
+def validate_replacement_size(win, current, item, owner):
+    from mxl_char import LOC_BELT, LOC_EQUIPPED, LOC_STORED, PANEL_INVENTORY
+
+    if isinstance(owner, (tuple, SocketChild)):
+        return
+    ch = win.ch
+    location = current.it.get('location')
+    if location == LOC_EQUIPPED:
+        error = ch.slot_error(item, current.it['equipped'], bool(owner), current)
+    elif location == LOC_STORED:
+        x, y, panel = (current.it[key] for key in ('x', 'y', 'panel'))
+        error = (ch.inventory_error(item, x, y, current) if panel == PANEL_INVENTORY
+                 else ch.stored_error(item, panel, x, y, current))
+    elif location == LOC_BELT:
+        error = None if ch.data.base(item['code']).size == (1, 1) else 'The item does not fit in the belt.'
+    else:
+        error = None
+    if error:
+        raise CharError(error)
 
 
 def mutate(win, entry, caption, update):
@@ -209,6 +394,62 @@ def fill(win, entry, clip):
         win.set_status(str(error), True)
 
 
+def cut_item(win, entry):
+    from mxl_rc_menu import _record_char_write
+    from mxl_vanilla_he import allows
+    from mxl_vanilla_he_extras import put_picked_up
+
+    if not allows(win, 'transfer'):
+        return
+    win.sync_file()
+    mercenary = win.is_merc()
+    current = win.current_entry(entry, mercenary)
+    if current is None:
+        win.set_status('The selected item has changed.', True)
+        return
+    try:
+        ch = win.ch
+        before = bytes(ch.raw)
+        clip = ch.stash_blob(current)
+        ch.remove(current, mercenary)
+        if win.save('Moved item into Picked Up.', operation='transfer'):
+            put_picked_up(win, clip)
+            _record_char_write(win, ch.path, before, 'Cut Item')
+    except ITEM_ERRORS as error:
+        win.set_status(str(error), True)
+
+
+def move_over(win, source, target, *, record_undo=True):
+    from mxl_char import where_of
+    from mxl_rc_menu import _record_char_write
+    from mxl_vanilla_he import allows
+    from mxl_vanilla_he_extras import put_picked_up
+
+    if not allows(win, 'transfer'):
+        return False
+    if not messagebox.askyesno('Move Item', f'Replace {target.it["name"]}?', parent=win.top):
+        return False
+    ch = win.ch
+    mercenary = win.is_merc()
+    items = ch.entries(mercenary)
+    previous = items[:]
+    try:
+        original = bytes(ch.raw)
+        clip = ch.stash_blob(source)
+        where = where_of(target)
+        ch.remove(target, mercenary)
+        ch.move(source, where, mercenary)
+        if win.save('Moved item onto the selected target.', operation='transfer'):
+            put_picked_up(win, clip)
+            if record_undo:
+                _record_char_write(win, ch.path, original, 'Move Item')
+            return True
+    except ITEM_ERRORS as error:
+        items[:] = previous
+        win.set_status(str(error), True)
+    return False
+
+
 def paste_one(win, entry, clip, overwrite):
     from mxl_socket_insert import insert_child
 
@@ -231,7 +472,7 @@ def set_flag(record, flag, enabled):
 
 
 def add_specific(win, menu, entry):
-    from mxl_rc_menu import (_apply_quality, _ask_personalize, _ask_value, _creator_for, _quality_ok)
+    from mxl_rc_menu import (_ask_personalize, _ask_value, _creator_for, _quality_ok)
     from mxl_socket_menu import add_to, max_sockets, remove_sockets
 
     try:
@@ -282,11 +523,7 @@ def add_specific(win, menu, entry):
                         ('magic', 'Magically Enhanced'), ('set', 'Part of a Set'), ('rare', 'Rare'),
                         ('unique', 'Unique'), ('crafted', 'Crafted')):
         allowed = extended and (_quality_ok(cr, code, name) if name != 'low' else kind in ('armor', 'weapons'))
-        def change_quality(name=name):
-            win.selected = entry
-            _apply_quality(win, quality, None, win, name)
-
-        command(quality, label, change_quality, allowed)
+        command(quality, label, lambda q=name: edit_item(win, entry, 'Quality:' + q), allowed)
 
     starter = submenu(specific, 'STARTING Item…', editable)
     change(starter, 'Make item a STARTING Item', lambda rec: set_flag(rec, FLAG_STARTER, True))
@@ -458,6 +695,10 @@ def delete_inventory(win, target):
     from mxl_creator import PANEL_STASH
     from mxl_rc_menu import _clear_char_clip, _record_char_write
 
+    from mxl_vanilla_he import allows
+
+    if not allows(win, 'item'):
+        return
     if not messagebox.askyesno('Item Deletion', f'Delete {target} items?', parent=win.top):
         return
     win.sync_file()
@@ -466,6 +707,7 @@ def delete_inventory(win, target):
     items = ch.items[:]
     mercenary = None if ch.merc_items is None else ch.merc_items[:]
     corpse, tail = ch.corpse, ch.tail
+    opaque = getattr(ch, '_read_only_items', None)
     panels = {'Person': PANEL_INVENTORY, 'Stash': PANEL_STASH, 'Cube': PANEL_CUBE}
 
     def chosen(entry):
@@ -475,9 +717,14 @@ def delete_inventory(win, target):
                 or target in panels and loc == LOC_STORED and entry.it.get('panel') == panels[target])
 
     try:
-        for item in items:
-            if chosen(item):
-                ch.remove(item)
+        if target == 'ALL':
+            ch.items.clear()
+            if opaque is not None:
+                ch._read_only_items = ()
+        else:
+            for item in items:
+                if chosen(item):
+                    ch.remove(item)
         if target in ('ALL', 'Merc') and mercenary is not None:
             for item in mercenary:
                 ch.remove(item, True)
@@ -488,6 +735,8 @@ def delete_inventory(win, target):
     except ITEM_ERRORS as error:
         ch.items, ch.merc_items = items, mercenary
         ch.corpse, ch.tail = corpse, tail
+        if opaque is not None:
+            ch._read_only_items = opaque
         win.set_status(str(error), True)
         return
     if target in ('ALL', 'Person'):
@@ -495,10 +744,53 @@ def delete_inventory(win, target):
     _record_char_write(win, ch.path, before, 'Item Deletion')
 
 
+def belt_item(win, blob, slot, replace=None):
+    from mxl_char import Entry, LOC_BELT
+    from mxl_rc_menu import _creator_for
+
+    data = win.data
+    item = blob_item(blob, data)
+    if (win.ch.old or data.base(item['code']).size != (1, 1)
+            or not {'poti', 'tpot'}.intersection(_creator_for(win).type_codes(item['code']))):
+        raise CharError('This item cannot go in the belt.')
+    positioned = Entry(item, blob).moved(data, location=LOC_BELT, equipped=0, x=slot, y=0, panel=0)
+    new = Entry(blob_item(positioned, data), positioned)
+    items = win.ch.items
+    if replace is None:
+        items.append(new)
+    else:
+        items[items.index(replace)] = new
+
+
+def paste_belt(win, cell, clip):
+    from mxl_rc_menu import _record_char_write
+    from mxl_vanilla_pages import containers
+    from mxl_vanilla_he import allows
+
+    if not allows(win, 'transfer'):
+        return
+    win.sync_file()
+    _, _, cols, rows, entries = next(row for row in containers(win.ch, win.data) if row[0] == 'belt')
+    x, y = cell
+    if not 0 <= x < cols or not 0 <= y < rows:
+        return
+    slot = x + cols * (rows - 1 - y)
+    previous = next((entry for entry in entries if entry.it['x'] == slot), None)
+    if previous is not None and not messagebox.askyesno('Paste Item', 'Replace the belt item?', parent=win.top):
+        return
+    try:
+        raw = bytes(win.ch.raw)
+        belt_item(win, clip[0], slot, previous)
+        if win.save('Pasted item in belt.', operation='transfer'):
+            _record_char_write(win, win.ch.path, raw, 'Paste into Belt')
+    except ITEM_ERRORS as error:
+        win.set_status(str(error), True)
+
+
 def paste_all(win):
-    from mxl_char import Entry, LOC_BELT, PANEL_CUBE
+    from mxl_char import PANEL_CUBE
     from mxl_creator import PANEL_STASH
-    from mxl_rc_menu import _creator_for, _record_char_write
+    from mxl_rc_menu import _record_char_write
     from mxl_vanilla_pages import CUBE_CODE, containers
     import mxl_profile
 
@@ -526,15 +818,10 @@ def paste_all(win):
                 raise CharError('Select a character container first.')
             _, _, cols, rows, entries = info
             if key == 'belt':
-                if ch.old or win.data.base(item['code']).size != (1, 1) or not (
-                        set(_creator_for(win).type_codes(item['code'])) & {'poti', 'tpot'}):
-                    raise CharError('This item cannot go in the belt.')
                 used = {entry.it['x'] for entry in entries}
                 for slot in range(cols * rows):
                     if slot not in used:
-                        blob = Entry(item, clip[0]).moved(win.data, location=LOC_BELT, equipped=0,
-                                                         x=slot, y=0, panel=0)
-                        ch.items.append(Entry(blob_item(blob, win.data), blob))
+                        belt_item(win, clip[0], slot)
             else:
                 panel = PANEL_STASH if key == 'stash' else PANEL_CUBE
                 if key == 'cube' and not any(e.it['code'] == CUBE_CODE for e in ch.entries()):
@@ -546,7 +833,7 @@ def paste_all(win):
         count = len(ch.items) - len(original)
         if not count:
             win.set_status('No free space for this item.', True)
-        elif win.save(f'Pasted {count} copies.'):
+        elif win.save(f'Pasted {count} copies.', operation='transfer'):
             _record_char_write(win, ch.path, before, 'Paste All')
         else:
             ch.items = original

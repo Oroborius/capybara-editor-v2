@@ -8,7 +8,7 @@ import mxl_early_save as early_save
 import mxl_v109
 from mxl_lang import T
 
-SAVE_VERSIONS = {96: "1.14d", 92: "1.09d", 89: "1.08", 87: "1.07", 71: "Classic 1.00–1.06"}
+SAVE_VERSIONS = {96: "1.14d", 95: "1.10s beta", 92: "1.09d", 89: "1.08", 87: "1.07", 71: "Classic 1.00–1.06"}
 
 VANILLA_TOP = 127                      # vanilla: stat 12 has 7 bits (mock characters use 100-127)
 
@@ -108,7 +108,8 @@ def skeleton(data, cls, median, expansion=True, version=96, classic_100=False):
     items = []
     if vanilla:
         row = data._rows('charstats')[cls]
-        items = _starter_items(data, row, version, classic_100)
+        if version != 95:
+            items = _starter_items(data, row, version, classic_100)
         # Tokens for the starting weapons in the original game appearance tables.
         weapon = (0x1B, 0x25, 0x09, 0x11, 0x04, 0x0C, 0x2D)[cls]
         if version == 71:
@@ -117,7 +118,8 @@ def skeleton(data, cls, median, expansion=True, version=96, classic_100=False):
         if early:
             h = early_save.starter_header(MC.MAGIC, version, cls, expansion, weapon, shield, seed)
         else:
-            h[0x8D], h[0x8F] = weapon, shield
+            if version != 95:
+                h[0x8D], h[0x8F] = weapon, shield
     out = bytes(h)
     out += b'Woo!' + struct.pack('<IH', 6, 298) + bytes(288)
     wp = b'\x02\x01' + bytes((int(vanilla),)) + bytes(21)
@@ -125,7 +127,7 @@ def skeleton(data, cls, median, expansion=True, version=96, classic_100=False):
     out += b'\x01w' + struct.pack('<H', 52) + bytes(48)
     stats = [(12, None, 1)] if early else []
     out += b'gf'
-    if version < 96:
+    if version < 95:
         mask = mxl_v109.build_stats(stats)
         out += mask[:2] + b'\0' + mask[2:] if early else mask
     else:
@@ -165,6 +167,12 @@ def build(data, name, cls, level, hardcore=False, expansion=True, unlocked=False
     ch.path, ch.data, ch.raw = None, data, raw
     ch.parse(raw)
     ch.set_name(name)
+    if version == 95:
+        ch.set_stat(14, 6)
+        ch.set_stat(15, 1)
+        ch.set_quest_word(0, 0, 1)
+        ch.set_quest_word(0, 1, 4)
+        ch.head[MC.NPC_OFF + 4] = 0x26
     if hardcore:
         ch.head[0x24] |= 0x04
     b = _charstats_row(data, cls)
@@ -255,6 +263,28 @@ def save_folder(app):
 
 
 # ---------------------------------------------------------------------------------------------------- dialog
+def create_reference_clone(app):
+    """Save Hero Editor's 1.12 example under a neutral character name."""
+    import json
+    from pathlib import Path
+    import mxl_char as MC
+    import mxl_profile
+
+    if mxl_profile.is_median():
+        raise NewCharError('The example character requires a Vanilla profile.')
+    template = json.loads(Path(__file__).with_name('mxl_he_clone.json').read_text(encoding='utf-8'))
+    raw = bytes.fromhex(''.join(template['bytes']))
+    ch = MC.Character.__new__(MC.Character)
+    ch.path, ch.data, ch.raw = None, app.data, raw
+    ch.parse(raw)
+    if ch.name != template['name'] or ch.build() != raw:
+        raise NewCharError('The example character did not read back identically.')
+    folder = save_folder(app)
+    if not folder:
+        raise NewCharError('No save folder.')
+    return write(raw, folder, ch.name)
+
+
 def open_dialog(app, *, initial_version=96):
     import tkinter as tk
     from tkinter import ttk, messagebox
@@ -267,7 +297,7 @@ def open_dialog(app, *, initial_version=96):
     w.transient(root)
     w.resizable(False, False)
     names = MC.class_names(data)
-    name = tk.StringVar()
+    name = tk.StringVar(value='ama_none' if initial_version == 95 else '')
     cls = tk.StringVar(value=names[0])
     version = tk.StringVar(value=SAVE_VERSIONS[initial_version])
     classic_100 = tk.BooleanVar(value=False)

@@ -540,10 +540,11 @@ class Character:
         # The vanilla profile can also read the four legacy versions.
         self.early = self.version in mxl_early_save.VERSIONS and not _median()
         self.old = self.early or self.version == mxl_v109.VERSION and not _median()
-        if self.version != 96 and not self.old:
+        if self.version != 96 and not self.old and (self.version != 95 or _median()):
             raise FormatError(T('ch.err.old_version', 'unsupported old save version ({v}); only 1.10+ saves (96)',
                                 v=self.version))
         if self.early:
+            self._early_header = bytes(b[:mxl_early_save.HEADER_END])
             self.head = mxl_early_save.read_header(b, QUEST_OFF)
             self._parse_old(b, mxl_early_save.STATS_OFF)
             self.head[0x2B] = min(255, self.stat(12))
@@ -770,7 +771,7 @@ class Character:
                 raise CharError(T('ch.err.legacy_stat', 'Save version {version} cannot store {stat}',
                                   version=self.version, stat=e))
             if self.early:
-                out = mxl_early_save.build_header(self.raw, self.head, QUEST_OFF)
+                out = mxl_early_save.build_header(self._early_header, self.head, QUEST_OFF)
                 sb = sb[:2] + self._legacy_mask_byte + sb[2:]
             out += b'gf' + sb + self.skills
             out += b'JM' + struct.pack('<H', len(self.items)) + items
@@ -1634,13 +1635,20 @@ def install_reader_fix():
         try:
             raw = mxl_save.read_file(path)
             early = len(raw) >= 8 and struct.unpack_from('<I', raw, 4)[0] in mxl_early_save.VERSIONS
+            beta = len(raw) >= 8 and struct.unpack_from('<I', raw, 4)[0] == 95
             legacy = early or mxl_v109.is_old(raw)
-            refuse_legacy = legacy and _median()
+            refuse_legacy = (legacy or beta) and _median()
             if refuse_legacy:
                 version = struct.unpack_from('<I', raw, 4)[0]
                 raise FormatError(f'Unsupported save version ({version}) in the Median XL profile')
             old = legacy
             fixed = _old_reader_bytes(raw, data) if old else _reader_bytes(raw, data)
+            if beta:
+                # The host only accepts format 96. The character framing is shared.
+                normalized = bytearray(fixed or raw)
+                struct.pack_into('<I', normalized, 4, 96)
+                struct.pack_into('<I', normalized, 12, checksum(normalized))
+                fixed = bytes(normalized)
         except Exception:
             if old or refuse_legacy:
                 raise
