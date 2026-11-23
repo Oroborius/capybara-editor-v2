@@ -425,6 +425,8 @@ def decode_item(blob, data):
     """Inverse of encode_item for one item (blob starts at 'JM'): (record, size in bytes)."""
     if blob[:2] != b'JM':
         raise CreateError('not an item')
+    if getattr(blob, 'read_only_reason', None):
+        raise CreateError(blob.read_only_reason)
     if getattr(blob, 'v109_raw', False):            # mxl_v109.Raw109: a 1.09 record kept as read
         raise CreateError(T('cr.err.old_raw', 'This 1.09 item holds values the item editor cannot keep: it can be '
                             'moved or deleted, not edited.'))

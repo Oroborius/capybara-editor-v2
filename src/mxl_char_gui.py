@@ -16,7 +16,7 @@ from mxl_gui_detail import setup_detail_tags, item_color, LAYERS_SHOWN
 from mxl_tooltip import requirements_unmet
 from mxl_theme import BG, GRID_LINE, EMPTY, CELL_OK, CELL_KO, SELECTION, blend
 import mxl_char as MC
-from mxl_char import Character, CharError, SLOT_NAMES, MERC_SLOTS, INV_W, INV_H, ACTS, WAYPOINTS, DIFFICULTIES
+from mxl_char import Character, CharError, SLOT_NAMES, MERC_SLOTS, INV_W, INV_H, WAYPOINTS, DIFFICULTIES
 from mxl_char import slot_name, difficulty_name
 from mxl_lang import T
 from mxl_creator_gui import CreatorWindow, PreviewPanel, PreviewHost, clean, clamp_window
@@ -153,12 +153,13 @@ class CharacterWindow(StatEditMixin):
         self.tab_buttons = []
         self.extra = {}                              # key -> the object a registered page's factory returned
         self._extra_frames = {}
-        for key, _title, _factory in EXTRA_PAGES:
+        extra_pages = [page for page in EXTRA_PAGES if not (self.ch.early and page[0] == 'hotkeys')]
+        for key, _title, _factory in extra_pages:
             self._extra_frames[key] = self.pages[key] = tk.Frame(body, bg=HE_BG)
         for key, text in (('stats', T('ch.tab.stats', 'Stats')), ('inventory', T('ch.tab.inventory', 'Inventory')),
                           ('skills', T('ch.tab.skills', 'Skills')),
                           ('waypoints', T('ch.tab.waypoints', 'Waypoints')), ('quests', T('ch.tab.quests', 'Quests')),
-                          *((k, t) for k, t, _f in EXTRA_PAGES)):
+                          *((k, t) for k, t, _f in extra_pages)):
             rb = tk.Radiobutton(tabbar, text=text, value=key, variable=self.tab, indicatoron=0, font=('Times New Roman', 12),
                                 underline=0, bd=1, relief='raised', padx=6, pady=0, bg='#e8e8e8', selectcolor='#ffffff',
                                 activebackground='#ffffff', command=self.show_tab)
@@ -180,7 +181,7 @@ class CharacterWindow(StatEditMixin):
         self._build_skills()
         self._build_equipment()
         self._build_progress()
-        for key, _title, factory in EXTRA_PAGES:     # after the built-in pages: win.ch and the state exist
+        for key, _title, factory in extra_pages:     # after the built-in pages: win.ch and the state exist
             try:
                 self.extra[key] = factory(self, self._extra_frames[key])
             except Exception as e:                   # a broken plug-in page never keeps the window from opening
@@ -298,7 +299,7 @@ class CharacterWindow(StatEditMixin):
         self.status.pack(anchor='w', pady=(2, 0))
         if getattr(self.ch, 'old', False):           # a 1.09 save: said up front
             import mxl_char
-            self.set_status(mxl_char.old_save_note())
+            self.set_status(mxl_char.old_save_note(self.ch.version))
         right = ttk.Frame(f)
         right.pack(side='left', fill='both', expand=True, padx=(4, 0))
         d = self.app.detail
@@ -634,9 +635,9 @@ class CharacterWindow(StatEditMixin):
             self.set_status(T('cr.open_stash', 'Open a stash in the main window first.'), True)
             return
         merc = self.is_merc()
-        blob = self.ch.stash_blob(e)
-        before = read_file(app.path)
         try:
+            blob = self.ch.stash_blob(e)
+            before = read_file(app.path)
             items = parse_stash(app.path, self.data)
             new = mxl_save.blob_item(blob, self.data)
             pages = [app.page()] + [i for i in range(STASH_PAGES) if i != app.page()]
@@ -646,7 +647,7 @@ class CharacterWindow(StatEditMixin):
             bak = edit_stash(app.path, self.data, insert=[(spot[0], spot[1], spot[2], blob)],
                              backup=app.needs_backup(app.path))
             app.backup_made(app.path, bak)
-        except (EditError, FormatError, OSError) as err:
+        except (CharError, EditError, FormatError, OSError) as err:
             messagebox.showerror(T('ch.btn.to_stash', 'To stash'), str(err), parent=self.top)
             return
         self.ch.remove(e, merc)
@@ -710,6 +711,9 @@ class CharacterWindow(StatEditMixin):
         if e is None:
             self.set_status(T('ch.select_first', 'Select an item of the character first.'), True)
             return
+        if getattr(e.blob, 'read_only_reason', None):
+            self.set_status(e.blob.read_only_reason, True)
+            return
         name = clean(e.it['name'])
         if not messagebox.askyesno(T('ch.btn.delete', 'Delete'), T('ch.delete_ask', 'Delete {item} (and its socketed items) from '
                                    '{name}?\nA backup of the character is made first.', item=name, name=self.ch.name), parent=self.top):
@@ -721,6 +725,9 @@ class CharacterWindow(StatEditMixin):
         e = self.selected
         if e is None:
             self.set_status(T('ch.select_first', 'Select an item of the character first.'), True)
+            return
+        if getattr(e.blob, 'read_only_reason', None):
+            self.set_status(e.blob.read_only_reason, True)
             return
         merc = self.is_merc()
         where = MC.where_of(e)
@@ -1084,11 +1091,13 @@ class CharacterWindow(StatEditMixin):
             fr.grid(row=0, column=k, sticky='nsew', padx=2, pady=2)
             t = CheckTree(fr, self.on_tree_change)
             root = t.add('', T('he.mode_waypoints', '{mode} Mode Waypoints', mode=dn))
+            ids = set(self.ch.waypoint_ids(k))
             for act, wps in WAYPOINTS:
+                visible = [(n, name) for n, name in wps if n in ids]
+                if not visible:
+                    continue
                 a = t.add(root, act)
-                for n, name in wps:
-                    if n in MC.HELL_ONLY_WAYPOINTS and k != 2:
-                        continue
+                for n, name in visible:
                     t.add(a, name + (T('he.hell_suffix', ' (Hell)') if n in MC.HELL_ONLY_WAYPOINTS else ''), key=('wp', k, n), locked=(n == 0))
             t.open(root)
             self.wp_trees.append(t)
@@ -1096,7 +1105,7 @@ class CharacterWindow(StatEditMixin):
             fr.grid(row=0, column=k, sticky='nsew', padx=2, pady=2)
             t = CheckTree(fr, self.on_tree_change)
             root = t.add('', T('he.mode_quests', '{mode} Mode Quests', mode=dn))
-            for act, intro, quests, done in ACTS:
+            for act, intro, quests, done in self.ch.quest_acts():
                 a = t.add(root, act)
                 for word, key in quests:
                     r = MC.QUEST_REWARDS.get(word)
@@ -1309,8 +1318,8 @@ class CharacterWindow(StatEditMixin):
         new file state; otherwise nothing is pending."""
         ch = self.ch
         old = (self.q0, self.qstate, self.w0, self.wstate) if keep and hasattr(self, 'wstate') else None
-        self.q0 = {k: {w for _, _, quests, _ in ACTS for w, _ in quests if ch.quest_done(k, w)} for k in range(3)}
-        self.w0 = {k: {n for n in MC.waypoint_ids(k) if ch.waypoint(k, n)} | {0} for k in range(3)}
+        self.q0 = {k: {w for _, _, quests, _ in ch.quest_acts() for w, _ in quests if ch.quest_done(k, w)} for k in range(3)}
+        self.w0 = {k: {n for n in self.ch.waypoint_ids(k) if ch.waypoint(k, n)} | {0} for k in range(3)}
         self.qstate = {k: set(v) for k, v in self.q0.items()}
         self.wstate = {k: set(v) for k, v in self.w0.items()}
         if old is not None:                           # the ticks set / taken away since the old file state
@@ -1419,16 +1428,16 @@ class CharacterWindow(StatEditMixin):
         if getattr(self, 'sktree', None) is not None and not rebuilt:       # levels and the remaining points
             self.sktree.redraw()
         for k in range(3):
-            self.wp_trees[k].set_values({('wp', k, n): n in self.wstate[k] for n in MC.waypoint_ids(k)})
-            self.q_trees[k].set_values({('q', k, w): w in self.qstate[k] for _, _, qs, _ in ACTS for w, _ in qs})
-            for _, _, qs, _ in ACTS:
+            self.wp_trees[k].set_values({('wp', k, n): n in self.wstate[k] for n in self.ch.waypoint_ids(k)})
+            self.q_trees[k].set_values({('q', k, w): w in self.qstate[k] for _, _, qs, _ in self.ch.quest_acts() for w, _ in qs})
+            for _, _, qs, _ in self.ch.quest_acts():
                 for w, _ in qs:
                     self.q_trees[k].set_locked(('q', k, w), w in self.qlocked[k])
         self.update_dirty()
 
     def all_waypoints(self):
         for k in range(3):
-            self.wstate[k] = set(MC.waypoint_ids(k))
+            self.wstate[k] = set(self.ch.waypoint_ids(k))
         self.refresh_progress()
 
     def save_progress(self):

@@ -552,3 +552,26 @@ From the community's format write-ups (Trevin Corbin's notes,
   (level/2 + 1) above; vanilla resets an over-limit value to 0 on load. [V]
 - Values beyond a stat's save width are saturated at save time (character stats and item stats). [V; S: current
   life at the 21-bit maximum]
+
+## Pre-1.09 vanilla saves
+
+Versions 71 (Classic 1.00–1.06), 87 (LoD 1.07) and 89 (LoD 1.08) have a
+130-byte header with no size or checksum. The name starts at byte 8. The
+status word at byte 24 holds the flags and the five-bit progression value.
+The class is at byte 34, and the level comes from character stat 12.
+The quest, waypoint and NPC sections start at 130, 428 and 508. The NPC
+section starts with `01 77 34`. The `gf` section at 560 contains a three-byte
+mask followed by one little-endian u32 for each set bit in the first two
+bytes. The third mask byte is preserved. The `if` skill bytes follow in
+class skill order, then the `JM` player and corpse lists. The data after
+the corpses, including hireling and additional hotkey data, is preserved.
+
+Versions 87 and 89 use the legacy LoD item bitstream. The codec uses the
+selected game's 1.09 stat columns with the earlier field widths where the
+layout differs. Verified compact and normal extended records are editable.
+Records with unsupported metadata or records that fail the lossless
+conversion are kept read-only. Version 71 uses seed-based records. The
+1.00 samples contain 27-byte records indexed by the Classic item table.
+The 1.06b samples also contain 15-byte compact and 31-byte extended records
+with four-character codes. Classic records are displayed read-only and
+preserved verbatim.

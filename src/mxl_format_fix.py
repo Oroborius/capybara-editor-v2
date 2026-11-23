@@ -149,6 +149,9 @@ def _trailing(blob, it, br):
 
 
 def parse_item(blob, data):
+    legacy = getattr(data, 'parse_legacy_item', None)
+    if legacy is not None:
+        return legacy(blob)
     try:
         it, br = _parse_item(blob, data)
         return _trailing(blob, it, br) if LENIENT else (it, br)
@@ -188,11 +191,17 @@ def parse_item(blob, data):
     return it, br
 
 
+def _read_early_trailer(br):
+    if br.read(1):
+        br.read(64)
+
+
 def _parse_item(blob, data):
     expect(blob, 0, b'JM')
     br = BitReader(blob[2:])
     it = Item()
-    if getattr(data, 'v109', False):                  # a 1.09 (save version 92) record: mxl_v109.Data109
+    early_lod = getattr(data, 'save_version', 96) in (87, 89)
+    if getattr(data, 'v109', False):                  # legacy LoD record: mxl_v109.Data109
         it.v109 = True                                # (written back by mxl_char through mxl_v109.to_109)
     flags = br.read(32)
     it['identified'] = bool(flags >> 4 & 1)
@@ -208,14 +217,27 @@ def _parse_item(blob, data):
     it['x'] = br.read(4)
     it['y'] = br.read(4)
     it['panel'] = br.read(3)
-    if LENIENT and flags >> 16 & 1:
-        return _ear(it, br, blob)
+    ear = bool(flags & 1 << 16)
+    if ear and (simple if early_lod else LENIENT):
+        it, br = _ear(it, br, blob)
+        if early_lod:
+            _read_early_trailer(br)
+            _keep_raw(it, blob, br)
+        return it, br
     code = ''.join(chr(br.read(8)) for _ in range(4))
     it['code'] = code
     base = data.base(code)
     kind, name = body_kind(data, code), base.name
     it['name'] = name
     it['stats'] = []
+    if early_lod and (simple or flags & 1 << 25):
+        it['socketed_count'] = 0
+        if simple:
+            if code == 'gld ':
+                it['quantity'] = br.read(32 if br.read(1) else 12)
+            _read_early_trailer(br)
+        _keep_raw(it, blob, br)
+        return it, br
     if simple:
         it['socketed_count'] = br.read(1)
         _keep_raw(it, blob, br)
@@ -245,10 +267,18 @@ def _parse_item(blob, data):
         it['rare_affixes'] = [br.read(11) if br.read(1) else None for _ in range(6)]
     elif q == TEMPERED:
         it['rare_names'] = (br.read(8), br.read(8))
+    if early_lod and q == 'normal':
+        types = data.type_ancestors(base.type) | data.type_ancestors(base.type2)
+        if _tag_index(data, 'char') in types:
+            br.read(12)
+        if _tag_index(data, 'body') in types and _tag_index(data, 'play') not in types:
+            br.read(10)
+        if code in ('tbk ', 'ibk ', 'tsc ', 'isc '):
+            br.read(5)
     if runeword:
         it['runeword'] = br.read(12)
         br.read(4)
-    if personalized:
+    if personalized and not (early_lod and ear):
         s = ''
         while True:
             c = br.read(7)
@@ -256,9 +286,14 @@ def _parse_item(blob, data):
                 break
             s += chr(c)
         it['personalized_name'] = s
-    if code in ('tbk ', 'ibk '):
-        br.read(5)
-    br.read(1)
+    if early_lod:
+        if ear:
+            _ear(it, br, blob)
+        _read_early_trailer(br)
+    else:
+        if code in ('tbk ', 'ibk '):
+            br.read(5)
+        br.read(1)
     if kind == 'armor':
         it['_def_bit'] = br.pos
         c = data.isc[S.DEFENSE]
@@ -268,6 +303,8 @@ def _parse_item(blob, data):
         it['max_durability'] = maxd
         if maxd != data.isc[S.MAX_DURABILITY]['add']:
             it['durability'] = br.read(data.isc[S.DURABILITY]['bits'])
+    if early_lod and code == 'gld ':
+        it['quantity'] = br.read(32 if br.read(1) else 12)
     if data.base(code).stack_max is not None:
         it['quantity'] = br.read(QUANTITY_BITS)
     old = getattr(data, 'v109', False)

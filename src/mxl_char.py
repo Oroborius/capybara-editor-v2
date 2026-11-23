@@ -16,6 +16,7 @@ import struct
 from mxl_format import read_item_list, FormatError
 from mxl_creator import decode_item, encode_item, CreateError
 from mxl_lang import T
+import mxl_early_save
 import mxl_v109
 
 MAGIC = 0xAA55AA55
@@ -191,8 +192,13 @@ class _W:
 STATS_LENIENT = False
 
 
-def old_save_note():
-    """Shown for a 1.09 (version 92) save: what the editor can change there."""
+def old_save_note(version=mxl_v109.VERSION):
+    """Summarize item editing support for a legacy save."""
+    if version == 71:
+        return 'Diablo II Classic 1.00–1.06 (version 71). Items are read-only.'
+    if version in mxl_early_save.VERSIONS:
+        return (f'Diablo II {mxl_early_save.VERSIONS[version]} (version {version}). '
+                'Items with unsupported layouts are read-only.')
     return T('ch.note.old_save_items', 'Diablo II 1.09 save (version 92): stats, skills, quests, waypoints and '
              'items are saved in the 1.09 layout; an item value a 1.09 record cannot hold is refused when saving. '
              'Loading the character once in 1.14d converts it to the current format.')
@@ -497,6 +503,8 @@ class Entry:
 
     def moved(self, data, **fields):
         """Copy with header fields changed (location, equipped, x, y, panel); socketed items unchanged."""
+        if isinstance(self.blob, mxl_early_save.RawEarly):
+            raise CharError(self.blob.read_only_reason)
         if isinstance(self.blob, mxl_v109.Raw109):     # a 1.09 item kept as read: header bits only
             return mxl_v109.moved_raw(self.blob, fields)
         rec, n = decode_item(self.blob, data)
@@ -518,12 +526,17 @@ class Character:
         if struct.unpack_from('<I', b, 0)[0] != MAGIC:
             raise FormatError(T('ch.err.not_char', 'not a character file'))
         self.version = struct.unpack_from('<I', b, 4)[0]
-        # 96: 1.10+ (Median XL too). 92: a 1.09 save, read in the vanilla folder profiles (mxl_v109): its stats and
-        # item records are packed another way; the character values are written back in that layout, the items kept
-        self.old = self.version == mxl_v109.VERSION and not _median()
+        # The vanilla profile can also read the four legacy versions.
+        self.early = self.version in mxl_early_save.VERSIONS and not _median()
+        self.old = self.early or self.version == mxl_v109.VERSION and not _median()
         if self.version != 96 and not self.old:
             raise FormatError(T('ch.err.old_version', 'unsupported old save version ({v}); only 1.10+ saves (96)',
                                 v=self.version))
+        if self.early:
+            self.head = mxl_early_save.read_header(b, QUEST_OFF)
+            self._parse_old(b, mxl_early_save.STATS_OFF)
+            self.head[0x2B] = min(255, self.stat(12))
+            return
         if b[QUEST_OFF:QUEST_OFF + 4] != b'Woo!' or b[WP_OFF:WP_OFF + 2] != b'WS':
             raise FormatError(T('ch.err.layout', 'unexpected character file layout'))
         # the stats start right after the 52-byte NPC section; searching for 'gf' is only the fallback for an
@@ -590,21 +603,25 @@ class Character:
         self.tail = b[r:]
 
     def _parse_old(self, b, gf):
-        """The rest of a version 92 (1.09) file: mask + u32 stats, skills, then the item lists read with the 1.09
-        record widths (mxl_v109.Data109). Entry.blob holds the item in the 1.10 layout (mxl_v109.to_110: every item
-        menu, the clipboard, the Creator and the import use that one); build() writes it back as 1.09 records. An
-        item the 1.10 layout cannot hold stays as read (mxl_v109.Raw109: move / delete only)."""
+        """Read legacy stats, skills, and items. Editable LoD items use the editor's current
+        item representation in memory. Classic and unsupported records keep their original bytes."""
         d = self.data
-        self.stats, p = mxl_v109.read_stats(b, gf)
+        try:
+            self.stats, p = mxl_v109.read_stats(b, gf, 3 if self.early else 2)
+        except struct.error as ex:
+            raise FormatError('Truncated legacy character stats') from ex
+        self._legacy_mask_byte = b[gf + 4:gf + 5] if self.early else b''
         self.stats_extra = b''
         if b[p:p + 2] != b'if':
             raise FormatError(T('ch.err.no_skills', "skills ('if') not found after the stats"))
-        jm = p + 2 + class_skill_count(d, b[0x28]) if b[0x28] < 7 else -1
+        jm = p + 2 + class_skill_count(d, self.cls) if self.cls < 7 else -1
         if b[jm:jm + 2] != b'JM':
+            if self.early:
+                raise FormatError('Legacy character item list not found after the skills')
             jm = b.find(b'JM', p)
         self.skills = b[p:jm]
         self.offsets = (gf, p, jm)
-        d9 = mxl_v109.Data109(d)
+        d9 = mxl_early_save.ClassicData(d) if self.version == 71 else mxl_v109.Data109(d, self.version)
         count = struct.unpack_from('<H', b, jm + 2)[0]
         items, q = read_item_list(b, jm + 4, count, d9)
         self._v109_hints, self._v109_same = {}, {}
@@ -613,14 +630,14 @@ class Character:
             raise FormatError(T('ch.err.no_corpse', 'corpse list not found'))
         cc = struct.unpack_from('<H', b, q + 2)[0]
         r = q + 4
-        if cc:
+        for _ in range(cc):
             r += 12
             if b[r:r + 2] != b'JM':
                 raise FormatError(T('ch.err.no_corpse_items', 'corpse items not found'))
             n = struct.unpack_from('<H', b, r + 2)[0]
             _, r = read_item_list(b, r + 4, n, d9)
         self.corpse = b[q:r]
-        self.has_jf = b[r:r + 2] == b'jf'
+        self.has_jf = not self.early and b[r:r + 2] == b'jf'
         self.merc_items = None
         if self.has_jf:
             r += 2
@@ -629,16 +646,23 @@ class Character:
                 mitems, r = read_item_list(b, r + 4, n, d9)
                 self.merc_items = [self._entry_old(it, b) for it in mitems]
         self.tail = b[r:]
+        if self.early:
+            self._read_only_items = self._early_raw_items()
+
+    def _early_raw_items(self):
+        return tuple(e.blob for e in self.items if isinstance(e.blob, mxl_early_save.RawEarly))
 
     def _entry_old(self, it, b):
         raw = bytes(b[it['_offset']:it['_offset'] + self._full_size(it)])
+        if self.version == 71:
+            return Entry(it, mxl_early_save.RawEarly(raw))
         try:
             hints = {}
-            b10 = mxl_v109.to_110(raw, self.data, hints)
-            if mxl_v109.to_109(b10, self.data, hints) != raw:
+            b10 = mxl_v109.to_110(raw, self.data, hints, self.version)
+            if mxl_v109.to_109(b10, self.data, hints, self.version) != raw:
                 raise CreateError('not the same bytes')
         except Exception as e:                         # CreateError / StoreError: kept as read
-            print(f"1.09 item {it.get('code')!r} kept as read: {e}")
+            print(f"Version {self.version} item {it.get('code')!r} kept as read: {e}")
             b10 = None
         p = 0                                          # it._raw (the Creator's edit mode): the 1.10 record bytes
         for x in [it] + list(it.get('socketed') or []):
@@ -649,20 +673,23 @@ class Character:
             except Exception:
                 x._raw = None
         if b10 is None:
+            if self.early:
+                it.opaque = True
+                return Entry(it, mxl_early_save.RawEarly(raw))
             return Entry(it, mxl_v109.Raw109(raw))
         self._v109_hints.update(hints)
         self._v109_same[b10] = raw
         return Entry(it, b10)
 
     def _old_blob(self, e):
-        """1.09 bytes of an entry (build). CharError (message for the user) when the item cannot be stored."""
-        if isinstance(e.blob, mxl_v109.Raw109):
+        """Encode an entry for this legacy version, or raise CharError if it cannot be stored."""
+        if isinstance(e.blob, (mxl_v109.Raw109, mxl_early_save.RawEarly)):
             return bytes(e.blob)
         b = bytes(e.blob)
         if b in self._v109_same:
             return self._v109_same[b]
         try:
-            return mxl_v109.to_109(b, self.data, self._v109_hints)
+            return mxl_v109.to_109(b, self.data, self._v109_hints, self.version)
         except CreateError as ex:
             name = e.it.get('name') if e.it else None
             if not name:
@@ -683,12 +710,18 @@ class Character:
         d = self.data
         out = bytearray(self.head)
         if getattr(self, 'old', False):
+            if self.early and self._early_raw_items() != self._read_only_items:
+                raise CharError(mxl_early_save.RawEarly.read_only_reason)
             items = b''.join(self._old_blob(e) for e in self.items)
             merc = None if self.merc_items is None else b''.join(self._old_blob(e) for e in self.merc_items)
             try:
                 sb = mxl_v109.build_stats(self.stats)
             except ValueError as e:
-                raise CharError(T('ch.err.old_stat', '1.09 save: {stat} cannot be stored', stat=e))
+                raise CharError(T('ch.err.legacy_stat', 'Save version {version} cannot store {stat}',
+                                  version=self.version, stat=e))
+            if self.early:
+                out = mxl_early_save.build_header(self.raw, self.head, QUEST_OFF)
+                sb = sb[:2] + self._legacy_mask_byte + sb[2:]
             out += b'gf' + sb + self.skills
             out += b'JM' + struct.pack('<H', len(self.items)) + items
             out += self.corpse
@@ -697,6 +730,8 @@ class Character:
                 if merc is not None:
                     out += b'JM' + struct.pack('<H', len(self.merc_items)) + merc
             out += self.tail
+            if self.early:
+                return bytes(out)
             struct.pack_into('<I', out, 8, len(out))
             struct.pack_into('<I', out, 12, checksum(out))
             return bytes(out)
@@ -926,6 +961,8 @@ class Character:
 
     def set_flag(self, key, on):
         """Sets or clears one status flag; the other bits of the byte are kept."""
+        if on and self.early and (key == 'ladder' or self.version == 71 and key == 'expansion'):
+            raise CharError(f'The {key} flag is unavailable in this save version.')
         bit = STATUS_FLAGS.get(key)
         if bit is None:
             raise CharError(T('ch.err.flag', 'unknown character flag: {flag}', flag=key))
@@ -941,14 +978,16 @@ class Character:
     def set_progression(self, value):
         """Progression / title byte (header 0x25), 0..255: 5 per finished difficulty plus the act bosses killed in
         the current one (5 = Normal done, 10 = Nightmare done, 15 = Hell done; see game_progression)."""
-        if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 255:
-            raise CharError(T('ch.err.progression', 'progression: 0 to 255'))
+        maximum = 31 if self.early else 255
+        if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= maximum:
+            raise CharError(T('ch.err.legacy_progression', 'progression: 0 to {maximum}', maximum=maximum)
+                            if self.early else T('ch.err.progression', 'progression: 0 to 255'))
         self.head[0x25] = value
 
     @property
     def difficulties_done(self):
         """Number of difficulties finished (0..3): what unlocks Nightmare (1) and Hell (2)."""
-        return min(3, self.head[0x25] // 5)
+        return min(3, self.progression // self._acts_per_difficulty)
 
     def set_difficulties_done(self, n):
         """Sets the number of finished difficulties (0..3). The acts part of the byte is kept when the count does
@@ -960,9 +999,17 @@ class Character:
 
     _PROG_WORDS = (6, 14, 22)             # Sisters to the Slaughter, Seven Tombs, The Guardian: +1 each
 
+    @property
+    def _acts_per_difficulty(self):
+        return 4 if self.early and not self.status & STATUS_FLAGS['expansion'] else 5
+
+    @property
+    def _last_quest(self):
+        return 26 if self._acts_per_difficulty == 4 else LAST_QUEST_WORD
+
     def _prog_state(self):
         """The quest bits the progression byte follows (see game_progression)."""
-        return tuple(self.quest_done(k, w) for k in range(3) for w in self._PROG_WORDS + (LAST_QUEST_WORD,))
+        return tuple(self.quest_done(k, w) for k in range(3) for w in self._PROG_WORDS + (self._last_quest,))
 
     def game_progression(self, done=None):
         """The progression byte the game holds for this quest state. The three game-written samples: Nightmare
@@ -972,16 +1019,16 @@ class Character:
         Diablo; 15 = Hell finished."""
         if done is None:
             done = 0
-            while done < 3 and self.quest_done(done, LAST_QUEST_WORD):
+            while done < 3 and self.quest_done(done, self._last_quest):
                 done += 1
         if done >= 3:
-            return 15
+            return 3 * self._acts_per_difficulty
         acts = 0
         for w in self._PROG_WORDS:
             if not self.quest_done(done, w):
                 break
             acts += 1
-        return 5 * done + acts
+        return self._acts_per_difficulty * done + acts
 
     def set_name(self, name):
         """Writes the name in the header only (game rule checked). The game needs the file to carry the same name:
@@ -1086,6 +1133,8 @@ class Character:
     def set_class(self, cls):
         """Changes the class: the class byte in the header plus a fresh (all-zero) skills section of
         the new class - the old levels belong to the previous class's skills and cannot be kept."""
+        if self.version == 71 and not 0 <= cls < 5:
+            raise CharError('This class requires the expansion.')
         self.head[0x28] = cls
         self.set_skill_levels({}, keep=False)
 
@@ -1116,6 +1165,9 @@ class Character:
                 self.set_stat(cur_id, new_max)
 
     # ------------------------------------------------------------------ quests / waypoints
+    def quest_acts(self):
+        return ACTS[:4] if self._acts_per_difficulty == 4 else ACTS
+
     def quest_word(self, diff, word):
         return struct.unpack_from('<H', self.head, QUEST_DATA + 96 * diff + 2 * word)[0]
 
@@ -1133,7 +1185,7 @@ class Character:
         samples - is never changed): the act's introduction (1), and "travelled to the next act" (1) when the
         act's last quest is the one marked. Word 41 is not touched (see the table above ACTS)."""
         before = self._prog_state()
-        for act, intro, quests, travel in ACTS:
+        for act, intro, quests, travel in self.quest_acts():
             marked = set()
             for word, _ in quests:
                 if word in done_words:
@@ -1146,7 +1198,8 @@ class Character:
                     self.quest_reward(word, -1)
             if marked and not self.quest_word(diff, intro):
                 self.set_quest_word(diff, intro, 1)
-            if travel is not None and ACT_LAST_QUEST[travel] in marked and not self.quest_word(diff, travel):
+            if (travel is not None and not (travel == 28 and self._acts_per_difficulty == 4)
+                    and ACT_LAST_QUEST[travel] in marked and not self.quest_word(diff, travel)):
                 self.set_quest_word(diff, travel, 1)
         if self._prog_state() != before:          # an act boss / a difficulty's last quest was (un)marked: the
             self.head[0x25] = self.game_progression()     # header byte as the game writes it for these quests;
@@ -1163,7 +1216,8 @@ class Character:
         widths = _csv(self.data)
 
         def fit(sid, v, lo=0):                  # within what the file can hold: a reward on a value already at
-            return max(lo, min((1 << widths[sid][1]) - 1, v))   # the maximum is not a refused save
+            bits = 32 if self.old else widths[sid][1]
+            return max(lo, min((1 << bits) - 1, v))
         if kind == 'skill':
             self.set_stat(5, fit(5, self.stat(5) + sign * n))
         elif kind == 'stats':
@@ -1173,13 +1227,17 @@ class Character:
                 self.set_stat(sid, fit(sid, self.stat(sid) + sign * (n << 8), 1 << 8))
 
     def waypoint(self, diff, n):
-        return bool(self.head[WP_DATA + 24 * diff + 2 + n // 8] >> (n % 8) & 1)
+        return n in self.waypoint_ids(diff) and bool(self.head[WP_DATA + 24 * diff + 2 + n // 8] >> (n % 8) & 1)
+
+    def waypoint_ids(self, diff):
+        ids = waypoint_ids(diff)
+        return [n for n in ids if n < mxl_early_save.WP_END_CLASSIC] if self._acts_per_difficulty == 4 else ids
 
     def set_waypoints(self, diff, active):
         base = WP_DATA + 24 * diff
         self.head[base] = 2
         self.head[base + 1] = 1
-        for n in waypoint_ids(diff):
+        for n in self.waypoint_ids(diff):
             i = base + 2 + n // 8
             if n in active or n == 0:
                 self.head[i] |= 1 << (n % 8)
@@ -1257,6 +1315,14 @@ class Character:
     def place(self, blob, where, merc=False):
         """Adds an item (bytes incl. socketed items, from a stash or the creator) at where = ('slot', n) or
         ('inv', x, y). Returns the new Entry."""
+        if self.version == 71:
+            raise CharError('Classic items are read-only.')
+        if self.early:
+            # Validate conversion before the caller changes another inventory.
+            try:
+                mxl_v109.to_109(blob, self.data, self._v109_hints, self.version)
+            except CreateError as ex:
+                raise CharError(str(ex)) from ex
         d = self.data
         it = blob_item(blob, d)
         if where[0] == 'belt':
@@ -1290,6 +1356,8 @@ class Character:
         return new
 
     def remove(self, entry, merc=False):
+        if isinstance(entry.blob, mxl_early_save.RawEarly):
+            raise CharError(entry.blob.read_only_reason)
         lst = self.entries(merc)
         lst.remove(entry)
 
@@ -1320,6 +1388,8 @@ class Character:
 
     def stash_blob(self, entry):
         """Bytes of the item as a stash item (location stored, stash panel); position set by the stash writer."""
+        if isinstance(entry.blob, mxl_early_save.RawEarly):
+            raise CharError(entry.blob.read_only_reason)
         if isinstance(entry.blob, mxl_v109.Raw109):    # 1.09 bytes must not reach another file or the clipboard
             raise CharError(T('cr.err.old_raw', 'This 1.09 item holds values the item editor cannot keep: it can be '
                               'moved or deleted, not edited.'))
@@ -1370,6 +1440,8 @@ class Character:
         return struct.unpack_from('<I', self.head, off)[0]
 
     def set_header_u32(self, off, value):
+        if self.early:
+            raise CharError('This header field is read-only in pre-1.09 saves.')
         struct.pack_into('<I', self.head, off, value)
 
 
@@ -1428,7 +1500,7 @@ def _reader_bytes(raw, data):
 
 
 def _old_reader_bytes(raw, data):
-    """A version 92 (1.09) file for the collector's reader, which knows only the 96 layout: (bytes, Character) -
+    """A legacy file for the collector's reader, which knows only the 96 layout: (bytes, Character) -
     the header, an empty stat list, the skills and empty item lists; the wrapper puts the values and items read
     by Character into its result."""
     ch = Character.__new__(Character)
@@ -1437,7 +1509,7 @@ def _old_reader_bytes(raw, data):
     out = bytes(ch.head) + b'gf\xff\x01' + bytes(ch.skills) + b'JM\0\0' + b'JM\0\0'
     if ch.has_jf:
         out += b'jf' + (b'JM\0\0' if ch.merc_items is not None else b'')
-    out = bytearray(out + bytes(ch.tail))
+    out = bytearray(out if ch.early else out + bytes(ch.tail))
     struct.pack_into('<I', out, 4, 96)
     struct.pack_into('<I', out, 8, len(out))
     return bytes(out), ch
@@ -1453,19 +1525,26 @@ def install_reader_fix():
 
     def load_character(path, data):
         old = False
+        refuse_legacy = False
         try:
             raw = mxl_save.read_file(path)
-            old = mxl_v109.is_old(raw) and not _median()
+            early = len(raw) >= 8 and struct.unpack_from('<I', raw, 4)[0] in mxl_early_save.VERSIONS
+            legacy = early or mxl_v109.is_old(raw)
+            refuse_legacy = legacy and _median()
+            if refuse_legacy:
+                version = struct.unpack_from('<I', raw, 4)[0]
+                raise FormatError(f'Unsupported save version ({version}) in the Median XL profile')
+            old = legacy
             fixed = _old_reader_bytes(raw, data) if old else _reader_bytes(raw, data)
         except Exception:
-            if old:
+            if old or refuse_legacy:
                 raise
             fixed = None
         if fixed is None:
             return host(path, data)
         if old:
             fixed, ch = fixed
-        name = bytes(raw[0x14:0x24]).split(b'\0')[0].decode('latin1')
+        name = ch.name if old else bytes(raw[0x14:0x24]).split(b'\0')[0].decode('latin1')
         real = mxl_save.read_file
         mxl_save.read_file = lambda p, _real=real: fixed if p == path else _real(p)
         try:
@@ -1476,7 +1555,7 @@ def install_reader_fix():
             c['name'] = name
         except Exception:
             setattr(c, 'name', name)
-        if old:                                        # the 1.09 values / items read by Character
+        if old:                                        # legacy values / items read by Character
             c['items'] = [e.it for e in ch.items]
             for key, sid in (('strength', 0), ('energy', 1), ('dexterity', 2), ('vitality', 3)):
                 c[key] = ch.stat(sid)

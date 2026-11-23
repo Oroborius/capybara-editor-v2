@@ -399,4 +399,76 @@ def median_never_reads_old_saves():
         E.MC._median = real
 
 
+@T.test
+def pre_109_real_saves_round_trip_and_edit():
+    E = engine()
+    import mxl_creator as C
+    import mxl_save
+    from mxl_format import FormatError
+    root = os.path.join(T.REPO, '.cache', 'samples', 'oldver')
+    for folder, version in (('107', 87), ('108', 89), ('100', 71), ('106b', 71)):
+        sources = sorted(glob.glob(os.path.join(root, folder, '*.d2s')))
+        T.eq(len(sources), 2, f'{folder}: real save fixtures')
+        for source in sources:
+            path = os.path.join(T.tmp(), f'{folder}-{os.path.basename(source)}')
+            shutil.copy(source, path)
+            raw = T.read(path)
+            ch = E.MC.Character(path, E.data)
+            tag = f'{folder}/{ch.name}'
+            T.eq(ch.version, version, tag)
+            T.eq(ch.name, os.path.basename(source)[:-4], tag)
+            T.eq(ch.level, 1, tag)
+            T.eq(len(ch.skills), 32, tag)
+            T.eq(len(ch.items), 8, tag)
+            T.eq([e.it['code'].strip() for e in ch.items[:6]],
+                 ['hp1'] * 4 + ['tsc', 'isc'], tag)
+            T.check(ch.waypoint(0, 0), tag)
+            T.eq(ch.build(), raw, f'{tag}: byte-identical rebuild')
+            summary = mxl_save.load_character(path, E.data)
+            T.eq(summary['name'], ch.name, tag)
+            T.eq(len(summary['items']), 8, tag)
+            ch.save(backup=False)
+            T.eq(T.read(path), raw, f'{tag}: no-op save')
+            strength = ch.stat(0) + 1
+            ch.set_field('strength', strength)
+            ch.save(backup=False)
+            saved = E.MC.Character(path, E.data)
+            T.eq(saved.stat(0), strength, tag)
+            T.eq(saved.version, version, tag)
+            T.eq([e.blob for e in saved.items], [e.blob for e in ch.items], tag)
+
+            sid = next(iter(saved.skill_levels()))
+            saved.set_skill_levels({sid: 1})
+            saved.set_quests(0, {1})
+            saved.set_waypoints(0, {0, 1})
+            saved.set_flag('hardcore', True)
+            if version == 71:
+                T.check(all(getattr(e.blob, 'read_only_reason', None) for e in saved.items), tag)
+                T.check(30 not in saved.waypoint_ids(0), tag)
+            else:
+                weapon = saved.items[6]
+                rec, size = C.decode_item(weapon.blob, E.data)
+                T.eq(size, len(weapon.blob), tag)
+                durability = rec['durability'] - 1
+                weapon.blob = C.encode_item(dict(rec, durability=durability), E.data)
+            saved.save(backup=False)
+            again = E.MC.Character(path, E.data)
+            T.eq(again.skill_levels()[sid], 1, tag)
+            T.check(again.quest_done(0, 1) and again.waypoint(0, 1) and again.flags()['hardcore'], tag)
+            if version != 71:
+                T.eq(again.items[6].it['durability'], durability, tag)
+            real = E.MC._median
+            E.MC._median = lambda: True
+            try:
+                for reader in (E.MC.Character, mxl_save.load_character):
+                    try:
+                        reader(path, E.data)
+                    except FormatError:
+                        pass
+                    else:
+                        T.check(False, f'{tag}: Median XL must refuse legacy saves')
+            finally:
+                E.MC._median = real
+
+
 T.main(globals())

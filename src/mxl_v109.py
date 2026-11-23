@@ -33,10 +33,10 @@ def is_old(raw):
 
 
 # ------------------------------------------------------------------ 'gf' section
-def read_stats(b, gf):
+def read_stats(b, gf, mask_bytes=2):
     """[[sid, None, value], ...] and the offset after the section ('if' expected there)."""
     mask = struct.unpack_from('<H', b, gf + 2)[0]
-    p, out = gf + 4, []
+    p, out = gf + 2 + mask_bytes, []
     for sid in range(16):
         if mask >> sid & 1:
             out.append([sid, None, struct.unpack_from('<I', b, p)[0]])
@@ -72,8 +72,9 @@ class Data109:
     1.09 columns (defense, durability, sockets), current durability 8 bits, and the old stat-list reader."""
     v109 = True
 
-    def __init__(self, data):
+    def __init__(self, data, version=VERSION):
         self._data = data
+        self.save_version = version
         w = _widths(data)
         isc = dict(data.isc)
         for sid in (31, 72, 73, 194):
@@ -87,7 +88,7 @@ class Data109:
         return getattr(self._data, name)
 
     def read_stats(self, br):
-        return read_item_stats(br, self._data)
+        return read_item_stats(br, self._data, version=self.save_version)
 
     # the record codec of mxl_creator (decode_item / encode_item) with this object as data
     @property
@@ -95,11 +96,11 @@ class Data109:
         return self.isc[194]['bits']
 
     def rec_read_stats(self, br):
-        out, end = read_item_stats(br, self._data, keep=True)
+        out, end = read_item_stats(br, self._data, keep=True, version=self.save_version)
         return Stats109(_rec_entry(st) for st in out).ended(end)
 
     def rec_write_stats(self, bw, stats):
-        write_item_stats(bw, stats, self._data)
+        write_item_stats(bw, stats, self._data, self.save_version)
 
     @staticmethod
     def rec_read_end(br, rec):
@@ -166,12 +167,26 @@ def _entry(data, sid, param, value, pos, old=None):
             'bits': c.get('bits', 0), 'add': c.get('add', 0), 'old': sid if old is None else old}
 
 
-def read_item_stats(br, data, keep=False):
+def _stat_widths(data, version):
+    widths = _widths(data)
+    if version >= 90:
+        return widths
+    widths = dict(widths)
+    for sid, bits in ((23, 5), (24, 6)):
+        widths[sid] = bits, widths[sid][1]
+    widths.update({74: (5, 10), 79: (8, 20), 80: (7, 20)})
+    if version < 88:
+        for sid in (93, 96, 99, 102, 105):
+            widths[sid] = 6, widths[sid][1]
+    return widths
+
+
+def read_item_stats(br, data, keep=False, version=VERSION):
     """One stat list of a version 92 item record, as the 1.14d reader does it: ends at 0x1FF, or (without a
     failure) at an id with no itemstatcost row. Entries use the 1.10 ids / layers, 'old' = the stored id.
     keep (the record codec): also the single skills the game skips (level 0 / above the item_singleskill range,
     marked 'hidden'), a skill tab level above 7 in 'raw', and the id that ended the list: (list, end id)."""
-    w = _widths(data)
+    w = _stat_widths(data, version)
     out = []
     prev = None
     while True:
@@ -198,6 +213,9 @@ def read_item_stats(br, data, keep=False):
                 out.append(_entry(data, 107, skill, level, pos, sid))
             elif keep:
                 out.append(dict(_entry(data, 107, skill, level, pos, sid), hidden=True))
+        elif sid == 134 and version < 90:
+            raw = br.read(16)
+            out.append(dict(_entry(data, sid, None, 1, pos), raw=raw))
         elif sid == 126:
             out.append(_entry(data, 126, 1, br.read(4), pos))
         elif 188 <= sid <= 193:
@@ -234,10 +252,10 @@ _PACKED = (set(_CLASS_SKILL_LAYER) | set(_SINGLE_SKILL) | set(_FAST_TWIN) | set(
 _FOLLOWER = {f: lead for lead, fs in _GROUPS.items() for f in fs}
 
 
-def _stored(data, stats):
+def _stored(data, stats, version):
     """[(stored id, [(bits, raw), ...])] of a stat list given with the 1.10 ids (inverse of read_item_stats).
     An entry's 'old' (the stored id it was read with) picks the old form again when it still fits."""
-    w = _widths(data)
+    w = _stat_widths(data, version)
 
     def fail(st, why=''):
         from mxl_creator import StoreError
@@ -269,7 +287,7 @@ def _stored(data, stats):
             out.append((st['old'], [(14, prm | val << 9)]))
         elif sid == 127 and st.get('parts'):
             for p in st['parts']:
-                out += _stored(data, [dict(p, value=val) if p['param'] in range(5) else p])
+                out += _stored(data, [dict(p, value=val) if p['param'] in range(5) else p], version)
         elif sid in _GROUPS:
             fields = [plain(sid, st)]
             for f in _GROUPS[sid]:
@@ -284,6 +302,10 @@ def _stored(data, stats):
             if not 0 <= prm < 512 or not 0 < val <= min(top, 31):
                 fail(st)
             out.append((oldid(st, _SINGLE_SKILL, 107), [(14, prm | val << 9)]))
+        elif sid == 134 and version < 90:
+            if val != 1:
+                fail(st)
+            out.append((sid, [(16, st.get('raw', 0))]))
         elif sid == 126:
             if prm != 1 or not 0 <= val < 16:
                 fail(st, ': 1.09 holds +elemental skills only')
@@ -319,10 +341,10 @@ def _stored(data, stats):
     return out
 
 
-def write_item_stats(bw, stats, data):
+def write_item_stats(bw, stats, data, version=VERSION):
     """One stat list in the version 92 layout, in the given order (the game keeps none there), then 0x1FF (or the
     id a decoded list ended at: Stats109.end)."""
-    for sid, fields in _stored(data, stats):
+    for sid, fields in _stored(data, stats, version):
         bw.write(9, sid)
         for bits, raw in fields:
             bw.write(bits, raw)
@@ -377,13 +399,26 @@ def _set_row_109(data, row, code):
     return None
 
 
-def to_110(blob, data, hints=None):
+def _check_early_record(rec, version):
+    # Affix and special-item metadata depend on the historical table order.
+    if version < VERSION and (rec.get('quality') not in (None, 'normal')
+                               or rec.get('auto_affix') is not None
+                               or rec.get('realm_bit') or rec['flags'] & 1 << 21 and rec.get('socketed_count')
+                               or rec['flags'] & (_RUNEWORD | 1 << 16 | 1 << 24 | 1 << 25)
+                               or rec['code'] in ('gld ', 'tbk ', 'ibk ', 'nec ')):
+        from mxl_creator import StoreError
+        from mxl_early_save import VERSIONS
+        raise StoreError(f"Diablo II {VERSIONS[version]}: this item's layout is read-only.")
+
+
+def to_110(blob, data, hints=None, version=VERSION):
     """Bytes of a 1.09 item (+ its socketed items) in the 1.10 layout of the game data. CreateError: a value the
     1.10 layout cannot hold (the item then stays as read)."""
     import mxl_creator as C
-    d9 = Data109(unwrap(data))
+    d9 = Data109(unwrap(data), version)
     out = b''
     for rec in _records(blob, d9):
+        _check_early_record(rec, version)
         r10 = dict(rec)
         if rec.get('quality') == 'set':
             r10['set_unique_id'] = set_item_row(data, rec['set_unique_id'], rec['code'])
@@ -399,16 +434,17 @@ def to_110(blob, data, hints=None):
     return out
 
 
-def to_109(blob, data, hints=None):
+def to_109(blob, data, hints=None, version=VERSION):
     """Bytes of an item (+ its socketed items) in the 1.10 layout as 1.09 records. Checked by reading them back:
     StoreError / CreateError (message for the user) when the 1.09 record cannot hold the item as it is."""
     import mxl_creator as C
     from mxl_lang import T
     data = unwrap(data)
-    d9 = Data109(data)
+    d9 = Data109(data, version)
     out = b''
     recs = _records(blob, data)
     for rec in recs:
+        _check_early_record(rec, version)
         r9 = dict(rec)
         if rec.get('quality') == 'set':
             r9['set_unique_id'] = _set_row_109(data, rec['set_unique_id'], rec['code'])
@@ -421,7 +457,7 @@ def to_109(blob, data, hints=None):
             r9[k] = h if h is not None else rec[k]
         out += C.encode_item(r9, d9)
     try:
-        back = to_110(out, data)
+        back = to_110(out, data, version=version)
     except C.CreateError:
         back = None
     same = back == bytes(blob)
