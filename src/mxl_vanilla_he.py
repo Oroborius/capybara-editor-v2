@@ -821,6 +821,10 @@ def bind_inventory(win):
             previous = root.bind(key)
             root.bind(key, lambda event, caption=caption: inventory_shortcut(root, event, caption))
             root.tk.call('bind', root._w, key, root.bind(key) + '\n' + previous)
+        for key, step in (('<Up>', -1), ('<Down>', 1)):
+            previous = root.bind(key)
+            root.bind(key, lambda event, step=step: scroll_hovered_description(root, event, step))
+            root.tk.call('bind', root._w, key, root.bind(key) + '\n' + previous)
         root._he_clipboard_bound = True
 
     def remember(event):
@@ -830,7 +834,7 @@ def bind_inventory(win):
         if (getattr(win, 'he_pointer', None) or (None,))[0] is event.widget:
             win.he_pointer = None
 
-    hint = item_hint(win.top)
+    hint = win.he_item_hint = item_hint(win.top)
     hovered = None
 
     def clear_hint(event):
@@ -905,6 +909,16 @@ def bind_inventory(win):
     page._build = rebuild
     page._sig = None
     page.refresh()
+
+
+def scroll_hovered_description(root, event, step):
+    win = root._he_window()
+    if win is None or not win.preview.winfo_ismapped() or not win.he_item_hint.shown:
+        return
+    if event.widget.winfo_class() in ('Entry', 'Text', 'Spinbox', 'Combobox', 'TEntry', 'TCombobox', 'TSpinbox'):
+        return
+    win.preview.yview_scroll(step, 'units')
+    return 'break'
 
 
 def inventory_shortcut(root, event, caption):
@@ -1165,12 +1179,13 @@ def description_item(item):
     if item is None or not active():
         return item
     bonuses = [stat for index in range(5) for stat in item.get(f'set_stats_{index}', ())]
-    if not bonuses:
+    show_fill = bool(item.get('has_sockets'))
+    if not bonuses and not show_fill:
         return item
-    from copy import copy
-
-    result = copy(item)
-    if option('set_attributes', 'show') == 'show':
+    result = item.copy()
+    if show_fill:
+        result['_show_socket_fill'] = True
+    if bonuses and option('set_attributes', 'show') == 'show':
         result['stats'] = [*item.get('stats', ()), *bonuses]
     for index in range(5):
         result.pop(f'set_stats_{index}', None)
@@ -1832,7 +1847,7 @@ def item_hint(owner):
 
     def build(body):
         role(body, 'hint')
-        role(tk.Label(body, text='Drag to move · Right-click for item actions',
+        role(tk.Label(body, text='Drag to move · Right-click for actions · ↑/↓ to scroll item details',
                       padx=3, pady=1, font=font()), 'hint').pack()
 
     return FloatTip(owner, build=build, bg='#ffffe1', edge=EDGE)

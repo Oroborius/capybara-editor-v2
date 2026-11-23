@@ -393,7 +393,10 @@ def _install_socket_display():
         it, data, out = ctx.it, ctx.data, []
         n = shown_sockets(it)
         if n:
-            out.append(mxl_tooltip.sockets_line(data, n))
+            count = n
+            if isinstance(it, dict) and dict.get(it, '_show_socket_fill'):
+                count = f'{len(it.get("socketed") or ())}/{n}'
+            out.append(mxl_tooltip.sockets_line(data, count))
         if it.get('ethereal'):
             out.append([(mxl_tooltip.BLUE, data.key('EtherealQ'))])
         return out

@@ -59,6 +59,15 @@ def vanilla_workspace_pages_and_tools():
 
     menu = cw.he_menu
     menu.tk.call(menu.cget('postcommand'))
+    art_folder = REPO / '.cache/heroed/app'
+    if (art_folder / 'Hero Editor.exe').is_file():
+        from unittest.mock import patch
+        import settings
+
+        with patch('tkinter.filedialog.askdirectory', return_value=str(art_folder)):
+            menu.invoke('Hero Editor folder...')
+        T.eq(settings.get(V.ART_FOLDER), str(art_folder), 'menu remembers the selected artwork folder')
+        T.check(V.picture('person') is not None, 'selected artwork supplies the inventory panel')
     labels = [menu.entrycget(i, 'label') for i in range(menu.index('end') + 1)
               if menu.type(i) in ('command', 'cascade')]
     cascades = [menu.nametowidget(menu.entrycget(i, 'menu')) for i in range(menu.index('end') + 1)
@@ -157,7 +166,11 @@ def vanilla_workspace_pages_and_tools():
     extras = next(w for w in cw.top.winfo_children() if w.winfo_class() == 'Toplevel')
     notebook = next(w for w in extras.winfo_children() if w.winfo_class() == 'TNotebook')
     T.eq(len(notebook.tabs()), 4, 'Extras pages available')
-    shot('extras', extras)
+    for index, tab_id in enumerate(notebook.tabs()):
+        notebook.select(tab_id)
+        T.pump(3)
+        T.check(notebook.nametowidget(tab_id).winfo_ismapped(), f'Extras page {index + 1} is visible')
+        shot(f'extras-{index + 1}', extras)
     extras.destroy()
 
     # Verify the new vanilla controls write through the normal Save action.
@@ -223,6 +236,16 @@ def vanilla_inventory_hover_follows_visible_grids():
     cw.panel.show(None)
     T.check(hover(page.canvases['stash'], (x + .5) * page.cell, (y + .5) * page.cell),
             'stash hover renders properties from the visible container')
+    cw.preview.configure(state='normal')
+    cw.preview.insert('end', '\n' * 120)
+    cw.preview.configure(state='disabled')
+    cw.preview.yview_moveto(0)
+    canvas = page.canvases['stash']
+    canvas.focus_force()
+    T.pump(2)
+    canvas.event_generate('<KeyPress-Down>')
+    T.pump(2)
+    T.check(cw.preview.yview()[0] > 0, 'Down scrolls the description while hovering an item')
     V.set_tab(cw, 'stats')
     T.pump(4)
     T.check(not any(w.winfo_class() == 'Toplevel' and w.winfo_ismapped() for w in cw.top.winfo_children()),
@@ -234,11 +257,19 @@ def vanilla_inventory_draws_socket_contents():
     if T.VARIANT != '100' or not AVAILABLE:
         T.skip('requires the vanilla fixture at 100%')
     from PIL import ImageTk
+    from mxl_format_fix import shown_sockets
+    from mxl_tooltip import section_sockets
+    from mxl_vanilla_he import description_item
+    from types import SimpleNamespace
 
     cw = T.chartab()
     page = cw.extra['containers']
     item = next(e.it for e in cw.ch.items if e.it.get('socketed'))
     empty = dict(item, socketed=[])
+    lines = section_sockets(SimpleNamespace(it=description_item(item), data=cw.data))
+    text = ' '.join(part for line in lines for _color, part in line)
+    T.check(f'({len(item["socketed"])}/{shown_sockets(item)})' in text,
+            'description shows filled and total sockets')
     bg = '#1c2a40'
     layers = cw.icon(item, bg)
     T.check(layers and layers.get(3), 'socket fillers have an image layer')
