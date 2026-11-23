@@ -1,10 +1,4 @@
-"""More -> "New character..." (src/mxl_newchar.py): a NEW level-N character written into the save folder, for the
-vanilla 1.14d profile and for Median XL. Each file passes the independent parser (mxlsave check + verify), re-opens
-in the editor (mxl_char.Character, rebuilt byte for byte) and holds the class's starting stats, the level's
-experience, stat / skill points, no items, no mercenary; an existing name is refused, nothing is overwritten.
-
-Fixtures: Median = the usual test user folder; vanilla = the vanilla install (see test 75). ISOLATE: the two
-profiles cannot share one process."""
+"""New character creation and round trips in the vanilla and Median profiles."""
 import os
 import shutil
 import sys
@@ -79,7 +73,9 @@ def _common(E, median, top):
         ch = MC.Character(path, data)
         T.eq(ch.build(), T.read(path), f'{name}: re-opened file rebuilds byte for byte')
         T.eq((ch.name, ch.cls, ch.level, ch.stat(12)), (name, cls, lv, lv), f'{name}: name, class, level')
-        T.eq((len(ch.items), ch.merc_id, ch.merc_items or []), (0, 0, []), f'{name}: no items, no mercenary')
+        item_count = 0 if median else (7 if cls == 2 else 8)
+        T.eq((len(ch.items), ch.merc_id, ch.merc_items or []), (item_count, 0, []),
+             f'{name}: starting items and no mercenary')
         r = data._rows('charstats')[cls]
         T.eq([ch.stat(s) for s in (0, 1, 2, 3)], [r[0x30], r[0x32], r[0x31], r[0x33]], f'{name}: starting stats')
         T.eq((ch.stat(4), ch.stat(5)), (5 * (lv - 1), lv - 1), f'{name}: stat / skill points for the level')
@@ -132,10 +128,85 @@ def vanilla_new_characters():
     T.eq((ch.head[0x24] & 0x20, ch.has_jf, ch.progression, ch.waypoint(0, 29), ch.waypoint(0, 30)),
          (0, False, 12, True, False), 'classic: no expansion flag / mercenary section, acts I-IV')
     try:
-        N.build(E.data, 'Classic', 5, 1, expansion=False, median=False)
+        N.build(E.data, 'Classic', 5, 1, version=71)
         T.check(False, 'classic Druid refused')
     except N.NewCharError:
         pass
+
+
+def _normalized_early(ch, raw, original):
+    """Clear character name, map seed, and the random fields of each full record."""
+    from mxl_early_save import starter_tail
+
+    out = bytearray(raw)
+    out[8:24] = bytes(16)        # character name
+    out[126:130] = bytes(4)      # last game's map seed (the early header has no timestamp)
+    pos = ch.offsets[2] + 4
+    for entry in ch.items:
+        n = entry.it['_size'] - 2
+        if original or not int.from_bytes(raw[pos + 2:pos + 6], 'little') & (1 << 21):
+            if ch.version == 71:
+                bit, width = (123 if original else 155), 64  # item ID and generation seed
+            else:
+                bit, width = 95, 32                          # item ID only
+            value = int.from_bytes(raw[pos + 2:pos + 2 + n], 'little')
+            value &= ~(((1 << width) - 1) << bit)
+            out[pos + 2:pos + 2 + n] = value.to_bytes(n, 'little')
+        pos += n + 2
+    if ch.version != 71:
+        # Several uninitialized bytes of the old hotkey block echo the
+        # item buffer, including parts of the randomized weapon ID.
+        tail = pos + len(ch.corpse)
+        normalized_tail = starter_tail(ch.version, bytes(out[ch.offsets[2] + 4:pos]), ch.corpse)
+        original_tail = starter_tail(ch.version, raw[ch.offsets[2] + 4:pos], ch.corpse)
+        for i, (before, after) in enumerate(zip(original_tail, normalized_tail)):
+            out[tail + i] ^= before ^ after
+    return bytes(out)
+
+
+@T.test
+def vanilla_early_starter_bytes():
+    E = _vanilla()
+    import mxl_newchar as N
+    import mxl_save
+    for folder, version in (('100', 71), ('106b', 71), ('107', 87), ('108', 89)):
+        original = folder == '100'
+        for cls, fixture, name in ((0, 'Ashbow', 'TestAmazon'), (3, 'Dawnshield', 'TestPaladin')):
+            sample = os.path.join(T.REPO, '.cache', 'samples', 'oldver', folder, fixture + '.d2s')
+            expected = E.MC.Character(sample, E.data)
+            raw, _ = N.build(E.data, name, cls, 1, version=version, classic_100=original)
+            path = N.write(raw, os.path.join(E.saves, folder), name)
+            ch = E.MC.Character(path, E.data)
+            tag = f'{folder}, class {cls}'
+            T.eq(ch.build(), raw, f'{tag}: byte-identical rebuild')
+            T.eq(len(mxl_save.load_character(path, E.data)['items']), 8, f'{tag}: collector can reopen')
+            a = _normalized_early(ch, raw, original)
+            b = _normalized_early(expected, T.read(sample), original)
+            differences = [(i, x, y) for i, (x, y) in enumerate(zip(a, b)) if x != y]
+            T.eq((len(a), differences), (len(b), []), f'{tag}: first-save bytes match the game')
+            T.eq((bool(ch.status & 0x20), ch.has_jf, ch.merc_id), (version != 71, False, 0), tag)
+
+
+@T.test
+def vanilla_current_and_109_starters():
+    E = _vanilla()
+    import mxl_newchar as N
+    import mxl_save
+    for version in (92, 96):
+        for cls, name, weapon in ((0, 'TestAmazon', 'jav '), (3, 'TestPaladin', 'ssd ')):
+            raw, _ = N.build(E.data, name, cls, 1, version=version)
+            path = N.write(raw, os.path.join(E.saves, str(version)), name)
+            ch = E.MC.Character(path, E.data)
+            tag = f'{version}, class {cls}'
+            T.eq((ch.version, ch.cls, ch.level, ch.name, ch.status), (version, cls, 1, name, 0x20), tag)
+            T.eq((ch.offsets[0], ch.offsets[1], ch.skills), (765, 813 if version == 92 else 803,
+                                                          b'if' + bytes(30)), tag)
+            T.eq([e.it['code'] for e in ch.items], ['hp1 '] * 4 + ['tsc ', 'isc ', weapon, 'buc '], tag)
+            T.eq((ch.corpse, ch.has_jf, ch.merc_id, ch.tail), (b'JM\0\0', True, 0, b'kf\0'), tag)
+            T.eq(ch.build(), raw, f'{tag}: byte-identical rebuild')
+            T.eq(len(mxl_save.load_character(path, E.data)['items']), 8, f'{tag}: collector can reopen')
+            if version == 96:
+                _independent(path)
 
 
 @T.test
@@ -144,6 +215,11 @@ def median_new_characters():
     import mxl_newchar as N
     T.check(N._median(), 'Median XL profile active')
     MC = E.MC
+    try:
+        N.build(E.data, 'OldMedian', 0, 1, version=92)
+        T.check(False, 'Median refuses the legacy format')
+    except N.NewCharError:
+        pass
     _common(E, True, MC.max_level(E.data, 0))
     # the template matches the game's own file in every structural field (sample XBone, level 100)
     src = os.path.join(T.SRC_SAVES, 'XBone.d2s')

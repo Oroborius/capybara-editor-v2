@@ -128,3 +128,60 @@ class RawEarly(bytes):
     """Unsupported item record kept verbatim in the original character."""
     v109_raw = True
     read_only_reason = 'This item uses a pre-1.09 layout that is read-only.'
+
+
+def starter_header(magic, version, cls, expansion, weapon, shield, seed):
+    """The 130-byte header of a first save, after the game has initialized the character."""
+    h = bytearray(HEADER_END)
+    classic = version == 71
+    struct.pack_into('<II16xIHHHHH', h, 0, magic, version, 0x20 if expansion else 0,
+                     221 if classic else 319, 16, HEADER_END, cls, 1)
+    h[38:70] = b'\xff' * 32
+    h[43], h[45] = weapon, shield
+    h[70:86] = b'\xff\0' * 8
+    struct.pack_into('<I', h, 126, seed)
+    return bytes(h)
+
+
+def classic_starter_item(rec, data, original=False):
+    """Encode a normal starting item in the 1.00 row-index or 1.06b code layout."""
+    from mxl_creator import BitWriter
+
+    bw = BitWriter()
+    simple = rec.get('simple') and not original
+    flags = 0x22010 if original else 0x1a2010 | (0x200000 if simple else 0)
+    bw.write(32, flags)
+    code = int.from_bytes(rec['code'].encode('latin1'), 'little')
+    if not original:
+        bw.write(10, 0)
+        if not simple:
+            bw.write(32, code)
+    bw.write(5, rec['equipped'])
+    page = 0 if rec['panel'] else 255
+    if simple:
+        fields = ((3, rec['location']), (5, rec['x']), (3, rec['y']), (8, page), (32, code))
+    else:
+        fields = [(3, 0), (12, 1)]
+        if original:
+            fields.append((10, classic_codes(data).index(rec['code'])))
+        fields += [(3, rec['location']), (4, 2), (20, rec.get('quantity', 0)),
+                   (8, rec.get('durability', 0)), (8, rec.get('durability', 0)),
+                   (5, rec['x']), (3, rec['y']), (10, 0), (32, rec['id']),
+                   (32, rec['seed']), (8, page)]
+    for width, value in fields:
+        bw.write(width, value)
+    return b'JM' + bw.bytes()
+
+
+def starter_tail(version, items, corpse):
+    if version == 71:
+        # Empty fixed-width hireling placeholder in the Classic framing.
+        return b'JM' + bytes(6)
+    # The old writer reused its item buffer for the empty hireling byte
+    # and the hotkey block. Only the first two bytes of each hotkey were set.
+    tail = bytearray((items + corpse)[-76:-19].ljust(57, b'\0'))
+    tail[0] = 0
+    for pos in range(1, 49, 6):
+        tail[pos:pos + 2] = b'\xff\0'
+    tail[49:] = bytes(8)
+    return bytes(tail)

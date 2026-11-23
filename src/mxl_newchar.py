@@ -1,24 +1,14 @@
-"""More menu -> "New character...": writes a NEW level-N character (.d2s) into the current game's save folder, so
-the user does not have to create it in game first.
-
-The file is built from a clean skeleton of the header, quest / waypoint / NPC sections, an empty item list, no
-corpse, no mercenary and no golem (the layout of the mock generator in mxl_mock.py and of the Median XL sample
-XBone, docs/SAVE_FORMAT.md 1-5), then parsed by mxl_char.Character and finished with its own writers (stats,
-skills, quests, waypoints; size and checksum by Character.build). Profile differences: Median XL writes 0x5F at
-header 0x2A (vanilla 0x1E) and always has the expansion flag; the skill count (30 / 95) and the stat widths come
-from the profile's tables. Starting values: charstats (strength, energy, dexterity, vitality, stamina, life =
-vitality + hpadd, mana = energy), then per level gained the editor's level-up rule (Character.set_level: stat
-points, 1 skill point, life / mana / stamina per level); experience from the profile's experience table (vanilla
-levels 100-127, beyond the table, keep the table's last experience). No items.
-Every file is checked by the independent parser (mxlsave) and re-read by Character before it is written; the
-write is an exclusive create and refuses a name any file of the folder already uses (companion files included).
-"""
+"""Create a playable character in the selected profile and save format."""
 import os
 import random
 import struct
 import time
 
+import mxl_early_save as early_save
+import mxl_v109
 from mxl_lang import T
+
+SAVE_VERSIONS = {96: "1.14d", 92: "1.09d", 89: "1.08", 87: "1.07", 71: "Classic 1.00–1.06"}
 
 VANILLA_TOP = 127                      # vanilla: stat 12 has 7 bits (mock characters use 100-127)
 
@@ -35,34 +25,114 @@ def _median():
         return True
 
 
+def _vanilla(median):
+    if median:
+        return False
+    import mxl_profile
+    profile = mxl_profile.active()
+    return profile is not None and profile['kind'] == 'd2' and not profile['mods']
+
+
 def top_level(data, cls, median):
     import mxl_char as MC
     top = MC.max_level(data, cls)
     return top if median else max(top, VANILLA_TOP)
 
 
-def skeleton(data, cls, median, expansion=True):
-    """The bytes of an empty level-1 character of the class (name, stats and checksum filled in later)."""
+def _starter_items(data, row, version, original):
+    import mxl_creator as C
+
+    tables = C.Tables(data).item
+    codec = mxl_v109.Data109(data, version) if version < 96 and version != 71 else data
+    items = []
+    for off in range(0x5C, 0xAC, 8):
+        code = row[off:off + 4].decode('latin1')
+        loc, count = row[off + 4:off + 6]
+        if not count:
+            continue
+        base, fields = data.base(code), tables[code]
+        for i in range(count):
+            rec = dict(code=code, equipped=loc, location=1, x=0, y=0, panel=0,
+                       simple=bool(fields['compact']), version=101 if version == 96 else 100)
+            if code == 'hp1 ':
+                rec.update(location=2, x=i)
+            elif not loc:
+                rec.update(location=0, x=9, y=3 - sum(item['panel'] == 1 for item in items), panel=1)
+            if not rec['simple'] or original:
+                rec.update(id=random.getrandbits(31), seed=random.getrandbits(31), ilvl=1, quality='normal')
+            dur = 0 if fields['nodur'] else fields['dur']
+            if code == 'jav ' and version < 96:
+                # Historical first-save values predate the selected 1.14d tables.
+                dur = 14 if version == 71 else 2
+                rec['quantity'] = (38 if original else 39) if version == 71 else 60
+            elif base.stack_max is not None:
+                rec['quantity'] = base.stack_max
+            if base.kind in ('armor', 'weapons'):
+                rec['max_durability'] = dur + codec.isc[73]['add']
+                rec['durability'] = dur if version == 71 else dur + codec.isc[72]['add']
+            if base.kind == 'armor':
+                lo, hi = base.def_range
+                rec['defense'] = {87: lo, 89: min(lo + 1, hi)}.get(version, random.randint(lo, hi))
+            if off == 0x5C and (skill := struct.unpack_from('<h', row, 0xAC)[0]) > 0:
+                rec['stats'] = [{'id': 107, 'param': skill, 'value': 1}]
+            rec['flags'] = 0x822010 | (C.FLAG_SIMPLE if rec['simple'] else 0)
+            items.append(rec)
+    items.sort(key=lambda r: (bool(r['equipped']), r['equipped']))
+    if version == 71:
+        return [early_save.classic_starter_item(r, data, original) for r in items]
+    return [C.encode_item(r, codec) for r in items]
+
+
+def skeleton(data, cls, median, expansion=True, version=96, classic_100=False):
+    """First-save framing, with character stats and final checksum filled in by Character.build."""
     import mxl_char as MC
-    h = bytearray(0x14F)
-    struct.pack_into('<IIIII', h, 0, MC.MAGIC, 96, 0, 0, 0)
+
+    early = version in early_save.VERSIONS
+    vanilla = _vanilla(median)
+    h = bytearray(MC.QUEST_OFF)
+    struct.pack_into('<II', h, 0, MC.MAGIC, version)
     h[0x24] = 0x20 if (median or expansion) else 0
     h[0x28] = cls
     h[0x29], h[0x2A], h[0x2B] = 0x10, (0x5F if median else 0x1E), 1
-    struct.pack_into('<III', h, 0x2C, 0, int(time.time()) & 0xFFFFFFFF, 0xFFFFFFFF)
-    struct.pack_into('<16I', h, 0x38, *([0xFFFF] * 16))         # no hotkeys; mouse skills 0 = Attack
-    h[0x88:0xA8] = b'\xff' * 32                                 # appearance: nothing worn
-    h[0xA8:0xAB] = b'\x80\x00\x00'                              # last in Normal, act I
-    struct.pack_into('<I', h, 0xAB, random.getrandbits(32) | 1)  # map seed of the "last game"
+    struct.pack_into('<III', h, 0x2C, 0, int(time.time()), 0xFFFFFFFF)
+    struct.pack_into('<16I', h, 0x38, *([0xFFFF] * 16))
+    h[0x88:0xA8] = b'\xff' * 32
+    h[0xA8:0xAB] = b'\x80\x00\x00'
+    seed = random.getrandbits(31) | 1
+    struct.pack_into('<I', h, 0xAB, seed)
+    items = []
+    if vanilla:
+        row = data._rows('charstats')[cls]
+        items = _starter_items(data, row, version, classic_100)
+        # Tokens for the starting weapons in the original game appearance tables.
+        weapon = (0x1B, 0x25, 0x09, 0x11, 0x04, 0x0C, 0x2D)[cls]
+        if version == 71:
+            weapon = (0x43, 0x12, 0x04, 0x30, 0x01)[cls]
+        shield = (0x1B if version == 71 else 0x4F) if row[0x64:0x68] == b'buc ' else 0xFF
+        if early:
+            h = early_save.starter_header(MC.MAGIC, version, cls, expansion, weapon, shield, seed)
+        else:
+            h[0x8D], h[0x8F] = weapon, shield
     out = bytes(h)
     out += b'Woo!' + struct.pack('<IH', 6, 298) + bytes(288)
-    out += b'WS' + struct.pack('<IH', 1, 80) + (b'\x02\x01' + bytes(22)) * 3
+    wp = b'\x02\x01' + bytes((int(vanilla),)) + bytes(21)
+    out += b'WS' + struct.pack('<IH', 1, 80) + wp * 3
     out += b'\x01w' + struct.pack('<H', 52) + bytes(48)
-    out += b'gf\xff\x01'                                        # empty stat list (0x1FF), set below
+    stats = [(12, None, 1)] if early else []
+    out += b'gf'
+    if version < 96:
+        mask = mxl_v109.build_stats(stats)
+        out += mask[:2] + b'\0' + mask[2:] if early else mask
+    else:
+        out += b'\xff\x01'
     out += b'if' + bytes(MC.class_skill_count(data, cls))
-    out += b'JM\x00\x00' + b'JM\x00\x00'                        # no items, no corpse
-    if median or expansion:
-        out += b'jf' + b'kf\x00'                                # no mercenary (id 0), no iron golem
+    records = b''.join(items)
+    corpse = b'JM\0\0'
+    out += b'JM' + struct.pack('<H', len(items)) + records + corpse
+    if early:
+        out += early_save.starter_tail(version, records, corpse)
+    elif median or expansion:
+        out += b'jfkf\0'
     return out
 
 
@@ -71,18 +141,21 @@ def _charstats_row(data, cls):
     return dict(str=r[0x30], dex=r[0x31], ene=r[0x32], vit=r[0x33], stamina=r[0x34], hpadd=r[0x35])
 
 
-def build(data, name, cls, level, hardcore=False, expansion=True, unlocked=False, median=None):
+def build(data, name, cls, level, hardcore=False, expansion=True, unlocked=False, median=None,
+          version=96, classic_100=False):
     """(bytes, Character) of a new character. Raises NewCharError / mxl_char.CharError."""
     import mxl_char as MC
     median = _median() if median is None else median
-    expansion = True if median else bool(expansion)
+    if version not in SAVE_VERSIONS or (version != 96 and not _vanilla(median)):
+        raise NewCharError(T('nc.err.version', 'Unsupported save version for this profile.'))
+    expansion = median or (version != 71 and bool(expansion))
     MC.check_name(name)
     if not 0 <= cls < 7 or (not expansion and cls >= 5):
         raise NewCharError(T('nc.err.class', 'Druid and Assassin need the expansion.'))
     top = top_level(data, cls, median)
     if not 1 <= level <= top:
         raise NewCharError(T('nc.err.level', 'Level: 1 to {top}', top=top))
-    raw = skeleton(data, cls, median, expansion)
+    raw = skeleton(data, cls, median, expansion, version, classic_100)
     ch = MC.Character.__new__(MC.Character)
     ch.path, ch.data, ch.raw = None, data, raw
     ch.parse(raw)
@@ -126,15 +199,19 @@ def build(data, name, cls, level, hardcore=False, expansion=True, unlocked=False
 def check(raw, data):
     """Refuses bytes the independent parser or the editor's own reader do not accept."""
     import mxl_char as MC
-    try:
-        import mxl_savecheck
-        mxl_savecheck.lib()
-        from mxlsave.check import check_bytes
-        _obj, problems = check_bytes(raw, 'd2s', mxl_savecheck.tables())
-    except ImportError:
-        problems = []
-    if problems:
-        raise NewCharError(T('nc.err.check', 'The new file failed the save check: {p}', p='; '.join(problems[:3])))
+    # The independent parser supports version 96. Use the editor's
+    # legacy readers for the remaining formats.
+    if raw[4] == 96:
+        try:
+            import mxl_savecheck
+            mxl_savecheck.lib()
+            from mxlsave.check import check_bytes
+            _obj, problems = check_bytes(raw, 'd2s', mxl_savecheck.tables())
+        except ImportError:
+            problems = []
+        if problems:
+            raise NewCharError(T('nc.err.check', 'The new file failed the save check: {p}',
+                                 p='; '.join(problems[:3])))
     ch = MC.Character.__new__(MC.Character)
     ch.path, ch.data, ch.raw = None, data, raw
     ch.parse(raw)
@@ -187,6 +264,8 @@ def open_dialog(app):
     names = MC.class_names(data)
     name = tk.StringVar()
     cls = tk.StringVar(value=names[0])
+    version = tk.StringVar(value=SAVE_VERSIONS[96])
+    classic_100 = tk.BooleanVar(value=False)
     level = tk.StringVar(value='1')
     hc = tk.BooleanVar(value=False)
     exp = tk.BooleanVar(value=True)
@@ -197,7 +276,8 @@ def open_dialog(app):
     ent = ttk.Entry(f, textvariable=name, width=18)
     ent.grid(row=0, column=1, sticky='we', padx=2, pady=2)
     ttk.Label(f, text=T('nc.class', 'Class')).grid(row=1, column=0, sticky='w', padx=2, pady=2)
-    ttk.Combobox(f, textvariable=cls, values=names, state='readonly', width=16).grid(
+    classes = ttk.Combobox(f, textvariable=cls, values=names, state='readonly', width=16)
+    classes.grid(
         row=1, column=1, sticky='we', padx=2, pady=2)
     top = max(top_level(data, c, median) for c in range(7))
     ttk.Label(f, text=T('nc.level', 'Level (1-{top})', top=top)).grid(row=2, column=0, sticky='w', padx=2, pady=2)
@@ -206,7 +286,36 @@ def open_dialog(app):
     ttk.Checkbutton(f, text=T('nc.hardcore', 'Hardcore'), variable=hc).grid(
         row=row, column=0, columnspan=2, sticky='w', padx=2)
     row += 1
-    if not median:
+    if _vanilla(median):
+        ttk.Label(f, text=T('nc.version', 'Save version')).grid(row=row, column=0, sticky='w', padx=2)
+        versions = ttk.Combobox(f, textvariable=version, values=tuple(SAVE_VERSIONS.values()), state='readonly')
+        versions.grid(row=row, column=1, sticky='we', padx=2)
+        row += 1
+        expansion_toggle = ttk.Checkbutton(f, text=T('nc.expansion', 'Expansion (Lord of Destruction)'),
+                                           variable=exp)
+        expansion_toggle.grid(row=row, column=0, columnspan=2, sticky='w', padx=2)
+        original_toggle = ttk.Checkbutton(f, text=T('nc.classic_100', 'Use 1.00 item format'),
+                                          variable=classic_100)
+        original_toggle.grid(row=row, column=0, columnspan=2, sticky='w', padx=2)
+        original_toggle.grid_remove()
+        row += 1
+
+        def update_classes(*_args):
+            classic = version.get() == SAVE_VERSIONS[71]
+            available = names if not classic and exp.get() else names[:5]
+            classes.configure(values=available)
+            if cls.get() not in available:
+                cls.set(available[0])
+            if classic:
+                expansion_toggle.grid_remove()
+                original_toggle.grid()
+            else:
+                original_toggle.grid_remove()
+                expansion_toggle.grid()
+
+        version.trace_add('write', update_classes)
+        exp.trace_add('write', update_classes)
+    elif not median:
         ttk.Checkbutton(f, text=T('nc.expansion', 'Expansion (Lord of Destruction)'), variable=exp).grid(
             row=row, column=0, columnspan=2, sticky='w', padx=2)
         row += 1
@@ -235,7 +344,9 @@ def open_dialog(app):
             if name_taken(folder, n):
                 raise NewCharError(T('nc.err.exists', 'A character or file named {name} already exists.', name=n))
             raw, _ch = build(data, n, names.index(cls.get()), lv, hardcore=hc.get(), expansion=exp.get(),
-                             unlocked=unl.get(), median=median)
+                             unlocked=unl.get(), median=median,
+                             version=next(v for v, label in SAVE_VERSIONS.items() if label == version.get()),
+                             classic_100=classic_100.get())
             path = write(raw, folder, n)
         except (NewCharError, MC.CharError, OSError) as e:
             err.configure(text=str(e))
