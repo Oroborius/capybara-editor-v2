@@ -132,7 +132,7 @@ class ContainersPage:
     """The character's stash, cube and belt, with its inventory under them. Items move by drag and drop between
     the stash, the cube and the inventory (one write of the character, one Ctrl+Z step); a gem / rune / jewel
     dropped on an item goes into its socket (mxl_socket_insert); right-click: the item menu
-    (on_menu). The belt is shown only. Items outside a grid (hacked saves) are listed under it."""
+    (on_menu). Vanilla Hero Editor also supports dragging belt items. Items outside a grid are listed under it."""
 
     def __init__(self, win, frame):
         self.win, self.frame = win, frame
@@ -388,9 +388,10 @@ class ContainersPage:
         self.drag = None
         e = self._pick(key, ev)
         self.win.selected = e
-        if e is not None and key != 'belt':
+        if e is not None and (key != 'belt' or self.win.vanilla_he):
             c = self.cell
-            self.drag = dict(entry=e, key=key, dx=ev.x // c - e.it['x'], dy=ev.y // c - e.it['y'], moved=False)
+            dx, dy = (0, 0) if key == 'belt' else (ev.x // c - e.it['x'], ev.y // c - e.it['y'])
+            self.drag = dict(entry=e, key=key, dx=dx, dy=dy, moved=False)
         self.refresh()
         try:
             from mxl_vanilla_he import description_item
@@ -431,15 +432,15 @@ class ContainersPage:
         t = self.target(ev.x_root, ev.y_root)
         if t is None:
             if self.win.vanilla_he:
-                from mxl_vanilla_he import clipboard_point
                 from mxl_vanilla_he_items import cut_item
 
-                paper = self.win.he_pickup
-                if paper.winfo_ismapped() and clipboard_point((paper, (ev.x_root, ev.y_root))) is not None:
-                    cut_item(self.as_win(), d['entry'])
+                cut_item(self.as_win(), d['entry'])
             return
+        from mxl_vanilla_he import allows
+
+        if not allows(self.win, 'transfer'):
+            return False
         key, cv, x, y = t
-        import mxl_char as MC
         e, win = d['entry'], self.win
         name = e.it.get('name') or e.it['code']
         try:
@@ -477,6 +478,10 @@ class ContainersPage:
             print('socket insert:', err)
         gx, gy = x // c - d['dx'], y // c - d['dy']
         if key == 'belt':
+            if win.vanilla_he:
+                from mxl_vanilla_he_items import move_into_belt
+
+                return move_into_belt(adapter, e, (gx, gy))
             self.set_status(T('van.belt_ro', 'The belt is shown only: potions go there in the game.'), True)
             return False
         where = ('inv', gx, gy) if key == 'inv' else ('store', PANEL_CUBE if key == 'cube' else PANEL_STASH, gx, gy)

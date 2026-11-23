@@ -16,7 +16,7 @@ from mxl_format_fix import body_kind
 from mxl_char import CharError, blob_item
 from mxl_save import EditError
 from mxl_socket_menu import SocketError
-from mxl_socket_insert import InsertError
+from mxl_socket_insert import InsertError, socket_total
 
 FLAG_STARTER = 1 << 17
 ITEM_ERRORS = (CharError, CreateError, EditError, FormatError, OSError, ValueError, OverflowError, KeyError, IndexError, SocketError, InsertError)
@@ -244,11 +244,46 @@ def replace_item(win, entry, before, blob, caption, owner=None, *, allow_type_ch
         _record_char_write(win, original.path, snapshot, caption)
 
 
+def report_summary(data, rows):
+    """Combine report attributes by component, keeping separate states and time periods."""
+    from mxl_attr_slots import row_label
+    from mxl_statnames import skill_label, stat_text
+    from mxl_vanilla_he_extras import CHARGED_SKILL, is_timed_stat, time_values
+
+    groups = {}
+    for index, stat in enumerate(rows):
+        sid, param, value = stat['id'], stat.get('param'), stat['value']
+        key = (sid, param)
+        components = (value,)
+        if sid == 98:
+            key += (index,)
+        elif sid == CHARGED_SKILL:
+            components = (value & 255, value >> 8)
+        elif is_timed_stat(data, sid):
+            period, minimum, maximum = time_values(value)
+            key += (period,)
+            components = (minimum, maximum)
+        previous, original = groups.get(key, ((0,) * len(components), stat))
+        groups[key] = (tuple(a + b for a, b in zip(previous, components)), original)
+
+    for key, (components, original) in groups.items():
+        sid, param = key[:2]
+        if sid == CHARGED_SKILL:
+            skill, level = divmod(param or 0, 64)
+            label = skill_label(data, skill) or f'Skill {skill}'
+            yield f'Level {level} {label} ({components[0]}/{components[1]} charges)'
+        elif len(components) == 2:
+            period = ('Daytime', 'Dusk', 'Nighttime', 'Dawn')[key[2]]
+            yield f'{row_label(data, original)}: {components[0]} to {components[1]} ({period})'
+        else:
+            yield stat_text(data, sid, param, components[0])
+
+
 def character_report(win):
     from pathlib import Path
     from mxl_char import LOC_BELT, LOC_EQUIPPED, LOC_STORED, PANEL_CUBE, PANEL_INVENTORY, class_names, slot_name
     from mxl_creator import FLAG_ETHEREAL, PANEL_STASH
-    from mxl_creator import decode_blob, merge_stats
+    from mxl_creator import decode_blob
     from mxl_rc_menu import clean_name
     from mxl_statnames import stat_text
     from mxl_vanilla_he import ITEM_DECODE_VERSIONS, character_title, decode_version
@@ -260,20 +295,22 @@ def character_report(win):
     lines = [Path(ch.path).name, f'Version: {version}, {expansion}',
              f'Title: {title}', f'Type: {class_names(data)[ch.cls]}',
              f'File Size: {len(ch.raw)} bytes', '', 'Character Stats:']
-    lines.extend((f'  Level = {ch.stat(12)}', f'  Experience = {ch.stat(13)}'))
+    indent = ' ' * 14
+    lines.extend((f'{indent}Level = {ch.stat(12)}', f'{indent}Experience = {ch.stat(13)}'))
     for name, sid in (('Life', 6), ('Mana', 8), ('Stamina', 10)):
         whole, fraction = divmod(ch.stat(sid + 1), 256)
-        lines.extend((f'  Current {name} = {ch.stat(sid) // 256}', f'  Max {name} = {whole}',
-                      f'  Max {name} Fraction = {fraction}'))
+        lines.extend((f'{indent}Current {name} = {ch.stat(sid) // 256}', f'{indent}Max {name} = {whole}',
+                      f'{indent}Max {name} Fraction = {fraction}'))
     for name, sid in (('Strength', 0), ('Energy', 1), ('Dexterity', 2), ('Vitality', 3)):
-        lines.append(f'  {name} = {ch.stat(sid)}')
+        lines.append(f'{indent}{name} = {ch.stat(sid)}')
     lines.extend(('', 'Skills:'))
-    lines.extend(f'  {data.skill_names.get(sid, sid)} = {level}' for sid, level in ch.skill_levels().items())
+    lines.extend(f'{indent}{data.skill_names.get(sid, sid)} = {level}' for sid, level in ch.skill_levels().items())
     entries = extras_entries(ch)
-    lines.extend(('', 'Items (SUMMARY follows the individual item list):', f' Number of Items = {len(entries)}'))
+    lines.extend(('', 'Items (SUMMARY given after this list of individual items):', f' Number of Items = {len(entries)}'))
     non_weapons = 'Charms in Inventory + Equipped (not in hands)'
     sections = {non_weapons: []}
-    weapon_names = {4: 'Right Hand', 5: 'Left Hand', 11: 'Alternate Right Hand', 12: 'Alternate Left Hand'}
+    weapon_names = {4: 'Items in Right Hand', 5: 'Items in Left Hand',
+                    11: 'Items in 2nd Right Hand', 12: 'Items in 2nd Left Hand'}
     magic_lists = {'stats': 'Normal Magic', **{f'set_stats_{i}': f'Set{i + 1} Magic' for i in range(5)},
                    'stats_runeword': 'Runeword Magic'}
 
@@ -298,6 +335,7 @@ def character_report(win):
         try:
             record, children = decode_blob(entry.blob, data)
         except ITEM_ERRORS:
+            lines.append('  Item properties could not be decoded.')
             continue
         combined = []
         for index, part in enumerate((record, *children)):
@@ -316,10 +354,16 @@ def character_report(win):
                     lines.append(f'  {label} = {part[key]}')
             if part['flags'] & FLAG_ETHEREAL:
                 lines.append('  Ethereal')
+            if 'durability' in part:
+                durability = part['durability'] - data.isc[S.DURABILITY]['add']
+                maximum = part['max_durability'] - data.isc[S.MAX_DURABILITY]['add']
+                lines.append(f'  Durability = {durability}/{maximum}')
+            if part.get('sockets'):
+                lines.append(f'  Sockets = {len(children) if index == 0 else 0}/{socket_total(part)}')
             for key, label in magic_lists.items():
                 if key in part:
-                    lines.append(f'    {label}')
-                    lines.extend(f'      {stat_line(stat)}' for stat in part[key])
+                    lines.append(f'{indent}{label}')
+                    lines.extend(f'{indent * 2}{stat_line(stat)}' for stat in part[key])
                     combined.extend(part[key])
         if owner is False:
             slot = record.get('equipped') if record.get('location') == LOC_EQUIPPED else None
@@ -332,7 +376,7 @@ def character_report(win):
 
     for title, rows in sections.items():
         lines.extend(('', f'SUMMARY of {title}:'))
-        lines.extend(f'  {stat_line(stat)}' for stat in merge_stats(rows))
+        lines.extend(f'{indent}{line}' for line in report_summary(data, rows))
     return '\n'.join(lines) + '\n'
 
 
@@ -762,20 +806,50 @@ def belt_item(win, blob, slot, replace=None):
         items[items.index(replace)] = new
 
 
+def belt_target(win, cell):
+    from mxl_vanilla_pages import containers
+
+    _, _, cols, rows, entries = next(row for row in containers(win.ch, win.data) if row[0] == 'belt')
+    x, y = cell
+    if 0 <= x < cols and 0 <= y < rows:
+        slot = x + cols * (rows - 1 - y)
+        return slot, next((item for item in entries if item.it['x'] == slot), None)
+
+
+def move_into_belt(win, entry, cell):
+    from mxl_vanilla_he_extras import put_picked_up
+
+    target = belt_target(win, cell)
+    if target is None:
+        return False
+    slot, previous = target
+    if previous is entry:
+        return False
+    ch = win.ch
+    try:
+        blob = ch.stash_blob(entry)
+        displaced = ch.stash_blob(previous) if previous is not None else blob
+        belt_item(win, blob, slot, previous)
+        ch.remove(entry)
+        if win.save('Moved item into the belt.', operation='transfer'):
+            put_picked_up(win, displaced)
+            return True
+    except ITEM_ERRORS as error:
+        win.set_status(str(error), True)
+    return False
+
+
 def paste_belt(win, cell, clip):
     from mxl_rc_menu import _record_char_write
-    from mxl_vanilla_pages import containers
     from mxl_vanilla_he import allows
 
     if not allows(win, 'transfer'):
         return
     win.sync_file()
-    _, _, cols, rows, entries = next(row for row in containers(win.ch, win.data) if row[0] == 'belt')
-    x, y = cell
-    if not 0 <= x < cols or not 0 <= y < rows:
+    target = belt_target(win, cell)
+    if target is None:
         return
-    slot = x + cols * (rows - 1 - y)
-    previous = next((entry for entry in entries if entry.it['x'] == slot), None)
+    slot, previous = target
     if previous is not None and not messagebox.askyesno('Paste Item', 'Replace the belt item?', parent=win.top):
         return
     try:

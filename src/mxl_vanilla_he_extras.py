@@ -620,6 +620,10 @@ def skill_tab_choices(data):
             for cls, tabs in skill_trees(data).items() for tab, name, _skills in tabs if 1 <= tab <= 3]
 
 
+def is_timed_stat(data, sid):
+    return 268 <= sid <= 304 and data.isc[sid]['bits'] == 22 and not data.isc[sid]['param']
+
+
 def time_values(number):
     return number & 3, (number >> 2 & 1023) - 256, (number >> 12 & 1023) - 256
 
@@ -670,6 +674,7 @@ class ItemEdit:
         self.page, self.win, self.entries, self.offset = page, win, entries, offset
         self.record, self.children, self.entry = {}, [], None
         self.offsets = {}
+        self.decode_error = ''
         self.dirty = False
         self.removed = None
         self.selection = 0
@@ -733,21 +738,21 @@ class ItemEdit:
         if entry is None:
             self.error('The selected item has changed.')
             return
-        try:
-            record, children = decode_blob(entry.blob, self.win.data)
-        except ITEM_ERRORS as error:
-            self.error(error)
-            return
         self.selection, self.entry = index, entry
         self.original = bytes(entry.blob)
-        self.record, self.children = record, children
         self.removed = None
         self.dirty = False
+        self.decode_error = ''
+        try:
+            self.record, self.children = decode_blob(entry.blob, self.win.data)
+        except ITEM_ERRORS as error:
+            self.record, self.children = {}, []
+            self.decode_error = str(error)
         self.render_icon(entry.it)
         group, _, quality = self.initial.partition(':')
         self.initial = 'Basic1'
         self.rebuild(group)
-        if group == 'Quality' and quality:
+        if self.record and group == 'Quality' and quality:
             self.stage_quality(quality)
 
     def render_icon(self, item):
@@ -859,9 +864,12 @@ class ItemEdit:
         selected = next(iter(self.tree.selection()), 'Basic1')
         group, _, field = selected.partition(':')
         self.details.configure(text=group)
-        if not self.record:
-            return
         self.offsets.clear()
+        if not self.record:
+            self.offset.set('?')
+            if self.decode_error:
+                ttk.Label(self.details, text=self.decode_error, wraplength=200).pack(anchor='w')
+            return
         try:
             blob = encode_modified(self.record, self.children, self.win.data) if self.dirty else self.original
             decode_item(blob, self.win.data, offsets=self.offsets)
@@ -1135,14 +1143,11 @@ class ItemEdit:
         level = ttk.Entry(self.details, textvariable=skill_level, width=6)
         max_charges = tk.StringVar(value='0')
         charges_label = ttk.Label(self.details, text='Maximum charges')
-        charges = ttk.Entry(self.details, textvariable=max_charges, width=6)
+        charges = ttk.Combobox(self.details, textvariable=max_charges, width=8)
         times = ('Daytime', 'Dusk', 'Nighttime', 'Dawn')
         span = ttk.Combobox(self.details, values=times, state='readonly', width=12)
         extra = ttk.Frame(self.details)
         components = []
-
-        def packed_time(sid):
-            return 268 <= sid <= 304 and data.isc[sid]['bits'] == 22 and not data.isc[sid]['param']
 
         def configure(_event=None):
             sid = choices[attribute.current()][0]
@@ -1156,12 +1161,16 @@ class ItemEdit:
             number = current['value'] if same else max(lo, min(hi, 0))
             if sid == CHARGED_SKILL:
                 charges_label.configure(text='Maximum charges')
+                value.configure(values=tuple(range(256)))
+                charges.configure(values=tuple(range(256)))
                 value.set(str(number & 255))
                 max_charges.set(str(number >> 8))
                 charges_label.pack(anchor='w', before=apply_button)
                 charges.pack(anchor='w', before=apply_button)
-            elif packed_time(sid):
+            elif is_timed_stat(data, sid):
                 time, minimum, maximum = time_values(number) if same else (0, 0, 0)
+                value.configure(values=tuple(range(-256, 768)))
+                charges.configure(values=tuple(range(-256, 768)))
                 value.set(str(minimum))
                 span.current(time)
                 span.pack(anchor='w', before=apply_button)
@@ -1194,7 +1203,7 @@ class ItemEdit:
             skill = sid != 188 and param_kind(sid) == 'skill'
             level.configure(state='normal' if skill else 'disabled')
             if skill:
-                skill_level.set(str(max(1, raw & 63)))
+                skill_level.set(str(raw & 63 if same else 1))
                 raw >>= 6
             param.set(next((name for name, val in params.items() if val == raw), str(raw)) if bits else 'Unused')
 
@@ -1221,7 +1230,7 @@ class ItemEdit:
                         if not 0 <= number <= maximum <= 255:
                             raise ValueError('Current and maximum charges must be 0–255, with current at most maximum.')
                         number |= maximum << 8
-                    if packed_time(sid):
+                    if is_timed_stat(data, sid):
                         number = pack_time_values(span.current(), number, int(max_charges.get()))
                     lo, hi = value_range(data, sid)
                     if not lo <= number <= hi:
@@ -1281,7 +1290,7 @@ class ItemEdit:
             self.rebuild(f'{group}:{moved}')
 
     def copy(self):
-        if self.entry is not None:
+        if self.entry is not None and self.record:
             put_picked_up(self.win, self.original)
 
     def remove_child(self):
@@ -1316,6 +1325,9 @@ class ItemEdit:
         from mxl_socket_insert import socket_total
         from mxl_socket_menu import max_sockets
 
+        if self.decode_error:
+            self.error(self.decode_error)
+            return
         if self.entry is not None:
             try:
                 data = self.win.data
@@ -1359,7 +1371,8 @@ class ItemEdit:
                     import stat_ids as S
 
                     maximum = record['max_durability'] - data.isc[S.MAX_DURABILITY]['add']
-                    if record['durability'] > maximum:
+                    current = record['durability'] - data.isc[S.DURABILITY]['add']
+                    if current > maximum:
                         warnings.append(f'Current durability exceeds {maximum}.')
                 total = socket_total(record)
                 if record.get('sockets') and total > max_sockets(_creator_for(self.win), record['code'], record):

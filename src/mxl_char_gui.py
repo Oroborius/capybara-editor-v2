@@ -722,8 +722,7 @@ class CharacterWindow(StatEditMixin):
             if 0 <= x < cv.winfo_width() and 0 <= y < cv.winfo_height():
                 break
         else:
-            if (self.vanilla_he and self.he_pickup.winfo_ismapped()
-                    and V.clipboard_point((self.he_pickup, (ev.x_root, ev.y_root))) is not None):
+            if self.vanilla_he:
                 from mxl_vanilla_he_items import cut_item
 
                 cut_item(self, d['entry'])

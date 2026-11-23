@@ -283,6 +283,20 @@ def _write_stats(bw, stats, data, preserve_order=False):
     bw.write(9, 0x1FF)
 
 
+class BetaItemData:
+    """Item tables with the durability width used in the 1.10s beta."""
+
+    realm_stamp_bits = 96
+
+    def __init__(self, data):
+        self._data = data
+        self.isc = dict(data.isc)
+        self.isc[S.DURABILITY] = dict(self.isc[S.DURABILITY], bits=8)
+
+    def __getattr__(self, name):
+        return getattr(self._data, name)
+
+
 def encode_item(rec, data, *, preserve_stat_order=False):
     """Bytes ('JM' + bits) of one item record. rec keys: the fields of mxl_format.Item plus
     flags (raw 32-bit header flags), runeword_id (16 bits), tome_bits, realm_bit, set_mask; stats lists are
@@ -359,7 +373,11 @@ def encode_item(rec, data, *, preserve_stat_order=False):
         bw.write(7, 0)
     if code in ('tbk ', 'ibk '):
         bw.write(5, rec.get('tome_bits', 0))
-    bw.write(1, rec.get('realm_bit', 0))
+    realm_bit = rec.get('realm_bit', 0)
+    bw.write(1, realm_bit)
+    stamp_bits = getattr(data, 'realm_stamp_bits', 0)
+    if realm_bit and stamp_bits:
+        bw.write(stamp_bits, rec.get('realm_stamp', 0))
     base = data.base(code)
     kind = body_kind(data, code)
     if kind == 'armor':
@@ -547,6 +565,10 @@ def decode_item(blob, data, *, offsets=None):
         r['tome_bits'] = br.read(5)
     mark('realm_bit')
     r['realm_bit'] = br.read(1)
+    stamp_bits = getattr(data, 'realm_stamp_bits', 0)
+    if r['realm_bit'] and stamp_bits:
+        mark('realm_stamp')
+        r['realm_stamp'] = br.read(stamp_bits)
     base = data.base(code)
     kind = body_kind(data, code)
     if kind == 'armor':

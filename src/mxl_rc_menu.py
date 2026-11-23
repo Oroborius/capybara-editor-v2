@@ -564,8 +564,9 @@ def _vanilla_char_commands(win, menu, entry, clip, *, paste=None, delete=None, e
             return
         win.sync_file()
         try:
-            with open(path, 'w', encoding='utf-8') as output:
-                output.write(character_report(win))
+            report = character_report(win)
+            with open(path, 'w', encoding='utf-8', newline='\r\n') as output:
+                output.write(report)
         except ITEM_ERRORS as error:
             win.set_status(str(error), True)
             return

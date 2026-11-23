@@ -305,7 +305,7 @@ def vanilla_extended_pickers_and_socket_child_replacement():
     from mxl_vanilla_he_extras import (
         BASIC_FLAGS, create_item_blob, header_catalog, move_attribute, pack_time_values, skill_tab_choices, time_values,
     )
-    from mxl_vanilla_he_items import SocketChild, character_report, extras_entries, replace_item
+    from mxl_vanilla_he_items import SocketChild, character_report, extras_entries, replace_item, report_summary
 
     win = T.chartab()
     versions = [96]
@@ -328,6 +328,12 @@ def vanilla_extended_pickers_and_socket_child_replacement():
     report = character_report(win)
     T.check(all(section in report for section in ('Character Stats:', 'Skills:', 'Normal Magic', 'SUMMARY of')),
             'report includes individual and combined attributes')
+    charges = list(report_summary(win.data, [
+        dict(id=204, param=(36 << 6) | 1, value=(160 << 8) | 150),
+        dict(id=204, param=(36 << 6) | 1, value=(160 << 8) | 150),
+    ]))
+    T.eq(len(charges), 1, 'report combines charges for the same skill and level')
+    T.check('300/320 charges' in charges[0], 'current charges cannot carry into maximum charges')
     child, owner = next((entry, owner) for entry, owner in extras_entries(win.ch, include_socketed=True)
                         if isinstance(owner, SocketChild))
     original = bytes(win.ch.raw)
@@ -340,6 +346,35 @@ def vanilla_extended_pickers_and_socket_child_replacement():
     finally:
         Path(win.ch.path).write_bytes(original)
         win.reload()
+
+
+@T.test
+def vanilla_item_editor_clears_stale_selection_on_opaque_record():
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    import tkinter as tk
+    from unittest.mock import patch
+    from mxl_vanilla_he_extras import ItemEdit
+    from mxl_vanilla_he_items import extras_entries
+
+    win = T.chartab()
+    page = tk.Frame(win.top)
+    entries = extras_entries(win.ch)
+    editor = ItemEdit(page, win, entries, None, 'Basic1', tk.StringVar(page))
+    T.check(bool(editor.record), 'first item has editable properties')
+    editor.items.selection_clear(0, 'end')
+    editor.items.selection_set(1)
+    try:
+        with patch('mxl_vanilla_he_extras.decode_blob', side_effect=ValueError('Opaque legacy record')):
+            editor.load()
+        T.eq(editor.selection, 1, 'selection follows the opaque item')
+        T.eq(editor.record, {}, 'the previous item is no longer editable through this selection')
+        T.eq(editor.decode_error, 'Opaque legacy record', 'the editor displays the decode reason')
+        with patch('mxl_vanilla_he_extras.put_picked_up') as pickup:
+            editor.copy()
+            T.check(not pickup.called, 'the previous item cannot be copied through this selection')
+    finally:
+        page.destroy()
 
 
 @T.test
@@ -429,6 +464,84 @@ def vanilla_binary_bits_stage_on_character_save():
 
 
 @T.test
+def vanilla_beta_item_preview_honors_durability_and_timestamp():
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    from types import SimpleNamespace
+    from mxl_creator import BetaItemData, Creator, decode_item, encode_item
+    from mxl_vanilla_he import decoded_item
+
+    win = T.chartab()
+    data = win.data
+    creator = Creator(data)
+    raw, _ = creator.build(creator.new_spec('normal', 'hax '))
+    record, _ = decode_item(raw, data)
+    record.update(realm_bit=1, realm_stamp=0x123456789ABCDEF123456789)
+    beta = BetaItemData(data)
+    beta_raw = encode_item(record, beta)
+    native_offsets, beta_offsets = {}, {}
+    parsed, size = decode_item(beta_raw, beta, offsets=beta_offsets)
+    decode_item(raw, data, offsets=native_offsets)
+    T.eq(size, len(beta_raw), 'beta item consumes the complete record')
+    T.eq(parsed['realm_stamp'], record['realm_stamp'], 'beta timestamp is preserved')
+    T.eq(beta_offsets['stats'] - native_offsets['stats'], 95, 'timestamp and durability change the stat offset')
+    preview = decoded_item(SimpleNamespace(ch=SimpleNamespace(version=96, old=False),
+                                           data=data, he_decode_version=95, set_status=win.set_status),
+                           SimpleNamespace(blob=beta_raw))
+    T.check(preview is not None and preview['code'] == record['code'], 'beta preview shows the item')
+
+
+@T.test
+def vanilla_cancelled_drag_uses_pickup_and_belt_accepts_potions():
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    from types import SimpleNamespace
+    from mxl_char import LOC_BELT, blob_item
+    from mxl_creator import Creator
+    from mxl_vanilla_he import set_tab
+    from mxl_vanilla_he_extras import create_item_blob
+
+    win = T.chartab()
+    potion = create_item_blob(Creator(win.data), 'hp1 ')
+    before = bytes(win.ch.raw)
+    previous_clip = getattr(win.app, '_capy_clip', None)
+    try:
+        source = next(iter(win.ch.inventory()))
+        spot = (source.it['x'], source.it['y'])
+        win.ch.remove(source)
+        win.ch.items[:] = [entry for entry in win.ch.items if entry.it['location'] != LOC_BELT]
+        win.ch.place(potion, ('inv', *spot))
+        T.check(win.save('Added potion for drag check'), 'drag fixture saved')
+        set_tab(win, 'containers')
+        T.pump(4)
+        page = win.extra['containers']
+        cols = int(page.canvases['belt'].cget('width')) // page.cell
+        rows = int(page.canvases['belt'].cget('height')) // page.cell
+        cells = [(x, y) for y in range(rows) for x in range(cols)]
+        target = next(cell for cell in cells if page.entry_at('belt', *(c * page.cell + 1 for c in cell)) is None)
+
+        def event(key, cell):
+            return T.ev(page.canvases[key], *(c * page.cell + 1 for c in cell))
+
+        page.on_press('inv', event('inv', spot))
+        page.on_drag(None)
+        page.on_release(event('belt', target))
+        potion_on_belt = page.entry_at('belt', *(c * page.cell + 1 for c in target))
+        T.check(potion_on_belt is not None and potion_on_belt.it['location'] == LOC_BELT,
+                'dragging a potion to the belt writes it in the target slot')
+        page.on_press('belt', event('belt', target))
+        page.on_drag(None)
+        page.on_release(SimpleNamespace(x_root=-10, y_root=-10))
+        T.check(page.entry_at('belt', *(c * page.cell + 1 for c in target)) is None,
+                'cancelled belt drag frees its original slot')
+        T.eq(blob_item(win.app._capy_clip[0], win.data)['code'], 'hp1 ', 'cancelled drag puts the potion in Picked Up')
+    finally:
+        Path(win.ch.path).write_bytes(before)
+        win.app._capy_clip = previous_clip
+        win.reload(keep=False)
+
+
+@T.test
 def vanilla_open_obeys_version_and_decode_policies():
     if not AVAILABLE:
         T.skip('vanilla game data or sample character is unavailable')
@@ -441,7 +554,8 @@ def vanilla_open_obeys_version_and_decode_policies():
     original = win.ch.raw
     unsupported = SAVES / 'unknown-version.bin'
     unsupported.write_bytes(original[:4] + struct.pack('<I', 98))
-    keys = ('vanilla_he_version_warning', 'vanilla_he_decode_check', 'vanilla_he_error_response')
+    keys = ('vanilla_he_version_warning', 'vanilla_he_decode_check', 'vanilla_he_error_response',
+            'vanilla_he_header_checks')
     saved = {key: settings.get(key) for key in keys}
     try:
         with patch('tkinter.messagebox.showwarning') as warning:
@@ -458,7 +572,21 @@ def vanilla_open_obeys_version_and_decode_policies():
             settings.put(keys[2], 'status')
             report_open_issues(win)
             T.check(decode.called, 'complete Open checks item bytes')
+        settings.put(keys[1], 'basic')
+        settings.put(keys[2], 'normal')
+        corrupt = bytearray(original)
+        struct.pack_into('<I', corrupt, 8, len(original) + 1)
+        win.ch.raw = bytes(corrupt)
+        with patch('tkinter.messagebox.showwarning') as warning:
+            settings.put(keys[3], 'verify')
+            report_open_issues(win)
+            T.check(warning.called, 'header warning reports bad size or checksum')
+            warning.reset_mock()
+            settings.put(keys[3], 'ignore')
+            report_open_issues(win)
+            T.check(not warning.called, 'header warning can be suppressed independently')
     finally:
+        win.ch.raw = original
         unsupported.unlink()
         for key, value in saved.items():
             settings.put(key, value)

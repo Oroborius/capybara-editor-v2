@@ -309,7 +309,7 @@ def report_open_issues(win):
     issues = []
     raw = win.ch.raw
     response = option('error_response', 'normal')
-    if response != 'status' and not win.ch.early:
+    if option('header_checks', 'verify') == 'verify' and not win.ch.early:
         size, saved_checksum = struct.unpack_from('<II', raw, 8)
         if size != len(raw):
             issues.append(f'Recorded size is {size} bytes. The file contains {len(raw)} bytes.')
@@ -858,6 +858,7 @@ def bind_inventory(win):
             if hovered is not entry or hint.owner is not cv:
                 item = decoded_item(win, entry)
                 if item is None:
+                    win.panel.show(None)
                     clear_hint(event)
                     return
                 win.panel.show(description_item(item))
@@ -1237,6 +1238,7 @@ def decoded_item(win, entry):
     from mxl_early_save import ClassicData
     from mxl_v109 import Data109
     from mxl_char import blob_item
+    from mxl_creator import BetaItemData, decode_blob, encode_item
     from mxl_vanilla_he_items import ITEM_ERRORS
 
     data = win.data
@@ -1245,7 +1247,15 @@ def decoded_item(win, entry):
     elif selected in (87, 92):
         data = Data109(data, selected)
     try:
-        return blob_item(win.ch._old_blob(entry) if win.ch.old else entry.blob, data)
+        raw = win.ch._old_blob(entry) if win.ch.old else entry.blob
+        if selected == 95:
+            beta = BetaItemData(data)
+            record, children = decode_blob(raw, beta)
+            records = (record, *children)
+            if sum(len(encode_item(part, beta, preserve_stat_order=True)) for part in records) != len(raw):
+                raise ValueError('Item length does not match the beta layout.')
+            raw = b''.join(encode_item(part, data, preserve_stat_order=True) for part in records)
+        return blob_item(raw, data)
     except ITEM_ERRORS as error:
         win.set_status(f'Item Decode {ITEM_DECODE_VERSIONS[selected]}: {error}', True)
         return None
@@ -1402,9 +1412,11 @@ def options(win):
                 (('show', 'Show in Description'), ('hide', 'Hide in Description')))
     radio_group(4, 1, 'unique_pictures', 'Display Unique Item Pictures',
                 (('show', 'Use unique pictures'), ('hide', 'Use base pictures')))
+    radio_group(5, 0, 'header_checks', 'Save Header Checks on Open',
+                (('verify', 'Report checksum and file size issues'), ('ignore', 'Skip header warnings')))
 
     tools = ttk.LabelFrame(page, text='Item and Character Tools', padding=3)
-    tools.grid(row=5, column=0, columnspan=2, sticky='ew', pady=2)
+    tools.grid(row=6, column=0, columnspan=2, sticky='ew', pady=2)
     mock_mode = mxl_mock_gui._state['var']
     if mock_mode is not None:
         ttk.Checkbutton(tools, text='Mock Mode', variable=mock_mode,
