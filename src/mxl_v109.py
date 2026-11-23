@@ -229,6 +229,8 @@ def read_item_stats(br, data, keep=False):
 
 # ------------------------------------------------------------------ item writer
 _LAYER_STORED = {v: k for k, v in _CLASS_SKILL_LAYER.items()}
+_PACKED = (set(_CLASS_SKILL_LAYER) | set(_SINGLE_SKILL) | set(_FAST_TWIN) | set(range(188, 194)) |   # stored ids
+           set(range(195, 214))) - {83, 107, 195, 198, 201, 204}      # the 1.09 reader takes as another stat
 _FOLLOWER = {f: lead for lead, fs in _GROUPS.items() for f in fs}
 
 
@@ -305,7 +307,7 @@ def _stored(data, stats):
                 fail(st)
             out.append((oldid(st, range(204, 214), 204), [(30, skill | lvl << 9 | cur << 14 | mx << 22)]))
         else:
-            if prm and data.isc.get(sid, {}).get('param'):
+            if prm and data.isc.get(sid, {}).get('param') or sid in _PACKED:
                 fail(st, ': no 1.09 form')
             o = st.get('old')
             if o is not None and _FAST_TWIN.get(o) == sid:    # an old "fast" twin: its own width, else the id's
@@ -422,7 +424,13 @@ def to_109(blob, data, hints=None):
         back = to_110(out, data)
     except C.CreateError:
         back = None
-    if back != bytes(blob):                           # the 1.09 reader would see something else
+    same = back == bytes(blob)
+    if back is not None and not same:                 # a blob the game / Mock Mode wrote: in this codec's form
+        try:
+            same = back == b''.join(C.encode_item(r, data) for r in recs)
+        except C.CreateError:
+            pass
+    if not same:                                      # the 1.09 reader would see something else
         diff = []
         if back is not None:
             for a, b in zip(recs, _records(back, data)):

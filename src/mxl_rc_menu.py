@@ -493,7 +493,12 @@ def _char_menu(win, cv, ev):
 
 
 def _char_copy(win, e):
-    win.app._capy_clip = (win.ch.stash_blob(e), clean_name(win, e))
+    import mxl_char as MC
+    try:
+        win.app._capy_clip = (win.ch.stash_blob(e), clean_name(win, e))
+    except MC.CharError as err:                       # a 1.09 item kept as read
+        win.set_status(str(err), True)
+        return
     _status(win.app, rc('copied', '{name} copied (right-click an empty cell to paste it)', name=clean_name(win, e)))
 
 

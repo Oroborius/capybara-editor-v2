@@ -1316,10 +1316,13 @@ class Character:
             if err:
                 raise CharError(err)
             entry.blob = entry.moved(d, location=LOC_STORED, equipped=0, x=where[1], y=where[2], panel=PANEL_INVENTORY)
-        entry.it = blob_item(entry.blob, d)
+        entry.it = blob_item(entry.blob, mxl_v109.Data109(d) if isinstance(entry.blob, mxl_v109.Raw109) else d)
 
     def stash_blob(self, entry):
         """Bytes of the item as a stash item (location stored, stash panel); position set by the stash writer."""
+        if isinstance(entry.blob, mxl_v109.Raw109):    # 1.09 bytes must not reach another file or the clipboard
+            raise CharError(T('cr.err.old_raw', 'This 1.09 item holds values the item editor cannot keep: it can be '
+                              'moved or deleted, not edited.'))
         return entry.moved(self.data, location=LOC_STORED, equipped=0, x=0, y=0, panel=5)
 
     # ------------------------------------------------------------------ saving

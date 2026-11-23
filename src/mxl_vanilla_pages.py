@@ -639,7 +639,12 @@ class ContainersPage:
 
     def duplicate(self, e, key):
         name = _clean(e.it.get('name') or e.it['code'])
-        return self._place(key, bytes(self.win.ch.stash_blob(e)), None,
+        import mxl_char as MC
+        try:
+            blob = bytes(self.win.ch.stash_blob(e))
+        except MC.CharError as err:                   # a 1.09 item kept as read
+            return self._fail(err)
+        return self._place(key, blob, None,
                            T('van.duplicated', '{name} duplicated', name=name), name)
 
     def import_here(self, key, cell, path=None):

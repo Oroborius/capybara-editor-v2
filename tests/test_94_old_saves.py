@@ -322,6 +322,49 @@ def old_item_delete_keeps_the_rest():
 
 
 @T.test
+def old_save_paste_from_a_114d_save():
+    """Items of a 1.14d save pasted into a 1.09 character: those 1.09 can hold are written as 1.09 records and read
+    back with the same stats; the others are refused, naming the stat."""
+    E = engine()
+    import mxl_creator as C
+    import mxl_v109 as V
+    src = os.path.join(T.REPO, '.cache', 'samples', 'vanilla', 'complex.d2s')
+    if not os.path.isfile(src):
+        T.skip('no 1.14d sample')
+    d = E.data
+    donor = E.MC.Character(src, d)
+    path = E.files['clone-44']
+    raw = T.read(path)
+    try:
+        ch = E.MC.Character(path, d)
+        added, refused = [], []
+        for e in donor.items:
+            if e.it.get('location') != 0 or len(added) >= 3:
+                continue
+            blob = bytes(donor.stash_blob(e))
+            try:
+                V.to_109(blob, d)
+            except C.StoreError as ex:
+                refused.append(str(ex))
+                continue
+            rec = C.decode_item(blob, d)[0]
+            x = 2 * len(added)
+            new = C.encode_item(dict(rec, location=0, equipped=0, x=x, y=4, panel=5), d) + blob[len(
+                C.encode_item(rec, d)):]
+            ch.items.append(E.MC.Entry(None, new))
+            added.append((rec['code'], sorted((s['id'], s.get('param') or 0, s['value']) for s in rec['stats'])))
+        T.check(added, 'some 1.14d items 1.09 can hold')
+        again = _reread(E, path, ch)
+        got = [(e.it['code'], sorted((s['id'], s.get('param') or 0, s['value']) for s in
+                                     C.decode_item(e.blob, d)[0]['stats'])) for e in again.items[-len(added):]]
+        T.eq(got, added, 'pasted items read back with their stats')
+        for msg in refused:
+            T.check('1.09' in msg and 'stat' in msg, f'refusal names the stat: {msg}')
+    finally:
+        _restore(path, raw)
+
+
+@T.test
 def old_item_kept_as_read_moves():
     """An item kept as read (Raw109) moves by its header bits; its stats stay as they were."""
     E = engine()
