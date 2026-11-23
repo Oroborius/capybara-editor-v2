@@ -85,7 +85,11 @@ def _vanilla_host(app, nb):
     # Save the collector chrome after all App._build wrappers have added their controls.
     root = app.root
     if app.character_file():
-        root.geometry('760x620')
+        from mxl_vanilla_he import pixels
+
+        width, height = pixels(root, 760, 620)
+        root.geometry(f'{min(width, root.winfo_screenwidth() - 24)}x'
+                      f'{min(height, root.winfo_screenheight() - 48)}')
     chrome = []
     before_notebook = True
     for widget in root.pack_slaves():

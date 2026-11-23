@@ -89,11 +89,90 @@ def vanilla_widget_palette_is_applied():
              ('#ffffff', '#3096fa', '#ffffff', '#707070'), 'popup selection and disabled ink')
 
         with patch.object(look.ttk, 'Style') as make_style:
-            look.style(Mock())
+            look.style(Mock(winfo_fpixels=lambda _unit: 96))
             style = make_style.return_value
             style.theme_use.assert_called_once_with('clam')
             style.configure.assert_any_call('Peach.TFrame', background='#ffe0c0')
             style.configure.assert_any_call('Treeview', rowheight=16)
+
+
+@T.test
+def hero_editor_menu_reaches_every_toolbar_command():
+    from types import SimpleNamespace
+
+    sys.path.insert(0, T.APP)
+    import mxl_toolbar
+    import mxl_vanilla_he as look
+
+    def widget(kind, text, values=()):
+        w = Mock()
+        w.winfo_class.return_value = kind
+        w.instate.return_value = False
+        w.cget.side_effect = {'text': text, 'values': values}.__getitem__
+        w.get.return_value = values[0] if values else ''
+        return w
+
+    char = widget('TCombobox', '', ('Hero', 'Other Hero'))
+    folder = widget('TButton', 'Game folder...')
+    language = widget('TCombobox', '', ('English', 'German'))
+    toggle = widget('TCheckbutton', 'Theme')
+    partner = Mock(w=widget('TLabel', 'Language'))
+    leaves = [Mock(w=w, partner=partner if w is language else None)
+              for w in (char, folder, language, toggle)]
+    toolbar = mxl_toolbar.Toolbar.__new__(mxl_toolbar.Toolbar)
+    toolbar.app = SimpleNamespace(char_combo=char, toolbar=toolbar)
+    toolbar.items = leaves
+    toolbar.order = leaves[1:]
+    for leaf in leaves:
+        leaf.children = []
+    # The entire toolbar is hidden in the HE host regardless of its own overflow state.
+    toolbar.hidden = set()
+    menu = Mock(index=Mock(return_value=4), cget=Mock(return_value=''), winfo_children=Mock(return_value=[]))
+    profile = Mock()
+    updates = Mock()
+    diagnostics = Mock()
+
+    with patch.object(mxl_toolbar, 'EXTRA', [(lambda: 'Game profile...', profile),
+                                            (lambda: 'Check for updates...', updates),
+                                            (lambda: 'Export diagnostics ZIP...', diagnostics)]), patch(
+            'tkinter.Menu', side_effect=lambda *_args, **_kwargs: Mock(index=Mock(return_value=2))), patch.object(
+            look, 'font', return_value=look.FONT):
+        look.add_toolbar_menu(toolbar.app, menu)
+
+    commands = {call.kwargs['label']: call.kwargs['command'] for call in menu.add_command.call_args_list}
+    T.eq(set(commands), {'Game folder...', '[  ] Theme'}, 'hidden buttons')
+    commands['Game folder...']()
+    commands['[  ] Theme']()
+    folder.invoke.assert_called_once_with()
+    toggle.invoke.assert_called_once_with()
+    cascades = {call.kwargs['label']: call.kwargs['menu'] for call in menu.add_cascade.call_args_list}
+    for label, w, choice in (('Character: Hero', char, 'Other Hero'), ('Language: English', language, 'German')):
+        choices = cascades[label].add_command.call_args_list
+        T.eq(len(choices), 2, label)
+        choices[1].kwargs['command']()
+        w.set.assert_called_once_with(choice)
+        w.event_generate.assert_called_once_with('<<ComboboxSelected>>')
+    extras = cascades['More']
+    T.eq(len(extras.add_command.call_args_list), 3, 'all More entries')
+    for call, action in zip(extras.add_command.call_args_list, (profile, updates, diagnostics)):
+        call.kwargs['command']()
+        action.assert_called_once_with(toolbar.app)
+
+
+@T.test
+def hero_editor_fixed_geometry_follows_ui_scale():
+    sys.path.insert(0, T.APP)
+    import mxl_vanilla_he as look
+
+    for scale in (1.0, 1.25, 1.5):
+        parent = Mock(winfo_fpixels=lambda _unit: 96 * scale)
+        with patch.object(look.tk, 'Canvas') as canvas, patch('PIL.ImageTk.PhotoImage') as photo:
+            canvas.return_value.winfo_fpixels.side_effect = parent.winfo_fpixels
+            look.character_portrait(parent)
+            look.action_plaque(parent, 'OPEN', 0)
+        T.eq((canvas.call_args.kwargs['width'], canvas.call_args.kwargs['height']),
+             (round(207 * scale), round(431 * scale)), 'portrait canvas')
+        T.eq(photo.call_args.args[0].size, (round(96 * scale), round(34 * scale)), 'action plaque')
 
 
 T.main(globals())

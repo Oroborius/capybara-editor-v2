@@ -164,9 +164,19 @@ class Toolbar:
         except tk.TclError:
             pass
         m = self.menu = tk.Menu(self.bar, tearoff=0)
-        hidden = getattr(self, 'hidden', set())
+        self.populate_menu(m, getattr(self, 'hidden', set()))
+        try:
+            import mxl_he_theme
+            mxl_he_theme._walk(m)
+        except Exception:
+            pass
+        b = self.more
+        m.tk_popup(b.winfo_rootx(), b.winfo_rooty() + b.winfo_height())
+
+    def populate_menu(self, m, hidden=None, *, include_extra=True):
+        """Mirror the entire toolbar, or just its overflow items, into a menu."""
         partners = {it.partner for it in self.order if it.partner is not None}
-        seen = [it for it in self._leaves() if it in hidden and it not in partners]
+        seen = [it for it in self._leaves() if it not in partners and (hidden is None or it in hidden)]
         for it in seen:
             w = it.w
             cls = w.winfo_class()
@@ -185,22 +195,22 @@ class Toolbar:
                         sub.add_command(label=('* ' if v == cur else '   ') + str(v),
                                         command=lambda v=v, w=w: self._choose(w, v))
                     cap = str(it.partner.w.cget('text')).strip() if it.partner is not None else ''
-                    m.add_cascade(label=(cap + ': ' if cap else '') + cur, menu=sub)
+                    if w is self.app.char_combo and not cap:
+                        cap = T('tab.character', 'Character')
+                    m.add_cascade(label=(cap + ': ' if cap else '') + cur, menu=sub,
+                                  state='disabled' if disabled else 'normal')
                 elif cls == 'TLabel' and text:
                     m.add_command(label=text, state='disabled')
             except tk.TclError:
                 continue
-        if EXTRA and seen:
-            m.add_separator()
+        if include_extra:
+            if EXTRA and seen:
+                m.add_separator()
+            self.populate_extra(m)
+
+    def populate_extra(self, menu):
         for label, command in EXTRA:
-            m.add_command(label=label(), command=lambda c=command: c(self.app))
-        try:
-            import mxl_he_theme
-            mxl_he_theme._walk(m)
-        except Exception:
-            pass
-        b = self.more
-        m.tk_popup(b.winfo_rootx(), b.winfo_rooty() + b.winfo_height())
+            menu.add_command(label=label(), command=lambda c=command: c(self.app))
 
     def _leaves(self):
         out = []

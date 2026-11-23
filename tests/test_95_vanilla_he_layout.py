@@ -8,6 +8,11 @@ import capytest as T
 
 MODE = 'gui'
 GEOMETRY = '760x620+0+0'
+VARIANTS = {
+    '100': {'MXL_UI_SCALE': '1.0'},
+    '125': {'MXL_UI_SCALE': '1.25'},
+    '150': {'MXL_UI_SCALE': '1.5'},
+}
 REPO = Path(T.REPO)
 GAME = Path(os.environ.get('MXL_TEST_VANILLA_GAME') or REPO / '.cache/ingame/game')
 SOURCE = REPO / '.cache/samples/vanilla'
@@ -36,6 +41,8 @@ def shot(name, window=None):
 
 @T.test
 def vanilla_workspace_pages_and_tools():
+    if T.VARIANT != '100':
+        T.skip('workspace behavior is covered at 100%')
     if not AVAILABLE:
         T.skip('no 1.14d game data or sample character')
     import mxl_tabs
@@ -48,11 +55,37 @@ def vanilla_workspace_pages_and_tools():
     T.check(cw.top.winfo_rooty() - nb.winfo_rooty() <= 2, 'no space taken by a host tab strip')
     T.check(nb.identify(12, 8) != 'label', 'host tab labels are hidden')
     T.check(not app.char_combo.master.winfo_ismapped(), 'collector toolbar is hidden')
+    import mxl_toolbar
+
+    menu = cw.he_menu
+    menu.tk.call(menu.cget('postcommand'))
+    labels = [menu.entrycget(i, 'label') for i in range(menu.index('end') + 1)
+              if menu.type(i) in ('command', 'cascade')]
+    cascades = [menu.nametowidget(menu.entrycget(i, 'menu')) for i in range(menu.index('end') + 1)
+                if menu.type(i) == 'cascade']
+    choices = [tuple(sub.entrycget(i, 'label')[2:].strip() for i in range(sub.index('end') + 1))
+               for sub in cascades if sub.index('end') is not None
+               and all(sub.type(i) == 'command' for i in range(sub.index('end') + 1))]
+    for item in app.toolbar._leaves():
+        widget = item.w
+        if widget.winfo_class() in ('TButton', 'TCheckbutton'):
+            label = str(widget.cget('text')).strip()
+            T.check(any(entry == label or entry.endswith('] ' + label) for entry in labels),
+                    f'{label} is reachable from the HE Menu')
+        elif widget.winfo_class() == 'TCombobox':
+            T.check(tuple(map(str, widget.cget('values'))) in choices,
+                    f'all choices for {widget} are reachable from the HE Menu')
+    from mxl_lang import T as tr
+
+    more = menu.nametowidget(menu.entrycget(tr('bar.more', 'More'), 'menu'))
+    T.eq([more.entrycget(i, 'label') for i in range(more.index('end') + 1)],
+         [label() for label, _command in mxl_toolbar.EXTRA], 'all registered More commands')
     T.eq([button.cget('text') for button in cw.tab_buttons if button.winfo_ismapped()],
          [text for _key, text in V.TABS], 'visible bottom tabs')
     tab = cw.tab_buttons[0].master
     actions, status = tab.master.pack_slaves()[1:]
-    T.eq([b.cget('text') for b in actions.pack_slaves()], list(V.ACTIONS), 'file actions')
+    shown = sorted((b for b in actions.winfo_children() if b.winfo_class() == 'Button'), key=lambda b: b.winfo_x())
+    T.eq([b.cget('text') for b in shown], list(V.ACTIONS), 'file actions (left to right)')
     T.check(tab.winfo_rooty() < actions.winfo_rooty() < status.winfo_rooty(), 'bottom chrome order')
 
     expectations = {
@@ -155,6 +188,50 @@ def vanilla_workspace_pages_and_tools():
     T.eq(saved.stat(7) & 255, 42, 'base life fraction')
     T.eq(saved.quest_word(difficulty0, word), V.QUEST_STAGE_WORDS[1], 'looking for quest')
     T.check(not cw.dirty(), 'saved values reloaded without pending changes')
+
+
+@T.test
+def scaled_stats_fit_or_scroll_and_bottom_controls_stay_visible():
+    if not AVAILABLE:
+        T.skip('no 1.14d game data or sample character')
+    import mxl_vanilla_he as V
+
+    root = T.G.root
+    cw = T.chartab()
+    scale = float(os.environ.get('MXL_UI_SCALE', '1'))
+    V.set_tab(cw, 'stats')
+    root.geometry('1150x720+0+0')
+    T.pump(5)
+    form = cw.he_portrait.master
+    T.eq((form.winfo_width(), form.winfo_height()), (round(644 * scale), round(440 * scale)),
+         'scaled form dimensions')
+    T.eq((cw.he_portrait.winfo_width(), cw.he_portrait.winfo_height()),
+         (round(209 * scale), round(435 * scale)), 'scaled portrait')
+    gap = form.winfo_rootx() - cw.st_tab.winfo_rootx()
+    T.check(abs(2 * gap + form.winfo_width() - cw.st_tab.winfo_width()) <= 2, 'wide page centers the form')
+    T.check(not cw.scroll._shown[1], 'no horizontal scrollbar in the wide viewport')
+
+    root.geometry('550x460+0+0')
+    T.pump(5)
+    T.eq(cw.scroll._shown, (True, True), 'small viewport exposes both scrollbars')
+    cw.scroll.canvas.xview_moveto(1)
+    cw.scroll.canvas.yview_moveto(1)
+    T.pump(2)
+    field = cw.sv['timestamp']
+    canvas = cw.scroll.canvas
+    T.check(field.winfo_rootx() + field.winfo_width() <= canvas.winfo_rootx() + canvas.winfo_width()
+            and field.winfo_rooty() + field.winfo_height() <= canvas.winfo_rooty() + canvas.winfo_height(),
+            'the bottom-right field can scroll into view')
+    tabbar = cw.tab_buttons[0].master
+    actions = tabbar.master.pack_slaves()[1]
+    buttons = [b for b in cw.tab_buttons if b.cget('value') in dict(V.TABS)]
+    plaques = [b for b in actions.winfo_children() if b.winfo_class() == 'Button']
+    for button in buttons + plaques:
+        x = button.winfo_rootx() - root.winfo_rootx()
+        T.check(button.winfo_ismapped() and x >= 0 and x + button.winfo_width() <= root.winfo_width(),
+                f"{button.cget('text')} fits the narrow window")
+    T.eq((plaques[0].images[0].width(), plaques[0].images[0].height()),
+         (round(96 * scale), round(34 * scale)), 'scaled file actions')
 
 
 T.main(globals())

@@ -35,6 +35,16 @@ def active():
     return not mxl_profile.is_median()
 
 
+def ui_scale(widget):
+    """Use Tk's DPI, including the editor's UI-scale override applied at startup."""
+    return max(0.5, round(widget.winfo_fpixels('1i') / 96 * 4) / 4)
+
+
+def pixels(widget, *values):
+    scale = ui_scale(widget)
+    return tuple(round(value * scale) for value in values)
+
+
 def font(spec=FONT):
     from mxl_he_theme import families
     installed = families()
@@ -44,32 +54,33 @@ def font(spec=FONT):
 
 
 def style(root):
+    px = lambda n: pixels(root, n)[0]
     st = ttk.Style(root)
     st.theme_use('clam')
     st.configure('.', background=FORM, foreground=BLACK, fieldbackground=WHITE, selectbackground=SELECT,
                  selectforeground=WHITE, bordercolor=EDGE, lightcolor=WHITE, darkcolor=INSET, font=font())
     st.map('.', foreground=[('disabled', DESCRIPTION)])
-    st.configure('TButton', padding=(5, 1), relief='raised')
-    st.configure('TNotebook.Tab', padding=(6, 1))
+    st.configure('TButton', padding=pixels(root, 5, 1), relief='raised')
+    st.configure('TNotebook.Tab', padding=pixels(root, 6, 1))
     st.map('TNotebook.Tab', background=[('selected', FORM), ('!selected', LIGHT)])
     st.configure('TNotebook', tabmargins=(0, 0, 0, 0))
     st.layout('CharacterHost.TNotebook.Tab', [('null', {'sticky': 'nswe'})])
     st.configure('CharacterHost.TNotebook.Tab', padding=0)
     st.layout('CharacterHost.TNotebook', [('Notebook.client', {'sticky': 'nswe'})])
     st.configure('Extras.TNotebook', tabposition='sw')
-    st.configure('Extras.TNotebook.Tab', padding=(9, 2), width=23)
+    st.configure('Extras.TNotebook.Tab', padding=pixels(root, 9, 2), width=23)
     st.map('Extras.TNotebook.Tab', font=[('selected', (*font(), 'bold'))])
-    st.configure('TScrollbar', arrowsize=12, width=12, troughcolor=LIGHT)
-    st.configure('Treeview', rowheight=16)
+    st.configure('TScrollbar', arrowsize=px(12), width=px(12), troughcolor=LIGHT)
+    st.configure('Treeview', rowheight=px(16))
     st.map('Treeview', background=[('selected', SELECT)], foreground=[('selected', WHITE)])
     st.map('TCombobox', fieldbackground=[('readonly', WHITE)])
     st.configure('Peach.TFrame', background=PEACH)
     st.configure('Peach.TLabelframe', background=PEACH)
     st.configure('Peach.TLabelframe.Label', background=PEACH, font=font(LEGEND_FONT))
     st.configure('TLabelframe.Label', font=font(LEGEND_FONT))
-    st.configure('TEntry', padding=1)
-    st.configure('TCombobox', padding=1, arrowsize=12)
-    st.configure('TSpinbox', padding=1, arrowsize=12)
+    st.configure('TEntry', padding=px(1))
+    st.configure('TCombobox', padding=px(1), arrowsize=px(12))
+    st.configure('TSpinbox', padding=px(1), arrowsize=px(12))
     for kind in ('TProgressbar', 'Horizontal.TProgressbar', 'Vertical.TProgressbar'):
         st.configure(kind, background=SELECT)
     root.option_add('*TCombobox*Listbox.font', font())
@@ -214,16 +225,15 @@ def action_plaque(parent, caption, shade):
         face = ImageFont.load_default()
     draw.text((48, 18), caption, anchor='mm', font=face, fill='#0a0806')
     draw.text((48, 16), caption, anchor='mm', font=face, fill='#e5c178')
-    return ImageTk.PhotoImage(im, master=parent)
+    return ImageTk.PhotoImage(im.resize(pixels(parent, 96, 34), Image.Resampling.LANCZOS), master=parent)
 
 
 def chrome(win, bottom, actions):
     """Build the character action strip, status cells and tools menu."""
     commands = (lambda: choose_character(win), win.save_progress, win.discard,
                 lambda: extras(win), win.close)
-    actions.configure(height=45, bg=BLACK)
     actions.pack_configure(padx=0, pady=0)
-    actions.pack_propagate(False)
+    buttons = []
     for text, command in zip(ACTIONS, commands):
         images = [action_plaque(actions, text, shade) for shade in (0, 12, -5)]
         button = role(tk.Button(actions, text=text, image=images[0], command=command, bd=0,
@@ -234,13 +244,13 @@ def chrome(win, bottom, actions):
         button.bind('<Leave>', lambda event: event.widget.configure(image=event.widget.images[0]))
         button.bind('<ButtonPress-1>', lambda event: event.widget.configure(image=event.widget.images[2]))
         button.bind('<ButtonRelease-1>', lambda event: event.widget.configure(image=event.widget.images[1]))
-        closing = text == 'CLOSE'
-        button.pack(side='right' if closing else 'left', padx=(72 if text == 'EXTRAS' else 8, 8 if closing else 0),
-                    pady=(6, 5))
+        buttons.append(button)
+    wrap_buttons(actions, buttons, gap=8, pady=4)
     status = tk.Frame(bottom, bg=FORM)
     status.pack(fill='x')
     for label, width in (('Hero Editor', 70), ('Version 1.04', 108)):
-        cell = tk.Frame(status, width=width, height=19)
+        width, height = pixels(status, width, 19)
+        cell = tk.Frame(status, width=width, height=height)
         cell.pack(side='left')
         cell.pack_propagate(False)
         tk.Label(cell, text=label, anchor='w', bd=1, relief='sunken',
@@ -298,8 +308,83 @@ def chrome(win, bottom, actions):
                              command=lambda: mxl_mock_gui.set_mode(mock_mode.get()))
         menu.add_command(label='Open Mock Tools', command=lambda: mxl_tabs.focus_existing(mxl_mock_gui.TAB))
         mock_tools_index = menu.index('end')
+
+    if mock_mode is not None:
         menu.configure(postcommand=lambda: menu.entryconfigure(
             mock_tools_index, state='normal' if mock_mode.get() else 'disabled'))
+    add_toolbar_menu(win.app, menu)
+
+
+def add_toolbar_menu(app, menu):
+    toolbar = getattr(app, 'toolbar', None)
+    if toolbar is None:
+        return
+    from mxl_lang import T
+
+    menu.add_separator()
+    # This suffix is rebuilt when posted so it reflects the live toolbar and its choices.
+    first = menu.index('end') + 1
+    previous = menu.cget('postcommand')
+    fixed_children = set(menu.winfo_children())
+
+    def refresh():
+        if previous:
+            menu.tk.call(previous)
+        if menu.index('end') >= first:
+            menu.delete(first, 'end')
+        for child in menu.winfo_children():
+            if child not in fixed_children:
+                child.destroy()
+        toolbar.populate_menu(menu, include_extra=False)
+        more = tk.Menu(menu, tearoff=False, font=font())
+        toolbar.populate_extra(more)
+        if more.index('end') is not None:
+            menu.add_cascade(label=T('bar.more', 'More'), menu=more)
+        else:
+            more.destroy()
+
+    menu.configure(postcommand=refresh)
+    refresh()
+
+
+def wrap_buttons(bar, buttons, gap=0, pady=0):
+    """Wrap the bottom controls when the viewport is narrower than their requests."""
+    gap, pady = pixels(bar, gap, pady)
+    rows = []
+    current = None
+
+    def layout(event):
+        nonlocal current
+        if event.width < 2:
+            return
+        groups = [[]]
+        used = 0
+        for button in buttons:
+            width = button.winfo_reqwidth() + 2 * gap
+            if used + width > event.width and groups[-1]:
+                groups.append([])
+                used = 0
+            groups[-1].append(button)
+            used += width
+        if groups == current:
+            return
+        current = groups
+        for button in buttons:
+            button.pack_forget()
+        for row in rows:
+            row.destroy()
+        rows.clear()
+        for group in groups:
+            row = role(tk.Frame(bar, bg=bar.cget('bg')), 'art')
+            row.pack()
+            rows.append(row)
+            for button in group:
+                button.pack(in_=row, side='left', padx=gap, pady=pady)
+                button.lift(row)
+
+    # Seed a request so a packed bar receives its first Configure event.
+    bar.configure(height=max(button.winfo_reqheight() for button in buttons) + 2 * pady)
+    bar.bind('<Configure>', layout, add='+')
 
 
 def extras(win):
@@ -441,28 +526,34 @@ TOWNS = ('Rogue Encampment', 'Lut Gholein', 'Kurast Docks', 'Pandemonium Fortres
 
 
 def stats(win, page, entry):
-    """Lay out the vanilla stats at their native pixel sizes."""
-    page.configure(width=644, height=440)
+    """Center the scaled stats form in its scrollable page."""
+    page = tk.Frame(page)
+    page.configure(width=pixels(page, 644)[0], height=pixels(page, 440)[0])
+    page.pack(expand=True)
+
+    def place(widget, *, x, y, width=None, height):
+        x, y, w, h = pixels(page, x, y, width or 0, height)
+        widget.place(x=x, y=y, width=w if width is not None else None, height=h)
     win.he_portrait = character_portrait(page)
-    win.he_portrait.place(x=2, y=4, width=209, height=435)
+    place(win.he_portrait, x=2, y=4, width=209, height=435)
     form = tk.Frame(page, bd=1, relief='sunken')
-    form.place(x=218, y=4, width=424, height=435)
+    place(form, x=218, y=4, width=424, height=435)
 
     def group(caption, x, y, w, h):
         frame = role(tk.LabelFrame(form, text=caption, bd=1, relief='groove'), '')
-        frame.place(x=x, y=y, width=w, height=h)
+        place(frame, x=x, y=y, width=w, height=h)
         return frame
 
     def label(parent, text, x, y):
-        role(tk.Label(parent, text=text, padx=0, pady=0), '').place(x=x, y=y, height=18)
+        place(role(tk.Label(parent, text=text, padx=0, pady=0), ''), x=x, y=y, height=18)
 
     def box(parent, key, x, y, w):
         control = entry(parent, key, 1)
-        control.place(x=x, y=y, width=w, height=18)
+        place(control, x=x, y=y, width=w, height=18)
         return control
 
     def button(parent, text, command, x, y, w):
-        role(tk.Button(parent, text=text, command=command, pady=0, padx=0), '').place(
+        place(role(tk.Button(parent, text=text, command=command, pady=0, padx=0), ''),
             x=x, y=y, width=w, height=18)
 
     def rename():
@@ -481,7 +572,7 @@ def stats(win, page, entry):
     win.he_over99 = tk.BooleanVar()
     win.he_level_character = None
     cb = role(tk.Checkbutton(fr, text='Level over 99', variable=win.he_over99, padx=0, pady=0, highlightthickness=0), '')
-    cb.place(x=108, y=0, height=18)
+    place(cb, x=108, y=0, height=18)
 
     box(group('Experience', 7, 86, 104, 41), 'experience', 4, 1, 92)
     box(group('Masked Level', 119, 86, 103, 41), 'header_level', 6, 1, 88)
@@ -507,7 +598,7 @@ def stats(win, page, entry):
     fr = group('Class', 231, 0, 184, 44)
     win.class_box = ttk.Combobox(fr, state='readonly', textvariable=win.new_class, values=win.class_names,
                                 font=font())
-    win.class_box.place(x=7, y=2, width=168, height=21)
+    place(win.class_box, x=7, y=2, width=168, height=21)
     win.class_box.bind('<<ComboboxSelected>>', lambda _event: win.on_class_change())
 
     from mxl_char import difficulty_name
@@ -517,13 +608,13 @@ def stats(win, page, entry):
         radio = role(tk.Radiobutton(fr, text=difficulty_name(i), value=i, variable=win.sv_diff, padx=0, pady=0,
                                    highlightthickness=0,
                                    command=lambda i=i: win.st_do('start_difficulty', i)), '')
-        radio.place(x=x, y=-2, height=18)
+        place(radio, x=x, y=-2, height=18)
         if win.ch.early:
             radio.configure(state='disabled')
 
     fr = group('Starting Town', 231, 83, 184, 42)
     win.he_town = ttk.Combobox(fr, state='disabled' if win.ch.early else 'readonly', values=TOWNS, font=font())
-    win.he_town.place(x=7, y=0, width=168, height=21)
+    place(win.he_town, x=7, y=0, width=168, height=21)
     def change_town(_event):
         if not win.st_do('start_town', TOWNS.index(win.he_town.get())):
             refresh_stats(win)
@@ -547,8 +638,8 @@ def stats(win, page, entry):
     for name, key, x, y in (('Hardcore', 'hardcore', 5, -2), ('You never died', 'died', 77, -2),
                              ('Ladder', 'ladder', 5, 17), ('Expansion', 'expansion', 77, 17)):
         var = win.sv_type[key] = tk.BooleanVar()
-        role(tk.Checkbutton(fr, text=name, variable=var, padx=0, pady=0, highlightthickness=0,
-                            command=lambda k=key, v=var: win.st_flag(k, v.get() != (k == 'died'))), '').place(
+        place(role(tk.Checkbutton(fr, text=name, variable=var, padx=0, pady=0, highlightthickness=0,
+                            command=lambda k=key, v=var: win.st_flag(k, v.get() != (k == 'died'))), ''),
             x=x, y=y, height=18)
 
     fr = group('Miscellaneous Info.', 7, 319, 408, 108)
@@ -615,21 +706,21 @@ def build_reference_pages(win):
     from PIL import Image, ImageTk
     artwork = splash_image()
     for key in ('splash', 'about'):
-        panel = tk.Canvas(win.pages[key], width=638, height=430, bg=BLACK,
+        panel = tk.Canvas(win.pages[key], width=pixels(win.top, 638)[0], height=pixels(win.top, 430)[0], bg=BLACK,
                           highlightthickness=1, highlightbackground=EDGE)
-        panel.pack(fill='both', expand=True)
+        panel.pack(expand=True)
         if artwork is not None:
-            panel.artwork = ImageTk.PhotoImage(artwork.resize((638, 430), Image.LANCZOS), master=panel)
+            panel.artwork = ImageTk.PhotoImage(artwork.resize(pixels(panel, 638, 430), Image.Resampling.LANCZOS), master=panel)
             panel.create_image(0, 0, anchor='nw', image=panel.artwork)
         else:
-            panel.create_text(24, 142, text='Diablo II', fill='#c89b52', anchor='w',
+            panel.create_text(*pixels(panel, 24, 142), text='Diablo II', fill='#c89b52', anchor='w',
                               font=('Times New Roman', 34, 'bold'))
-        panel.create_text(24, 187, text='Character Editor', fill='#e2bd74', anchor='w',
+        panel.create_text(*pixels(panel, 24, 187), text='Character Editor', fill='#e2bd74', anchor='w',
                           font=('Times New Roman', 25, 'bold'))
-        panel.create_text(26, 226, text='Diablo II · Lord of Destruction', fill='#bdd8e0',
+        panel.create_text(*pixels(panel, 26, 226), text='Diablo II · Lord of Destruction', fill='#bdd8e0',
                           anchor='w', font=font(LEGEND_FONT))
         if key == 'about':
-            panel.create_text(24, 38, text='Layout inspiration: Hero Editor by ZonFire99 and Mastadex',
+            panel.create_text(*pixels(panel, 24, 38), text='Layout inspiration: Hero Editor by ZonFire99 and Mastadex',
                               fill=WHITE, anchor='w', font=font())
     page = win.pages['info']
     info = role(tk.Text(page, wrap='word', width=65, height=22, bg=PEACH,
@@ -775,14 +866,14 @@ def splash_image():
 
 
 def character_portrait(parent):
-    panel = tk.Canvas(parent, width=207, height=431, bg=BLACK, bd=0, highlightthickness=0)
-    panel.create_rectangle(1, 1, 206, 430, outline='#624824')
-    panel.create_rectangle(5, 5, 202, 426, outline='#b3914d')
-    panel.create_rectangle(8, 8, 199, 423, outline='#4c3620')
+    panel = tk.Canvas(parent, width=pixels(parent, 207)[0], height=pixels(parent, 431)[0], bg=BLACK, bd=0, highlightthickness=0)
+    panel.create_rectangle(*pixels(panel, 1, 1, 206, 430), outline='#624824')
+    panel.create_rectangle(*pixels(panel, 5, 5, 202, 426), outline='#b3914d')
+    panel.create_rectangle(*pixels(panel, 8, 8, 199, 423), outline='#4c3620')
     for x in (18, 189):
         for y in (20, 411):
-            panel.create_polygon(x - 10, y, x, y - 8, x + 10, y, x, y + 8, fill='#57411f', outline='#c7a564')
-            panel.create_line(x, y - 12, x, y + 12, fill='#c7a564')
+            panel.create_polygon(*pixels(panel, x - 10, y, x, y - 8, x + 10, y, x, y + 8), fill='#57411f', outline='#c7a564')
+            panel.create_line(*pixels(panel, x, y - 12, x, y + 12), fill='#c7a564')
     return panel
 
 
@@ -797,12 +888,12 @@ def update_portrait(panel, cls, data):
     portrait = character_image(cls)
     if portrait is not None:
         scale = min(185 / portrait.width, 345 / portrait.height)
-        size = (round(portrait.width * scale), round(portrait.height * scale))
+        size = pixels(panel, portrait.width * scale, portrait.height * scale)
         panel._he_portrait = ImageTk.PhotoImage(portrait.resize(size, Image.LANCZOS), master=panel)
-        panel.create_image(103, 210, image=panel._he_portrait, tags='portrait')
+        panel.create_image(*pixels(panel, 103, 210), image=panel._he_portrait, tags='portrait')
     names = class_names(data)
     if 0 <= cls < len(names):
-        panel.create_text(103, 396, text=names[cls], fill='#d6b36c',
+        panel.create_text(*pixels(panel, 103, 396), text=names[cls], fill='#d6b36c',
                           font=('Times New Roman', 13), tags='portrait')
 
 
@@ -816,14 +907,16 @@ def quest_stage(word):
 
 def quest_details(win, parent):
     """Build quest details and keep the existing completion and reward rules."""
-    left = ttk.Frame(parent, width=336, height=434)
+    width, height = pixels(parent, 336, 434)
+    left = ttk.Frame(parent, width=width, height=height)
     left.pack(side='left', fill='y', padx=(2, 0))
     left.pack_propagate(False)
     details = ttk.LabelFrame(left, text='Quest', padding=6)
     details.pack(fill='both', expand=True)
-    title = ttk.Label(details, wraplength=300, justify='left')
+    wrap = pixels(parent, 300)[0]
+    title = ttk.Label(details, wraplength=wrap, justify='left')
     title.pack(anchor='w', pady=(6, 8))
-    notes = ttk.Label(details, wraplength=300, justify='left')
+    notes = ttk.Label(details, wraplength=wrap, justify='left')
     notes.pack(anchor='w')
     selected = {}
     value = tk.IntVar()
@@ -927,12 +1020,13 @@ class InventoryTabs(tk.Canvas):
     def __init__(self, parent, variable, command):
         from PIL import Image, ImageDraw, ImageTk
 
-        super().__init__(parent, width=21, height=409, bg=FORM, bd=0, highlightthickness=0, takefocus=True)
+        super().__init__(parent, width=pixels(parent, 21)[0], height=pixels(parent, 409)[0], bg=FORM, bd=0, highlightthickness=0, takefocus=True)
         self.variable = variable
         self.command = command
         self.tabs = []
         self.images = []
         face = bitmap_font(11)
+        tab_width = pixels(self, 21)[0]
         y = 0
         for key, label in (('person', '(1) Person'), ('stash', '(2) Stash'), ('cube', '(3) Cube'),
                            ('merc', '(4) Merc / Belt'), ('transfer', 'Transfer')):
@@ -944,11 +1038,15 @@ class InventoryTabs(tk.Canvas):
                 draw.rectangle((0, 0, length - 1, 20), outline=EDGE)
                 draw.line((1, 1, length - 2, 1), fill=WHITE)
                 draw.text((length // 2, 10), label, font=face, fill=BLACK, anchor='mm')
-                rasters.append(ImageTk.PhotoImage(paper.transpose(Image.Transpose.ROTATE_270), master=self))
+                rotated = paper.transpose(Image.Transpose.ROTATE_270)
+                rotated = rotated.resize((tab_width, pixels(self, length)[0]), Image.Resampling.LANCZOS)
+                rasters.append(ImageTk.PhotoImage(rotated, master=self))
+            length = rasters[0].height()
             image = self.create_image(0, y, anchor='nw', image=rasters[0])
             self.images.extend(rasters)
             self.tabs.append((key, y, y + length, image, rasters))
             y += length
+        self.configure(height=max(self.winfo_reqheight(), y))
         self.bind('<Button-1>', self._click)
         self.bind('<Up>', lambda _event: self._step(-1))
         self.bind('<Down>', lambda _event: self._step(1))
@@ -979,12 +1077,12 @@ def draw_pickup(win):
 
     paper = win.he_pickup
     paper.delete('all')
-    paper.create_rectangle(4, 4, 72, 106, outline='#55442d')
+    paper.create_rectangle(*pixels(paper, 4, 4, 72, 106), outline='#55442d')
     clip = getattr(win.app, '_capy_clip', None)
     if clip:
         try:
             item = blob_item(clip[0], win.data)
-            win.draw_item(paper, item, 9, 9, 68, 102, False)
+            win.draw_item(paper, item, *pixels(paper, 9, 9, 68, 102), False)
         except (CharError, FormatError, OSError):
             pass
 
@@ -1000,7 +1098,7 @@ def item_hint(owner):
     return FloatTip(owner, build=build, bg='#ffffe1', edge=EDGE)
 
 
-def inventory_images(grid):
+def inventory_images(grid, columns, rows, cell, footer_height):
     """Use the native panel at one pixel per pixel, shared with the stash-side inventory."""
     from mxl_d2look import char_art, photo
     from mxl_d2look_art import ArtError
@@ -1011,15 +1109,15 @@ def inventory_images(grid):
         return {}
     try:
         path = _NativeArt(art).char_panel_d2()
-        width = int(grid.cget('width')) - 1
-        height = int(grid.cget('height')) - 1
+        width, height = columns * 29, rows * 29
         x, y = NATIVE_GRID
         panel_width, panel_height = NATIVE_PANEL
         if x + width > panel_width or y + height >= panel_height:
             return {}
-        return dict(doll=photo(path, crop=(0, 0, panel_width, y)),
-                    grid=photo(path, crop=(x, y, x + width, y + height)),
-                    footer=photo(path, crop=(0, y + height, panel_width, panel_height)))
+        return dict(doll=photo(path, size=pixels(grid, panel_width, y), crop=(0, 0, panel_width, y)),
+                    grid=photo(path, size=(columns * cell, rows * cell), crop=(x, y, x + width, y + height)),
+                    footer=photo(path, size=(pixels(grid, panel_width)[0], footer_height),
+                                 crop=(0, y + height, panel_width, panel_height)))
     except (ArtError, OSError, ValueError, IndexError, StructError):
         return {}
 
@@ -1028,10 +1126,10 @@ def weapon_tabs(win, event=None):
     from mxl_d2look import WSET_TAB_D2, WSET_TABS_D2
     from mxl_vanilla_pages import _n
 
-    width, height = map(_n, WSET_TAB_D2)
+    width, height = pixels(win.doll, *map(_n, WSET_TAB_D2))
     for weapon_set, positions in WSET_TABS_D2.items():
         for x, y in positions:
-            x, y = _n(x), _n(y)
+            x, y = pixels(win.doll, _n(x), _n(y))
             if event is None:
                 if win.wset.get() == weapon_set:
                     win.doll.create_rectangle(x, y, x + width - 1, y + height - 1, outline='#d4b062')

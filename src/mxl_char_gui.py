@@ -183,6 +183,7 @@ class CharacterWindow(StatEditMixin):
                     self.pages[key] = tk.Frame(body, bg=V.FORM)
             reference = dict(V.TABS)
             tabs = (*V.TABS, *((k, t) for k, t in tabs if k not in reference and k != 'containers'))
+        visible_tabs = []
         mnemonics = {'m'} if self.vanilla_he else set()
         for key, text in tabs:
             rb = tk.Radiobutton(tabbar, text=text, value=key, variable=self.tab, indicatoron=0, font=('Times New Roman', 12),
@@ -193,8 +194,10 @@ class CharacterWindow(StatEditMixin):
                 V.role(rb, 'tab')
                 underline = next((i for i, ch in enumerate(text.lower())
                                   if ch.isascii() and ch.isalpha() and ch not in mnemonics), -1)
-                rb.configure(font=V.font(), underline=underline, padx=7)
-            if not self.vanilla_he or key in reference:
+                rb.configure(font=V.font(), underline=underline, padx=V.pixels(rb, 7)[0])
+            if self.vanilla_he and key in reference:
+                visible_tabs.append(rb)
+            elif not self.vanilla_he:
                 rb.pack(side='left', padx=(2 if key == 'stats' else 0, 0), pady=(0, 1))
             self.tab_buttons.append(rb)
             ch0 = text[underline:underline + 1].lower() if underline >= 0 else ''
@@ -204,6 +207,8 @@ class CharacterWindow(StatEditMixin):
                     self.top.bind(f'<Alt-{ch0}>', lambda e, k=key: (self.tab.set(k), self.show_tab()))
                 except tk.TclError:
                     pass
+        if self.vanilla_he:
+            V.wrap_buttons(tabbar, visible_tabs)
         try:                                  # one look for the whole editor: the global theme decides
             import mxl_d2_theme
             dark = bool(mxl_d2_theme.dark())
@@ -331,7 +336,7 @@ class CharacterWindow(StatEditMixin):
             rb.pack(side='left', padx=2)
             self.wset_rbs.append(rb)
         if self.vanilla_he:
-            self.cell = 29
+            self.cell = V.pixels(f, 29)[0]
             left.configure(style='Equipment.TFrame')
             ttk.Style(left).configure('Equipment.TFrame', background='#423b33')
         c = self.cell
@@ -340,23 +345,23 @@ class CharacterWindow(StatEditMixin):
         if self.vanilla_he:
             import mxl_d2look as D2
             from mxl_vanilla_pages import NATIVE_GRID, NATIVE_PANEL, _n
-            self.doll_layout = {slot: tuple(_n(value) / c for value in geometry)
+            self.doll_layout = {slot: tuple(V.pixels(f, _n(value))[0] / c for value in geometry)
                                 for slot, geometry in D2.GEAR_D2.items()}
-            doll_width, doll_height = NATIVE_PANEL[0], NATIVE_GRID[1]
+            doll_width, doll_height = V.pixels(f, NATIVE_PANEL[0], NATIVE_GRID[1])
             self.he_inventory_art = {}
         self.doll = tk.Canvas(left, width=doll_width, height=doll_height, bg=BG, highlightthickness=0)
         self.doll.pack(anchor='w')
         self.inv_label = ttk.Label(left, text=T('ch.tab.inventory', 'Inventory'))
         self.inv_label.pack(anchor='w', pady=(3, 1))
         self.inv = tk.Canvas(left, width=INV_W * c + 1, height=INV_H * c + 1, bg=BG, highlightthickness=0)
-        self.inv.pack(anchor='w', padx=(NATIVE_GRID[0], 0) if self.vanilla_he else 0)
+        self.inv.pack(anchor='w', padx=(V.pixels(f, NATIVE_GRID[0])[0], 0) if self.vanilla_he else 0)
         if self.vanilla_he:
             self.inv_label.pack_forget()
-            self.he_footer_height = max(28, NATIVE_PANEL[1] - NATIVE_GRID[1] - INV_H * c)
+            self.he_footer_height = V.pixels(f, max(28, NATIVE_PANEL[1] - NATIVE_GRID[1] - INV_H * 29))[0]
             self.he_inventory_footer = tk.Canvas(left, width=doll_width, height=self.he_footer_height,
                                                   bg='#423b33', highlightthickness=0)
             self.he_inventory_footer.pack()
-            self.he_inventory_art = V.inventory_images(self.inv)
+            self.he_inventory_art = V.inventory_images(self.inv, INV_W, INV_H, c, self.he_footer_height)
         for cv in (self.doll, self.inv):
             cv.bind('<Button-1>', self.on_press)
             cv.bind('<B1-Motion>', self.on_drag)
@@ -394,7 +399,7 @@ class CharacterWindow(StatEditMixin):
             right = preview_host
             for cv in (self.doll, self.inv):
                 cv.configure(bg='#423b33')
-            self.status.configure(wraplength=305)
+            self.status.configure(wraplength=V.pixels(f, 305)[0])
         self.preview = tk.Text(right, width=16, wrap='word', bg=d.cget('bg'), fg=d.cget('fg'), bd=0,
                                padx=int(str(d.cget('padx'))), pady=8, font=d.cget('font'), cursor='arrow',
                                highlightthickness=0)
@@ -416,12 +421,12 @@ class CharacterWindow(StatEditMixin):
             V.role(self.preview, 'description')
             self.preview.configure(width=32, height=19, bd=2, relief='sunken', pady=2, padx=4)
             self.preview.configure(height=1)
-            controls = ttk.Frame(self.inv_right, height=169)
+            controls = ttk.Frame(self.inv_right)
             controls.pack(fill='x', pady=(4, 0))
-            controls.pack_propagate(False)
             clip = ttk.LabelFrame(controls, text='Item Picked Up', padding=3)
             clip.pack(side='left', fill='y', padx=(0, 3))
-            paper = tk.Canvas(clip, width=77, height=111, bg='#211e1a', highlightthickness=2,
+            pickup_width, pickup_height = V.pixels(f, 77, 111)
+            paper = tk.Canvas(clip, width=pickup_width, height=pickup_height, bg='#211e1a', highlightthickness=2,
                               highlightbackground='#83704c')
             paper.pack()
             self.he_pickup = paper
@@ -626,7 +631,7 @@ class CharacterWindow(StatEditMixin):
             if not merc:
                 if native:
                     footer.create_image(0, 0, image=self.he_inventory_art['footer'], anchor='nw')
-                footer.create_text(109, 31, anchor='w', text=f'{self.ch.stat(14):,}',
+                footer.create_text(*V.pixels(footer, 109, 31), anchor='w', text=f'{self.ch.stat(14):,}',
                                    font=V.font(), fill='#ecca79')
         if merc:
             if not self.vanilla_he:
