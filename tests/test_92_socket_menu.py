@@ -640,6 +640,14 @@ def vanilla_page_item_menu_edit_delete_paste_keep_places_and_undo():
     T.pump(4)
     T.check(_pat(cw, empty)[0] is not None and _pat(cw, st)[0] is not None, 'pasted into the clicked stash cell')
     undo_to([(path, raw0)], 'paste into the stash')
+    # Import item... from a .d2i into the clicked empty stash cell, and undo
+    d2i = os.path.join(T.tmp(), 'v92_import.d2i')
+    with open(d2i, 'wb') as f:
+        f.write(other)
+    T.check(page.import_here('stash', (empty[2], empty[3]), d2i), 'imported')
+    T.pump(4)
+    T.check(_pat(cw, empty)[0] is not None, 'imported into the clicked stash cell')
+    undo_to([(path, raw0)], 'import into the stash')
     # Copy the edited-looking other item over the cube item: replaced at the cube place
     G.app._capy_clip = (other, 'other')
     T.invoke(menu('cube', cb[2], cb[3]), 'Paste (replaces')

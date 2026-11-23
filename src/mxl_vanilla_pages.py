@@ -515,6 +515,7 @@ class ContainersPage:
                 menu.add_command(label=rc('paste_here', 'Paste here ({name})', name=clip[1]),
                                  command=lambda: self.paste_here(key, cell, clip))
             menu.add_command(label=rc('create_here', 'Create here...'), command=lambda: self.create_here(key, cell))
+            menu.add_command(label=rc('import', 'Import item...'), command=lambda: self.import_here(key, cell))
 
     # ------------------------------------------------------------------ item actions (one undo step each)
     def _where(self, key, x, y):
@@ -640,6 +641,26 @@ class ContainersPage:
         name = _clean(e.it.get('name') or e.it['code'])
         return self._place(key, bytes(self.win.ch.stash_blob(e)), None,
                            T('van.duplicated', '{name} duplicated', name=name), name)
+
+    def import_here(self, key, cell, path=None):
+        """Import item...: a .d2i file into the clicked cell of this grid (else its first free spot); one undo step."""
+        import os
+        from mxl_save import blob_item
+        if path is None:
+            from tkinter import filedialog
+            path = filedialog.askopenfilename(title=T('rc.imp.title', 'Import item'),
+                                              filetypes=[(T('rc.exp.files', 'Item files'), '*.d2i'), ('*.*', '*.*')],
+                                              parent=self.win.top)
+        if not path:
+            return False
+        try:
+            with open(path, 'rb') as f:
+                blob = f.read()
+            blob_item(blob, self.win.data)
+        except Exception as err:
+            return self._fail(err)
+        name = os.path.basename(path)
+        return self._place(key, blob, cell, T('rc.imp.done', 'item imported from {file}', file=name), name)
 
     def paste_here(self, key, cell, clip):
         ok = self._place(key, clip[0], cell, T('van.pasted', '{name} pasted', name=clip[1]), clip[1])
