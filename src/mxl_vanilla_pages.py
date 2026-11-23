@@ -21,7 +21,8 @@ def containers(ch, data):
     """[(key, title, cols, rows, [Entry])] of the character's stash, cube and belt (game grid sizes)."""
     import mxl_profile
     g = (mxl_profile.active() or {}).get('grids') or mxl_profile.grid_sizes(data.folder)
-    expansion = bool(ch.raw[0x24] & 0x20) if hasattr(ch, 'raw') and len(ch.raw) > 0x24 else True
+    expansion = (ch.flags()['expansion'] if getattr(ch, 'early', False) else
+                 bool(ch.raw[0x24] & 0x20) if hasattr(ch, 'raw') and len(ch.raw) > 0x24 else True)
     stash = [e for e in ch.items if e.it.get('location') == LOC_STORED and e.it.get('panel') == PANEL_STASH]
     cube = [e for e in ch.items if e.it.get('location') == LOC_STORED and e.it.get('panel') == PANEL_CUBE]
     belt = [e for e in ch.items if e.it.get('location') == LOC_BELT]
@@ -657,7 +658,7 @@ class ContainersPage:
         name = _clean(e.it.get('name') or e.it['code'])
         import mxl_char as MC
         try:
-            blob = bytes(self.win.ch.stash_blob(e))
+            blob = self.win.ch.stash_blob(e)
         except MC.CharError as err:                   # a 1.09 item kept as read
             return self._fail(err)
         return self._place(key, blob, None,
@@ -718,22 +719,27 @@ class ContainersPage:
 
             def go():
                 self.win.sync_file()
+                cur = None
                 if e is not None:
                     cur = self.win.current_entry(e, False)
                     if cur is None:
                         raise MC.CharError(T('inv.err.item_gone', 'the item is no longer where it was: select it again'))
-                    self.win.ch.remove(cur, False)
+                    if self.win.ch.version != 71:
+                        self.win.ch.remove(cur, False)
                 where = where_fn(blob)
-                try:
-                    if where is None:
-                        raise MC.CharError(T('van.no_room', 'no free place there'))
-                    self.win.ch.place(blob, where, False)
-                except MC.CharError:
-                    spot = self.win.ch.free_inventory_spot(mxl_save.blob_item(blob, self.win.data))
-                    if spot is None:
-                        self.win.reload()
-                        raise
-                    self.win.ch.place(blob, ('inv',) + spot, False)
+                if cur is not None and self.win.ch.version == 71:
+                    self.win.ch.place(blob, where, replace=cur)
+                else:
+                    try:
+                        if where is None:
+                            raise MC.CharError(T('van.no_room', 'no free place there'))
+                        self.win.ch.place(blob, where, False)
+                    except MC.CharError:
+                        spot = self.win.ch.free_inventory_spot(mxl_save.blob_item(blob, self.win.data))
+                        if spot is None:
+                            self.win.reload()
+                            raise
+                        self.win.ch.place(blob, ('inv',) + spot, False)
                 if not self._save(msg):
                     raise MC.CharError(T('ch.err.not_saved', 'character not saved'))
                 out['msg'] = msg
@@ -744,6 +750,9 @@ class ContainersPage:
     def edit(self, e):
         import mxl_char as MC
         from mxl_creator_gui import CreatorWindow
+        if reason := getattr(e.blob, 'edit_reason', None):
+            self.set_status(reason, True)
+            return
         where = MC.where_of(e)
         name = _clean(e.it.get('name') or e.it['code'])
         self.win.selected = e

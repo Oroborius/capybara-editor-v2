@@ -939,8 +939,9 @@ class CharacterWindow(StatEditMixin):
         if e is None:
             self.set_status(T('ch.select_first', 'Select an item of the character first.'), True)
             return
-        if getattr(e.blob, 'read_only_reason', None):
-            self.set_status(e.blob.read_only_reason, True)
+        reason = getattr(e.blob, 'read_only_reason', None) or getattr(e.blob, 'edit_reason', None)
+        if reason:
+            self.set_status(reason, True)
             return
         merc = self.is_merc()
         where = MC.where_of(e)
@@ -950,19 +951,22 @@ class CharacterWindow(StatEditMixin):
             cur = self.current_entry(e, merc)
             if cur is None:
                 raise CharError(T('inv.err.item_gone', 'the item is no longer where it was: select it again'))
-            self.ch.remove(cur, merc)
-            try:
-                self.ch.place(blob, where, merc)
-            except CharError:
-                if where[0] in ('inv', 'store'):
-                    spot = self.ch.free_inventory_spot(mxl_save.blob_item(blob, self.data))
-                    if spot is None:
+            if self.ch.version == 71:
+                self.ch.place(blob, where, merc, replace=cur)
+            else:
+                self.ch.remove(cur, merc)
+                try:
+                    self.ch.place(blob, where, merc)
+                except CharError:
+                    if where[0] in ('inv', 'store'):
+                        spot = self.ch.free_inventory_spot(mxl_save.blob_item(blob, self.data))
+                        if spot is None:
+                            self.reload()
+                            raise
+                        self.ch.place(blob, ('inv',) + spot, merc)
+                    else:
                         self.reload()
                         raise
-                    self.ch.place(blob, ('inv',) + spot, merc)
-                else:
-                    self.reload()
-                    raise
             if not self.save(T('ch.replaced', '{item} replaced', item=clean(e.it['name']))):
                 raise CharError(T('ch.err.not_saved', 'character not saved'))
             return T('ch.item_replaced', '{name}: item replaced', name=self.ch.name)

@@ -945,6 +945,9 @@ class MainInventory:
         if e is None or self.ch is None:
             self.app.status.configure(text=T('ch.select_first', 'Select an item of the character first.'))
             return
+        if reason := getattr(e.blob, 'edit_reason', None):
+            self.app.status.configure(text=reason)
+            return
         where = ('slot', e.it['equipped']) if e.it['location'] == MC.LOC_EQUIPPED else ('inv', e.it['x'], e.it['y'])
         old, name = bytes(e.blob), clean(e.it['name'])
 
@@ -957,26 +960,29 @@ class MainInventory:
             if cur is None or bytes(cur.blob) != old:
                 raise CharError(T('inv.err.item_gone', 'the item is no longer where it was: select it again'))
             try:
-                self.ch.remove(cur, merc)
-                try:
-                    self.ch.place(blob, where, merc)
-                except CharError:
-                    new = mxl_save.blob_item(blob, self.data)
-                    if where[0] == 'slot':
-                        if new['code'] != e.it['code']:
-                            raise
-                        # same base in the slot the game itself put it in (Sigma mercenaries wear amulets,
-                        # rings... that the slot rules here do not know): it goes back there as it was
-                        ent = MC.Entry(new, blob)
-                        ent.blob = ent.moved(self.data, location=MC.LOC_EQUIPPED, equipped=where[1], x=where[1],
-                                             y=0, panel=0)
-                        ent.it = mxl_save.blob_item(ent.blob, self.data)
-                        self.ch.entries(merc).append(ent)
-                    else:
-                        spot = self.ch.free_inventory_spot(new)
-                        if spot is None:                  # grew (other base): no room where it was nor elsewhere
-                            raise
-                        self.ch.place(blob, ('inv',) + spot, merc)
+                if self.ch.version == 71:
+                    self.ch.place(blob, where, merc, replace=cur)
+                else:
+                    self.ch.remove(cur, merc)
+                    try:
+                        self.ch.place(blob, where, merc)
+                    except CharError:
+                        new = mxl_save.blob_item(blob, self.data)
+                        if where[0] == 'slot':
+                            if new['code'] != e.it['code']:
+                                raise
+                            # same base in the slot the game itself put it in (Sigma mercenaries wear amulets,
+                            # rings... that the slot rules here do not know): it goes back there as it was
+                            ent = MC.Entry(new, blob)
+                            ent.blob = ent.moved(self.data, location=MC.LOC_EQUIPPED, equipped=where[1], x=where[1],
+                                                 y=0, panel=0)
+                            ent.it = mxl_save.blob_item(ent.blob, self.data)
+                            self.ch.entries(merc).append(ent)
+                        else:
+                            spot = self.ch.free_inventory_spot(new)
+                            if spot is None:                  # grew (other base): no room where it was nor elsewhere
+                                raise
+                            self.ch.place(blob, ('inv',) + spot, merc)
                 bak = self._save_char()
             except Exception:
                 self.reload()                             # nothing written: the character as it is on disk

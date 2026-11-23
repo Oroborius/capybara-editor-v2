@@ -792,6 +792,8 @@ def new_character(template_path, name, cls_name, data):
     if cls is None:
         raise CharError(T('im.err.class', 'unknown class {cls}', cls=repr(cls_name)))
     ch = Character(template_path, data)
+    if ch.version == 71 and cls >= 5:
+        raise CharError('Classic saves support the five original character classes.')
     ch.head[0x14:0x24] = name.encode('latin1').ljust(16, b'\0')
     ch.head[0x28] = cls
     ch.head[0x2B] = 1
@@ -1002,14 +1004,21 @@ def import_character(page_path, template_path, save_dir, name, data, cls_name=No
                 raise ImportError_(T('im.err.loc', 'location {loc} not supported', loc=repr(loc)))
             blob = imp.item_blob(e, where)
             it = MC.blob_item(blob, data)
+            if ch.version == 71:
+                if loc == 'Stash':
+                    ch.place(blob, ('store', PANEL_STASH, where['x'], where['y']))
+                else:
+                    native = ch._encode_classic(Entry(it, blob))
+                    ch.items.append(ch._read_classic_entry(native))
         except Exception as err:                 # one item the save cannot hold is skipped, not the whole import
             report.append(T('im.not_imported', '{item}: not imported ({error})', item=e.get('display_name'),
                             error=_err_text(err)))
             continue
-        if loc == 'Stash':
-            stash_blobs.append(blob)
-        else:
-            ch.items.append(Entry(it, blob))
+        if ch.version != 71:
+            if loc == 'Stash':
+                stash_blobs.append(blob)
+            else:
+                ch.items.append(Entry(it, blob))
         placed += 1
     if imp.guessed:
         report.append(T('im.ilvl_guess', '{n} items have no item level on the page (runes, keys, trophies, potions...): '

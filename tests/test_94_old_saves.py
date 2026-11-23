@@ -6,6 +6,7 @@ is byte-identical, stats are written back in the 1.09 layout, every item record 
 an edit the 1.09 record cannot hold is refused, and the collector's reader gets the same values. Median XL never
 takes the 1.09 path."""
 import glob
+import json
 import os
 import shutil
 import sys
@@ -443,9 +444,8 @@ def pre_109_real_saves_round_trip_and_edit():
             saved.set_waypoints(0, {0, 1})
             saved.set_flag('hardcore', True)
             if version == 71:
-                T.check(all(getattr(e.blob, 'read_only_reason', None) for e in saved.items), tag)
                 T.check(30 not in saved.waypoint_ids(0), tag)
-            else:
+            if version != 71:
                 weapon = saved.items[6]
                 rec, size = C.decode_item(weapon.blob, E.data)
                 T.eq(size, len(weapon.blob), tag)
@@ -469,6 +469,117 @@ def pre_109_real_saves_round_trip_and_edit():
                         T.check(False, f'{tag}: Median XL must refuse legacy saves')
             finally:
                 E.MC._median = real
+
+
+@T.test
+def classic_item_records_encode_identical():
+    E = engine()
+    import mxl_early_save as early
+    root = os.path.join(T.REPO, '.cache', 'samples', 'oldver')
+    for folder in ('100', '106b'):
+        paths = sorted(glob.glob(os.path.join(root, folder, '*.d2s')))
+        T.eq(len(paths), 2, f'{folder}: Classic fixtures')
+        for path in paths:
+            ch = E.MC.Character(path, E.data)
+            T.eq(ch._classic_original, folder == '100', 'native layout detected')
+            for code, raw in _old_records(ch):
+                rec, size = early.decode_classic(raw)
+                T.eq(size, len(raw), f'{folder}/{code}: native record length')
+                T.eq(early.encode_classic(rec), raw, f'{folder}/{code}: native round trip')
+
+
+@T.test
+def classic_items_move_edit_delete_and_paste():
+    E = engine()
+    import mxl_creator as C
+    import mxl_early_save as early
+    from mxl_rc_menu import _char_replace
+    d = E.data
+    creator = C.Creator(d)
+    root = os.path.join(T.REPO, '.cache', 'samples', 'oldver')
+    for folder in ('100', '106b'):
+        source = os.path.join(root, folder, 'Ashbow.d2s')
+        path = os.path.join(T.tmp(), f'edit-{folder}.d2s')
+        shutil.copy(source, path)
+        ch = E.MC.Character(path, d)
+        weapon = ch.items[6]
+        raw = ch._old_blob(weapon)
+        native, _ = early.decode_classic(raw)
+        ch.move(weapon, ('inv', 0, 0))
+        ch.save(backup=False)
+        again = E.MC.Character(path, d)
+        weapon = again.items[6]
+        T.eq(E.MC.where_of(weapon), ('inv', 0, 0), f'{folder}: item moved')
+        want = dict(native, location=0, equipped=0, x=0, y=0, page=0)
+        T.eq(again._old_blob(weapon), early.encode_classic(want), 'only position fields changed')
+        rec, _ = C.decode_item(weapon.blob, d)
+        spec = creator.spec_from_item(weapon.it)
+        quantity = spec['quantity'] = rec['quantity'] - 1
+        edited, _ = creator.build(spec)
+        edit_rec, _ = C.decode_item(edited, d)
+        T.eq(edit_rec['quantity'], quantity, 'Creator edit retains changed stack size')
+        edited = C.encode_item(dict(edit_rec, durability=rec['durability'] - 1), d)
+        _char_replace(T.NS(ch=again), weapon, edited, ('inv', 0, 0), False)
+        shield = again.items[7]
+        copy = again.place(again.stash_blob(shield), ('inv', 4, 0))
+        shield_rec, _ = early.decode_classic(again._old_blob(shield))
+        T.eq(again._old_blob(copy), early.encode_classic(dict(shield_rec, location=0, equipped=0, x=4, y=0, page=0)),
+             'same-layout clipboard paste preserves the native armor seed')
+        again.remove(copy)
+        potion = bytes(creator.build(creator.new_spec('normal', 'hp1 '))[0])
+        pasted = again.place(potion, ('inv', 3, 0))
+        T.eq(len(again._old_blob(pasted)), 27 if folder == '100' else 15, 'paste uses target layout')
+
+        before = list(again.items)
+        bad = (
+            (dict(rec, stats=[dict(id=0, param=None, value=1)]), 'stat 0'),
+            (dict(rec, flags=rec['flags'] | C.FLAG_ETHEREAL), 'ethereal'),
+            (dict(rec, flags=rec['flags'] | C.FLAG_SOCKETED, sockets=1), 'sockets'),
+            (dict(rec, flags=rec['flags'] | C.FLAG_RUNEWORD, runeword_id=0), 'runewords'),
+            (dict(flags=C.FLAG_SIMPLE | C.FLAG_IDENTIFIED, code='r01 '), 'r01'),
+        )
+        for invalid, message in bad:
+            try:
+                again.place(C.encode_item(invalid, d), ('inv', 0, 0), replace=again.items[6])
+            except E.MC.CharError as ex:
+                T.check('Classic' in str(ex) and message in str(ex), str(ex))
+            else:
+                T.check(False, f'Classic must refuse {message}')
+            T.eq(again.items, before, 'refused replacement leaves the inventory intact')
+
+        again.remove(again.items[0])
+        again.save(backup=False)
+        saved = E.MC.Character(path, d)
+        T.eq(saved.version, 71, 'version kept')
+        T.eq(len(saved.items), len(ch.items), 'one paste and one delete')
+        actual, _ = early.decode_classic(saved._old_blob(saved.items[5]))
+        T.eq(actual, dict(want, durability=native['durability'] - 1, quantity=quantity),
+             'durability and quantity persisted, including the original seed and reserved bits')
+        T.eq(saved.items[-1].it['code'], 'hp1 ', 'Creator item re-read')
+        T.eq(E.MC.where_of(saved.items[-1]), ('inv', 3, 0), 'Creator location re-read')
+
+
+@T.test
+def classic_import_places_supported_items_and_reports_refusals():
+    E = engine()
+    import mxl_import as importer
+
+    template = os.path.join(T.REPO, '.cache', 'samples', 'oldver', '100', 'Ashbow.d2s')
+    page = os.path.join(T.tmp(), 'classic-items.json')
+    items = [
+        dict(location='Inventory', col=0, row=0, code='hp1', quality='normal', display_name='Potion'),
+        dict(location='Stash', col=0, row=0, code='isc', quality='normal', display_name='Scroll'),
+        dict(location='Inventory', col=1, row=0, code='r01', quality='normal', display_name='El Rune'),
+    ]
+    with open(page, 'w', encoding='utf-8') as f:
+        json.dump(items, f)
+    path, report = importer.import_character(page, template, T.tmp(), 'ClassicImport', E.data, cls_name='Amazon')
+    ch = E.MC.Character(path, E.data)
+    T.eq(ch.version, 71, 'import keeps Classic version')
+    T.eq(ch._classic_original, True, 'import keeps original row-index layout')
+    T.eq([(e.it['code'], E.MC.where_of(e)) for e in ch.items],
+         [('hp1 ', ('inv', 0, 0)), ('isc ', ('store', 5, 0, 0))], 'supported imports re-read')
+    T.check(any('El Rune' in line and 'Classic' in line and 'r01' in line for line in report), repr(report))
 
 
 T.main(globals())

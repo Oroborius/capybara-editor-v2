@@ -5,6 +5,7 @@ with the Classic record sizes (including two trailing bytes) verified against
 1.00 and 1.06b saves and the 1.00 layout checked against Hero Editor.
 """
 import struct
+from random import getrandbits
 
 VERSIONS = {71: 'Classic 1.00–1.06', 87: '1.07', 89: '1.08'}
 HEADER_END = 130
@@ -55,65 +56,244 @@ def classic_codes(data):
     return cache['_classic_codes']
 
 
-def classic_item(blob, data):
-    from mxl_format import BitReader, FormatError, Item, QUALITY, expect
-    from mxl_format_fix import _keep_raw
+_CODED = 0x100000
+_SIMPLE = 0x200000
+_EAR = 0x10000
+_POSITION = ((3, 'location'), (5, 'x'), (3, 'y'))
+_PAGE = ((8, 'page'),)
+
+
+def _classic_layout(flags):
+    """Fields following the flags, and the total record size including JM."""
+    coded = bool(flags & _CODED)
+    simple = coded and bool(flags & _SIMPLE)
+    ear = bool(flags & _EAR)
+    fields = ((10, 'version'),) if coded else ()
+    if coded and not simple:
+        fields += ((32, 'code_bits'),)
+    fields += ((5, 'equipped'),)
+    if simple:
+        fields += _POSITION + _PAGE
+        if not ear:
+            fields += ((32, 'code_bits'),)
+        return fields, 26 if ear else 15
+    if ear and not coded:
+        return fields + ((10, 'ear_prefix'),) + _POSITION + ((10, 'ear_middle'),) + _PAGE, 27
+    fields += ((3, 'socketed_count'), (12, 'ilvl'))
+    if not coded:
+        fields += ((10, 'row'),)
+    fields += ((3, 'location'), (4, 'quality_id'), (20, 'quantity'),
+               (8, 'durability'), (8, 'max_durability'), (5, 'x'), (3, 'y'),
+               (10, 'quality_index'), (32, 'id'), (32, 'seed')) + _PAGE
+    return fields, 31 if coded else 27
+
+
+def is_original(blob):
+    return not bool(struct.unpack_from('<I', blob, 2)[0] & _CODED)
+
+
+def decode_classic(blob):
+    """Decode one native record, including the reserved bits after its fields."""
+    from mxl_format import BitReader, FormatError, expect
 
     expect(blob, 0, b'JM')
+    if len(blob) < 6:
+        raise FormatError('Truncated Classic item')
     br = BitReader(blob[2:])
     flags = br.read(32)
-    coded = bool(flags & 0x100000)
-    simple = coded and bool(flags & 0x200000)
-    ear = bool(flags & 0x10000)
-    size = (26 if ear else 15) if simple else (31 if coded else 27)
+    fields, size = _classic_layout(flags)
     if len(blob) < size:
         raise FormatError('Truncated Classic item')
-    it = Item()
-    it['stats'] = []
-    it['version'] = br.read(10) if coded else 0
-    code = br.read(32).to_bytes(4, 'little').decode('latin1') if coded and not simple else None
-    it['identified'] = bool(flags & 0x10)
-    it['equipped'] = br.read(5)
-    it['socketed_count'] = 0
-    if simple or ear and not coded:
-        if not simple:
-            br.read(10)
-        it['location'] = br.read(3)
-        it['x'], it['y'] = br.read(5), br.read(3)
-        if not simple:
-            br.read(10)
-        page = br.read(8)
-        code = 'ear ' if ear else br.read(32).to_bytes(4, 'little').decode('latin1')
+    rec = {name: br.read(width) for width, name in fields}
+    rec['flags'] = flags
+    rec['reserved'] = br.read((size - 2) * 8 - br.pos)
+    return rec, size
+
+
+def encode_classic(rec):
+    """Encode one native record from its fields."""
+    from mxl_creator import BitWriter, CreateError, StoreError
+
+    bw = BitWriter()
+    fields, size = _classic_layout(rec['flags'])
+    bw.write(32, rec['flags'])
+    for width, name in fields:
+        try:
+            bw.write(width, rec.get(name, 0))
+        except CreateError as ex:
+            raise StoreError(f'Classic item: {name} does not fit in {width} bits') from ex
+    bw.write((size - 2) * 8 - bw.pos, rec.get('reserved', 0))
+    return b'JM' + bw.bytes()
+
+
+def classic_item(blob, data):
+    from mxl_format import BitReader, Item, QUALITY
+    from mxl_format_fix import _keep_raw
+
+    rec, size = decode_classic(blob)
+    flags = rec['flags']
+    if flags & _EAR:
+        code = 'ear '
+    elif 'code_bits' in rec:
+        code = rec['code_bits'].to_bytes(4, 'little').decode('latin1')
     else:
-        it['socketed_count'] = br.read(3)
-        it['ilvl'] = br.read(12) & 0xFF
-        if not coded:
-            codes = classic_codes(data)
-            row = br.read(10)
-            code = codes[row] if row < len(codes) else '????'
-        it['location'] = br.read(3)
-        it['quality'] = QUALITY.get(br.read(4), 'unknown')
-        quantity = br.read(20)
-        it['durability'], it['max_durability'] = br.read(8), br.read(8)
-        it['x'], it['y'] = br.read(5), br.read(3)
-        br.read(10)  # quality-specific index, in the original game's table order
-        it['id'] = br.read(32)
-        br.read(32)  # item generation seed
-        page = br.read(8)
-        if quantity:
-            it['quantity'] = quantity
-    it['code'] = code
-    it['panel'] = 0 if page == 255 else page + 1
-    it['has_sockets'] = bool(flags & 0x800 or it['socketed_count'])
-    it['ethereal'] = False
+        codes = classic_codes(data)
+        code = codes[rec['row']] if rec['row'] < len(codes) else '????'
+    it = Item()
+    it.update({key: rec[key] for key in ('equipped', 'location', 'x', 'y', 'id', 'durability',
+                                        'max_durability') if key in rec})
+    it.update(code=code, stats=[], version=rec.get('version', 0), identified=bool(flags & 0x10),
+              socketed_count=rec.get('socketed_count', 0), panel=_panel(rec['page']),
+              has_sockets=bool(flags & 0x800 or rec.get('socketed_count')), ethereal=False)
+    if 'quality_id' in rec:
+        it['quality'] = QUALITY.get(rec['quality_id'], 'unknown')
+        it['ilvl'] = rec['ilvl'] & 0xFF
+    if rec.get('quantity'):
+        it['quantity'] = rec['quantity']
     it.opaque = True
     try:
         it['name'] = data.base(code).name
     except (KeyError, AttributeError):
         it['name'] = code.strip()
+    br = BitReader(blob[2:])
     br.pos = (size - 2) * 8
     _keep_raw(it, blob, br)
     return it, br
+
+
+def _panel(page):
+    return 0 if page == 255 else page + 1
+
+
+def _page(panel):
+    return panel - 1 if panel else 255
+
+
+def to_editor(it, rec, data):
+    """Project the editable fields of a native normal item into the Creator layout."""
+    import mxl_creator as C
+
+    code = it['code']
+    if (code not in data.bases or it['has_sockets'] or rec['flags'] & _EAR
+            or rec.get('quality_id', 2) != 2):
+        raise C.StoreError(ClassicRaw.edit_reason)
+    base = data.base(code)
+    flags = C.FLAG_ALWAYS | (C.FLAG_IDENTIFIED if it['identified'] else 0)
+    editor = {key: it[key] for key in ('code', 'location', 'equipped', 'x', 'y', 'panel')}
+    if 'quality_id' not in rec:
+        editor['flags'] = flags | C.FLAG_SIMPLE
+    else:
+        editor.update(flags=flags, quality='normal', ilvl=it['ilvl'], id=it['id'], stats=[])
+        kind = C.body_kind(data, code)
+        if kind in ('armor', 'weapons'):
+            editor['max_durability'] = it['max_durability'] + data.isc[73]['add']
+            editor['durability'] = it['durability'] + data.isc[72]['add']
+        if kind == 'armor':
+            # The seed determines the actual roll. The Creator record needs a baseline field.
+            editor['defense'] = base.def_range[0]
+        if base.stack_max is not None:
+            editor['quantity'] = rec['quantity']
+    return C.encode_item(editor, data)
+
+
+class ClassicClipboard(bytes):
+    """Creator bytes carrying the seed and other native fields for same-layout paste."""
+
+    def __new__(cls, blob, template):
+        obj = super().__new__(cls, blob)
+        obj.template = template
+        return obj
+
+    def matches_layout(self, original):
+        return original == (not bool(self.template[1]['flags'] & _CODED))
+
+
+def from_editor(blob, data, original, template=None):
+    """Encode a Creator record, preserving native fields on edits to an existing item."""
+    import mxl_creator as C
+
+    def refuse(field):
+        raise C.StoreError(f'Classic item: {field} cannot be stored in a version 71 record')
+
+    if blob[:2] == b'JM' and len(blob) >= 6 and struct.unpack_from('<I', blob, 2)[0] & _EAR:
+        refuse('ear data')
+    rec, size = C.decode_item(blob, data)
+    code = rec['code']
+    codes = classic_codes(data)
+    if code not in codes:
+        refuse(f'item base {code.strip()!r}')
+    native = None
+    if template is not None:
+        native_code, native_rec = template
+        if code == native_code and ('quality_id' not in native_rec or rec.get('id') == native_rec.get('id')):
+            native = native_rec
+    flags = rec['flags']
+    for flag, name in ((C.FLAG_SOCKETED, 'sockets'), (C.FLAG_ETHEREAL, 'ethereal'),
+                       (C.FLAG_RUNEWORD, 'runewords'), (C.FLAG_PERSONALIZED, 'personalization')):
+        if flags & flag:
+            refuse(name)
+    if rec.get('socketed_count') or size != len(blob):
+        refuse('socketed items or extra item data')
+    if rec.get('stats'):
+        refuse('stat ' + ', '.join(str(st['id']) for st in rec['stats']))
+    if rec.get('quality', 'normal') != 'normal':
+        refuse(f"{rec['quality']} quality and its generated modifiers")
+    if rec.get('auto_affix') is not None or rec.get('realm_bit') or rec.get('tome_bits'):
+        refuse('automagic, realm or tome metadata')
+    if rec.get('location') not in (0, 1, 2) or rec['panel'] not in (0, 1, 4, 5):
+        refuse('item location')
+    if rec['equipped'] > 10:
+        refuse('alternate weapon slots')
+
+    simple = bool(flags & C.FLAG_SIMPLE)
+    if native is None:
+        native_flags = 0x2000 if original else 0x182000 | (_SIMPLE if simple else 0)
+        native_flags |= flags & 0x20000  # starter gear
+        item = dict(flags=native_flags, quality_id=2, row=codes.index(code),
+                    code_bits=int.from_bytes(code.encode('latin1'), 'little'),
+                    id=rec['id'] if 'id' in rec else getrandbits(32), seed=getrandbits(32))
+    else:
+        item = dict(native)
+    item['flags'] = (item['flags'] & ~C.FLAG_IDENTIFIED) | (flags & C.FLAG_IDENTIFIED)
+    item.update({key: rec[key] for key in ('location', 'equipped', 'x', 'y')})
+    if rec['location'] == 1:
+        item['x'] = (native['x'] if native is not None and native['location'] == 1
+                     and native['equipped'] == rec['equipped'] else 0)
+    item['page'] = _page(rec['panel'])
+    if native is not None and simple == ('quality_id' in native):
+        refuse('changing the native compact layout')
+    if not simple:
+        item['ilvl'] = (item.get('ilvl', 0) & ~0xFF) | rec['ilvl']
+        for key in ('id', 'quantity'):
+            if key in rec:
+                item[key] = rec[key]
+        if 'max_durability' in rec:
+            item['max_durability'] = rec['max_durability'] - data.isc[73]['add']
+            item['durability'] = rec.get('durability', data.isc[72]['add']) - data.isc[72]['add']
+        if 'defense' in rec and (native is None or rec['defense'] != data.base(code).def_range[0]):
+            lo, hi = data.base(code).def_range
+            if lo != hi or rec['defense'] != lo:
+                refuse('an explicit defense roll')
+        if rec.get('image') is not None:
+            refuse('an explicit item graphic')
+    elif native is None:
+        item['ilvl'] = 1
+    return encode_classic(item)
+
+
+class ClassicRaw(bytes):
+    """Native item with fields that cannot be projected into the Creator layout."""
+    edit_reason = 'This Classic item can be moved or deleted. Its generated properties cannot be edited here.'
+
+    def moved(self, fields):
+        rec, size = decode_classic(self)
+        fields = dict(fields)
+        if 'panel' in fields:
+            fields['page'] = _page(fields.pop('panel'))
+        if fields.get('location') == 1:
+            fields['x'] = rec['x'] if rec['location'] == 1 and rec['equipped'] == fields.get('equipped') else 0
+        rec.update(fields)
+        return ClassicRaw(encode_classic(rec) + self[size:])
 
 
 class ClassicData:
@@ -145,32 +325,14 @@ def starter_header(magic, version, cls, expansion, weapon, shield, seed):
 
 def classic_starter_item(rec, data, original=False):
     """Encode a normal starting item in the 1.00 row-index or 1.06b code layout."""
-    from mxl_creator import BitWriter
-
-    bw = BitWriter()
     simple = rec.get('simple') and not original
-    flags = 0x22010 if original else 0x1a2010 | (0x200000 if simple else 0)
-    bw.write(32, flags)
-    code = int.from_bytes(rec['code'].encode('latin1'), 'little')
-    if not original:
-        bw.write(10, 0)
-        if not simple:
-            bw.write(32, code)
-    bw.write(5, rec['equipped'])
-    page = 0 if rec['panel'] else 255
-    if simple:
-        fields = ((3, rec['location']), (5, rec['x']), (3, rec['y']), (8, page), (32, code))
-    else:
-        fields = [(3, 0), (12, 1)]
-        if original:
-            fields.append((10, classic_codes(data).index(rec['code'])))
-        fields += [(3, rec['location']), (4, 2), (20, rec.get('quantity', 0)),
-                   (8, rec.get('durability', 0)), (8, rec.get('durability', 0)),
-                   (5, rec['x']), (3, rec['y']), (10, 0), (32, rec['id']),
-                   (32, rec['seed']), (8, page)]
-    for width, value in fields:
-        bw.write(width, value)
-    return b'JM' + bw.bytes()
+    flags = 0x22010 if original else 0x1a2010 | (_SIMPLE if simple else 0)
+    item = dict(rec, flags=flags, page=_page(rec['panel']), ilvl=1, quality_id=2,
+                version=0, code_bits=int.from_bytes(rec['code'].encode('latin1'), 'little'),
+                max_durability=rec.get('durability', 0))
+    if original:
+        item['row'] = classic_codes(data).index(rec['code'])
+    return encode_classic(item)
 
 
 def starter_tail(version, items, corpse):

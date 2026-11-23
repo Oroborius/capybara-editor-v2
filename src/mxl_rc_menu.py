@@ -660,6 +660,8 @@ def _char_replace(win, e, new, where, merc):
     ch = win.ch
     if not any(x is e for x in ch.entries(merc)):
         raise MC.CharError(T('inv.err.item_gone', 'the item is no longer where it was: select it again'))
+    if ch.version == 71:
+        return ch.place(new, where, merc, replace=e)
     ch.remove(e, merc)
     try:
         return ch.place(new, where, merc)

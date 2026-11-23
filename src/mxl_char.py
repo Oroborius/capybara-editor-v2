@@ -196,7 +196,7 @@ STATS_LENIENT = False
 def old_save_note(version=mxl_v109.VERSION):
     """Summarize item editing support for a legacy save."""
     if version == 71:
-        return 'Diablo II Classic 1.00–1.06 (version 71). Items are read-only.'
+        return 'Diablo II Classic 1.00–1.06 (version 71). Items are saved in the Classic layout.'
     if version in mxl_early_save.VERSIONS:
         return (f'Diablo II {mxl_early_save.VERSIONS[version]} (version {version}). '
                 'Items with unsupported layouts are read-only.')
@@ -502,14 +502,20 @@ def item_bodylocs(data, code):
 class Entry:
     """A top-level item of the character (with its socketed items): parsed item + raw bytes."""
 
-    def __init__(self, it, blob):
+    def __init__(self, it, blob, classic=None):
         self.it = it
         self.blob = blob
+        self.classic = classic
 
     def moved(self, data, **fields):
         """Copy with header fields changed (location, equipped, x, y, panel); socketed items unchanged."""
         if isinstance(self.blob, mxl_early_save.RawEarly):
             raise CharError(self.blob.read_only_reason)
+        if isinstance(self.blob, mxl_early_save.ClassicRaw):
+            try:
+                return self.blob.moved(fields)
+            except CreateError as ex:
+                raise CharError(f"{self.it['name']}: {ex}") from ex
         if isinstance(self.blob, mxl_v109.Raw109):     # a 1.09 item kept as read: header bits only
             return mxl_v109.moved_raw(self.blob, fields)
         rec, n = decode_item(self.blob, data)
@@ -609,7 +615,7 @@ class Character:
 
     def _parse_old(self, b, gf):
         """Read legacy stats, skills, and items. Editable LoD items use the editor's current
-        item representation in memory. Classic and unsupported records keep their original bytes."""
+        item representation in memory. Unsupported records keep their original bytes."""
         d = self.data
         try:
             self.stats, p = mxl_v109.read_stats(b, gf, 3 if self.early else 2)
@@ -629,6 +635,9 @@ class Character:
         d9 = mxl_early_save.ClassicData(d) if self.version == 71 else mxl_v109.Data109(d, self.version)
         count = struct.unpack_from('<H', b, jm + 2)[0]
         items, q = read_item_list(b, jm + 4, count, d9)
+        if self.version == 71:
+            previous_layout = getattr(self, '_classic_original', None)
+            self._classic_original = None
         self._v109_hints, self._v109_same = {}, {}
         self.items = [self._entry_old(it, b) for it in items]
         if b[q:q + 2] != b'JM':
@@ -640,8 +649,13 @@ class Character:
             if b[r:r + 2] != b'JM':
                 raise FormatError(T('ch.err.no_corpse_items', 'corpse items not found'))
             n = struct.unpack_from('<H', b, r + 2)[0]
-            _, r = read_item_list(b, r + 4, n, d9)
+            corpse_items, r = read_item_list(b, r + 4, n, d9)
+            if self.version == 71 and self._classic_original is None and corpse_items:
+                self._classic_original = mxl_early_save.is_original(corpse_items[0]._raw)
         self.corpse = b[q:r]
+        if self.version == 71 and self._classic_original is None:
+            # The header is shared by both layouts. Prefer row indices when there are no records to inspect.
+            self._classic_original = True if previous_layout is None else previous_layout
         self.has_jf = not self.early and b[r:r + 2] == b'jf'
         self.merc_items = None
         if self.has_jf:
@@ -651,7 +665,7 @@ class Character:
                 mitems, r = read_item_list(b, r + 4, n, d9)
                 self.merc_items = [self._entry_old(it, b) for it in mitems]
         self.tail = b[r:]
-        if self.early:
+        if self.early and self.version != 71:
             self._read_only_items = self._early_raw_items()
 
     def _early_raw_items(self):
@@ -660,7 +674,22 @@ class Character:
     def _entry_old(self, it, b):
         raw = bytes(b[it['_offset']:it['_offset'] + self._full_size(it)])
         if self.version == 71:
-            return Entry(it, mxl_early_save.RawEarly(raw))
+            if self._classic_original is None:
+                self._classic_original = mxl_early_save.is_original(raw)
+            rec, size = mxl_early_save.decode_classic(raw)
+            template = (it['code'], rec)
+            try:
+                blob = mxl_early_save.to_editor(it, rec, self.data)
+                if size != len(raw) or self._encode_classic(Entry(it, blob, template)) != raw:
+                    raise CreateError(mxl_early_save.ClassicRaw.edit_reason)
+            except (CharError, CreateError):
+                it._raw = None
+                return Entry(it, mxl_early_save.ClassicRaw(raw))
+            it._raw = blob
+            it.opaque = False
+            if self.data.base(it['code']).kind == 'armor':
+                it['defense'] = self.data.base(it['code']).def_range[0]
+            return Entry(it, blob, template)
         try:
             hints = {}
             b10 = mxl_v109.to_110(raw, self.data, hints, self.version)
@@ -688,6 +717,10 @@ class Character:
 
     def _old_blob(self, e):
         """Encode an entry for this legacy version, or raise CharError if it cannot be stored."""
+        if self.version == 71:
+            if isinstance(e.blob, mxl_early_save.ClassicRaw):
+                return bytes(e.blob)
+            return self._encode_classic(e)
         if isinstance(e.blob, (mxl_v109.Raw109, mxl_early_save.RawEarly)):
             return bytes(e.blob)
         b = bytes(e.blob)
@@ -704,6 +737,18 @@ class Character:
                     name = '?'
             raise CharError(f'{name}: {ex}')
 
+    def _encode_classic(self, entry):
+        try:
+            return mxl_early_save.from_editor(entry.blob, self.data, self._classic_original, entry.classic)
+        except CreateError as ex:
+            name = entry.it.get('name') if entry.it else None
+            raise CharError(f'{name}: {ex}' if name else str(ex)) from ex
+
+    def _read_classic_entry(self, raw):
+        it = blob_item(raw, mxl_early_save.ClassicData(self.data))
+        it['_offset'] = 0
+        return self._entry_old(it, raw)
+
     @staticmethod
     def _full_size(it):
         end = it['_offset'] + it['_size']
@@ -715,7 +760,7 @@ class Character:
         d = self.data
         out = bytearray(self.head)
         if getattr(self, 'old', False):
-            if self.early and self._early_raw_items() != self._read_only_items:
+            if self.early and self.version != 71 and self._early_raw_items() != self._read_only_items:
                 raise CharError(mxl_early_save.RawEarly.read_only_reason)
             items = b''.join(self._old_blob(e) for e in self.items)
             merc = None if self.merc_items is None else b''.join(self._old_blob(e) for e in self.merc_items)
@@ -1318,7 +1363,11 @@ class Character:
 
     def stored_error(self, it, panel, x, y, ignore=None):
         """None if the item fits at (x, y) of stored panel `panel` (PANEL_SIZE), else the reason."""
-        size = PANEL_SIZE(self, panel) if PANEL_SIZE is not None else None
+        size_for = PANEL_SIZE
+        if size_for is None and self.version == 71:
+            from mxl_vanilla_pages import panel_size
+            size_for = panel_size
+        size = size_for(self, panel) if size_for is not None else None
         if not size:
             return T('ch.err.no_panel', 'this game keeps no such grid in the character file')
         w, h = self.data.base(it['code']).size
@@ -1341,12 +1390,12 @@ class Character:
                     return x, y
         return None
 
-    def place(self, blob, where, merc=False):
+    def place(self, blob, where, merc=False, *, replace=None):
         """Adds an item (bytes incl. socketed items, from a stash or the creator) at where = ('slot', n) or
         ('inv', x, y). Returns the new Entry."""
-        if self.version == 71:
-            raise CharError('Classic items are read-only.')
-        if self.early:
+        if self.version == 71 and merc:
+            raise CharError('Classic characters have no saved mercenary equipment.')
+        if self.early and self.version != 71:
             # Validate conversion before the caller changes another inventory.
             try:
                 mxl_v109.to_109(blob, self.data, self._v109_hints, self.version)
@@ -1354,34 +1403,49 @@ class Character:
                 raise CharError(str(ex)) from ex
         d = self.data
         it = blob_item(blob, d)
+        if self.version == 71 and where[0] == 'slot' and where[1] > 10:
+            raise CharError(f"{it['name']}: Classic items cannot use alternate weapon slots.")
         if where[0] == 'belt':
             raise CharError(T('ch.err.belt', 'the belt is not edited here'))
         if where[0] == 'slot':
-            err = self.slot_error(it, where[1], merc)
+            err = self.slot_error(it, where[1], merc, ignore=replace)
             if err:
                 raise CharError(err)
-            new = Entry(None, Entry(it, blob).moved(d, location=LOC_EQUIPPED, equipped=where[1], x=where[1], y=0, panel=0))
+            position = dict(location=LOC_EQUIPPED, equipped=where[1], x=where[1], y=0, panel=0)
         elif where[0] == 'store':
             if merc:
                 raise CharError(T('ch.err.merc_no_inv', 'the mercenary has no inventory'))
-            err = self.stored_error(it, where[1], where[2], where[3])
+            err = self.stored_error(it, where[1], where[2], where[3], ignore=replace)
             if err:
                 raise CharError(err)
-            new = Entry(None, Entry(it, blob).moved(d, location=LOC_STORED, equipped=0, x=where[2], y=where[3],
-                                                    panel=where[1]))
+            position = dict(location=LOC_STORED, equipped=0, x=where[2], y=where[3], panel=where[1])
         else:
             if merc:
                 raise CharError(T('ch.err.merc_no_inv', 'the mercenary has no inventory'))
-            err = self.inventory_error(it, where[1], where[2])
+            err = self.inventory_error(it, where[1], where[2], ignore=replace)
             if err:
                 raise CharError(err)
-            new = Entry(None, Entry(it, blob).moved(d, location=LOC_STORED, equipped=0, x=where[1], y=where[2],
-                                                    panel=PANEL_INVENTORY))
+            position = dict(location=LOC_STORED, equipped=0, x=where[1], y=where[2], panel=PANEL_INVENTORY)
+        try:
+            new = Entry(None, Entry(it, blob).moved(d, **position))
+        except CreateError as ex:
+            if self.version == 71:
+                raise CharError(f"{it['name']}: {ex}") from ex
+            raise
         new.it = blob_item(new.blob, d)
+        if self.version == 71:
+            if isinstance(blob, mxl_early_save.ClassicClipboard) and blob.matches_layout(self._classic_original):
+                new.classic = blob.template
+            elif replace is not None:
+                new.classic = replace.classic
+            new = self._read_classic_entry(self._encode_classic(new))
         lst = self.entries(merc)
         if merc and self.merc_items is None:
             raise CharError(T('ch.err.no_merc', 'no mercenary hired'))
-        lst.append(new)
+        if replace is None:
+            lst.append(new)
+        else:
+            lst[lst.index(replace)] = new
         return new
 
     def remove(self, entry, merc=False):
@@ -1394,35 +1458,47 @@ class Character:
         """Moves an item inside the character (slot <-> inventory <-> a stored panel of the file, see where_of)."""
         d = self.data
         it = entry.it
+        if self.version == 71 and (merc or where[0] == 'slot' and where[1] > 10):
+            raise CharError(f"{it['name']}: this equipment slot is unavailable in Classic.")
         if where[0] == 'belt':
             raise CharError(T('ch.err.belt', 'the belt is not edited here'))
         if where[0] == 'slot':
             err = self.slot_error(it, where[1], merc, ignore=entry)
             if err:
                 raise CharError(err)
-            entry.blob = entry.moved(d, location=LOC_EQUIPPED, equipped=where[1], x=where[1], y=0, panel=0)
+            moved = entry.moved(d, location=LOC_EQUIPPED, equipped=where[1], x=where[1], y=0, panel=0)
         elif where[0] == 'store':
             if merc:
                 raise CharError(T('ch.err.merc_no_inv', 'the mercenary has no inventory'))
             err = self.stored_error(it, where[1], where[2], where[3], ignore=entry)
             if err:
                 raise CharError(err)
-            entry.blob = entry.moved(d, location=LOC_STORED, equipped=0, x=where[2], y=where[3], panel=where[1])
+            moved = entry.moved(d, location=LOC_STORED, equipped=0, x=where[2], y=where[3], panel=where[1])
         else:
             err = self.inventory_error(it, where[1], where[2], ignore=entry)
             if err:
                 raise CharError(err)
-            entry.blob = entry.moved(d, location=LOC_STORED, equipped=0, x=where[1], y=where[2], panel=PANEL_INVENTORY)
-        entry.it = blob_item(entry.blob, mxl_v109.Data109(d) if isinstance(entry.blob, mxl_v109.Raw109) else d)
+            moved = entry.moved(d, location=LOC_STORED, equipped=0, x=where[1], y=where[2], panel=PANEL_INVENTORY)
+        if self.version == 71:
+            new = self._read_classic_entry(self._old_blob(Entry(it, moved, entry.classic)))
+            entry.it, entry.blob, entry.classic = new.it, new.blob, new.classic
+        else:
+            entry.blob = moved
+            entry.it = blob_item(moved, mxl_v109.Data109(d) if isinstance(moved, mxl_v109.Raw109) else d)
 
     def stash_blob(self, entry):
         """Bytes of the item as a stash item (location stored, stash panel); position set by the stash writer."""
         if isinstance(entry.blob, mxl_early_save.RawEarly):
             raise CharError(entry.blob.read_only_reason)
+        if isinstance(entry.blob, mxl_early_save.ClassicRaw):
+            raise CharError(entry.blob.edit_reason)
         if isinstance(entry.blob, mxl_v109.Raw109):    # 1.09 bytes must not reach another file or the clipboard
             raise CharError(T('cr.err.old_raw', 'This 1.09 item holds values the item editor cannot keep: it can be '
                               'moved or deleted, not edited.'))
-        return entry.moved(self.data, location=LOC_STORED, equipped=0, x=0, y=0, panel=5)
+        blob = entry.moved(self.data, location=LOC_STORED, equipped=0, x=0, y=0, panel=5)
+        if self.version == 71 and entry.classic is not None:
+            return mxl_early_save.ClassicClipboard(blob, entry.classic)
+        return blob
 
     # ------------------------------------------------------------------ saving
     def save(self, backup=True):
