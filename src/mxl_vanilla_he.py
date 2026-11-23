@@ -830,16 +830,61 @@ def bind_inventory(win):
         if (getattr(win, 'he_pointer', None) or (None,))[0] is event.widget:
             win.he_pointer = None
 
-    def track(cv):
-        for sequence in ('<Enter>', '<Motion>', '<ButtonPress-1>', '<ButtonRelease-1>', '<ButtonRelease-3>'):
-            cv.bind(sequence, remember, add='+')
-        cv.bind('<Leave>', forget, add='+')
+    hint = item_hint(win.top)
+    hovered = None
 
+    def clear_hint(event):
+        nonlocal hovered
+        if hint.owner is event.widget:
+            hint.hide()
+            hint.owner = None
+            hovered = None
+            win.inventory_description(False)
+
+    def track(cv, lookup, expanded=False, dragging=lambda: win.drag):
+        def hover(event):
+            nonlocal hovered
+            remember(event)
+            if dragging() is not None:
+                return
+            entry = lookup(event)
+            if entry is None:
+                clear_hint(event)
+                return
+            if hovered is not entry or hint.owner is not cv:
+                item = decoded_item(win, entry)
+                if item is None:
+                    clear_hint(event)
+                    return
+                win.panel.show(description_item(item))
+                win.inventory_description(expanded)
+                hovered = entry
+            hint.show(cv, key=id(entry))
+
+        def leave(event):
+            forget(event)
+            if hint.owner is cv:
+                hint.leave(cv)
+
+        for sequence in ('<Enter>', '<Motion>'):
+            cv.bind(sequence, hover)
+        for sequence in ('<ButtonPress-1>', '<ButtonRelease-1>', '<ButtonRelease-3>'):
+            cv.bind(sequence, remember, add='+')
+        for sequence in ('<ButtonPress-1>', '<ButtonPress-3>', '<Unmap>'):
+            cv.bind(sequence, clear_hint, add='+')
+        cv.bind('<Leave>', leave, add='+')
+
+    def hint_hidden():
+        nonlocal hovered
+        hovered = None
+        win.inventory_description(False)
+
+    hint.on_hide = hint_hidden
     bind_pickup(win)
     for cv in (win.inv, win.doll):
         cv.bind('<ButtonRelease-3>', lambda event: rc._char_menu(win, event.widget, anchored_event(event)))
         cv.bind('<ButtonRelease-1>', lambda event: win.on_release(anchored_event(event)))
-        track(cv)
+        track(cv, lambda event: win.entry_at(event.widget, event)[0], expanded=cv is win.doll)
 
     page = win.extra.get('containers')
     if page is None:
@@ -853,7 +898,8 @@ def bind_inventory(win):
             cv.bind('<Button-1>', lambda event, key=key: page.on_press(key, anchored_event(event)))
             cv.bind('<ButtonRelease-1>', lambda event: page.on_release(anchored_event(event)))
             cv.bind('<ButtonRelease-3>', lambda event, key=key: page.on_menu(key, anchored_event(event)))
-            track(cv)
+            track(cv, lambda event, key=key: page.entry_at(key, event.x, event.y),
+                  dragging=lambda: page.drag)
 
     page._art_for = lambda key, columns, rows: container_picture(key, columns, rows) or fallback(key, columns, rows)
     page._build = rebuild

@@ -508,9 +508,13 @@ class CharacterWindow(StatEditMixin):
             from mxl_gfx import icon_layers, icon_name, ICON_CELL
             from paths import ICONS_DIR
             d = self.data
+            sockets = it.get('sockets')
             if self.vanilla_he:
+                from mxl_format_fix import shown_sockets
+
                 it = V.picture_item(it)
-            key = (it['code'], icon_name(it, d), it.get('image'), it.get('ethereal'), it.get('sockets'),
+                sockets = shown_sockets(it)
+            key = (it['code'], icon_name(it, d), it.get('image'), it.get('ethereal'), sockets,
                    tuple(icon_name(x, d) for x in it.get('socketed', [])), bg, self.cell)
             if key not in self.icons:
                 layers = icon_layers(it, d, bg, ICONS_DIR)
@@ -576,7 +580,7 @@ class CharacterWindow(StatEditMixin):
         imgs = self.icon(it, fill)
         if imgs:
             for k in (1, 2, 3):
-                if imgs.get(k) is not None and k in LAYERS_SHOWN:
+                if imgs.get(k) is not None and (self.vanilla_he or k in LAYERS_SHOWN):
                     cv.create_image((x0 + x1) / 2, (y0 + y1) / 2, image=imgs[k])
         else:
             cv.create_text((x0 + x1) / 2, (y0 + y1) / 2, text=clean(it['name']), fill=col,

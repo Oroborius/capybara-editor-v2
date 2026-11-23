@@ -190,14 +190,21 @@ class ContainersPage:
             import paths
             d = self.win.data
             if self.win.vanilla_he:
+                from mxl_format_fix import shown_sockets
                 from mxl_vanilla_he import picture_item
 
                 it = picture_item(it)
             key = (it['code'], icon_name(it, d), it.get('image'), it.get('ethereal'), self.cell)
+            if self.win.vanilla_he:
+                key += (shown_sockets(it), tuple(icon_name(child, d) for child in it.get('socketed', ())), bg)
             if key not in self.icons:
                 layers = icon_layers(it, d, bg, paths.ICONS_DIR)
                 im = layers.get(1) if layers else None
                 if im is not None:
+                    if self.win.vanilla_he:
+                        for layer in (2, 3):
+                            if layers.get(layer) is not None:
+                                im.alpha_composite(layers[layer])
                     f = self.cell / ICON_CELL
                     im = ImageTk.PhotoImage(im.resize((max(1, round(im.width * f) - 2),
                                                        max(1, round(im.height * f) - 2)), Image.LANCZOS))

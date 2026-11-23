@@ -191,6 +191,66 @@ def vanilla_workspace_pages_and_tools():
 
 
 @T.test
+def vanilla_inventory_hover_follows_visible_grids():
+    if T.VARIANT != '100' or not AVAILABLE:
+        T.skip('requires the vanilla fixture at 100%')
+    import mxl_vanilla_he as V
+
+    cw = T.chartab()
+    V.set_tab(cw, 'inventory')
+    T.pump(4)
+
+    def hover(canvas, x, y):
+        canvas.event_generate('<Motion>', x=int(x), y=int(y), warp=True)
+        T.pump(4)
+        return cw.preview.get('1.0', 'end').strip()
+
+    entry = next(iter(cw.ch.inventory()))
+    cw.panel.show(None)
+    T.check(hover(cw.inv, (entry.it['x'] + .5) * cw.cell, (entry.it['y'] + .5) * cw.cell),
+            'bag hover renders item properties without a click')
+    T.check(any(w.winfo_class() == 'Toplevel' and w.winfo_ismapped() for w in cw.top.winfo_children()),
+            'bag hover opens the controls hint')
+    box = next(b for b in cw.visible_boxes() if cw.slot_of(b) in cw.ch.equipped(False))
+    x, y, width, height = cw.doll_layout[box]
+    cw.panel.show(None)
+    T.check(hover(cw.doll, (x + width / 2) * cw.cell, (y + height / 2) * cw.cell),
+            'equipped-item hover renders properties without a click')
+    cw._show_inventory('stash')
+    T.pump(4)
+    page = cw.extra['containers']
+    x, y, _w, _h, _entry = page.hits['stash'][0]
+    cw.panel.show(None)
+    T.check(hover(page.canvases['stash'], (x + .5) * page.cell, (y + .5) * page.cell),
+            'stash hover renders properties from the visible container')
+    V.set_tab(cw, 'stats')
+    T.pump(4)
+    T.check(not any(w.winfo_class() == 'Toplevel' and w.winfo_ismapped() for w in cw.top.winfo_children()),
+            'leaving inventory closes the controls hint')
+
+
+@T.test
+def vanilla_inventory_draws_socket_contents():
+    if T.VARIANT != '100' or not AVAILABLE:
+        T.skip('requires the vanilla fixture at 100%')
+    from PIL import ImageTk
+
+    cw = T.chartab()
+    page = cw.extra['containers']
+    item = next(e.it for e in cw.ch.items if e.it.get('socketed'))
+    empty = dict(item, socketed=[])
+    bg = '#1c2a40'
+    layers = cw.icon(item, bg)
+    T.check(layers and layers.get(3), 'socket fillers have an image layer')
+    before = page._icon(empty, bg)
+    after = page._icon(item, bg)
+    T.check(before is not None and after is not None, 'both container icons render')
+    if before is not None and after is not None:
+        T.check(ImageTk.getimage(before).tobytes() != ImageTk.getimage(after).tobytes(),
+                'filled sockets change the visible container icon')
+
+
+@T.test
 def scaled_stats_fit_or_scroll_and_bottom_controls_stay_visible():
     if not AVAILABLE:
         T.skip('no 1.14d game data or sample character')
