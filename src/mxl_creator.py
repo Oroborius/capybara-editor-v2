@@ -304,7 +304,7 @@ def encode_item(rec, data):
     bw.write(32, rec['id'])
     bw.write(7, rec['ilvl'])
     q = rec['quality']
-    bw.write(4, QUALITY_ID[q] if isinstance(q, str) else q)
+    bw.write(4, (QUALITY_ID[q] if q != 'unknown' else rec['quality_raw']) if isinstance(q, str) else q)
     q = QUALITY_NAME.get(q, q) if not isinstance(q, str) else q
     if rec.get('image') is not None:
         bw.write(1, 1)
@@ -360,16 +360,19 @@ def encode_item(rec, data):
     if base.stack_max is not None:
         bw.write(QUANTITY_BITS, rec.get('quantity', 1))
     if flags & FLAG_SOCKETED:
-        bw.write(SOCKET_FIELD_BITS, rec.get('sockets', 0))
+        bw.write(getattr(data, 'socket_bits', SOCKET_FIELD_BITS), rec.get('sockets', 0))
     set_mask = rec.get('set_mask', 0)
     if q == 'set':
         bw.write(5, set_mask)
-    _write_stats(bw, rec.get('stats', []), data)
+    ws = getattr(data, 'rec_write_stats', None) or (lambda w, st: _write_stats(w, st, data))  # mxl_v109.Data109
+    ws(bw, rec.get('stats', []))
     for i in range(5):
         if set_mask >> i & 1:
-            _write_stats(bw, rec.get(f'set_stats_{i}', []), data)
+            ws(bw, rec.get(f'set_stats_{i}', []))
     if flags & FLAG_RUNEWORD:
-        _write_stats(bw, rec.get('stats_runeword', []), data)
+        ws(bw, rec.get('stats_runeword', []))
+    if hasattr(data, 'rec_write_end'):
+        data.rec_write_end(bw, rec)
     return b'JM' + bw.bytes()
 
 
@@ -422,6 +425,9 @@ def decode_item(blob, data):
     """Inverse of encode_item for one item (blob starts at 'JM'): (record, size in bytes)."""
     if blob[:2] != b'JM':
         raise CreateError('not an item')
+    if getattr(blob, 'v109_raw', False):            # mxl_v109.Raw109: a 1.09 record kept as read
+        raise CreateError(T('cr.err.old_raw', 'This 1.09 item holds values the item editor cannot keep: it can be '
+                            'moved or deleted, not edited.'))
     br = _BR(bytes(blob[2:]))
     r = {}
     r['flags'] = flags = br.read(32)
@@ -439,6 +445,8 @@ def decode_item(blob, data):
     r['id'] = br.read(32)
     r['ilvl'] = br.read(ILVL_BITS)
     q = r['quality'] = QUALITY_NAME.get(br.read(4), 'unknown')
+    if q == 'unknown':
+        r['quality_raw'] = br.v >> (br.pos - 4) & 15      # (0: hacked saves) written back as it was
     r['image'] = br.read(3) if br.read(1) else None
     r['auto_affix'] = br.read(11) if br.read(1) else None
     if q in ('low', 'superior'):
@@ -479,14 +487,17 @@ def decode_item(blob, data):
     if base.stack_max is not None:
         r['quantity'] = br.read(QUANTITY_BITS)
     if flags & FLAG_SOCKETED:
-        r['sockets'] = br.read(SOCKET_FIELD_BITS)
+        r['sockets'] = br.read(getattr(data, 'socket_bits', SOCKET_FIELD_BITS))
     r['set_mask'] = br.read(5) if q == 'set' else 0
-    r['stats'] = _read_stats(br, data)
+    rs = getattr(data, 'rec_read_stats', None) or (lambda b: _read_stats(b, data))       # mxl_v109.Data109
+    r['stats'] = rs(br)
     for i in range(5):
         if r['set_mask'] >> i & 1:
-            r[f'set_stats_{i}'] = _read_stats(br, data)
+            r[f'set_stats_{i}'] = rs(br)
     if flags & FLAG_RUNEWORD:
-        r['stats_runeword'] = _read_stats(br, data)
+        r['stats_runeword'] = rs(br)
+    if hasattr(data, 'rec_read_end'):
+        data.rec_read_end(br, r)
     return r, 2 + (br.pos + 7) // 8
 
 

@@ -193,7 +193,7 @@ def _parse_item(blob, data):
     br = BitReader(blob[2:])
     it = Item()
     if getattr(data, 'v109', False):                  # a 1.09 (save version 92) record: mxl_v109.Data109
-        it.v109 = True                                # never re-encoded (no 1.09 item writer)
+        it.v109 = True                                # (written back by mxl_char through mxl_v109.to_109)
     flags = br.read(32)
     it['identified'] = bool(flags >> 4 & 1)
     it['has_sockets'] = bool(flags >> 11 & 1)

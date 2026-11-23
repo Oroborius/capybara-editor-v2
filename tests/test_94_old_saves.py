@@ -1,8 +1,10 @@
 """Pre-1.10 saves (header version 92, Diablo II 1.09) in the vanilla 1.14d profile (mxl_v109): the five mock
 clones made for 1.09 open, their u32 stats and 1.09 item records read (widths from the game folder's
 itemstatcost "1.09-Save Bits / Add" columns, every item parsed without the opaque fallback), a save without edits
-is byte-identical, stats are written back in the 1.09 layout, item edits are refused, and the collector's reader
-gets the same values. Median XL never takes the 1.09 path."""
+is byte-identical, stats are written back in the 1.09 layout, every item record re-encodes byte-identically
+(mxl_creator codec with a Data109), items can be moved, deleted, pasted and edited (written as 1.09 records),
+an edit the 1.09 record cannot hold is refused, and the collector's reader gets the same values. Median XL never
+takes the 1.09 path."""
 import glob
 import os
 import shutil
@@ -129,7 +131,7 @@ def old_set_item_index_is_a_sets_row():
 
 
 @T.test
-def old_save_stats_written_items_refused():
+def old_save_stats_written():
     E = engine()
     path = E.files['clone-44']
     raw = T.read(path)
@@ -141,19 +143,202 @@ def old_save_stats_written_items_refused():
     T.eq(again.stat(0), 50, 'strength written in the 1.09 layout')
     T.eq(T.read(path)[4], 92, 'still a version 92 file')
     T.eq(len(again.items), len(ch.items), 'items kept')
-    try:
-        again.items[0].moved(E.data, x=0)
-        T.check(False, 'moving a 1.09 item refused')
-    except E.MC.CharError as e:
-        T.check('1.09' in str(e), f'clear note: {e}')
-    again.items.pop()
-    try:
-        again.build()
-        T.check(False, 'changed 1.09 items refused')
-    except E.MC.CharError:
-        pass
+    _restore(path, raw)
+
+
+def _restore(path, raw):
+    os.chmod(path, 0o644)
     with open(path, 'wb') as f:
         f.write(raw)
+
+
+def _old_records(ch):
+    """(name, 1.09 bytes) of every item record of a character (socketed items and the mercenary's too)."""
+    out = []
+    for e in list(ch.items) + list(ch.merc_items or []):
+        for it in [e.it] + list(e.it.get('socketed') or []):
+            out.append((it['code'], ch.raw[it['_offset']:it['_offset'] + it['_size']]))
+    return out
+
+
+@T.test
+def old_item_records_encode_identical():
+    """Every item record of the five samples: decoded with the 1.09 widths (Data109) and encoded again gives the
+    same bytes (stored ids, fast twins, +all skills parts, skipped single skills, end id and padding kept)."""
+    E = engine()
+    import mxl_creator as C
+    import mxl_v109 as V
+    d9 = V.Data109(E.data)
+    n = 0
+    for name, path in sorted(E.files.items()):
+        ch = E.MC.Character(path, E.data)
+        for code, b in _old_records(ch):
+            rec, size = C.decode_item(b, d9)
+            T.eq(size, len(b), f'{name}: {code} record size')
+            T.check(C.encode_item(rec, d9) == b, f'{name}: {code} re-encodes byte-identically')
+            n += 1
+    T.check(n > 200, f'{n} records')
+
+
+@T.test
+def old_items_held_in_the_110_layout():
+    """A 1.09 character's items are held in the 1.10 layout (what every item menu reads) and written back as the
+    same 1.09 bytes; an item the 1.10 layout cannot hold (a clone's maxed stat) stays as read (move / delete)."""
+    E = engine()
+    import mxl_creator as C
+    import mxl_v109 as V
+    kept = 0
+    for name, path in sorted(E.files.items()):
+        ch = E.MC.Character(path, E.data)
+        for e in list(ch.items) + list(ch.merc_items or []):
+            raw = ch.raw[e.it['_offset']:e.it['_offset'] + ch._full_size(e.it)]
+            if isinstance(e.blob, V.Raw109):
+                kept += 1
+                T.eq(bytes(e.blob), raw, f'{name}: {e.it["code"]} kept as read')
+                try:
+                    V.to_110(raw, E.data)
+                    T.check(False, f'{name}: {e.it["code"]} kept although the 1.10 layout holds it')
+                except C.StoreError:
+                    pass
+                try:
+                    C.decode_item(e.blob, E.data)
+                    T.check(False, 'item code refuses a kept 1.09 record')
+                except C.CreateError as ex:
+                    T.check('1.09' in str(ex), str(ex))
+                continue
+            rec = C.decode_item(e.blob, E.data)[0]
+            T.eq(rec['code'], e.it['code'], f'{name}: 1.10 record readable')
+            T.check(V.to_109(e.blob, E.data, ch._v109_hints) == raw,
+                    f'{name}: {e.it["code"]} written back identically')
+    T.check(kept <= 10, f'{kept} items kept as read')
+
+
+def _reread(E, path, ch):
+    ch.save(backup=False)
+    T.eq(T.read(path)[4], 92, 'still a version 92 file')
+    return E.MC.Character(path, E.data)
+
+
+@T.test
+def old_items_move_edit_delete_paste():
+    E = engine()
+    import mxl_creator as C
+    import mxl_v109 as V
+    d = E.data
+    path = E.files['clone-44']
+    raw = T.read(path)
+    try:
+        ch = E.MC.Character(path, d)
+        e = ch.items[0]
+        stats = {s['id']: s['value'] for s in C.decode_item(e.blob, d)[0]['stats']}
+        # move: inventory -> stash (0, 0); the record keeps its 1.09 form, only the header bits change
+        ch.items[0] = E.MC.Entry(None, e.moved(d, location=0, equipped=0, x=0, y=0, panel=5))
+        again = _reread(E, path, ch)
+        it = again.items[0].it
+        T.eq((it['panel'], it['x'], it['y']), (5, 0, 0), 'moved item re-read at its new place')
+        old_b = raw[e.it['_offset']:e.it['_offset'] + e.it['_size']]
+        new_b = again.raw[it['_offset']:it['_offset'] + it['_size']]
+        T.eq(new_b, bytes(V.moved_raw(old_b, dict(location=0, equipped=0, x=0, y=0, panel=5))),
+             'moved record: same bytes but the place')
+        T.eq({s['id']: s['value'] for s in it['stats']}, stats, 'stats unchanged by the move')
+        # edit one stat value
+        sid = next(s for s in stats if s != 99)
+        rec, n = C.decode_item(again.items[0].blob, d)
+        for s in rec['stats']:
+            if s['id'] == sid:
+                s['value'] -= 7
+        again.items[0].blob = C.encode_item(rec, d) + again.items[0].blob[n:]
+        ed = _reread(E, path, again)
+        got = {s['id']: s['value'] for s in ed.items[0].it['stats']}
+        want = dict(stats)
+        want[sid] -= 7
+        T.eq(got, want, f'stat {sid} edited, the others kept')
+        # an edit the 1.09 record cannot hold: refused with a clear note, the rest stays editable
+        rec, n = C.decode_item(ed.items[0].blob, d)
+        bad = next(x for x in (85, 97) if x in d.isc)
+        prm = 1 if d.isc[bad].get('param') else None
+        good = ed.items[0].blob
+        ed.items[0].blob = C.encode_item(dict(rec, stats=rec['stats'] + [dict(id=bad, param=prm, value=1)]), d)
+        try:
+            ed.build()
+            T.check(False, f'stat {bad} on a 1.09 item refused')
+        except E.MC.CharError as ex:
+            T.check('1.09' in str(ex) and str(bad) in str(ex), f'clear note: {ex}')
+        ed.items[0].blob = good
+        # paste: Creator items (1.10 layout) into the stash; the first one 1.09 holds is written as a 1.09 record
+        cr = C.Creator(d)
+        pasted = refused = None
+        for row in range(len(d.uniques)):
+            try:
+                spec = cr.new_spec('unique', None, row)
+                blob = bytes(cr.build(spec)[0])
+            except Exception:
+                continue
+            rec = C.decode_item(blob, d)[0]
+            if rec['flags'] & C.FLAG_SOCKETED:
+                continue
+            blob = C.encode_item(dict(rec, location=0, equipped=0, x=4, y=0, panel=5), d)
+            try:
+                V.to_109(blob, d)
+            except C.CreateError as ex:
+                refused = refused or str(ex)
+                continue
+            pasted = rec
+            ed.items.append(E.MC.Entry(None, blob))
+            break
+        T.check(pasted is not None, 'a Creator unique 1.09 can hold')
+        if refused:
+            T.check('1.09' in refused, f'refused paste says why: {refused}')
+        n_before = len(ed.items)
+        p2 = _reread(E, path, ed)
+        T.eq(len(p2.items), n_before, 'pasted item saved')
+        last = p2.items[-1].it
+        T.eq((last['code'], last['panel'], last['x']), (pasted['code'], 5, 4), 'pasted item re-read')
+        T.check(not isinstance(p2.items[-1].blob, V.Raw109), 'pasted item editable again')
+        # delete
+        p2.items.pop()
+        p3 = _reread(E, path, p2)
+        T.eq(len(p3.items), n_before - 1, 'deleted')
+    finally:
+        _restore(path, raw)
+
+
+@T.test
+def old_item_delete_keeps_the_rest():
+    E = engine()
+    path = E.files['clone-59']
+    raw = T.read(path)
+    try:
+        ch = E.MC.Character(path, E.data)
+        codes = [e.it['code'] for e in ch.items]
+        k = len(codes) // 2
+        blobs = [e.blob for e in ch.items]
+        del ch.items[k]
+        again = _reread(E, path, ch)
+        T.eq([e.it['code'] for e in again.items], codes[:k] + codes[k + 1:], 'one item gone, the rest kept')
+        T.check([e.blob for e in again.items] == blobs[:k] + blobs[k + 1:], 'the other items unchanged')
+    finally:
+        _restore(path, raw)
+
+
+@T.test
+def old_item_kept_as_read_moves():
+    """An item kept as read (Raw109) moves by its header bits; its stats stay as they were."""
+    E = engine()
+    import mxl_v109 as V
+    path = E.files['clone-91']
+    raw = T.read(path)
+    try:
+        ch = E.MC.Character(path, E.data)
+        k, e = next((i, e) for i, e in enumerate(ch.items) if isinstance(e.blob, V.Raw109))
+        stats = [(s['id'], s['param'], s['value']) for s in e.it['stats']]
+        x = (e.it['x'] + 1) % 10
+        ch.items[k] = E.MC.Entry(None, e.moved(E.data, location=0, equipped=0, x=x, y=0, panel=5))
+        it = _reread(E, path, ch).items[k].it
+        T.eq((it['code'], it['panel'], it['x'], it['y']), (e.it['code'], 5, x, 0), 'moved')
+        T.eq([(s['id'], s['param'], s['value']) for s in it['stats']], stats, 'stats kept')
+    finally:
+        _restore(path, raw)
 
 
 @T.test

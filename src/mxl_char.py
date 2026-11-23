@@ -193,9 +193,9 @@ STATS_LENIENT = False
 
 def old_save_note():
     """Shown for a 1.09 (version 92) save: what the editor can change there."""
-    return T('ch.note.old_save', 'Diablo II 1.09 save (version 92): the items are read-only here (no 1.09 item '
-             'writer); stats, skills, quests and waypoints are saved in the 1.09 layout. Loading the character '
-             'once in 1.14d converts it to the current format.')
+    return T('ch.note.old_save_items', 'Diablo II 1.09 save (version 92): stats, skills, quests, waypoints and '
+             'items are saved in the 1.09 layout; an item value a 1.09 record cannot hold is refused when saving. '
+             'Loading the character once in 1.14d converts it to the current format.')
 
 
 def _csv(data):
@@ -497,8 +497,8 @@ class Entry:
 
     def moved(self, data, **fields):
         """Copy with header fields changed (location, equipped, x, y, panel); socketed items unchanged."""
-        if getattr(self.it, 'v109', False):
-            raise CharError(old_save_note())
+        if isinstance(self.blob, mxl_v109.Raw109):     # a 1.09 item kept as read: header bits only
+            return mxl_v109.moved_raw(self.blob, fields)
         rec, n = decode_item(self.blob, data)
         rec.update(fields)
         return encode_item(rec, data) + self.blob[n:]
@@ -591,7 +591,9 @@ class Character:
 
     def _parse_old(self, b, gf):
         """The rest of a version 92 (1.09) file: mask + u32 stats, skills, then the item lists read with the 1.09
-        record widths (mxl_v109.Data109). The item bytes are kept as read: build() refuses changed items."""
+        record widths (mxl_v109.Data109). Entry.blob holds the item in the 1.10 layout (mxl_v109.to_110: every item
+        menu, the clipboard, the Creator and the import use that one); build() writes it back as 1.09 records. An
+        item the 1.10 layout cannot hold stays as read (mxl_v109.Raw109: move / delete only)."""
         d = self.data
         self.stats, p = mxl_v109.read_stats(b, gf)
         self.stats_extra = b''
@@ -605,7 +607,8 @@ class Character:
         d9 = mxl_v109.Data109(d)
         count = struct.unpack_from('<H', b, jm + 2)[0]
         items, q = read_item_list(b, jm + 4, count, d9)
-        self.items = [Entry(it, b[it['_offset']:it['_offset'] + self._full_size(it)]) for it in items]
+        self._v109_hints, self._v109_same = {}, {}
+        self.items = [self._entry_old(it, b) for it in items]
         if b[q:q + 2] != b'JM':
             raise FormatError(T('ch.err.no_corpse', 'corpse list not found'))
         cc = struct.unpack_from('<H', b, q + 2)[0]
@@ -624,13 +627,50 @@ class Character:
             if b[r:r + 2] == b'JM':
                 n = struct.unpack_from('<H', b, r + 2)[0]
                 mitems, r = read_item_list(b, r + 4, n, d9)
-                self.merc_items = [Entry(it, b[it['_offset']:it['_offset'] + self._full_size(it)]) for it in mitems]
+                self.merc_items = [self._entry_old(it, b) for it in mitems]
         self.tail = b[r:]
-        self._old_items = self._item_bytes()
 
-    def _item_bytes(self):
-        return ([e.blob for e in self.items], self.corpse,
-                None if self.merc_items is None else [e.blob for e in self.merc_items])
+    def _entry_old(self, it, b):
+        raw = bytes(b[it['_offset']:it['_offset'] + self._full_size(it)])
+        try:
+            hints = {}
+            b10 = mxl_v109.to_110(raw, self.data, hints)
+            if mxl_v109.to_109(b10, self.data, hints) != raw:
+                raise CreateError('not the same bytes')
+        except Exception as e:                         # CreateError / StoreError: kept as read
+            print(f"1.09 item {it.get('code')!r} kept as read: {e}")
+            b10 = None
+        p = 0                                          # it._raw (the Creator's edit mode): the 1.10 record bytes
+        for x in [it] + list(it.get('socketed') or []):
+            try:
+                n = decode_item(b10[p:], self.data)[1] if b10 else 0
+                x._raw = b10[p:p + n] if b10 else None
+                p += n
+            except Exception:
+                x._raw = None
+        if b10 is None:
+            return Entry(it, mxl_v109.Raw109(raw))
+        self._v109_hints.update(hints)
+        self._v109_same[b10] = raw
+        return Entry(it, b10)
+
+    def _old_blob(self, e):
+        """1.09 bytes of an entry (build). CharError (message for the user) when the item cannot be stored."""
+        if isinstance(e.blob, mxl_v109.Raw109):
+            return bytes(e.blob)
+        b = bytes(e.blob)
+        if b in self._v109_same:
+            return self._v109_same[b]
+        try:
+            return mxl_v109.to_109(b, self.data, self._v109_hints)
+        except CreateError as ex:
+            name = e.it.get('name') if e.it else None
+            if not name:
+                try:
+                    name = self.data.base(decode_item(b, self.data)[0]['code']).name
+                except Exception:
+                    name = '?'
+            raise CharError(f'{name}: {ex}')
 
     @staticmethod
     def _full_size(it):
@@ -643,19 +683,19 @@ class Character:
         d = self.data
         out = bytearray(self.head)
         if getattr(self, 'old', False):
-            if self._item_bytes() != self._old_items:
-                raise CharError(old_save_note())
+            items = b''.join(self._old_blob(e) for e in self.items)
+            merc = None if self.merc_items is None else b''.join(self._old_blob(e) for e in self.merc_items)
             try:
                 sb = mxl_v109.build_stats(self.stats)
             except ValueError as e:
                 raise CharError(T('ch.err.old_stat', '1.09 save: {stat} cannot be stored', stat=e))
             out += b'gf' + sb + self.skills
-            out += b'JM' + struct.pack('<H', len(self.items)) + b''.join(e.blob for e in self.items)
+            out += b'JM' + struct.pack('<H', len(self.items)) + items
             out += self.corpse
             if self.has_jf:
                 out += b'jf'
-                if self.merc_items is not None:
-                    out += b'JM' + struct.pack('<H', len(self.merc_items)) + b''.join(e.blob for e in self.merc_items)
+                if merc is not None:
+                    out += b'JM' + struct.pack('<H', len(self.merc_items)) + merc
             out += self.tail
             struct.pack_into('<I', out, 8, len(out))
             struct.pack_into('<I', out, 12, checksum(out))

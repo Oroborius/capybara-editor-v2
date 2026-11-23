@@ -296,7 +296,7 @@ class CharacterWindow(StatEditMixin):
                                              '"From stash" takes the item selected in the main window.'),
                                 wraplength=max(260, INV_W * c), justify='left')
         self.status.pack(anchor='w', pady=(2, 0))
-        if getattr(self.ch, 'old', False):           # a 1.09 save: items read-only, said up front
+        if getattr(self.ch, 'old', False):           # a 1.09 save: said up front
             import mxl_char
             self.set_status(mxl_char.old_save_note())
         right = ttk.Frame(f)
