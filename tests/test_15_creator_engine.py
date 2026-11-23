@@ -422,4 +422,32 @@ def unsocket_runeword_drops_its_stats():
     T.eq((bool(r3['flags'] & FLAG_RUNEWORD), r3.get('stats_runeword')), (False, None), 'remove sockets: no runeword')
 
 
+@T.test
+def reanimate_has_no_value_range():
+    """"2% Reanimate as: Dried Corpse": the unique's min / max (3374-3381) pick the monster, not the chance. The Item
+    Editor showed [3374-3381], a slider over it and an item quality of -9576%: no value range for it now."""
+    E = T.engine()
+    cr, d = E.cr, E.data
+    import mxl_rules, mxl_edit
+    rec = None
+    for i, n, u in cr.uniques():
+        if not any(d.isc[s].get('func') == 23 for m in u['mods'] for s in d.props[m['prop']] if s >= 0):
+            continue
+        try:
+            spec = cr.new_spec('unique', row=i)
+            cr.roll(spec, 'max')
+            _blob, rec = cr.build(spec)
+            break
+        except Exception:                   # a base that needs an innate affix chosen: take another unique
+            continue
+    if rec is None:
+        T.skip('no buildable unique with a reanimate mod in these tables')
+    reans = [s for s in rec['stats'] if d.isc[s['id']].get('func') == 23]
+    T.check(reans, 'the unique carries a reanimate stat')
+    for s in reans:
+        for mod in (mxl_rules, mxl_edit):
+            T.eq(mod.stat_range(rec, s['id'], d, None, s.get('param')), None, f'{mod.__name__}: no value range')
+    # (the Item Editor's quality takes its lo / hi from mxl_edit.stat_range: no range -> not in the quality)
+
+
 T.main(globals())

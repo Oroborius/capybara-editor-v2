@@ -399,6 +399,15 @@ def _install_no_socket_breakdown():
         try:
             out = {}
             for k, v in res.items():
+                sid = k[0] if isinstance(k, tuple) else k
+                try:
+                    reanimate = data.isc[sid].get('func') == 23
+                except Exception:
+                    reanimate = False
+                if reanimate:
+                    # "2% Reanimate as: <monster>": the row's min / max pick the MONSTER (param 3374-3381), the
+                    # chance is fixed - as a value range it gave [3374-3381] and an item quality of -9576%
+                    continue
                 keep = [e for e in v if not (isinstance(e, tuple) and e and e[-1] in SOCKET_SOURCES)]
                 if keep:
                     out[k] = keep
@@ -406,11 +415,39 @@ def _install_no_socket_breakdown():
         except Exception:
             return res
     stat_ranges._no_sock = True
+    _install_reanimate_range()
     for name in ('mxl_stat_text', 'mxl_tooltip', 'mxl_gui_detail', 'mxl_catalog_tooltip'):
         m = sys.modules.get(name)
         if m is not None and getattr(m, 'stat_ranges', None) is orig:
             m.stat_ranges = stat_ranges
 
+
+
+def _install_reanimate_range():
+    """Reanimate ("2% Reanimate as: <monster>", description func 23): the mod's min / max pick the MONSTER (param),
+    the chance is fixed. The host's stat_range returned the monster range as the VALUE range: the Item Editor showed
+    [3374-3381], a slider over it and an item quality of -9576%. No value range for those stats (both profiles)."""
+    import sys
+    try:
+        import mxl_rules
+    except Exception:
+        return
+    orig = getattr(mxl_rules, 'stat_range', None)
+    if orig is None or getattr(orig, '_reanimate', False):
+        return
+
+    def stat_range(it, stat_id, data, *a, **k):
+        try:
+            if data.isc[stat_id].get('func') == 23:
+                return None
+        except Exception:
+            pass
+        return orig(it, stat_id, data, *a, **k)
+    stat_range._reanimate = True
+    for name in ('mxl_rules', 'mxl_edit', 'mxl_creator', 'mxl_stat_text', 'mxl_gui_detail'):
+        m = sys.modules.get(name)
+        if m is not None and getattr(m, 'stat_range', None) is orig:
+            m.stat_range = stat_range
 
 # ---------------------------------------------------------------------------------------- by-time stats
 # itemstatcost op 6 ("by time"), descfunc 17 / 18: the 22 saved bits are 2 bits time of day, 10 bits the start and
