@@ -22,6 +22,7 @@ import mxl_v109
 MAGIC = 0xAA55AA55
 QUEST_OFF, WP_OFF, NPC_OFF, STATS_OFF = 0x14F, 0x279, 0x2C9, 0x2FD
 QUEST_DATA = QUEST_OFF + 10           # 'Woo!' + version u32 + size u16
+START_ACT_OFF = 0xA8                  # one byte per difficulty, with an active flag and saved act
 WP_DATA = WP_OFF + 8                   # 'WS' + 6 bytes
 DIFFICULTIES = ('Normal', 'Nightmare', 'Hell')
 
@@ -1000,6 +1001,30 @@ class Character:
             raise CharError(T('ch.err.difficulties', 'finished difficulties: 0 to 3'))
         if self.difficulties_done != n:
             self.head[0x25] = self.game_progression(n)
+
+    def start_location(self):
+        """Return the active difficulty and its saved town index."""
+        if self.early:
+            return min(self.difficulties_done, 2), 0
+        active = next((i for i in range(3) if self.head[START_ACT_OFF + i] & 0x80), 0)
+        return active, self.head[START_ACT_OFF + active] & 7
+
+    def set_start_difficulty(self, difficulty):
+        """Select the starting difficulty and keep each difficulty's saved town."""
+        if self.early or type(difficulty) is not int or difficulty not in range(3):
+            raise CharError('Starting difficulty is unavailable for this save.')
+        for i in range(3):
+            offset = START_ACT_OFF + i
+            self.head[offset] = (self.head[offset] & 0x7f) | (0x80 if i == difficulty else 0)
+
+    def set_start_town(self, town):
+        """Update the active difficulty's town and preserve the other header bits."""
+        max_town = 4 if self.flags()['expansion'] else 3
+        if self.early or type(town) is not int or not 0 <= town <= max_town:
+            raise CharError('Starting town is unavailable for this save.')
+        difficulty, _ = self.start_location()
+        offset = START_ACT_OFF + difficulty
+        self.head[offset] = (self.head[offset] & 0xf8) | town
 
     _PROG_WORDS = (6, 14, 22)             # Sisters to the Slaughter, Seven Tombs, The Guardian: +1 each
 

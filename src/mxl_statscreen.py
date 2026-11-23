@@ -87,6 +87,14 @@ class StatEditMixin:
         kind = op[0]
         if kind == 'field':
             target.set_field(op[1], op[2])
+        elif kind == 'fraction':
+            field, raw = target._field_raw(op[1])
+            mask = (1 << field[2]) - 1
+            target.set_field_raw(op[1], (raw & ~mask) | op[2])
+        elif kind == 'start_difficulty':
+            target.set_start_difficulty(op[1])
+        elif kind == 'start_town':
+            target.set_start_town(op[1])
         elif kind == 'levelup':
             target.set_level(op[1])
         elif kind == 'flag':
@@ -139,6 +147,9 @@ class StatEditMixin:
 
     def st_value(self, key):
         sim = self.st_sim
+        if key.endswith('_frac'):
+            field, raw = sim._field_raw(key.removesuffix('_frac') + '_max')
+            return raw & ((1 << field[2]) - 1)
         if key == 'name':
             return self.st_name or self.ch.name
         if key == 'copy_as':
@@ -154,7 +165,12 @@ class StatEditMixin:
             return 0, 255
         if key == 'levelup':
             return self.st_sim.level, MC.max_level(self.data, self.st_sim.cls)
+        if key.endswith('_frac'):
+            return 0, (1 << MC.FRACTION_BITS) - 1
         fd = self.st_sim.stat_field(key)
+        limit = getattr(self, 'he_over99', None)
+        if key == 'level' and limit is not None:
+            return fd.min, min(255 if limit.get() else 99, fd.max)
         return fd.min, fd.max
 
     def st_parse(self, key, text):
@@ -187,6 +203,8 @@ class StatEditMixin:
             return T('ss.progression', 'Progression')
         if key == 'levelup':
             return T('ss.levelup', 'Level up like the game')
+        if key.endswith('_frac'):
+            return self.st_sim.stat_field(key.removesuffix('_frac') + '_max').label + ' fraction'
         return self.st_sim.stat_field(key).label
 
     def st_set(self, key, text):
@@ -217,6 +235,8 @@ class StatEditMixin:
             return self.st_do('prog', v)
         if key == 'levelup':
             return self.st_do('levelup', v)
+        if key.endswith('_frac'):
+            return self.st_do('fraction', key.removesuffix('_frac') + '_max', v)
         return self.st_do('field', key, v)
 
     def st_plus(self, key, n=1, take=False, free=False, everything=False):

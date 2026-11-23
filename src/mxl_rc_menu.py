@@ -448,7 +448,6 @@ def _sync(win):
 
 def _char_menu(win, cv, ev):
     menu = tk.Menu(cv, tearoff=0)
-    from mxl_char_gui import CharacterWindow
     import mxl_he_stats
     _sync(win)
     e, slot = win.entry_at(cv, ev)
@@ -459,12 +458,12 @@ def _char_menu(win, cv, ev):
         win.sel_slot = slot
         win.selected = e
         win.redraw()
-    if e is not None:
+    if e is not None and vanilla:
+        _vanilla_char_commands(win, menu, e, clip)
+    elif e is not None:
         menu.add_command(label=rc('edit', 'Edit item...'), command=win.edit)
         menu.add_command(label=rc('stats', 'Item stats...'), command=lambda: mxl_he_stats.open_char_item_stats(win, e))
         menu.add_command(label=rc('duplicate', 'Duplicate'), command=lambda: _char_duplicate(win, e))
-        if vanilla:
-            menu.add_separator()
         menu.add_command(label=rc('copy', 'Copy'), command=lambda: _char_copy(win, e))
         menu.add_command(label=rc('cut', 'Cut'), command=lambda: (_char_copy(win, e), win.delete()))
         if clip is not None:
@@ -474,8 +473,6 @@ def _char_menu(win, cv, ev):
         _fill_sockets_entry(win, menu, None, win=win, e=e)
         _socket_cascade(win, menu, win=win, e=e)
         _add_hero_editor_menu(win, menu, win=win, e=e)
-        if vanilla:
-            menu.add_separator()
         menu.add_command(label=rc('to_stash', 'To stash'), command=win.to_stash)
         menu.add_command(label=rc('delete_short', 'Delete'), command=win.delete)
         menu.add_command(label=rc('export', 'Export item...'), command=lambda: _export_char(win, e))
@@ -497,6 +494,113 @@ def _char_menu(win, cv, ev):
         menu.grab_release()
 
 
+def _vanilla_char_commands(win, menu, entry, clip):
+    from tkinter import filedialog, messagebox
+    from mxl_char import CharError
+    from mxl_he_stats import open_char_item_stats
+    from mxl_statnames import stat_text
+    from mxl_vanilla_he import set_tab
+
+    def copy():
+        return _char_copy(win, entry)
+
+    def view_buffer():
+        buf = _magic_buf(win.app)
+        text = 'The buffer is empty.'
+        if buf:
+            text = buf['name'] + '\n\n' + '\n'.join(
+                stat_text(win.data, stat['id'], stat.get('param'), stat['value']) for stat in (*buf['stats'], *buf['rw']))
+        messagebox.showinfo('Magic Attribute Buffer', text, parent=win.top)
+
+    def import_item():
+        from mxl_vanilla_he import draw_pickup
+
+        path = filedialog.askopenfilename(title='Import Item', filetypes=[('Diablo II item', '*.d2i')],
+                                          parent=win.top)
+        if not path:
+            return
+        try:
+            blob = read_file(path)
+            item = blob_item(blob, win.data)
+        except (EditError, FormatError, OSError) as error:
+            win.set_status(str(error), True)
+            return
+        from mxl_creator_gui import clean
+        win.app._capy_clip = blob, clean(item.get('name') or item['code'])
+        draw_pickup(win)
+        win.set_status('Item imported into Picked Up.')
+
+    def export_character():
+        path = filedialog.asksaveasfilename(title='Save Character Information', initialfile=win.ch.name + '.txt',
+                                            defaultextension='.txt', filetypes=[('Text file', '*.txt')],
+                                            parent=win.top)
+        if not path:
+            return
+        lines = [f'{win.ch.name} — Level {win.ch.level}', '']
+        for merc in (False, True):
+            lines.append('Mercenary items' if merc else 'Character items')
+            lines.extend(clean_name(win, item) for item in win.ch.entries(merc))
+            lines.append('')
+        try:
+            with open(path, 'w', encoding='utf-8') as output:
+                output.write('\n'.join(lines))
+        except OSError as error:
+            win.set_status(str(error), True)
+            return
+        win.set_status(f'Character information saved to {os.path.basename(path)}.')
+
+    menu.add_command(label='General Item Edit…', command=win.edit)
+    specific = tk.Menu(menu, tearoff=False)
+    menu.add_cascade(label='Specific Editing Functions…', menu=specific)
+    specific.add_command(label='Magic Attribute Editing', command=lambda: open_char_item_stats(win, entry))
+    _socket_cascade(win, specific, win=win, e=entry)
+    try:
+        rec, _ = decode_item(win.ch.stash_blob(entry), win.data)
+    except (CharError, FormatError, OSError, CreateError, AttributeError, ValueError):
+        rec = None
+    if rec is not None and not rec['flags'] & FLAG_SIMPLE:
+        _quality_cascade(win, specific, entry.it['code'], rec['quality'], win=win)
+        _specific_cascade(win, specific, entry.it['code'], rec, win=win, e=entry)
+    stackable = win.data.base(entry.it['code']).stack_max is not None
+    if stackable:
+        _char_quantity_cascade(win, specific, entry)
+
+    favorites = tk.Menu(menu, tearoff=False)
+    favorites.add_command(label='Add Favorite…', command=lambda: _library_char(win, entry))
+    menu.add_cascade(label='Favorite Items…', menu=favorites)
+    menu.add_separator()
+    menu.add_command(label='Add Magic Attributes to Buffer', accelerator='Ctrl+Shift+C',
+                     command=lambda: _add_magic_to_buffer(win, None, win, entry))
+    menu.add_command(label='View Buffer', command=view_buffer)
+    menu.add_command(label='Delete Buffer', command=lambda: _delete_magic_buffer(win, win))
+    if _magic_buf(win.app):
+        menu.add_command(label='Apply Buffer to Item', accelerator='Ctrl+Shift+V',
+                         command=lambda: _paste_magic_from_buffer(win, None, win, entry))
+    menu.add_separator()
+    menu.add_command(label='Export Item to File…', command=lambda: _export_char(win, entry))
+    menu.add_command(label='Import Item from File…', command=import_item)
+    menu.add_separator()
+    menu.add_command(label='Cut Item', command=lambda: copy() and win.delete())
+    menu.add_command(label='Copy Item', accelerator='Ctrl+C', command=copy)
+    menu.add_command(label='Paste Item', accelerator='Ctrl+V', state='normal' if clip else 'disabled',
+                     command=lambda: _char_paste_over(win, entry, clip))
+    last = menu.index('end')
+    _fill_sockets_entry(win, menu, None, win=win, e=entry)
+    if last == menu.index('end'):
+        menu.add_command(label='Fill Item Sockets', state='disabled')
+    menu.add_command(label='Delete Item', accelerator='Del', command=win.delete)
+    menu.add_separator()
+    more = tk.Menu(menu, tearoff=False)
+    menu.add_cascade(label='More Item Tools', menu=more)
+    more.add_command(label='To stash', command=win.to_stash)
+    more.add_command(label='Duplicate', command=lambda: _char_duplicate(win, entry))
+    more.add_command(label='Open in Bit editor', command=lambda: _inspect_char(win, entry))
+    if not stackable and rec is not None:
+        _char_quantity_cascade(win, more, entry)
+    menu.add_command(label='Save Character Information to Text File…', command=export_character)
+    menu.add_command(label='Help', command=lambda: set_tab(win, 'info'))
+
+
 def _char_copy(win, e):
     import mxl_char as MC
     try:
@@ -505,6 +609,10 @@ def _char_copy(win, e):
         win.set_status(str(err), True)
         return
     _status(win.app, rc('copied', '{name} copied (right-click an empty cell to paste it)', name=clean_name(win, e)))
+    if getattr(win, 'vanilla_he', False):
+        from mxl_vanilla_he import draw_pickup
+        draw_pickup(win)
+    return True
 
 
 def _char_quantity_cascade(win, menu, e):
@@ -629,7 +737,7 @@ def _char_paste(win, ev, clip):
         win.set_status(str(err), True)
         return
     if win.save(rc('pasted', '{name} pasted', name=clip[1])):
-        win.app._capy_clip = None
+        _clear_char_clip(win)
 
 
 def _char_paste_slot(win, slot, clip):
@@ -643,7 +751,14 @@ def _char_paste_slot(win, slot, clip):
         win.set_status(str(err), True)
         return
     if win.save(rc('pasted', '{name} pasted', name=clip[1])):
-        win.app._capy_clip = None
+        _clear_char_clip(win)
+
+
+def _clear_char_clip(win):
+    win.app._capy_clip = None
+    if getattr(win, 'vanilla_he', False):
+        from mxl_vanilla_he import draw_pickup
+        draw_pickup(win)
 
 
 def clean_name(win, e):
@@ -1688,5 +1803,5 @@ def _char_paste_over(win, e, clip):
         win.set_status(str(err), True)
         return
     if win.save(rc('pasted_over', '{name} pasted (the previous item is replaced)', name=clip[1])):
-        win.app._capy_clip = None
+        _clear_char_clip(win)
         _record_char_write(win, path, before, name)

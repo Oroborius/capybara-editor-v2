@@ -151,13 +151,13 @@ class CharacterWindow(StatEditMixin):
         window.protocol('WM_DELETE_WINDOW', self.close)
         import mxl_scroll                            # the pages scroll when the window is smaller than they are
         self.scroll = mxl_scroll.Scrolled(self.top, bg=HE_BG)
-        self.scroll.pack(fill='both', expand=True, padx=8 if self.vanilla_he else 2,
-                         pady=(7, 7) if self.vanilla_he else (2, 0))
+        self.scroll.pack(fill='both', expand=True, padx=3 if self.vanilla_he else 2,
+                         pady=(0, 0) if self.vanilla_he else (2, 0))
         body = self.scroll.inner
         self.body = body
         self.scroll.bind('<Configure>', self._fit_later, add='+')
         self.st_tab = tk.Frame(body, bg=HE_BG)
-        self.eq_tab = ttk.Frame(body, padding=3)
+        self.eq_tab = ttk.Frame(body, padding=2 if self.vanilla_he else 3)
         if self.vanilla_he:
             self.inv_canvas_column = ttk.Frame(self.eq_tab)
             self.inv_canvas_column.pack(side='left', anchor='n')
@@ -193,7 +193,7 @@ class CharacterWindow(StatEditMixin):
                 V.role(rb, 'tab')
                 underline = next((i for i, ch in enumerate(text.lower())
                                   if ch.isascii() and ch.isalpha() and ch not in mnemonics), -1)
-                rb.configure(font=V.font(), underline=underline, padx=4)
+                rb.configure(font=V.font(), underline=underline, padx=7)
             if not self.vanilla_he or key in reference:
                 rb.pack(side='left', padx=(2 if key == 'stats' else 0, 0), pady=(0, 1))
             self.tab_buttons.append(rb)
@@ -415,14 +415,55 @@ class CharacterWindow(StatEditMixin):
         if self.vanilla_he:
             V.role(self.preview, 'description')
             self.preview.configure(width=32, height=19, bd=2, relief='sunken', pady=2, padx=4)
-            controls = ttk.LabelFrame(self.inv_right, text='Item actions', padding=2)
+            self.preview.configure(height=1)
+            controls = ttk.Frame(self.inv_right, height=169)
             controls.pack(fill='x', pady=(4, 0))
-            for i, (text, command) in enumerate(item_actions):
-                ttk.Button(controls, text=text, command=command).grid(
-                    row=i // 2, column=i % 2, sticky='ew', padx=1, pady=1)
-            row.pack(fill='x', pady=(2, 0))
-            self.status.pack(anchor='w', pady=(2, 0))
-            self.he_inventory_controls = [(widget, widget.pack_info()) for widget in (controls, row, self.status)]
+            controls.pack_propagate(False)
+            clip = ttk.LabelFrame(controls, text='Item Picked Up', padding=3)
+            clip.pack(side='left', fill='y', padx=(0, 3))
+            paper = tk.Canvas(clip, width=77, height=111, bg='#211e1a', highlightthickness=2,
+                              highlightbackground='#83704c')
+            paper.pack()
+            self.he_pickup = paper
+
+            def paste():
+                from mxl_rc_menu import _char_paste_slot
+                item = getattr(self.app, '_capy_clip', None)
+                if item is None:
+                    self.set_status('Copy or cut an item first.', True)
+                    return
+                slot = self.sel_slot
+                if slot is not None and self.ch.equipped(self.is_merc()).get(slot) is None:
+                    _char_paste_slot(self, slot, item)
+                    return
+                if self.is_merc():
+                    self.set_status('Select an empty mercenary slot first.', True)
+                    return
+                from mxl_rc_menu import _char_paste
+                from types import SimpleNamespace
+                try:
+                    spot = self.ch.free_inventory_spot(MC.blob_item(item[0], self.data))
+                except (CharError, FormatError, OSError) as error:
+                    self.set_status(str(error), True)
+                    return
+                if spot is None:
+                    self.set_status('No free place in the inventory.', True)
+                    return
+                _char_paste(self, SimpleNamespace(x=spot[0] * self.cell, y=spot[1] * self.cell), item)
+
+            ttk.Button(clip, text='Paste Item', command=paste).pack(fill='x', pady=3)
+            actions = ttk.LabelFrame(controls, text='Item Actions', padding=2)
+            actions.pack(side='left', anchor='n', fill='x', expand=True)
+            for text, command in item_actions:
+                ttk.Button(actions, text=text, command=command).pack(fill='x', pady=1)
+            decode = ttk.LabelFrame(controls, text='Item Decode', padding=2)
+            decode.pack(side='left', anchor='n', padx=(3, 0))
+            ttk.Label(decode, text='1.10-1.13' if not self.ch.old else str(self.ch.version)).pack(padx=6)
+            ttk.Button(decode, text='Edit…', command=self.edit).pack(fill='x', pady=(5, 0))
+            self.he_inventory_controls = [(controls, controls.pack_info())]
+            if not self.he_inventory_art:
+                row.pack(fill='x', pady=2)
+                self.he_inventory_controls.append((row, row.pack_info()))
 
     def inventory_description(self, expanded):
         for widget, layout in self.he_inventory_controls:
@@ -607,6 +648,8 @@ class CharacterWindow(StatEditMixin):
                 x0, y0 = e.it['x'] * c, e.it['y'] * c
                 self.draw_item(inv, e.it, x0, y0, x0 + w * c, y0 + h * c, e is self.selected)
         self.panel.show(self.selected.it if self.selected else None)
+        if self.vanilla_he:
+            V.draw_pickup(self)
 
     # ---- hit tests
     def target_at(self, cv, ev, size=(1, 1), dx=0, dy=0):
@@ -694,6 +737,8 @@ class CharacterWindow(StatEditMixin):
     # ---- actions
     def set_status(self, text, error=False):
         self.status.configure(text=text, foreground='#e06060' if error else '')
+        if self.vanilla_he:
+            self.set_bar(text, error)
 
     def reload(self, keep=True):
         """Reads the character file again. keep (the default: every item action that fails ends here, and a file
@@ -1012,7 +1057,8 @@ class CharacterWindow(StatEditMixin):
         self.sk_vars = {}
         self._skills_cls = None
         top = tk.Frame(f, bg=HE_BG)
-        top.pack(fill='x', padx=4, pady=(2, 1))
+        if not self.vanilla_he:
+            top.pack(fill='x', padx=4, pady=(2, 1))
         self.sk_title = tk.Label(top, text='', font=HE_FONT_I, bg=HE_BG)
         self.sk_title.pack(side='left')
         tk.Label(top, text='   ' + T('he.skills_find', 'Find:'), font=HE_FONT, bg=HE_BG).pack(side='left')
@@ -1029,6 +1075,19 @@ class CharacterWindow(StatEditMixin):
         if self.vanilla_he:
             from mxl_vanilla_he_skills import VanillaSkillTree
             self.sktree = VanillaSkillTree(f, self)
+            tools = tk.Menu(self.sk_other, tearoff=False)
+            def find():
+                from tkinter.simpledialog import askstring
+                text = askstring('Find Skill', 'Skill name', initialvalue=self.sk_search.get(), parent=self.top)
+                if text is not None:
+                    V.set_tab(self, 'skills')
+                    self.sk_search.set(text)
+                    self._filter_skills()
+
+            tools.add_command(label='Find Skill…', command=find)
+            tools.add_command(label='Other skills', command=self.sk_other.invoke)
+            tools.add_command(label='Reset all skill levels', command=self._zero_skills)
+            self.he_menu.add_cascade(label='Skill tools', menu=tools)
         else:
             self.sktree = mxl_skilltree.SkillTree(f, self)
         self.sktree.frame.pack(fill='both', expand=True)
@@ -1256,10 +1315,12 @@ class CharacterWindow(StatEditMixin):
         self.wp_trees = []
         self.q_trees = []
         if self.vanilla_he:
+            self.he_quest_names = {}
             quest_detail = V.quest_details(self, self.q_tab)
             quest_frame = ttk.LabelFrame(self.q_tab, text='Game Modes', padding=3)
             quest_frame.pack(side='right', fill='both', expand=True, padx=(4, 0))
             quest_tree = CheckTree(quest_frame, self.on_tree_change)
+            quest_root = quest_tree.tv.insert('', 'end', text='Quests', open=True)
             quest_tree.tv.bind('<<TreeviewSelect>>', lambda _event: quest_detail(quest_tree))
         for k, _dn in enumerate(DIFFICULTIES):
             dn = difficulty_name(k)
@@ -1285,10 +1346,10 @@ class CharacterWindow(StatEditMixin):
                 fr = tk.LabelFrame(self.q_tab, text=dn, font=HE_FONT_I, bg=SK_STONE, bd=2, relief='groove', padx=2, pady=2)
                 fr.grid(row=0, column=k, sticky='nsew', padx=2, pady=2)
                 t = CheckTree(fr, self.on_tree_change)
-            root = t.add('', T('he.mode_quests', '{mode} Mode Quests', mode=dn))
+            root = t.add(quest_root if self.vanilla_he else '', T('he.mode_quests', '{mode} Mode Quests', mode=dn))
             for act, intro, quests, done in self.ch.quest_acts():
                 a = t.add(root, act)
-                for word, key in quests:
+                for index, (word, key) in enumerate(quests):
                     r = MC.QUEST_REWARDS.get(word)
                     extra = ''
                     if r:
@@ -1296,8 +1357,13 @@ class CharacterWindow(StatEditMixin):
                                            T('he.reward.skill', '  (+{n} skill points)', n=r[1])),
                                  'stats': T('he.reward.stats', '  (+{n} stat points)', n=r[1]),
                                  'life': T('he.reward.life', '  (+{n} life)', n=r[1])}[r[0]]
-                    t.add(a, clean(d.key(key)) + extra, key=('q', k, word))
-            t.open(root)
+                    caption = clean(d.key(key)) + extra
+                    if self.vanilla_he:
+                        self.he_quest_names[(k, word)] = (act, caption)
+                        caption = 'Quest ' + ('I', 'II', 'III', 'IV', 'V', 'VI')[index]
+                    t.add(a, caption, key=('q', k, word))
+            if not self.vanilla_he or k == 0:
+                t.open(root)
             self.q_trees.append(t)
         if self.vanilla_he:
             first_quest = next(iter(quest_tree.keys), None)
@@ -1322,41 +1388,19 @@ class CharacterWindow(StatEditMixin):
         """The Hero-Editor style page (light look, or no game art): the same values, edited through the same engine."""
         ch, d = self.ch, self.data
 
-        if self.vanilla_he:
-            note_w = 190
-            self.he_portrait = V.character_portrait(f)
-            self.he_portrait.grid(row=0, column=0, sticky='nsew', padx=(0, 5))
-            f = tk.Frame(f, bg=V.FORM)
-            f.grid(row=0, column=1, sticky='nsew')
-            self.st_tab.grid_columnconfigure(1, weight=1)
-            self.st_tab.grid_rowconfigure(0, weight=1)
-            sections = (tk.Frame(f), tk.Frame(f))
-            for column, section in enumerate(sections):
-                section.grid(row=0, column=column, sticky='nsew')
-                section.columnconfigure(0, weight=1)
-
-        def frame(parent, text, he_position=None, **grid):
-            """Build a section in the profile's form layout."""
-            if self.vanilla_he:
-                column, row = he_position
-                grid = dict(row=row, column=0)
-                if column is None:
-                    grid.update(columnspan=2)
-                else:
-                    parent = sections[column]
+        def frame(parent, text, **grid):
             fr = tk.LabelFrame(parent, text=' ' + text, font=HE_FONT_I, bg=SK_STONE, fg=HE_GOLD,
                                bd=2, relief='groove', padx=4, pady=1,
                                highlightbackground=SK_EDGE, highlightthickness=1)
-            if self.vanilla_he:
-                fr.configure(bd=1, highlightthickness=0, font=V.font(V.LEGEND_FONT))
             fr.grid(sticky='nsew', padx=2, pady=1, **grid)
             return fr
 
         def entry(parent, key, width, justify='right', **grid):
             e = tk.Entry(parent, width=width, font=HE_FONT, relief='sunken', bd=2, bg='#000000',
                          readonlybackground='#0b0a08', fg=HE_GOLD, insertbackground=HE_GOLD, justify=justify)
-            e.grid(**grid)
-            if key in self.GREY_KEYS:                # editable: Enter / leaving the box stores it, SAVE writes it
+            if grid:
+                e.grid(**grid)
+            if self._grey_editable(key):                # editable: Enter / leaving the box stores it, SAVE writes it
                 e.bind('<KeyRelease>', lambda _e: self.update_dirty())
                 e.bind('<Return>', lambda _e, k=key: self._grey_commit(k))
                 e.bind('<KP_Enter>', lambda _e, k=key: self._grey_commit(k))
@@ -1368,7 +1412,7 @@ class CharacterWindow(StatEditMixin):
             else:
                 e.configure(state='readonly')
             if self.vanilla_he:
-                e.configure(font=V.font(), justify='center' if key != 'name' else 'left', bd=1)
+                e.configure(font=V.font(), justify='center', bd=2)
                 if key == 'name':
                     V.role(e, 'name')
             self.sv[key] = e
@@ -1378,48 +1422,47 @@ class CharacterWindow(StatEditMixin):
             tk.Label(parent, text=label, font=HE_FONT, bg=SK_STONE).grid(row=r, column=col, sticky='e', padx=(0, 4), pady=1)
             return entry(parent, key, width, row=r, column=col + 1, sticky='w', pady=1)
 
-        for c in range(2 if self.vanilla_he else 3):
-            f.grid_columnconfigure(c, weight=1, uniform='he')
-        fr = frame(f, T('he.name', 'Name'), he_position=(0, 0), row=0, column=0)
-        e = entry(fr, 'name', 16, justify='left', row=0, column=0, columnspan=3, sticky='w')
         if self.vanilla_he:
-            tk.Button(fr, text='Rename', command=lambda: self._grey_commit('name')).grid(row=0, column=3)
-        else:
-            e.configure(font=('Times New Roman', 13, 'bold'))
+            V.stats(self, f, entry)
+            return
+
+        for c in range(3):
+            f.grid_columnconfigure(c, weight=1, uniform='he')
+        fr = frame(f, T('he.name', 'Name'), row=0, column=0)
+        e = entry(fr, 'name', 16, justify='left', row=0, column=0, columnspan=3, sticky='w')
+        e.configure(font=('Times New Roman', 13, 'bold'))
         tk.Label(fr, text=T('he.copy_as', 'Copy as'), font=HE_FONT, bg=SK_STONE).grid(row=1, column=0, sticky='w', pady=(4, 0))
         tk.Entry(fr, textvariable=self.copy_name, width=11, font=HE_FONT, relief='sunken', bd=2).grid(row=1, column=1, pady=(4, 0))
         tk.Button(fr, text=T('he.copy', 'Copy'), font=HE_FONT, command=self.copy_char, bg=HE_BTN).grid(row=1, column=2, padx=4, pady=(4, 0))
 
-        fr = frame(f, T('he.class', 'Class'), he_position=(1, 0), row=1, column=0)
+        fr = frame(f, T('he.class', 'Class'), row=1, column=0)
         tk.Label(fr, text=T('he.class_c', 'Class:'), font=HE_FONT, bg=SK_STONE).grid(row=0, column=0, sticky='e', padx=(0, 4), pady=1)
         self.class_box = ttk.Combobox(fr, state='readonly', width=14, textvariable=self.new_class,
                                       values=self.class_names)
         self.class_box.grid(row=0, column=1, sticky='w', pady=1)
         self.class_box.bind('<<ComboboxSelected>>', lambda _e: self.on_class_change())
-        if not self.vanilla_he:
-            tk.Label(fr, text=T('he.class_note', 'Changing the class resets the skill levels\n(the save keeps one skill list per class).'),
-                     font=HE_FONT_S, bg=SK_STONE, justify='left', wraplength=note_w).grid(row=1, column=0, columnspan=2, sticky='w', pady=(2, 0))
-        fr = frame(f, T('he.level', 'Level'), he_position=(0, 1), row=2, column=0)
+        tk.Label(fr, text=T('he.class_note', 'Changing the class resets the skill levels\n(the save keeps one skill list per class).'),
+                 font=HE_FONT_S, bg=SK_STONE, justify='left', wraplength=note_w).grid(row=1, column=0, columnspan=2, sticky='w', pady=(2, 0))
+        fr = frame(f, T('he.level', 'Level'), row=2, column=0)
         field(fr, 0, T('he.level_c', 'Level:'), 'level', 6)
-        levelup_row, levelup_column = (0, 2) if self.vanilla_he else (1, 0)
+        levelup_row, levelup_column = 1, 0
         tk.Label(fr, text=T('he.level_up_c', 'Level up to:'), font=HE_FONT, bg=SK_STONE).grid(
-            row=levelup_row, column=levelup_column, sticky='e', padx=(4 if self.vanilla_he else 0, 4))
+            row=levelup_row, column=levelup_column, sticky='e', padx=(0, 4))
         self.new_level = tk.StringVar(value='')
         self.level_box = ttk.Combobox(fr, state='readonly', width=6, textvariable=self.new_level)
         self.level_box.grid(row=levelup_row, column=levelup_column + 1, sticky='w')
         self.level_box.bind('<<ComboboxSelected>>', lambda _e: self._grey_levelup())
-        if not self.vanilla_he:
-            tk.Label(fr, text=T('he.level_note2', 'The Level box is written as typed. "Level up to" works like the game: '
-                                'experience, 5 stat points and 1 skill point per level, life / mana / stamina per level.'),
-                     font=HE_FONT_S, bg=SK_STONE, justify='left', wraplength=note_w).grid(row=2, column=0, columnspan=2, sticky='w', pady=(2, 0))
-        fr = frame(f, T('he.experience', 'Experience'), he_position=(0, 2), row=3, column=0)
+        tk.Label(fr, text=T('he.level_note2', 'The Level box is written as typed. "Level up to" works like the game: '
+                            'experience, 5 stat points and 1 skill point per level, life / mana / stamina per level.'),
+                 font=HE_FONT_S, bg=SK_STONE, justify='left', wraplength=note_w).grid(row=2, column=0, columnspan=2, sticky='w', pady=(2, 0))
+        fr = frame(f, T('he.experience', 'Experience'), row=3, column=0)
         field(fr, 0, T('he.experience_c', 'Experience:'), 'experience', 14)
         tk.Button(fr, text=T('ss.match', 'Match to level'), font=HE_FONT_S, command=self.st_match_exp, bg=HE_BTN,
                   pady=0).grid(row=1, column=1, sticky='w')
         self.exp_note = tk.Label(fr, text='', font=HE_FONT_S, bg=SK_STONE, justify='left', wraplength=note_w)
         self.exp_note.grid(row=2, column=0, columnspan=2, sticky='w')
 
-        fr = frame(f, T('he.characteristics', 'Characteristics'), he_position=(1, 2), row=0, column=1, rowspan=2)
+        fr = frame(f, T('he.characteristics', 'Characteristics'), row=0, column=1, rowspan=2)
         for r, (lab, key) in enumerate(((T('he.str', 'Strength:'), 'strength'), (T('he.dex', 'Dexterity:'), 'dexterity'),
                                         (T('he.vit', 'Vitality:'), 'vitality'), (T('he.ene', 'Energy:'), 'energy'),
                                         (T('he.statpts', 'Stat Points Left:'), 'stat_points'),
@@ -1430,7 +1473,7 @@ class CharacterWindow(StatEditMixin):
                 b.grid(row=r, column=2, padx=(3, 0))
                 b.bind('<ButtonRelease-1>', lambda ev, k=key: self._grey_plus(k, ev))
                 b.bind('<ButtonRelease-3>', lambda ev, k=key: self._grey_plus(k, ev, take=True))
-        fr = frame(f, T('he.constitution', 'Constitution'), he_position=(0, 3), row=2, column=1, rowspan=2)
+        fr = frame(f, T('he.constitution', 'Constitution'), row=2, column=1, rowspan=2)
         tk.Label(fr, text=T('he.current', 'Current'), font=HE_FONT_S, bg=SK_STONE).grid(row=0, column=1)
         tk.Label(fr, text=T('he.max', 'Max'), font=HE_FONT_S, bg=SK_STONE).grid(row=0, column=3)
         for r, (lab, key) in enumerate(((T('he.life', 'Life:'), 'life'), (T('he.mana', 'Mana:'), 'mana'),
@@ -1439,49 +1482,38 @@ class CharacterWindow(StatEditMixin):
             tk.Label(fr, text='/', font=HE_FONT, bg=SK_STONE).grid(row=r, column=2, padx=2)
             entry(fr, key + '_max', 8, row=r, column=3, sticky='w')
 
-        fr = frame(f, T('he.gold', 'Gold'), he_position=(0, 4), row=0, column=2)
+        fr = frame(f, T('he.gold', 'Gold'), row=0, column=2)
         field(fr, 0, T('he.person', 'Person:'), 'gold', 12)
         field(fr, 1, T('he.stash', 'Stash:'), 'gold_stash', 12)
-        if self.vanilla_he:
-            for row, key in enumerate(('gold', 'gold_stash')):
-                tk.Button(fr, text='Max', command=lambda key=key: self.st_set(key, self.st_range(key)[1]),
-                          pady=0).grid(row=row, column=2, padx=3)
-        fr = frame(f, T('he.char_type', 'Character Type'), he_position=(1, 3), row=1, column=2)
+        fr = frame(f, T('he.char_type', 'Character Type'), row=1, column=2)
         self.sv_type = {}
         for r, (text, key) in enumerate(((T('he.expansion', 'Expansion'), 'expansion'), (T('he.ladder', 'Ladder'), 'ladder'),
                                          (T('he.hardcore', 'Hardcore'), 'hardcore'), (T('he.dead', 'You were Dead'), 'died'))):
             v = tk.BooleanVar()
             tk.Checkbutton(fr, text=text, variable=v, font=HE_FONT, bg=SK_STONE,
                            command=lambda k=key, v=v: self.st_flag(k, v.get())).grid(
-                row=r // 2 if self.vanilla_he else r, column=r % 2 if self.vanilla_he else 0, sticky='w')
+                row=r, column=0, sticky='w')
             self.sv_type[key] = v
-        fr = frame(f, T('he.char_diff', 'Character Difficulty'), he_position=(1, 1), row=2, column=2)
+        fr = frame(f, T('he.char_diff', 'Character Difficulty'), row=2, column=2)
         self.sv_diff = tk.IntVar()
         names = [difficulty_name(r) for r in range(len(DIFFICULTIES))] + [T('ss.hell_done', 'Hell finished')]
         for r, n in enumerate(names):
             tk.Radiobutton(fr, text=n, value=r, variable=self.sv_diff, font=HE_FONT, bg=SK_STONE,
                            command=lambda: self.st_done(self.sv_diff.get())).grid(row=r, column=0, sticky='w')
-        if not self.vanilla_he:
-            tk.Label(fr, text=T('he.diff_note', '(highest difficulty unlocked)'), font=HE_FONT_S, bg=SK_STONE).grid(row=4, column=0, sticky='w')
-            field(fr, 5, T('ss.progression_c', 'Progression:'), 'progression', 5)
-        fr = frame(f, T('he.misc', 'Miscellaneous Info.'), he_position=(None, 1), row=3, column=2)
+        tk.Label(fr, text=T('he.diff_note', '(highest difficulty unlocked)'), font=HE_FONT_S, bg=SK_STONE).grid(row=4, column=0, sticky='w')
+        field(fr, 5, T('ss.progression_c', 'Progression:'), 'progression', 5)
+        fr = frame(f, T('he.misc', 'Miscellaneous Info.'), row=3, column=2)
         field(fr, 0, T('he.file_size', 'File Size:'), 'size', 10)
         field(fr, 1, T('he.version', 'Version:'), 'version', 10)
-        if self.vanilla_he:
-            field(fr, 0, 'Checksum:', 'checksum', 10, col=2)
-            field(fr, 1, 'Recorded File:', 'reported_size', 10, col=2)
-            field(fr, 2, T('ss.progression_c', 'Progression:'), 'progression', 5)
-            field(fr, 3, 'Header level:', 'header_level', 6)
-            if not ch.early:
-                field(fr, 2, 'Map ID:', 'map_id', 10, col=2)
-                field(fr, 3, 'Timestamp:', 'timestamp', 10, col=2)
-        if not self.vanilla_he:
-            tk.Label(f, text=T('he.stats_note2', 'Type any value in the boxes (Enter stores it, Up / Down step by 1, '
-                               'Shift: 10) and click SAVE. The + buttons spend stat points like the game (Shift +10, '
-                               'Ctrl all, right click gives a point back, Alt leaves the stat points alone).'),
-                     font=HE_FONT_S, bg=SK_STONE, justify='left', wraplength=note_w * 2).grid(
-                row=4, column=0, columnspan=3,
-                sticky='w', padx=4, pady=(2, 0))
+        tk.Label(f, text=T('he.stats_note2', 'Type any value in the boxes (Enter stores it, Up / Down step by 1, '
+                           'Shift: 10) and click SAVE. The + buttons spend stat points like the game (Shift +10, '
+                           'Ctrl all, right click gives a point back, Alt leaves the stat points alone).'),
+                 font=HE_FONT_S, bg=SK_STONE, justify='left', wraplength=note_w * 2).grid(
+            row=4, column=0, columnspan=3,
+            sticky='w', padx=4, pady=(2, 0))
+
+    def _grey_editable(self, key):
+        return key in self.GREY_KEYS or (self.vanilla_he and key.endswith('_frac'))
 
     def _grey_commit(self, key, leaving=False):
         e = self.sv.get(key)
@@ -1520,20 +1552,26 @@ class CharacterWindow(StatEditMixin):
 
     def _grey_flush(self):
         """Stores what is typed in the boxes and not yet committed. False when a value is refused."""
+        if self.vanilla_he:
+            pending = [(key, control.get()) for key, control in self.sv.items()
+                       if self._grey_editable(key) and control.get() != str(self.st_value(key))]
+            for index, (key, text) in enumerate(pending):
+                if not self.st_set(key, text):
+                    for key, text in pending[index:]:
+                        self.sv[key].delete(0, 'end')
+                        self.sv[key].insert(0, text)
+                    return False
+            return True
         return all(self._grey_commit(k) for k in self.GREY_KEYS if k in self.sv)
 
     def _refresh_stats_grey(self):
         ch, sim = self.ch, self.st_sim
+        if self.vanilla_he:
+            V.refresh_stats(self)
+            return
         vals = {k: self.st_value(k) for k in self.GREY_KEYS}
         vals['size'] = f'{len(ch.raw):,}'
         vals['version'] = str(struct.unpack_from('<I', ch.raw, 4)[0])
-        if self.vanilla_he:
-            V.update_portrait(self.he_portrait, sim.cls, self.data)
-            size, checksum = struct.unpack_from('<II', ch.raw, 8)
-            vals.update(checksum=f'{checksum:08X}', reported_size=str(size), header_level=ch.level)
-            if not ch.early:
-                vals['map_id'] = f'{struct.unpack_from("<I", ch.raw, 171)[0]:08X}'
-                vals['timestamp'] = f'{struct.unpack_from("<I", ch.raw, 48)[0]:08X}'
         for key, e in self.sv.items():
             e.configure(state='normal')
             e.delete(0, 'end')
@@ -1577,6 +1615,14 @@ class CharacterWindow(StatEditMixin):
         self.qlocked = {k: {w for w in self.q0[k] if ch.quest_word(k, w) != MC.QUEST_DONE} for k in range(3)}
         for k in range(3):
             self.qstate[k] |= self.qlocked[k]
+        if self.vanilla_he:
+            stages = getattr(self, 'he_quest_stages', {}) if keep else {}
+            words = {word for _act, _intro, quests, _travel in ch.quest_acts() for word, _name in quests}
+            self.he_quest_stages = {
+                (difficulty, word): stage for (difficulty, word), stage in stages.items()
+                if word in words and word not in self.qlocked[difficulty]
+                and ch.quest_word(difficulty, word) != V.QUEST_STAGE_WORDS[stage]
+            }
         sk_old = getattr(self, 'sk0', {})
         self._sk_keep = {}
         if keep and getattr(self, '_skills_cls', None) == ch.cls:      # levels typed and not saved yet
@@ -1596,6 +1642,7 @@ class CharacterWindow(StatEditMixin):
         st = self.wstate[k] if kind == 'wp' else self.qstate[k]
         (st.add if value else st.discard)(n)
         if self.vanilla_he and kind == 'q':
+            self.he_quest_stages.pop((k, n), None)
             self.q_trees[k].tv.event_generate('<<TreeviewSelect>>', when='tail')
         self.update_dirty()
 
@@ -1619,8 +1666,9 @@ class CharacterWindow(StatEditMixin):
             return True
         sk0 = getattr(self, 'sk0', {})
         sk_typed = any(sk0.get(sid, 0) != self._level_of(v) for sid, v in self.sk_vars.items())
-        typed = any(e.get() != str(self.st_value(k)) for k, e in getattr(self, 'sv', {}).items() if k in self.GREY_KEYS)
+        typed = any(e.get() != str(self.st_value(k)) for k, e in getattr(self, 'sv', {}).items() if self._grey_editable(k))
         return (self.qstate != self.q0 or self.wstate != self.w0 or self.st_dirty() or typed
+                or bool(getattr(self, 'he_quest_stages', {}))
                 or getattr(self, 'pending_cls', None) is not None or sk_typed)
 
     @staticmethod
@@ -1718,6 +1766,10 @@ class CharacterWindow(StatEditMixin):
                     ch.set_quests(k, self.qstate[k])      # follows the act bosses / the last quest (game's rule)
                 if self.wstate[k] != self.w0[k]:
                     ch.set_waypoints(k, self.wstate[k])
+            if self.vanilla_he:
+                for (difficulty, word), stage in self.he_quest_stages.items():
+                    if word not in self.qstate[difficulty]:
+                        ch.set_quest_word(difficulty, word, V.QUEST_STAGE_WORDS[stage])
             if typed and ch.progression != prog:      # a value set by hand in the same save wins over the rule
                 ch.set_progression(prog)
         except CharError as e:

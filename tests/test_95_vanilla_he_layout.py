@@ -25,10 +25,10 @@ def descendants(widget):
         yield from descendants(child)
 
 
-def shot(name):
+def shot(name, window=None):
     folder = os.environ.get('CAPY_SHOT_DIR')
     if folder:
-        root = T.G.root
+        root = window if window is not None else T.G.root
         geometry = f'{root.winfo_width()}x{root.winfo_height()}+{root.winfo_rootx()}+{root.winfo_rooty()}'
         subprocess.run(['import', '-window', 'root', '-crop', geometry,
                         str(Path(folder) / f'95-{name}.png')], check=True)
@@ -70,6 +70,8 @@ def vanilla_workspace_pages_and_tools():
         types = {w.winfo_class() for w in descendants(page) if w.winfo_ismapped()}
         T.check(set(expectations[key]) <= types, f'{key} controls are visible: {types}')
         T.check(page.winfo_rooty() < tab.winfo_rooty(), f'{key} is above the tab strip')
+        if key in ('stats', 'skills') and (T.G.root.winfo_width(), T.G.root.winfo_height()) == (656, 558):
+            T.check(not any(cw.scroll._shown), f'{key} fits the reference viewport without scrollbars')
         shot(key)
         if key == 'stats':
             T.check(cw.he_portrait.winfo_rootx() < cw.sv['name'].winfo_rootx(), 'portrait left of the form')
@@ -122,7 +124,37 @@ def vanilla_workspace_pages_and_tools():
     extras = next(w for w in cw.top.winfo_children() if w.winfo_class() == 'Toplevel')
     notebook = next(w for w in extras.winfo_children() if w.winfo_class() == 'TNotebook')
     T.eq(len(notebook.tabs()), 4, 'Extras pages available')
+    shot('extras', extras)
     extras.destroy()
+
+    # Verify the new vanilla controls write through the normal Save action.
+    from mxl_char import Character
+    V.set_tab(cw, 'stats')
+    difficulty = (cw.ch.start_location()[0] + 1) % 3
+    radios = [control for control in descendants(cw.st_tab)
+              if control.winfo_class() == 'Radiobutton']
+    radios[difficulty].invoke()
+    cw.he_town.current(1)
+    cw.he_town.event_generate('<<ComboboxSelected>>')
+    fraction = cw.sv['life_frac']
+    fraction.delete(0, 'end')
+    fraction.insert(0, '42')
+    T.check(cw._grey_commit('life_frac'), 'life fraction accepted')
+    V.set_tab(cw, 'quests')
+    difficulty0, word = next(iter(cw.he_quest_names))
+    quest = cw.q_trees[difficulty0]
+    quest.tv.selection_set(quest.iids['q', difficulty0, word])
+    T.pump(2)
+    looking = next(control for control in descendants(cw.q_tab)
+                   if control.winfo_class() == 'TRadiobutton' and control.cget('text') == 'Looking For')
+    looking.invoke()
+    cw.save_progress()
+    T.pump(3)
+    saved = Character(cw.ch.path, cw.data)
+    T.eq(saved.start_location(), (difficulty, 1), 'starting difficulty and town')
+    T.eq(saved.stat(7) & 255, 42, 'base life fraction')
+    T.eq(saved.quest_word(difficulty0, word), V.QUEST_STAGE_WORDS[1], 'looking for quest')
+    T.check(not cw.dirty(), 'saved values reloaded without pending changes')
 
 
 T.main(globals())

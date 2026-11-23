@@ -28,17 +28,40 @@ class VanillaSkillTree(SkillTree):
         profile = mxl_profile.active() or {}
         version = profile.get('version') or ''
         self.lod_titles = profile.get('kind') == 'd2' and version.startswith('1.14') and not profile.get('mods')
-        self.cv.pack_configure(anchor='n', expand=False)
-        control = tk.Frame(self.frame)
-        control.pack(fill='x', padx=6, pady=(2, 0))
-        self.selected_name = tk.Label(control, width=20, anchor='w')
-        self.selected_name.pack(side='left', padx=3)
+        self.cv.pack_configure(anchor='nw', expand=False)
+        footer = tk.Frame(self.frame, width=640, height=99)
+        footer.pack(fill='x', pady=(4, 0))
+        footer.pack_propagate(False)
+        control = tk.Frame(footer, relief='groove', bd=1)
+        control.place(x=2, y=0, width=494, height=98)
+        self.selected_icon = tk.Label(control, bd=0)
+        self.selected_icon.place(x=7, y=8, width=50, height=50)
+        self.selected_level = tk.Label(control, bg=WHITE, bd=1, relief='sunken')
+        self.selected_level._vanilla_he_role = 'art'
+        self.selected_level.configure(font=font())
+        self.selected_level.place(x=7, y=63, width=50, height=18)
+        self.selected_name = tk.Label(control)
+        self.selected_name.place(x=70, y=5, width=413, height=20)
         self.slider_value = tk.IntVar()
-        self.level_scale = tk.Scale(control, from_=0, to=20, orient='horizontal', showvalue=True, tickinterval=5,
-                                    length=240, variable=self.slider_value, command=self._set_current)
-        self.level_scale.pack(side='left', fill='x', expand=True)
-        self.points = tk.Label(control, width=16)
-        self.points.pack(side='right')
+        self.level_scale = tk.Scale(control, from_=0, to=20, orient='horizontal', showvalue=False, tickinterval=1,
+                                    sliderlength=12, highlightthickness=0, variable=self.slider_value,
+                                    command=self._set_current)
+        self.level_scale.place(x=70, y=59, width=411)
+        batch = tk.Frame(footer, relief='groove', bd=1)
+        batch.place(x=504, y=0, width=136, height=98)
+        self.batch_level = tk.Spinbox(batch, from_=0, to=255, width=4, justify='center')
+        self.batch_level.place(x=6, y=8, width=34)
+        tk.Button(batch, text='Set Skills', pady=0, command=self.set_all).place(x=46, y=8, width=82)
+        self.points = tk.Label(batch)
+        self.points.place(x=6, y=39, width=120, height=48)
+
+    def set_all(self):
+        try:
+            level = int(self.batch_level.get())
+        except ValueError:
+            return
+        for sid in self.win.sk_vars:
+            self.set_level(sid, level)
 
     def _set_current(self, value):
         if self.current in self.win.sk_vars:
@@ -86,19 +109,21 @@ class VanillaSkillTree(SkillTree):
         canvas.delete('tiles')
         self._regions = []
         trees = [(tab, title, cells) for tab, title, cells in self.trees if (tab == 0) == (self.tab == 0)]
-        width = 212
+        width = 216
         rows = max((len(cells) + 1) // 2 for _tab, _title, cells in trees) if trees else 0
-        height = rows * 60 + 20
-        canvas.configure(width=max(1, len(trees)) * width, height=height, bg=FORM)
+        height = rows * 66 + 2
+        canvas.configure(width=max(1, len(trees)) * width - 4, height=height, bg=FORM)
         for panel, (tab, title, cells) in enumerate(trees):
             if self.lod_titles and 0 <= self.cls < len(LOD_TREES) and 1 <= tab <= 3:
                 title = LOD_TREES[self.cls][tab - 1]
-            left = panel * width + 3
-            canvas.create_rectangle(left, 9, left + width - 7, height - 2, outline=EDGE, tags='tiles')
-            canvas.create_text(left + 4, 9, anchor='w', text=title, font=font(LEGEND_FONT),
+            left = panel * width + 2
+            canvas.create_rectangle(left, 4, left + width - 8, height - 2, outline=EDGE, tags='tiles')
+            canvas.create_text(left + 4, 5, anchor='w', text=title, font=font(LEGEND_FONT),
                                fill=BLACK, tags='tiles')
-            for i, (_row, _column, sid, icon_index) in enumerate(sorted(cells, key=lambda cell: cell[:3])):
-                x, y = left + 6 + i % 2 * 101, 20 + i // 2 * 60
+            column_rows = (len(cells) + 1) // 2
+            for i, (_row, _column, sid, icon_index) in enumerate(sorted(cells, key=lambda cell: cell[2])):
+                column, row = divmod(i, column_rows)
+                x, y = left + 8 + column * 96, 12 + row * 65
                 hidden = self.match is not None and sid not in self.match
                 canvas.create_rectangle(x, y, x + 49, y + 49, fill='#302419',
                                         outline=SELECT if self.current == sid else '#907148', tags='tiles')
@@ -110,14 +135,16 @@ class VanillaSkillTree(SkillTree):
                 elif not hidden:
                     canvas.create_text(x + 25, y + 25, text=self.name(sid), width=46,
                                        fill=WHITE, font=font(), tags='tiles')
-                canvas.create_rectangle(x + 52, y + 16, x + 92, y + 34, fill=WHITE, outline=INSET, tags='tiles')
-                canvas.create_text(x + 72, y + 25, text=str(self.level(sid)), font=font(),
+                canvas.create_rectangle(x + 50, y + 17, x + 95, y + 34, fill=WHITE, outline=INSET, tags='tiles')
+                canvas.create_text(x + 73, y + 25, text=str(self.level(sid)), font=font(),
                                    fill=DESCRIPTION if hidden else BLACK, tags='tiles')
-                self._regions.extend((('icon', sid, (x, y, 50, 50)), ('lvl', sid, (x + 52, y + 16, 40, 18))))
+                self._regions.extend((('icon', sid, (x, y, 50, 50)), ('lvl', sid, (x + 50, y + 17, 46, 18))))
         if self.current in self.win.sk_vars:
             level = self.level(self.current)
             self.level_scale.configure(to=max(20, level))
             self.slider_value.set(level)
+            self.selected_level.configure(text=str(level))
+            self.selected_icon.configure(image=self.photos.get(self.current, ''))
         self.points.configure(text=f'Skill Points\n{self.points_left()}')
 
     def on_press(self, event):

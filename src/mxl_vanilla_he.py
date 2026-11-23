@@ -57,13 +57,15 @@ def style(root):
     st.configure('CharacterHost.TNotebook.Tab', padding=0)
     st.layout('CharacterHost.TNotebook', [('Notebook.client', {'sticky': 'nswe'})])
     st.configure('Extras.TNotebook', tabposition='sw')
-    st.configure('Extras.TNotebook.Tab', padding=(9, 2))
+    st.configure('Extras.TNotebook.Tab', padding=(9, 2), width=23)
     st.map('Extras.TNotebook.Tab', font=[('selected', (*font(), 'bold'))])
     st.configure('TScrollbar', arrowsize=12, width=12, troughcolor=LIGHT)
     st.configure('Treeview', rowheight=16)
     st.map('Treeview', background=[('selected', SELECT)], foreground=[('selected', WHITE)])
     st.map('TCombobox', fieldbackground=[('readonly', WHITE)])
     st.configure('Peach.TFrame', background=PEACH)
+    st.configure('Peach.TLabelframe', background=PEACH)
+    st.configure('Peach.TLabelframe.Label', background=PEACH, font=font(LEGEND_FONT))
     st.configure('TLabelframe.Label', font=font(LEGEND_FONT))
     st.configure('TEntry', padding=1)
     st.configure('TCombobox', padding=1, arrowsize=12)
@@ -188,27 +190,61 @@ def choose_character(win):
     names.focus_set()
 
 
+def action_plaque(parent, caption, shade):
+    """Draw an original stone plaque with riveted brass trim."""
+    import random
+    from PIL import Image, ImageDraw, ImageFont, ImageTk
+
+    rng = random.Random(104)
+    im = Image.new('RGB', (96, 34), '#000000')
+    draw = ImageDraw.Draw(im)
+    draw.rounded_rectangle((0, 0, 95, 33), radius=5, fill='#5e3f1e', outline='#b88c49')
+    draw.rounded_rectangle((2, 2, 93, 31), radius=4, outline='#e3c17a')
+    draw.rounded_rectangle((4, 4, 91, 29), radius=3, fill='#141312', outline='#392819')
+    for y in range(6, 28):
+        for x in range(6, 90):
+            tone = 28 + shade + rng.randrange(12) + (28 - y) // 3
+            draw.point((x, y), fill=(tone + 4, tone + 2, tone))
+    for x in (9, 86):
+        draw.ellipse((x - 3, 13, x + 3, 19), fill='#946530', outline='#4b3016')
+        draw.point((x - 1, 14), fill='#f4d28c')
+    try:
+        face = ImageFont.truetype('DejaVuSans-Bold.ttf', 12)
+    except OSError:
+        face = ImageFont.load_default()
+    draw.text((48, 18), caption, anchor='mm', font=face, fill='#0a0806')
+    draw.text((48, 16), caption, anchor='mm', font=face, fill='#e5c178')
+    return ImageTk.PhotoImage(im, master=parent)
+
+
 def chrome(win, bottom, actions):
     """Build the character action strip, status cells and tools menu."""
-    import mxl_profile
-
     commands = (lambda: choose_character(win), win.save_progress, win.discard,
                 lambda: extras(win), win.close)
-    actions.configure(height=45, bg='#292621')
+    actions.configure(height=45, bg=BLACK)
     actions.pack_configure(padx=0, pady=0)
     actions.pack_propagate(False)
     for text, command in zip(ACTIONS, commands):
-        button = role(tk.Button(actions, text=text, command=command, font=font(),
-                                bg='#d6b36c', fg='#251c0e', activebackground='#eed294',
-                                activeforeground='#251c0e', bd=1, padx=12, pady=3), 'art')
+        images = [action_plaque(actions, text, shade) for shade in (0, 12, -5)]
+        button = role(tk.Button(actions, text=text, image=images[0], command=command, bd=0,
+                                bg=BLACK, activebackground=BLACK, highlightthickness=0,
+                                padx=0, pady=0, cursor='hand2'), 'art')
+        button.images = images
+        button.bind('<Enter>', lambda event: event.widget.configure(image=event.widget.images[1]))
+        button.bind('<Leave>', lambda event: event.widget.configure(image=event.widget.images[0]))
+        button.bind('<ButtonPress-1>', lambda event: event.widget.configure(image=event.widget.images[2]))
+        button.bind('<ButtonRelease-1>', lambda event: event.widget.configure(image=event.widget.images[1]))
         closing = text == 'CLOSE'
-        button.pack(side='right' if closing else 'left', padx=(8, 8 if closing else 0), pady=7)
+        button.pack(side='right' if closing else 'left', padx=(72 if text == 'EXTRAS' else 8, 8 if closing else 0),
+                    pady=(6, 5))
     status = tk.Frame(bottom, bg=FORM)
     status.pack(fill='x')
-    version = (mxl_profile.active() or {}).get('version') or ''
-    for label in ('Capybara Editor', f'Diablo II {version}'.rstrip()):
-        tk.Label(status, text=label, anchor='w', bd=1, relief='sunken',
-                 font=font(), bg=FORM, padx=6).pack(side='left', ipady=2)
+    for label, width in (('Hero Editor', 70), ('Version 1.04', 108)):
+        cell = tk.Frame(status, width=width, height=19)
+        cell.pack(side='left')
+        cell.pack_propagate(False)
+        tk.Label(cell, text=label, anchor='w', bd=1, relief='sunken',
+                 font=font(), bg=FORM, padx=1).pack(fill='both', expand=True)
     win.bar_status = role(tk.Label(status, text='Character Open: ' + win.ch.path, anchor='w',
                               bd=1, relief='sunken', font=font(), bg=FORM), 'art')
     win.bar_status.pack(side='left', fill='x', expand=True, ipady=2)
@@ -216,7 +252,7 @@ def chrome(win, bottom, actions):
     bar.pack(side='top', fill='x')
     entry = role(tk.Menubutton(bar, text='Menu', underline=0, font=font(), bd=0,
                               bg=WHITE, activebackground=SELECT, activeforeground=WHITE), 'menu')
-    entry.pack(side='left', padx=5)
+    entry.pack(side='left', padx=3, ipady=1)
     menu = win.he_menu = tk.Menu(entry, tearoff=False)
     entry.configure(menu=menu)
     for text, command in zip(ACTIONS, commands):
@@ -225,6 +261,33 @@ def chrome(win, bottom, actions):
     import mxl_mock_gui
     import mxl_tabs
 
+    from tkinter import simpledialog
+
+    def ask(caption, value, limits=None):
+        if limits is None:
+            name = simpledialog.askstring(caption, 'Character name', parent=win.top)
+            if name:
+                win.copy_name.set(name)
+                win.copy_char()
+            return
+        lo, hi = limits
+        if lo > hi:
+            win.set_bar('The character is at the maximum level.')
+            return
+        number = simpledialog.askinteger(caption, caption, initialvalue=value, minvalue=lo, maxvalue=hi,
+                                         parent=win.top)
+        if number is not None:
+            win.st_set('levelup' if caption == 'Level up to' else 'skill_points', number)
+
+    tools = tk.Menu(menu, tearoff=False)
+    menu.add_cascade(label='Character tools', menu=tools)
+    tools.add_command(label='Copy as…', command=lambda: ask('Copy as', None))
+    tools.add_command(label='Match experience to level', command=win.st_match_exp)
+    tools.add_command(label='Level up to…', command=lambda: ask('Level up to', win.st_sim.level + 1,
+                           (win.st_sim.level + 1, win.st_range('levelup')[1])))
+    tools.add_command(label='Skill Points Left…', command=lambda: ask('Skill Points Left',
+                           win.st_value('skill_points'), win.st_range('skill_points')))
+    tools.add_command(label='Mark Hell finished', command=lambda: win.st_done(3))
     menu.add_separator()
     for name in ('Stash', 'Creator', 'Library', 'Bit editor'):
         menu.add_command(label=mxl_tabs.tab_label(name),
@@ -250,16 +313,22 @@ def extras(win):
     top.title('Extras')
     top.geometry('681x371')
     entries = [(entry, merc) for merc in (False, True) for entry in win.ch.entries(merc)]
-    header = ttk.Frame(top, padding=5)
+    header = ttk.Frame(top, padding=(8, 3))
     header.pack(fill='x')
-    ttk.Label(header, text=f'Total items: {len(entries)}    Character: {win.ch.name}').pack(side='left')
-    ttk.Button(header, text='Close', command=top.destroy).pack(side='right')
+    total = sum(1 + len(entry.it.get('socketed', ())) for entry, _merc in entries)
+    ttk.Label(header, text=f'Total items: {total}').grid(row=0, column=0, padx=(0, 18), sticky='w')
+    ttk.Label(header, text=f'Save version: {win.ch.version}').grid(row=0, column=1, sticky='w')
+    ttk.Label(header, text=f'Character Name: {win.ch.name}').grid(row=1, column=0, columnspan=2, sticky='w')
+    header.columnconfigure(2, weight=1)
+    ttk.Button(header, text='Close', command=top.destroy).grid(row=0, column=3, rowspan=2)
     ttk.Separator(top).pack(fill='x')
     notebook = ttk.Notebook(top, style='Extras.TNotebook')
     notebook.pack(fill='both', expand=True, padx=8, pady=(6, 0))
     for caption in ('Character Hex', 'Item Binary Compare/Edit', 'Item Edit', 'Item/Character Create'):
         page = ttk.Frame(notebook, style='Peach.TFrame', padding=6)
         notebook.add(page, text=caption)
+        if caption == 'Item Edit':
+            notebook.select(page)
         if caption == 'Character Hex':
             title = ttk.Label(page, text='Character Hex', background=PEACH, foreground=HEX_TITLE)
             title.pack(anchor='w')
@@ -273,8 +342,59 @@ def extras(win):
                                         for i in range(0, len(raw), 16)))
             view.configure(state='disabled')
         elif caption in ('Item Binary Compare/Edit', 'Item Edit'):
-            items = tk.Listbox(page, width=38, exportselection=False)
+            item_panel = ttk.LabelFrame(page, text='Character Items', padding=3, style='Peach.TLabelframe')
+            item_panel.pack(side='left', fill='y')
+            items = tk.Listbox(item_panel, width=30, exportselection=False)
+            scrollbar = ttk.Scrollbar(item_panel, command=items.yview)
+            items.configure(yscrollcommand=scrollbar.set)
+            scrollbar.pack(side='right', fill='y')
             items.pack(side='left', fill='both', expand=True)
+            content = ttk.Frame(page, style='Peach.TFrame', padding=(5, 0))
+            content.pack(side='right', fill='both', expand=True)
+            binary = caption == 'Item Binary Compare/Edit'
+            fields = ttk.Treeview(content, show='tree', height=9, selectmode='browse')
+            field_groups = {
+                'Basic': ('code', 'ilvl', 'identified', 'ethereal', 'socketed_count'),
+                'Location': ('location', 'equipped', 'panel', 'x', 'y'),
+                'Quality': ('quality', 'unique_id', 'set_id', 'personalized'),
+                'Magic Attributes': (),
+            }
+            if not binary:
+                fields.column('#0', width=124, minwidth=96)
+                for label in field_groups:
+                    fields.insert('', 'end', iid=label, text=label)
+                fields.selection_set('Basic')
+                fields.pack(side='left', fill='y', padx=(0, 4))
+            pane = ttk.Frame(content, style='Peach.TFrame')
+            pane.pack(side='left', fill='both', expand=True)
+            inspector = tk.Text(pane, width=28, height=8, wrap='word', relief='sunken', bd=2,
+                                font='TkFixedFont' if binary else font())
+            inspector.pack(fill='both', expand=True)
+
+            def preview(_event=None, items=items, inspector=inspector, fields=fields, binary=binary):
+                selection = items.curselection()
+                inspector.configure(state='normal')
+                inspector.delete('1.0', 'end')
+                if selection:
+                    entry, merc = entries[selection[0]]
+                    entry = win.current_entry(entry, merc)
+                    if entry is not None:
+                        if binary:
+                            text = ' '.join(f'{byte:08b}' for byte in entry.blob)
+                        else:
+                            group = next(iter(fields.selection()), 'Basic')
+                            if group == 'Magic Attributes':
+                                from mxl_statnames import stat_text
+                                text = '\n'.join(filter(None, (stat_text(win.data, stat['id'], stat.get('param'),
+                                                    stat.get('value', 1)) for stat in entry.it.get('stats', ()))))
+                            else:
+                                text = '\n'.join(f'{key.replace("_", " ").title()}: {entry.it[key]}'
+                                                 for key in field_groups[group] if key in entry.it)
+                        inspector.insert('1.0', text)
+                inspector.configure(state='disabled')
+
+            items.bind('<<ListboxSelect>>', preview)
+            fields.bind('<<TreeviewSelect>>', preview)
             for entry, _merc in entries:
                 items.insert('end', clean(entry.it.get('name') or entry.it['code']))
             if entries:
@@ -291,7 +411,9 @@ def extras(win):
                         top.destroy()
 
             items.bind('<Double-Button-1>', open_item)
-            ttk.Button(page, text='Open item', command=open_item).pack(side='left', anchor='n', padx=5)
+            ttk.Button(pane, text='Open Item Editor' if caption == 'Item Edit' else 'Open Bit Editor',
+                       command=open_item).pack(anchor='e', pady=3)
+            preview()
         else:
             def run(command):
                 top.destroy()
@@ -315,6 +437,179 @@ def extras(win):
             pages.add_command(label=button.cget('text'), command=lambda key=key: run(lambda: set_tab(win, key)))
 
 
+TOWNS = ('Rogue Encampment', 'Lut Gholein', 'Kurast Docks', 'Pandemonium Fortress', 'Harrogath')
+
+
+def stats(win, page, entry):
+    """Lay out the vanilla stats at their native pixel sizes."""
+    page.configure(width=644, height=440)
+    win.he_portrait = character_portrait(page)
+    win.he_portrait.place(x=2, y=4, width=209, height=435)
+    form = tk.Frame(page, bd=1, relief='sunken')
+    form.place(x=218, y=4, width=424, height=435)
+
+    def group(caption, x, y, w, h):
+        frame = role(tk.LabelFrame(form, text=caption, bd=1, relief='groove'), '')
+        frame.place(x=x, y=y, width=w, height=h)
+        return frame
+
+    def label(parent, text, x, y):
+        role(tk.Label(parent, text=text, padx=0, pady=0), '').place(x=x, y=y, height=18)
+
+    def box(parent, key, x, y, w):
+        control = entry(parent, key, 1)
+        control.place(x=x, y=y, width=w, height=18)
+        return control
+
+    def button(parent, text, command, x, y, w):
+        role(tk.Button(parent, text=text, command=command, pady=0, padx=0), '').place(
+            x=x, y=y, width=w, height=18)
+
+    def rename():
+        from tkinter.simpledialog import askstring
+
+        name = askstring('Rename Character', 'New name', initialvalue=win.st_value('name'), parent=win.top)
+        if name is not None:
+            win.st_set('name', name)
+
+    fr = group('Name', 7, 0, 215, 44)
+    box(fr, 'name', 7, 2, 120)
+    button(fr, 'Rename', rename, 135, 2, 73)
+
+    fr = group('Level', 7, 45, 215, 39)
+    box(fr, 'level', 4, 0, 92)
+    win.he_over99 = tk.BooleanVar()
+    win.he_level_character = None
+    cb = role(tk.Checkbutton(fr, text='Level over 99', variable=win.he_over99, padx=0, pady=0, highlightthickness=0), '')
+    cb.place(x=108, y=0, height=18)
+
+    box(group('Experience', 7, 86, 104, 41), 'experience', 4, 1, 92)
+    box(group('Masked Level', 119, 86, 103, 41), 'header_level', 6, 1, 88)
+
+    fr = group('Constitution', 7, 127, 215, 97)
+    for y, name in zip((1, 25, 57), ('Life', 'Mana', 'Stamina')):
+        key = name.lower()
+        label(fr, name + ':', 6, y)
+        box(fr, key + '_cur', 46, y, 51)
+        label(fr, '/', 100, y)
+        box(fr, key + '_max', 106, y, 51)
+        label(fr, '.', 159, y)
+        box(fr, key + '_frac', 165, y, 20)
+        label(fr, '/ ___', 187, y)
+
+    fr = group('Gold', 7, 224, 215, 64)
+    for y, name, key in ((1, 'Person:', 'gold'), (25, 'Stash:', 'gold_stash')):
+        label(fr, name, 6, y)
+        box(fr, key, 71, y, 96)
+        button(fr, 'Max', lambda key=key: win.st_set(key, win.st_range(key)[1]), 175, y, 33)
+    label(form, 'The following stats are READ ONLY', 17, 300)
+
+    fr = group('Class', 231, 0, 184, 44)
+    win.class_box = ttk.Combobox(fr, state='readonly', textvariable=win.new_class, values=win.class_names,
+                                font=font())
+    win.class_box.place(x=7, y=2, width=168, height=21)
+    win.class_box.bind('<<ComboboxSelected>>', lambda _event: win.on_class_change())
+
+    from mxl_char import difficulty_name
+    fr = group('Character Difficulty', 231, 46, 184, 35)
+    win.sv_diff = tk.IntVar()
+    for i, x in enumerate((5, 62, 135)):
+        radio = role(tk.Radiobutton(fr, text=difficulty_name(i), value=i, variable=win.sv_diff, padx=0, pady=0,
+                                   highlightthickness=0,
+                                   command=lambda i=i: win.st_do('start_difficulty', i)), '')
+        radio.place(x=x, y=-2, height=18)
+        if win.ch.early:
+            radio.configure(state='disabled')
+
+    fr = group('Starting Town', 231, 83, 184, 42)
+    win.he_town = ttk.Combobox(fr, state='disabled' if win.ch.early else 'readonly', values=TOWNS, font=font())
+    win.he_town.place(x=7, y=0, width=168, height=21)
+    def change_town(_event):
+        if not win.st_do('start_town', TOWNS.index(win.he_town.get())):
+            refresh_stats(win)
+
+    win.he_town.bind('<<ComboboxSelected>>', change_town)
+
+    fr = group('Characteristics', 231, 125, 184, 140)
+    for y, (name, key) in zip((1, 25, 49, 73, 100), (
+            ('Strength', 'strength'), ('Dexterity', 'dexterity'), ('Vitality', 'vitality'),
+            ('Energy', 'energy'), ('Stat Points Left', 'stat_points'))):
+        label(fr, name + ':', 6, y)
+        control = box(fr, key, 95, y, 80)
+        if key != 'stat_points':
+            menu = tk.Menu(control, tearoff=False)
+            menu.add_command(label='Spend a stat point', command=lambda key=key: win.st_plus(key))
+            menu.add_command(label='Return a stat point', command=lambda key=key: win.st_plus(key, take=True))
+            control.bind('<Button-3>', lambda event, menu=menu: menu.tk_popup(event.x_root, event.y_root))
+
+    fr = group('Character Type', 231, 265, 184, 59)
+    win.sv_type = {}
+    for name, key, x, y in (('Hardcore', 'hardcore', 5, -2), ('You never died', 'died', 77, -2),
+                             ('Ladder', 'ladder', 5, 17), ('Expansion', 'expansion', 77, 17)):
+        var = win.sv_type[key] = tk.BooleanVar()
+        role(tk.Checkbutton(fr, text=name, variable=var, padx=0, pady=0, highlightthickness=0,
+                            command=lambda k=key, v=var: win.st_flag(k, v.get() != (k == 'died'))), '').place(
+            x=x, y=y, height=18)
+
+    fr = group('Miscellaneous Info.', 7, 319, 408, 108)
+    for x, rows in ((7, (('Checksum', 'checksum'), ('Version', 'version'),
+                          ('Initial Actual File Size', 'size'), ('Recorded File Size', 'reported_size'))),
+                    (215, (('Character', 'character'), ('Character Title', 'character_title'),
+                           ('Map ID', 'map_id'), ('Time Stamp', 'timestamp')))):
+        for y, (name, key) in zip((1, 21, 47, 67), rows):
+            label(fr, name, x, y)
+            box(fr, key, x + (113 if x == 7 else 104), y, 80)
+
+
+def refresh_stats(win):
+    import struct
+    import mxl_early_save
+
+    ch, sim = win.ch, win.st_sim
+    vals = {key: win.st_value(key) for key in win.sv if win._grey_editable(key)}
+    vals.update(size=len(ch.raw), version=mxl_early_save.VERSIONS.get(ch.version,
+                '1.09' if ch.old else '1.10-1.13'), header_level=sim.head[0x2B], character=sim.progression)
+    flags = sim.flags()
+    female = sim.cls in (0, 1, 6)
+    if flags['expansion']:
+        titles = ('<NONE>', 'Destroyer', 'Conqueror', 'Guardian') if flags['hardcore'] else (
+            '<NONE>', 'Slayer', 'Champion', 'Matriarch' if female else 'Patriarch')
+        rank = min(3, sim.progression // 5)
+    else:
+        titles = ('<NONE>', 'Countess', 'Duchess', 'Queen') if female else ('<NONE>', 'Count', 'Duke', 'King')
+        if not flags['hardcore']:
+            titles = ('<NONE>', 'Dame', 'Lady', 'Baroness') if female else ('<NONE>', 'Sir', 'Lord', 'Baron')
+        rank = min(3, sim.progression // 4)
+    vals['character_title'] = titles[rank]
+    if not ch.early:
+        size, checksum = struct.unpack_from('<II', ch.raw, 8)
+        vals.update(checksum=f'{checksum:08X}', reported_size=size,
+                    map_id=f'{struct.unpack_from("<I", ch.raw, 171)[0]:08X}',
+                    timestamp=f'{struct.unpack_from("<I", ch.raw, 48)[0]:08X}')
+    for key, control in win.sv.items():
+        text = str(vals.get(key, ''))
+        editable = win._grey_editable(key)
+        if control.get() != text:
+            control.configure(state='normal')
+            control.delete(0, 'end')
+            control.insert(0, text)
+            if not editable:
+                control.configure(state='readonly')
+    win.he_town.configure(values=TOWNS if flags['expansion'] else TOWNS[:4])
+    for key, var in win.sv_type.items():
+        var.set(flags[key] != (key == 'died'))
+    diff, town = sim.start_location()
+    win.sv_diff.set(diff)
+    if 0 <= town < (5 if flags['expansion'] else 4):
+        win.he_town.current(town)
+    else:
+        win.he_town.set('')
+    if win.he_level_character != ch.path:
+        win.he_level_character = ch.path
+        win.he_over99.set(sim.level > 99)
+    update_portrait(win.he_portrait, sim.cls, win.data)
+
+
 def build_reference_pages(win):
     """Add the informational pages and expose existing settings commands."""
     from PIL import Image, ImageTk
@@ -329,7 +624,7 @@ def build_reference_pages(win):
         else:
             panel.create_text(24, 142, text='Diablo II', fill='#c89b52', anchor='w',
                               font=('Times New Roman', 34, 'bold'))
-        panel.create_text(24, 187, text='Capybara Editor', fill='#e2bd74', anchor='w',
+        panel.create_text(24, 187, text='Character Editor', fill='#e2bd74', anchor='w',
                           font=('Times New Roman', 25, 'bold'))
         panel.create_text(26, 226, text='Diablo II · Lord of Destruction', fill='#bdd8e0',
                           anchor='w', font=font(LEGEND_FONT))
@@ -347,7 +642,7 @@ def build_reference_pages(win):
                        'waypoints, quests and mercenary.\n\n'
                        'Use Save to write pending character changes and Reload to read the character again. '
                        'Finish a field with Enter. Up and Down step the selected value. '
-                       'Hold Shift to step by ten. The plus buttons spend available stat points.\n\n'
+                       'Hold Shift to step by ten. Right-click a characteristic to spend or return a stat point.\n\n'
                        'Right-click inventory items for editing and clipboard commands.')
     info.configure(state='disabled')
     options(win)
@@ -359,15 +654,13 @@ def options(win):
     import mxl_profile
 
     page = win.pages['options']
-    ttk.Label(page, text='Choose the game folder and editing options.').grid(
-        row=0, column=0, columnspan=2, sticky='w', pady=(0, 4))
     for column in range(2):
         page.columnconfigure(column, weight=1, uniform='options')
     game = ttk.LabelFrame(page, text='Diablo II game folder', padding=6)
     game.grid(row=1, column=0, sticky='nsew', padx=(0, 4))
     ttk.Button(game, text='Game folder…', command=lambda: mxl_profile.open_dialog(win.app)).pack(anchor='w')
 
-    editing = ttk.LabelFrame(page, text='Character editing', padding=6)
+    editing = ttk.LabelFrame(page, text='Character Editing', padding=6)
     editing.grid(row=1, column=1, sticky='nsew')
     mock_mode = mxl_mock_gui._state['var']
     if mock_mode is not None:
@@ -377,35 +670,47 @@ def options(win):
         ttk.Button(editing, text='Advanced quest words…',
                    command=lambda: set_tab(win, 'quests_adv')).pack(anchor='w')
 
-    tools = ttk.LabelFrame(page, text='Item and character tools', padding=6)
+    tools = ttk.LabelFrame(page, text='Item and Character Tools', padding=6)
     tools.grid(row=2, column=0, columnspan=2, sticky='ew', pady=4)
     ttk.Button(tools, text='Extras…', command=lambda: extras(win)).pack(anchor='w')
 
 
 def introductions(win):
-    """Read the saved introduction and act-travel words for each difficulty."""
-    from mxl_char import difficulty_name
+    """Display the NPC introduction and return-visit flags for each difficulty."""
+    from mxl_char import NPC_OFF, difficulty_name
+
+    groups = (
+        ((1, 'Gheed'), (2, 'Akara'), (3, 'Kashya'), (4, 'Warriv'), (5, 'Charsi')),
+        ((7, 'Warriv'), (9, 'Drognan'), (10, 'Fara'), (11, 'Lysander'), (12, 'Geglash'),
+         (13, 'Meshif'), (14, 'Jerhyn'), (15, 'Greiz'), (16, 'Elzix')),
+        ((18, 'Deckard Cain'), (21, 'Asheara'), (22, 'Hratli'), (23, 'Alkor'),
+         (24, 'Ormus'), (27, 'Meshif'), (28, 'Natalya')),
+        (),
+        ((30, 'Anya'), (31, 'Malah'), (32, 'Nihlathak'), (33, 'Qual-Kehk'), (34, 'Deckard Cain')),
+    )
 
     def refresh():
-        for tree, diff, title, use_travel in trees:
+        for tree, diff, title, returning in trees:
             tree.delete(*tree.get_children())
             root = tree.insert('', 'end', text=title, open=True)
-            for act, intro, _quests, travel in win.ch.quest_acts():
-                word = travel if use_travel else intro
-                if word is not None:
-                    value = '☑' if win.ch.quest_word(diff, word) else '☐'
-                    tree.insert(root, 'end', text=f'{value} {act}')
+            offset = NPC_OFF + 4 + 8 * diff + 24 * returning
+            bits = int.from_bytes(win.ch.head[offset:offset + 8], 'little')
+            for group, (act, _intro, _quests, _travel) in zip(groups, win.ch.quest_acts()):
+                node = tree.insert(root, 'end', text=act)
+                for bit, name in group:
+                    checked = bool(bits & (1 << bit)) != returning
+                    tree.insert(node, 'end', text=f'{"☑" if checked else "☐"} {name}')
 
     page = win.pages['introductions']
     trees = []
-    for title, travel in (('Introductions', False), ('Travelled to the next act', True)):
+    for title, travel in (('Introductions', False), ('Welcomed Back', True)):
         group = ttk.LabelFrame(page, text=title, padding=3)
         group.pack(fill='both', expand=True, pady=(0, 4))
         for diff in range(3):
             frame = ttk.LabelFrame(group, text=difficulty_name(diff), padding=3)
             frame.pack(side='left', fill='both', expand=True, padx=2)
             tree = ttk.Treeview(frame, show='tree', height=8)
-            tree.column('#0', width=182, minwidth=100)
+            tree.column('#0', width=180, minwidth=100)
             tree.pack(fill='both', expand=True)
             trees.append((tree, diff, title, travel))
     page.bind('<Map>', lambda _event: refresh())
@@ -462,11 +767,11 @@ def splash_image():
     art = game_art()
     if art is None:
         return None
-    frames, pal = native_frames(art, r'FrontEnd\TitleScreen.dc6', 'Menu0')
+    frames, pal = native_frames(art, r'FrontEnd\TitleScreen.dc6', 'Sky')
     if not frames:
         return None
     width, height, rgba = compose(frames, pal, 4)
-    return Image.frombytes('RGBA', (width, height), bytes(rgba))
+    return Image.frombytes('RGBA', (width, height), bytes(art._bright(rgba)))
 
 
 def character_portrait(parent):
@@ -501,67 +806,118 @@ def update_portrait(panel, cls, data):
                           font=('Times New Roman', 13), tags='portrait')
 
 
+QUEST_STAGES = ('Not Started', 'Looking For', 'Just Finished', 'Long Finished')
+QUEST_STAGE_WORDS = (0, 0x0004, 0x2000)
+
+
+def quest_stage(word):
+    return 3 if word & 1 else 2 if word & 0x2000 else int(bool(word))
+
+
 def quest_details(win, parent):
-    """Drive the character's pending quest selections from the selected tree node."""
-    left = ttk.Frame(parent)
-    left.pack(side='left', fill='y')
-    details = ttk.LabelFrame(left, text='Selected Quest', padding=6)
-    details.pack(fill='x')
-    title = ttk.Label(details, text='Select a quest', width=44, wraplength=250)
-    title.pack(anchor='w')
-    value = tk.BooleanVar()
+    """Build quest details and keep the existing completion and reward rules."""
+    left = ttk.Frame(parent, width=336, height=434)
+    left.pack(side='left', fill='y', padx=(2, 0))
+    left.pack_propagate(False)
+    details = ttk.LabelFrame(left, text='Quest', padding=6)
+    details.pack(fill='both', expand=True)
+    title = ttk.Label(details, wraplength=300, justify='left')
+    title.pack(anchor='w', pady=(6, 8))
+    notes = ttk.Label(details, wraplength=300, justify='left')
+    notes.pack(anchor='w')
     selected = {}
+    value = tk.IntVar()
 
     def apply():
         tree, iid = selected['tree'], selected['iid']
-        if iid in tree.keys and iid not in tree.locked and tree.value[iid] != value.get():
-            tree.toggle(iid)
+        if iid in tree.keys:
+            apply_stage(tree, (iid,), value.get())
 
-    reward = ttk.Checkbutton(details, text='Quest completed', variable=value, command=apply)
-    reward.pack(anchor='w', pady=(10, 0))
-    reward.state(['disabled'])
-    batch = ttk.LabelFrame(left, text='Batch', padding=6)
-    batch.pack(fill='x', pady=5)
-    mode = tk.BooleanVar(value=True)
-
-    def change_group(scope):
-        tree, iid = selected['tree'], selected['iid']
-        if scope == 'all':
-            group = tree.leaves('')
-        else:
-            group = tree.tv.parent(iid) if iid in tree.keys else iid
-            if scope == 'mode':
-                while tree.tv.parent(group):
-                    group = tree.tv.parent(group)
-            group = tree.leaves(group)
-        want = mode.get()
-        values = {}
-        for leaf in group:
-            if leaf not in tree.locked and tree.value[leaf] != want:
-                key = tree.keys[leaf]
-                values[key] = want
-                win.on_tree_change(key, want)
-        tree.set_values(values)
+    def apply_stage(tree, leaves, stage):
+        done = stage == 3
+        updates = {}
+        for leaf in leaves:
+            if leaf in tree.locked:
+                continue
+            key = tree.keys[leaf]
+            _, difficulty, word = key
+            if tree.value[leaf] != done:
+                win.on_tree_change(key, done)
+                updates[key] = done
+            raw = win.ch.quest_word(difficulty, word)
+            if done or quest_stage(raw) == stage:
+                win.he_quest_stages.pop((difficulty, word), None)
+            else:
+                win.he_quest_stages[difficulty, word] = stage
+        if updates:
+            tree.set_values(updates)
+        win.update_dirty()
         refresh(tree)
 
-    ttk.Radiobutton(batch, text='Complete', variable=mode, value=True).pack(anchor='w')
-    ttk.Radiobutton(batch, text='Reopen pending changes', variable=mode, value=False).pack(anchor='w')
-    buttons = []
+    status = ttk.Frame(details)
+    status.pack(side='bottom', fill='x')
+    states = []
+    for state, text in enumerate(QUEST_STAGES):
+        radio = ttk.Radiobutton(status, text=text, variable=value, value=state, command=apply)
+        radio.pack(anchor='w', pady=2)
+        states.append(radio)
+
+    batch = ttk.LabelFrame(left, text='Batch', padding=3)
+    batch.pack(fill='x', pady=(5, 0))
+
+    def group_root(tree, iid, scope):
+        root = tree.tv.get_children()[0]
+        if scope == 'all':
+            return root
+        if not iid or iid == root:
+            return None
+        node = tree.tv.parent(iid) if iid in tree.keys else iid
+        parent = tree.tv.parent(node)
+        if scope == 'act':
+            return node if parent != root else None
+        return node if parent == root else parent
+
+    def change_group(scope, want):
+        tree, iid = selected['tree'], selected['iid']
+        root = group_root(tree, iid, scope)
+        if root is not None:
+            apply_stage(tree, tree.leaves(root), want)
+
+    buttons = {}
     for scope, text in (('act', 'Current Act'), ('mode', 'Current Mode'), ('all', 'All Modes')):
-        button = ttk.Button(batch, text=text, command=lambda scope=scope: change_group(scope))
-        button.pack(fill='x', pady=2)
-        button.state(['disabled'])
-        buttons.append(button)
+        column = ttk.LabelFrame(batch, text=text, padding=3)
+        column.pack(side='left', fill='both', expand=True, padx=1)
+        mode = tk.IntVar(value=0)
+        for stage, label in enumerate(QUEST_STAGES):
+            ttk.Radiobutton(column, text=label, variable=mode, value=stage).pack(anchor='w', pady=3)
+        button = ttk.Button(column, text='Batch', command=lambda scope=scope, mode=mode: change_group(scope, mode.get()))
+        button.pack(fill='x', pady=(10, 2))
+        buttons[scope] = button
 
     def refresh(tree):
         selection = tree.tv.selection()
         iid = selection[0] if selection else ''
         selected.update(tree=tree, iid=iid)
-        title.configure(text=tree.tv.item(iid, 'text').strip() if iid else 'Select a quest')
-        value.set(tree.value.get(iid, False))
-        reward.state(['!disabled'] if iid in tree.keys and iid not in tree.locked else ['disabled'])
-        for button in buttons:
-            button.state(['!disabled'] if iid else ['disabled'])
+        key = tree.keys.get(iid)
+        if key:
+            _, difficulty, word = key
+            act, name = win.he_quest_names[difficulty, word]
+            details.configure(text=act)
+            title.configure(text=name)
+            raw = win.ch.quest_word(difficulty, word)
+            saved_stage = quest_stage(raw)
+            notes.configure(text=f'Saved status: {QUEST_STAGES[saved_stage]}')
+            value.set(3 if tree.value[iid] else win.he_quest_stages.get(
+                (difficulty, word), 0 if saved_stage == 3 else saved_stage))
+        else:
+            details.configure(text='Quest')
+            title.configure(text=tree.tv.item(iid, 'text') if iid else 'Select a quest')
+            notes.configure(text='')
+            value.set(-1)
+        for radio in states:
+            radio.state(['!disabled'] if key and iid not in tree.locked else ['disabled'])
+        for scope, button in buttons.items():
+            button.state(['!disabled'] if group_root(tree, iid, scope) else ['disabled'])
 
     return refresh
 
@@ -615,6 +971,22 @@ class InventoryTabs(tk.Canvas):
         keys = [tab[0] for tab in self.tabs]
         self.command(keys[(keys.index(self.variable.get()) + step) % len(keys)])
         return 'break'
+
+
+def draw_pickup(win):
+    from mxl_char import CharError, blob_item
+    from mxl_format import FormatError
+
+    paper = win.he_pickup
+    paper.delete('all')
+    paper.create_rectangle(4, 4, 72, 106, outline='#55442d')
+    clip = getattr(win.app, '_capy_clip', None)
+    if clip:
+        try:
+            item = blob_item(clip[0], win.data)
+            win.draw_item(paper, item, 9, 9, 68, 102, False)
+        except (CharError, FormatError, OSError):
+            pass
 
 
 def item_hint(owner):

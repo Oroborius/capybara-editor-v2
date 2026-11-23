@@ -287,6 +287,23 @@ class MercPage:
                         'keep the backup.')).grid(row=r, column=0, columnspan=5, sticky='w')
         if self.vanilla_he:
             self._vanilla_controls(r + 1)
+            box.configure(text='Mercenary')
+            self.b_match.configure(text='Match Level')
+            self.cb_hired.grid_remove()
+            self.cb_dead.grid_remove()
+            from mxl_vanilla_he import font
+            self.type_box.configure(font=font())
+            self.name_box.configure(font=font())
+            life = ttk.LabelFrame(box, text='Mercenary Life', padding=2)
+            life.grid(row=0, column=0, columnspan=5, sticky='ew', pady=(0, 4))
+            self.v_life = tk.StringVar()
+            self.life_buttons = []
+            for text in ('Dead', 'Alive', 'Not Hired'):
+                radio = ttk.Radiobutton(life, text=text, value=text, variable=self.v_life,
+                                        command=self._change_life)
+                radio.pack(side='left', padx=6)
+                self.life_buttons.append(radio)
+            self.info.configure(wraplength=350)
         frame.bind('<Configure>', self._wrap, add='+')
         self.refresh()
 
@@ -299,10 +316,10 @@ class MercPage:
         self.vanilla_portrait = tk.Label(portrait, width=14, height=5, font=font(FONT),
                                          relief='sunken', bg=FORM, wraplength=85)
         self.vanilla_portrait.pack()
-        self.vanilla_seed = ttk.Button(portrait, text='Create New ID', command=self.b_seed.invoke)
+        self.vanilla_seed = ttk.Button(portrait, text='Create New Mercenary ID', command=self.b_seed.invoke)
         self.vanilla_seed.pack(fill='x', pady=(3, 0))
 
-        facts = ttk.LabelFrame(self.box, text='Mercenary information', padding=4)
+        facts = ttk.LabelFrame(self.box, text='Mercenary Record', padding=4)
         facts.grid(row=row, column=2, columnspan=3, sticky='nsew', padx=(4, 0))
         self.vanilla_facts = ttk.Label(facts, justify='left')
         self.vanilla_facts.pack(anchor='w')
@@ -452,6 +469,12 @@ class MercPage:
         if self.vanilla_he:
             from mxl_char import difficulty_name
 
+            self.v_life.set(('Dead' if self.v_dead.get() else 'Alive') if on else 'Not Hired')
+            for button in self.life_buttons:
+                button.state(['!disabled'] if self.ids and ch.has_jf else ['disabled'])
+            if self.ids and ch.has_jf and not on:
+                text = 'Select Alive to hire a mercenary.'
+                self.info.configure(text=text)
             kind = self.types.get(self.cur_type())
             self.vanilla_seed.state(['!disabled'] if on else ['disabled'])
             self.vanilla_portrait.configure(text=kind.cls_name if on and kind is not None else '')
@@ -460,6 +483,12 @@ class MercPage:
             self.vanilla_facts.configure(text=(
                 f'ID: {self.v_seed.get()}\nCode: {code}\nName: {self.v_name.get()}\n'
                 f'Attributes: {kind.variant if kind is not None else ""}\nDifficulty: {mode}') if on else '')
+
+    def _change_life(self):
+        life = self.v_life.get()
+        self.v_hired.set(life != 'Not Hired')
+        self.v_dead.set(life == 'Dead')
+        self.on_hired()
 
     def show_adv(self):
         if self.v_adv.get():
