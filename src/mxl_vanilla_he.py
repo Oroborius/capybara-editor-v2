@@ -29,6 +29,8 @@ TABS = (
 )
 ACTIONS = ('OPEN', 'SAVE', 'RELOAD', 'EXTRAS', 'CLOSE')
 ART_FOLDER = 'vanilla_he_folder'
+ITEM_LEVEL = 'vanilla_he_item_level'
+CENTER_MOUSE = 'vanilla_he_center_mouse'
 
 
 def active():
@@ -261,6 +263,16 @@ def choose_character(win):
     dialog.bind('<Return>', open_selected)
     dialog.bind('<Escape>', lambda _event: dialog.destroy())
     names.focus_set()
+    center_mouse(dialog)
+
+
+def center_mouse(window):
+    import settings
+
+    if settings.get(CENTER_MOUSE):
+        window.update_idletasks()
+        window.event_generate('<Motion>', warp=True,
+                              x=window.winfo_width() // 2, y=window.winfo_height() // 2)
 
 
 def action_plaque(parent, caption, shade):
@@ -333,6 +345,11 @@ def chrome(win, bottom, actions):
     entry.pack(side='left', padx=3, ipady=1)
     menu = win.he_menu = tk.Menu(entry, tearoff=False)
     entry.configure(menu=menu)
+    from mxl_rc_menu import _vanilla_char_commands
+
+    _vanilla_char_commands(win, menu, None, None, extensions=False)
+    prefix = menu.index('end') + 1
+    menu.add_separator()
     for text, command in zip(ACTIONS, commands):
         menu.add_command(label=text.title(), underline=0, command=command)
 
@@ -383,6 +400,30 @@ def chrome(win, bottom, actions):
     menu.add_command(label='Hero Editor folder...', command=lambda: choose_art_folder(win))
     menu.add_command(label='Use drawn Hero Editor art', command=lambda: set_art_folder(win, ''))
     add_toolbar_menu(win.app, menu)
+
+    previous = menu.cget('postcommand')
+    reference = None
+
+    def update_item_commands():
+        nonlocal reference
+        if previous:
+            menu.tk.call(previous)
+        win.sync_file()
+        selected = win.selected
+        if selected is not None:
+            selected = win.current_entry(selected, False) or win.current_entry(selected, True)
+        template = tk.Menu(entry, tearoff=False)
+        _vanilla_char_commands(win, template, selected, getattr(win.app, '_capy_clip', None), extensions=False)
+        menu.delete(0, prefix - 1)
+        if reference is not None:
+            reference.destroy()
+        reference = template
+        for index in range(prefix):
+            kind = template.type(index)
+            options = {key: info[-1] for key, info in template.entryconfigure(index).items()}
+            menu.insert(index, kind, **options)
+
+    menu.configure(postcommand=update_item_commands)
 
 
 def add_toolbar_menu(app, menu):
@@ -457,139 +498,11 @@ def wrap_buttons(bar, buttons, gap=0, pady=0):
     bar.bind('<Configure>', layout, add='+')
 
 
-def extras(win):
-    from mxl_toolbar import EXTRA
-    from mxl_creator_gui import CreatorWindow, clean
-    from mxl_rc_menu import _inspect_char
-    from mxl_he_stats import open_char_item_stats
-    from mxl_itemlib import open_library
+def extras(win, entry=None, group='Basic1'):
+    from mxl_vanilla_he_extras import open_extras
 
-    top = tk.Toplevel(win.top)
-    top.title('Extras')
-    top.geometry('681x371')
-    entries = [(entry, merc) for merc in (False, True) for entry in win.ch.entries(merc)]
-    header = ttk.Frame(top, padding=(8, 3))
-    header.pack(fill='x')
-    total = sum(1 + len(entry.it.get('socketed', ())) for entry, _merc in entries)
-    ttk.Label(header, text=f'Total items: {total}').grid(row=0, column=0, padx=(0, 18), sticky='w')
-    ttk.Label(header, text=f'Save version: {win.ch.version}').grid(row=0, column=1, sticky='w')
-    ttk.Label(header, text=f'Character Name: {win.ch.name}').grid(row=1, column=0, columnspan=2, sticky='w')
-    header.columnconfigure(2, weight=1)
-    ttk.Button(header, text='Close', command=top.destroy).grid(row=0, column=3, rowspan=2)
-    ttk.Separator(top).pack(fill='x')
-    notebook = ttk.Notebook(top, style='Extras.TNotebook')
-    notebook.pack(fill='both', expand=True, padx=8, pady=(6, 0))
-    for caption in ('Character Hex', 'Item Binary Compare/Edit', 'Item Edit', 'Item/Character Create'):
-        page = ttk.Frame(notebook, style='Peach.TFrame', padding=6)
-        notebook.add(page, text=caption)
-        if caption == 'Item Edit':
-            notebook.select(page)
-        if caption == 'Character Hex':
-            title = ttk.Label(page, text='Character Hex', background=PEACH, foreground=HEX_TITLE)
-            title.pack(anchor='w')
-            view = tk.Text(page, font='TkFixedFont', width=65, height=10, relief='sunken', wrap='none')
-            scroll = ttk.Scrollbar(page, command=view.yview)
-            view.configure(yscrollcommand=scroll.set)
-            scroll.pack(side='right', fill='y')
-            view.pack(fill='both', expand=True)
-            raw = win.ch.raw
-            view.insert('1.0', '\n'.join(f'{i:08X}  {bytes(raw[i:i + 16]).hex(" ").upper()}'
-                                        for i in range(0, len(raw), 16)))
-            view.configure(state='disabled')
-        elif caption in ('Item Binary Compare/Edit', 'Item Edit'):
-            item_panel = ttk.LabelFrame(page, text='Character Items', padding=3, style='Peach.TLabelframe')
-            item_panel.pack(side='left', fill='y')
-            items = tk.Listbox(item_panel, width=30, exportselection=False)
-            scrollbar = ttk.Scrollbar(item_panel, command=items.yview)
-            items.configure(yscrollcommand=scrollbar.set)
-            scrollbar.pack(side='right', fill='y')
-            items.pack(side='left', fill='both', expand=True)
-            content = ttk.Frame(page, style='Peach.TFrame', padding=(5, 0))
-            content.pack(side='right', fill='both', expand=True)
-            binary = caption == 'Item Binary Compare/Edit'
-            fields = ttk.Treeview(content, show='tree', height=9, selectmode='browse')
-            field_groups = {
-                'Basic': ('code', 'ilvl', 'identified', 'ethereal', 'socketed_count'),
-                'Location': ('location', 'equipped', 'panel', 'x', 'y'),
-                'Quality': ('quality', 'unique_id', 'set_id', 'personalized'),
-                'Magic Attributes': (),
-            }
-            if not binary:
-                fields.column('#0', width=124, minwidth=96)
-                for label in field_groups:
-                    fields.insert('', 'end', iid=label, text=label)
-                fields.selection_set('Basic')
-                fields.pack(side='left', fill='y', padx=(0, 4))
-            pane = ttk.Frame(content, style='Peach.TFrame')
-            pane.pack(side='left', fill='both', expand=True)
-            inspector = tk.Text(pane, width=28, height=8, wrap='word', relief='sunken', bd=2,
-                                font='TkFixedFont' if binary else font())
-            inspector.pack(fill='both', expand=True)
-
-            def preview(_event=None, items=items, inspector=inspector, fields=fields, binary=binary):
-                selection = items.curselection()
-                inspector.configure(state='normal')
-                inspector.delete('1.0', 'end')
-                if selection:
-                    entry, merc = entries[selection[0]]
-                    entry = win.current_entry(entry, merc)
-                    if entry is not None:
-                        if binary:
-                            text = ' '.join(f'{byte:08b}' for byte in entry.blob)
-                        else:
-                            group = next(iter(fields.selection()), 'Basic')
-                            if group == 'Magic Attributes':
-                                from mxl_statnames import stat_text
-                                text = '\n'.join(filter(None, (stat_text(win.data, stat['id'], stat.get('param'),
-                                                    stat.get('value', 1)) for stat in entry.it.get('stats', ()))))
-                            else:
-                                text = '\n'.join(f'{key.replace("_", " ").title()}: {entry.it[key]}'
-                                                 for key in field_groups[group] if key in entry.it)
-                        inspector.insert('1.0', text)
-                inspector.configure(state='disabled')
-
-            items.bind('<<ListboxSelect>>', preview)
-            fields.bind('<<TreeviewSelect>>', preview)
-            for entry, _merc in entries:
-                items.insert('end', clean(entry.it.get('name') or entry.it['code']))
-            if entries:
-                items.selection_set(0)
-            edit = _inspect_char if caption == 'Item Binary Compare/Edit' else open_char_item_stats
-
-            def open_item(_event=None, items=items, edit=edit):
-                selection = items.curselection()
-                if selection:
-                    entry, merc = entries[selection[0]]
-                    entry = win.current_entry(entry, merc)
-                    if entry is not None:
-                        edit(win, entry)
-                        top.destroy()
-
-            items.bind('<Double-Button-1>', open_item)
-            ttk.Button(pane, text='Open Item Editor' if caption == 'Item Edit' else 'Open Bit Editor',
-                       command=open_item).pack(anchor='e', pady=3)
-            preview()
-        else:
-            def run(command):
-                top.destroy()
-                command()
-
-            ttk.Button(page, text='Item Creator', command=lambda: run(lambda: CreatorWindow(win.app))).pack(anchor='w')
-            ttk.Button(page, text='Item Library', command=lambda: run(lambda: open_library(win.app))).pack(anchor='w')
-            for title, command in EXTRA:
-                if command is not open_library:
-                    ttk.Button(page, text=title(), command=lambda command=command: run(
-                        lambda: command(win.app))).pack(anchor='w')
-
-    menu = tk.Menu(top, tearoff=False)
-    top.configure(menu=menu)
-    pages = tk.Menu(menu, tearoff=False)
-    menu.add_cascade(label='Character', menu=pages)
-    reference = dict(TABS)
-    for button in win.tab_buttons:
-        key = button.cget('value')
-        if key not in reference:
-            pages.add_command(label=button.cget('text'), command=lambda key=key: run(lambda: set_tab(win, key)))
+    if active():
+        return open_extras(win, entry, group)
 
 
 TOWNS = ('Rogue Encampment', 'Lut Gholein', 'Kurast Docks', 'Pandemonium Fortress', 'Harrogath')
@@ -826,6 +739,20 @@ def bind_inventory(win):
             root.bind(sequence, lambda event, paste=paste: inventory_clipboard(root, event, paste))
             # A vanilla canvas consumes the key before the shared, pointer-based shortcut.
             root.tk.call('bind', root._w, sequence, root.bind(sequence) + '\n' + previous)
+        for key, caption in (
+            ('<Control-g>', 'General Edit of Item (in Extras Window)'),
+            ('<Control-a>', 'Add All Item Magic Attributes TO Buffer'),
+            ('<Control-p>', 'VIEW what is in Buffer'),
+            ('<Control-b>', 'DELETE Buffer'),
+            ('<Control-e>', 'Export Item to File…'),
+            ('<Control-i>', 'Import Item from File…'),
+            ('<Control-x>', 'Cut Item (move to Picked Up)'),
+            ('<Control-z>', 'Fill Item Sockets (copy of Picked Up)'),
+            ('<F1>', 'Help'),
+        ):
+            previous = root.bind(key)
+            root.bind(key, lambda event, caption=caption: inventory_shortcut(root, event, caption))
+            root.tk.call('bind', root._w, key, root.bind(key) + '\n' + previous)
         root._he_clipboard_bound = True
 
     def remember(event):
@@ -865,6 +792,53 @@ def bind_inventory(win):
     page.refresh()
 
 
+def inventory_shortcut(root, event, caption):
+    from types import SimpleNamespace
+    from mxl_rc_menu import _vanilla_char_commands
+
+    win = root._he_window()
+    if win is None or not win.top.winfo_ismapped():
+        return
+    if event.widget.winfo_class() in ('Entry', 'Text', 'Spinbox', 'Combobox', 'TEntry', 'TCombobox', 'TSpinbox'):
+        return
+    pointer = getattr(win, 'he_pointer', None)
+    if caption == 'Help':
+        set_tab(win, 'info')
+        return 'break'
+    if pointer is None or not pointer[0].winfo_exists() or not pointer[0].winfo_ismapped():
+        return
+    cv = pointer[0]
+    xy = clipboard_point(pointer)
+    if xy is None:
+        return
+    win.sync_file()
+    if not cv.winfo_exists():
+        return
+    position = SimpleNamespace(widget=cv, x=xy[0], y=xy[1])
+    owner = win
+    delete = None
+    if cv in (win.inv, win.doll):
+        item, slot = win.entry_at(cv, position)
+        win.sel_slot = slot
+    else:
+        containers = win.extra.get('containers')
+        if containers is None:
+            return
+        owner = containers.as_win()
+        item, _slot = owner.entry_at(cv, position)
+        delete = lambda: containers.delete(item)
+    win.selected = item
+    menu = tk.Menu(win.top, tearoff=False)
+    try:
+        _vanilla_char_commands(owner, menu, item, getattr(win.app, '_capy_clip', None),
+                               delete=delete, extensions=False)
+        if menu.entrycget(caption, 'state') == 'normal':
+            menu.invoke(caption)
+            return 'break'
+    finally:
+        menu.destroy()
+
+
 def clipboard_point(pointer):
     """Rebase the last observed pointer after a page or canvas moves."""
     cv, (sx, sy) = pointer
@@ -876,6 +850,7 @@ def clipboard_point(pointer):
 def inventory_clipboard(root, event, paste):
     from types import SimpleNamespace
     import mxl_rc_menu as rc
+    from mxl_vanilla_he_items import paste_one
 
     win = root._he_window()
     pointer = getattr(win, 'he_pointer', None)
@@ -904,7 +879,7 @@ def inventory_clipboard(root, event, paste):
             win.set_status(rc.rc('hot.noclip', 'the item clipboard is empty (copy an item first)'), True)
         else:
             if entry is not None:
-                rc._char_paste_over(win, entry, clip)
+                paste_one(win, entry, clip, lambda: rc._char_paste_over(win, entry, clip))
             elif cv is win.inv and not win.is_merc():
                 rc._char_paste(win, point, clip)
             elif slot is not None:
@@ -921,7 +896,7 @@ def inventory_clipboard(root, event, paste):
                         rc._char_copy(page.as_win(), entry)
                 elif clip is not None and key != 'belt':
                     if entry is not None:
-                        page.paste_over(entry, clip)
+                        paste_one(page.as_win(), entry, clip, lambda: page.paste_over(entry, clip))
                     else:
                         page.paste_here(key, tuple(value // page.cell for value in xy), clip)
     return 'break'
@@ -998,6 +973,7 @@ def draw_cover(panel, key):
 def options(win):
     import mxl_mock_gui
     import mxl_profile
+    import settings
 
     page = win.pages['options']
     for column in range(2):
@@ -1021,6 +997,28 @@ def options(win):
     tools = ttk.LabelFrame(page, text='Item and Character Tools', padding=6)
     tools.grid(row=2, column=0, columnspan=2, sticky='ew', pady=4)
     ttk.Button(tools, text='Extras…', command=lambda: extras(win)).pack(anchor='w')
+    center = tk.BooleanVar(page, value=bool(settings.get(CENTER_MOUSE)))
+    ttk.Checkbutton(tools, text='Center mouse when opening a dialog', variable=center,
+                    command=lambda: settings.put(CENTER_MOUSE, center.get())).pack(anchor='w')
+    levels = ('Game default', '90', '99')
+    saved_level = str(settings.get(ITEM_LEVEL))
+    row = ttk.Frame(tools)
+    row.pack(anchor='w')
+    ttk.Label(row, text='Default item level').pack(side='left', padx=(0, 5))
+    level = ttk.Combobox(row, state='readonly', values=levels, width=14)
+    level.set(saved_level if saved_level in levels else levels[0])
+    level.pack(side='left')
+    level.bind('<<ComboboxSelected>>', lambda _event: settings.put(
+        ITEM_LEVEL, int(level.get()) if level.current() else None))
+    modes = {'Use app settings': '', 'Keep one backup': 'one', 'Keep all backups': 'all', 'Skip new backups': 'off'}
+    row = ttk.Frame(tools)
+    row.pack(anchor='w', pady=(2, 0))
+    ttk.Label(row, text='Character backups').pack(side='left', padx=(0, 5))
+    backups = ttk.Combobox(row, state='readonly', values=tuple(modes), width=20)
+    backups.set(next((label for label, mode in modes.items()
+                      if mode == settings.get('vanilla_he_backups')), next(iter(modes))))
+    backups.pack(side='left')
+    backups.bind('<<ComboboxSelected>>', lambda _event: settings.put('vanilla_he_backups', modes[backups.get()]))
 
 
 def introductions(win):

@@ -47,6 +47,7 @@ QUALITY_ID = {'low': 1, 'normal': 2, 'superior': 3, 'magic': 4, 'set': 5, 'rare'
 QUALITY_NAME = {v: k for k, v in QUALITY_ID.items()}
 ITEM_VERSION = 101
 FLAG_IDENTIFIED = 1 << 4
+FLAG_EAR = 1 << 16
 FLAG_SOCKETED = 1 << 11
 FLAG_NEW = 1 << 13                              # set on the one real honorific sample (fresh cube output)
 FLAG_SIMPLE = 1 << 21
@@ -248,8 +249,8 @@ class Tables:
 
 # --------------------------------------------------------------------------------------------- encoding
 
-def _write_stats(bw, stats, data):
-    """Writes a stat list [{id, param, value}] (already merged and sorted) followed by 0x1FF."""
+def _write_stats(bw, stats, data, preserve_order=False):
+    """Write a stat list followed by its end marker."""
     # belt and suspenders: merge same-(stat, param) entries here too (the game sums them; a leftover
     # duplicate once summed past the save range in-game while each entry looked fine) - param 0 and
     # no param are the same key
@@ -257,8 +258,8 @@ def _write_stats(bw, stats, data):
     for s in stats:
         k = (s['id'], s.get('param') or None)
         acc[k] = acc.get(k, 0) + (s['value'] or 0)
-    stats = [dict(id=k[0], param=k[1], value=v) for k, v in
-             sorted(acc.items(), key=lambda kv: (kv[0][0], kv[0][1] or 0))]
+    ordered = acc.items() if preserve_order else sorted(acc.items(), key=lambda kv: (kv[0][0], kv[0][1] or 0))
+    stats = [dict(id=k[0], param=k[1], value=v) for k, v in ordered]
     by_id = {}
     for s in stats:
         by_id.setdefault(s['id'], s)
@@ -282,7 +283,7 @@ def _write_stats(bw, stats, data):
     bw.write(9, 0x1FF)
 
 
-def encode_item(rec, data):
+def encode_item(rec, data, *, preserve_stat_order=False):
     """Bytes ('JM' + bits) of one item record. rec keys: the fields of mxl_format.Item plus
     flags (raw 32-bit header flags), runeword_id (16 bits), tome_bits, realm_bit, set_mask; stats lists are
     lists of {id, param, value}. Socketed children are not included (see build_blob)."""
@@ -296,6 +297,18 @@ def encode_item(rec, data):
     bw.write(4, rec.get('y', 0))
     bw.write(3, rec.get('panel', PANEL_STASH))
     code = rec['code']
+    if flags & FLAG_EAR and code == 'ear ':
+        name = rec['ear_name']
+        if len(name) > 15 or not name.isascii() or '\0' in name:
+            raise CreateError('An ear name must fit in 15 ASCII characters.')
+        bw.write(3, rec['ear_class'])
+        bw.write(7, rec['ear_level'])
+        for char in name:
+            bw.write(7, ord(char))
+        bw.write(7, 0)
+        padding = -bw.pos % 8
+        bw.write(padding, rec.get('ear_pad', 0) & ((1 << padding) - 1))
+        return b'JM' + bw.bytes()
     for ch in code:
         bw.write(8, ord(ch))
     if flags & FLAG_SIMPLE:
@@ -365,7 +378,7 @@ def encode_item(rec, data):
     set_mask = rec.get('set_mask', 0)
     if q == 'set':
         bw.write(5, set_mask)
-    ws = getattr(data, 'rec_write_stats', None) or (lambda w, st: _write_stats(w, st, data))  # mxl_v109.Data109
+    ws = getattr(data, 'rec_write_stats', None) or (lambda w, st: _write_stats(w, st, data, preserve_stat_order))
     ws(bw, rec.get('stats', []))
     for i in range(5):
         if set_mask >> i & 1:
@@ -382,15 +395,15 @@ NUM_SOCKETS = 194          # item_numsockets: an affix's "sock" property ("Innat
                            # the vanilla sockets beyond the save field (Creator.socket_split: marked sockets=True)
 
 
-def build_blob(rec, children, data):
+def build_blob(rec, children, data, *, preserve_stat_order=False):
     """Item bytes followed by its socketed items (format of a stash entry)."""
     for k in ('stats', 'stats_runeword'):
         if rec.get(k):
             rec[k] = [s for s in rec[k] if s['id'] != NUM_SOCKETS or s.get('sockets')]
-    out = encode_item(rec, data)
+    out = encode_item(rec, data, preserve_stat_order=preserve_stat_order)
     for i, ch in enumerate(children):
         ch = dict(ch, location=LOC_SOCKETED, equipped=0, x=i, y=0, panel=0)
-        out += encode_item(ch, data)
+        out += encode_item(ch, data, preserve_stat_order=preserve_stat_order)
     return out
 
 
@@ -408,22 +421,27 @@ class _BR:
         return r
 
 
-def _read_stats(br, data):
+def _read_stats(br, data, starts=None):
     out = []
     while True:
+        start = br.pos
         sid = br.read(9)
         if sid == 0x1FF:
+            if starts is not None:
+                starts.append(16 + start)
             return out
         if br.pos > br.n:
             raise CreateError('stat list without end marker')
         for x in [sid] + STAT_GROUPS.get(sid, []):
+            if starts is not None:
+                starts.append(16 + (start if x == sid else br.pos))
             c = data.isc[x]
             p = br.read(c['param']) if c['param'] else None
             out.append(dict(id=x, param=p, value=br.read(c['bits']) - c['add']))
 
 
-def decode_item(blob, data):
-    """Inverse of encode_item for one item (blob starts at 'JM'): (record, size in bytes)."""
+def decode_item(blob, data, *, offsets=None):
+    """Read one item and its byte length. Optionally record the field offsets from the start of JM."""
     if blob[:2] != b'JM':
         raise CreateError('not an item')
     reason = getattr(blob, 'read_only_reason', None) or getattr(blob, 'edit_reason', None)
@@ -433,41 +451,90 @@ def decode_item(blob, data):
         raise CreateError(T('cr.err.old_raw', 'This 1.09 item holds values the item editor cannot keep: it can be '
                             'moved or deleted, not edited.'))
     br = _BR(bytes(blob[2:]))
+
+    def mark(field):
+        if offsets is not None:
+            offsets[field] = 16 + br.pos
+
     r = {}
+    mark('flags')
     r['flags'] = flags = br.read(32)
+    mark('version')
     r['version'] = br.read(10)
+    mark('location')
     r['location'] = br.read(3)
+    mark('equipped')
     r['equipped'] = br.read(4)
+    mark('x')
     r['x'] = br.read(4)
+    mark('y')
     r['y'] = br.read(4)
+    mark('panel')
     r['panel'] = br.read(3)
+    if flags & FLAG_EAR:
+        from mxl_format_fix import LENIENT
+
+        if LENIENT and getattr(data, 'save_version', 96) == 96:
+            r.update(code='ear ', socketed_count=0)
+            mark('ear_class')
+            r['ear_class'] = br.read(3)
+            mark('ear_level')
+            r['ear_level'] = br.read(7)
+            mark('ear_name')
+            name = []
+            for _ in range(16):
+                char = br.read(7)
+                if not char and br.pos <= br.n:
+                    break
+                name.append(chr(char))
+            else:
+                raise CreateError('An ear record has no complete name.')
+            r['ear_name'] = ''.join(name)
+            r['ear_pad'] = br.read(-br.pos % 8)
+            return r, 2 + br.pos // 8
+    mark('code')
     r['code'] = code = ''.join(chr(br.read(8)) for _ in range(4))
     if flags & FLAG_SIMPLE:
+        mark('socketed_count')
         r['socketed_count'] = br.read(1)
         return r, 2 + (br.pos + 7) // 8
+    mark('socketed_count')
     r['socketed_count'] = br.read(SOCKETED_COUNT_BITS)
+    mark('id')
     r['id'] = br.read(32)
+    mark('ilvl')
     r['ilvl'] = br.read(ILVL_BITS)
     q = r['quality'] = QUALITY_NAME.get(br.read(4), 'unknown')
     if q == 'unknown':
         r['quality_raw'] = br.v >> (br.pos - 4) & 15      # (0: hacked saves) written back as it was
+    mark('image')
     r['image'] = br.read(3) if br.read(1) else None
+    mark('auto_affix')
     r['auto_affix'] = br.read(11) if br.read(1) else None
     if q in ('low', 'superior'):
+        mark('subquality')
         r['subquality'] = br.read(3)
     elif q == 'magic':
+        mark('prefix')
         r['prefix'] = br.read(11)
+        mark('suffix')
         r['suffix'] = br.read(11)
     elif q in ('set', 'unique'):
+        mark('set_unique_id')
         r['set_unique_id'] = br.read(SET_UNIQUE_ID_BITS)
     elif q == 'tempered':
+        mark('rare_names')
         r['rare_names'] = (br.read(8), br.read(8))
     elif q in ('rare', 'crafted'):
+        mark('rare_names')
         r['rare_names'] = (br.read(8), br.read(8))
+        mark('rare_affixes')
         r['rare_affixes'] = [br.read(11) if br.read(1) else None for _ in range(6)]
     if flags & FLAG_RUNEWORD:
+        mark('runeword_id')
         r['runeword_id'] = br.read(16)
     if flags & FLAG_PERSONALIZED:
+        mark('personalized_name')
         s = ''
         while True:
             ch = br.read(7)
@@ -476,30 +543,50 @@ def decode_item(blob, data):
             s += chr(ch)
         r['personalized_name'] = s
     if code in ('tbk ', 'ibk '):
+        mark('tome_bits')
         r['tome_bits'] = br.read(5)
+    mark('realm_bit')
     r['realm_bit'] = br.read(1)
     base = data.base(code)
     kind = body_kind(data, code)
     if kind == 'armor':
         c = data.isc[S.DEFENSE]
+        mark('defense')
         r['defense'] = br.read(c['bits']) - c['add']
     if kind in ('armor', 'weapons'):
+        mark('max_durability')
         cm = data.isc[S.MAX_DURABILITY]
         r['max_durability'] = br.read(cm['bits'])
         if r['max_durability'] != cm['add']:
+            mark('durability')
             r['durability'] = br.read(data.isc[S.DURABILITY]['bits'])
     if base.stack_max is not None:
+        mark('quantity')
         r['quantity'] = br.read(QUANTITY_BITS)
     if flags & FLAG_SOCKETED:
+        mark('sockets')
         r['sockets'] = br.read(getattr(data, 'socket_bits', SOCKET_FIELD_BITS))
+    mark('set_mask')
     r['set_mask'] = br.read(5) if q == 'set' else 0
-    rs = getattr(data, 'rec_read_stats', None) or (lambda b: _read_stats(b, data))       # mxl_v109.Data109
-    r['stats'] = rs(br)
+    legacy_stats = getattr(data, 'rec_read_stats', None)
+
+    def read_stats(field):
+        mark(field)
+        if legacy_stats is not None:
+            return legacy_stats(br)
+        starts = [] if offsets is not None else None
+        stats = _read_stats(br, data, starts)
+        if starts is not None:
+            offsets.update((f'{field}:{i}', start) for i, start in enumerate(starts))
+        return stats
+
+    r['stats'] = read_stats('stats')
     for i in range(5):
         if r['set_mask'] >> i & 1:
-            r[f'set_stats_{i}'] = rs(br)
+            key = f'set_stats_{i}'
+            r[key] = read_stats(key)
     if flags & FLAG_RUNEWORD:
-        r['stats_runeword'] = rs(br)
+        r['stats_runeword'] = read_stats('stats_runeword')
     if hasattr(data, 'rec_read_end'):
         data.rec_read_end(br, r)
     return r, 2 + (br.pos + 7) // 8

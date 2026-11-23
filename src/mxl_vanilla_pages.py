@@ -500,6 +500,20 @@ class ContainersPage:
         import mxl_rc_menu as RC
         win = self.as_win()
         rc = RC.rc
+        if self.win.vanilla_he:
+            from mxl_vanilla_he_items import paste_one
+
+            cell = (ev.x // self.cell, ev.y // self.cell)
+            paste = None
+            if key != 'belt':
+                if e is None:
+                    paste = lambda: self.paste_here(key, cell, clip)
+                else:
+                    paste = lambda: paste_one(win, e, clip, lambda: self.paste_over(e, clip))
+            RC._vanilla_char_commands(win, menu, e, clip, paste=paste,
+                                      delete=lambda: self.delete(e), extensions=False,
+                                      cut=lambda: self.delete(e, ask=False))
+            menu.add_separator()
         if e is not None:
             import mxl_he_stats
             if key != 'belt':
@@ -507,9 +521,11 @@ class ContainersPage:
             menu.add_command(label=rc('stats', 'Item stats...'), command=lambda: mxl_he_stats.open_char_item_stats(win, e))
             if key != 'belt':
                 menu.add_command(label=rc('duplicate', 'Duplicate'), command=lambda: self.duplicate(e, key))
-            menu.add_command(label=rc('copy', 'Copy'), command=lambda: RC._char_copy(win, e))
+            if not self.win.vanilla_he:
+                menu.add_command(label=rc('copy', 'Copy'), command=lambda: RC._char_copy(win, e))
             if key != 'belt':
-                menu.add_command(label=rc('cut', 'Cut'), command=lambda: (RC._char_copy(win, e), self.delete(e, ask=False)))
+                if not self.win.vanilla_he:
+                    menu.add_command(label=rc('cut', 'Cut'), command=lambda: (RC._char_copy(win, e), self.delete(e, ask=False)))
                 if clip is not None:
                     menu.add_command(label=rc('paste', 'Paste (replaces it; copy: {name})', name=clip[1]),
                                      command=lambda: self.paste_over(e, clip))
@@ -521,7 +537,8 @@ class ContainersPage:
                                ('cube', T('van.to_cube', 'To Horadric Cube'))):
                     if k != key and not (k == 'cube' and e.it['code'] == CUBE_CODE):
                         menu.add_command(label=lab, command=lambda k=k: self.move_to(e, k))
-                menu.add_command(label=rc('delete_short', 'Delete'), command=lambda: self.delete(e))
+                if not self.win.vanilla_he:
+                    menu.add_command(label=rc('delete_short', 'Delete'), command=lambda: self.delete(e))
             menu.add_command(label=rc('export', 'Export item...'), command=lambda: RC._export_char(win, e))
             menu.add_command(label=rc('bitedit', 'Open in Bit editor'), command=lambda: RC._inspect_char(win, e))
             menu.add_command(label=rc('to_library', 'Add to library...'), command=lambda: RC._library_char(win, e))
@@ -686,7 +703,7 @@ class ContainersPage:
 
     def paste_here(self, key, cell, clip):
         ok = self._place(key, clip[0], cell, T('van.pasted', '{name} pasted', name=clip[1]), clip[1])
-        if ok:
+        if ok and not self.win.vanilla_he:
             self.win.app._capy_clip = None
         return ok
 
@@ -703,7 +720,8 @@ class ContainersPage:
             except Exception as err:
                 return self._fail(err)
             if self._save(T('van.pasted_over', '{name} pasted (the previous item is replaced)', name=clip[1])):
-                self.win.app._capy_clip = None
+                if not self.win.vanilla_he:
+                    self.win.app._capy_clip = None
                 return True
             return False
         return self._undoable(clip[1], go)

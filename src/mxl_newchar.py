@@ -255,7 +255,7 @@ def save_folder(app):
 
 
 # ---------------------------------------------------------------------------------------------------- dialog
-def open_dialog(app):
+def open_dialog(app, *, initial_version=96):
     import tkinter as tk
     from tkinter import ttk, messagebox
     import mxl_char as MC
@@ -269,7 +269,7 @@ def open_dialog(app):
     names = MC.class_names(data)
     name = tk.StringVar()
     cls = tk.StringVar(value=names[0])
-    version = tk.StringVar(value=SAVE_VERSIONS[96])
+    version = tk.StringVar(value=SAVE_VERSIONS[initial_version])
     classic_100 = tk.BooleanVar(value=False)
     level = tk.StringVar(value='1')
     hc = tk.BooleanVar(value=False)
@@ -320,6 +320,7 @@ def open_dialog(app):
 
         version.trace_add('write', update_classes)
         exp.trace_add('write', update_classes)
+        update_classes()
     elif not median:
         ttk.Checkbutton(f, text=T('nc.expansion', 'Expansion (Lord of Destruction)'), variable=exp).grid(
             row=row, column=0, columnspan=2, sticky='w', padx=2)

@@ -329,6 +329,16 @@ def make_backup(path):
         bak = f'{path}.bak-{stamp}-{n}'
     shutil.copy2(path, bak)
     keep = backups_keep()
+    if str(path).lower().endswith('.d2s'):
+        import mxl_profile
+        import settings
+
+        if not mxl_profile.is_median():
+            policy = settings.get('vanilla_he_backups')
+            if policy == 'all':
+                return bak
+            if policy == 'one':
+                keep = 1
     old = [f for _k, f in _dated(path) if f != bak]
     for f in old[:max(0, len(old) - (keep - 1))]:
         try:

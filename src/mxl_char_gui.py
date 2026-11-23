@@ -431,40 +431,21 @@ class CharacterWindow(StatEditMixin):
             paper.pack()
             self.he_pickup = paper
 
-            def paste():
-                from mxl_rc_menu import _char_paste_slot
-                item = getattr(self.app, '_capy_clip', None)
-                if item is None:
-                    self.set_status('Copy or cut an item first.', True)
-                    return
-                slot = self.sel_slot
-                if slot is not None and self.ch.equipped(self.is_merc()).get(slot) is None:
-                    _char_paste_slot(self, slot, item)
-                    return
-                if self.is_merc():
-                    self.set_status('Select an empty mercenary slot first.', True)
-                    return
-                from mxl_rc_menu import _char_paste
-                from types import SimpleNamespace
-                try:
-                    spot = self.ch.free_inventory_spot(MC.blob_item(item[0], self.data))
-                except (CharError, FormatError, OSError) as error:
-                    self.set_status(str(error), True)
-                    return
-                if spot is None:
-                    self.set_status('No free place in the inventory.', True)
-                    return
-                _char_paste(self, SimpleNamespace(x=spot[0] * self.cell, y=spot[1] * self.cell), item)
+            from mxl_vanilla_he_items import delete_inventory, golem_menu, paste_all
 
-            ttk.Button(clip, text='Paste Item', command=paste).pack(fill='x', pady=3)
-            actions = ttk.LabelFrame(controls, text='Item Actions', padding=2)
+            ttk.Button(clip, text='Paste All', command=lambda: paste_all(self)).pack(fill='x', pady=3)
+            actions = ttk.LabelFrame(controls, text='Item Deletion', padding=2)
             actions.pack(side='left', anchor='n', fill='x', expand=True)
-            for text, command in item_actions:
-                ttk.Button(actions, text=text, command=command).pack(fill='x', pady=1)
+            for target in ('ALL', 'Person', 'Stash', 'Cube', 'Merc', 'Belt'):
+                text = 'ALL Items' if target == 'ALL' else f'All in "{target}"'
+                ttk.Button(actions, text=text, command=lambda key=target: delete_inventory(self, key)).pack(fill='x')
             decode = ttk.LabelFrame(controls, text='Item Decode', padding=2)
             decode.pack(side='left', anchor='n', padx=(3, 0))
             ttk.Label(decode, text='1.10-1.13' if not self.ch.old else str(self.ch.version)).pack(padx=6)
-            ttk.Button(decode, text='Edit…', command=self.edit).pack(fill='x', pady=(5, 0))
+            ttk.Button(decode, text='Edit…', command=lambda: V.extras(self, entry=self.selected)).pack(fill='x')
+            self.he_golem = ttk.Button(decode, text='Iron Golem', command=lambda: golem_menu(self, self.he_golem))
+            self.he_golem.pack(fill='x', pady=(3, 0))
+            self.he_golem.bind('<ButtonRelease-3>', lambda event: golem_menu(self, self.he_golem, event))
             self.he_inventory_controls = [(controls, controls.pack_info())]
             if not self.he_inventory_art:
                 row.pack(fill='x', pady=2)
@@ -655,6 +636,8 @@ class CharacterWindow(StatEditMixin):
         self.panel.show(self.selected.it if self.selected else None)
         if self.vanilla_he:
             V.draw_pickup(self)
+            self.he_golem.state(['!disabled' if self.ch.tail.startswith(b'kf\x01JM') and not self.ch.old
+                                 else 'disabled'])
 
     # ---- hit tests
     def target_at(self, cv, ev, size=(1, 1), dx=0, dy=0):
@@ -826,7 +809,14 @@ class CharacterWindow(StatEditMixin):
                               'picked: nothing written, the file has been read again - do it again.'), True)
             return False
         try:
-            bak = self.ch.save(backup=app.needs_backup(self.ch.path))
+            backup = app.needs_backup(self.ch.path)
+            if self.vanilla_he:
+                import settings
+
+                policy = settings.get('vanilla_he_backups')
+                if policy in ('one', 'all', 'off'):
+                    backup = policy != 'off'
+            bak = self.ch.save(backup=backup)
         except (CharError, EditError, OSError) as e:   # EditError: the safe writer or the save check refused
             messagebox.showerror(T('ch.title', 'Character'), str(e) + (
                 '\n\n' + T('ch.kept_pending', 'The file has been read again. The changes not yet saved are still '

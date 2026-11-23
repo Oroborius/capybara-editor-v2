@@ -458,8 +458,16 @@ def _char_menu(win, cv, ev):
         win.sel_slot = slot
         win.selected = e
         win.redraw()
-    if e is not None and vanilla:
-        _vanilla_char_commands(win, menu, e, clip)
+    if vanilla:
+        paste = None
+        if e is None and clip:
+            if cv is win.inv and not win.is_merc():
+                paste = lambda: _char_paste(win, ev, clip)
+            elif slot is not None:
+                paste = lambda: _char_paste_slot(win, slot, clip)
+        _vanilla_char_commands(win, menu, e, clip, paste=paste, extensions=e is not None)
+        if e is None:
+            menu.add_command(label='Create here…', command=win.create_here)
     elif e is not None:
         menu.add_command(label=rc('edit', 'Edit item...'), command=win.edit)
         menu.add_command(label=rc('stats', 'Item stats...'), command=lambda: mxl_he_stats.open_char_item_stats(win, e))
@@ -494,23 +502,32 @@ def _char_menu(win, cv, ev):
         menu.grab_release()
 
 
-def _vanilla_char_commands(win, menu, entry, clip):
+def _vanilla_char_commands(win, menu, entry, clip, *, paste=None, delete=None, cut=None, extensions=True):
     from tkinter import filedialog, messagebox
-    from mxl_char import CharError
-    from mxl_he_stats import open_char_item_stats
     from mxl_statnames import stat_text
     from mxl_vanilla_he import set_tab
 
     def copy():
         return _char_copy(win, entry)
 
+    if delete is None:
+        def delete():
+            win.selected = entry
+            win.delete()
+
+    def selected(label, action, accelerator=''):
+        menu.add_command(label=label, command=action, accelerator=accelerator,
+                         state='normal' if entry is not None else 'disabled')
+
     def view_buffer():
-        buf = _magic_buf(win.app)
-        text = 'The buffer is empty.'
-        if buf:
-            text = buf['name'] + '\n\n' + '\n'.join(
-                stat_text(win.data, stat['id'], stat.get('param'), stat['value']) for stat in (*buf['stats'], *buf['rw']))
-        messagebox.showinfo('Magic Attribute Buffer', text, parent=win.top)
+        rows = getattr(win.app, '_capy_he_buffer', ())
+        text = '\n'.join(stat_text(win.data, stat['id'], stat.get('param'), stat['value']) or str(stat['id'])
+                         for stat in rows)
+        messagebox.showinfo('Magic Attribute Buffer', text or 'The buffer is empty.', parent=win.top)
+
+    def delete_buffer():
+        win.app._capy_he_buffer = []
+        win.set_status('Magic attribute buffer deleted.')
 
     def import_item():
         from mxl_vanilla_he import draw_pickup
@@ -531,16 +548,39 @@ def _vanilla_char_commands(win, menu, entry, clip):
         win.set_status('Item imported into Picked Up.')
 
     def export_character():
+        from mxl_creator import decode_blob
+        from mxl_vanilla_he_items import ITEM_ERRORS, extras_entries
+
         path = filedialog.asksaveasfilename(title='Save Character Information', initialfile=win.ch.name + '.txt',
                                             defaultextension='.txt', filetypes=[('Text file', '*.txt')],
                                             parent=win.top)
         if not path:
             return
-        lines = [f'{win.ch.name} — Level {win.ch.level}', '']
-        for merc in (False, True):
-            lines.append('Mercenary items' if merc else 'Character items')
-            lines.extend(clean_name(win, item) for item in win.ch.entries(merc))
-            lines.append('')
+        win.sync_file()
+        lines = [f'{win.ch.name} — Level {win.ch.level}', f'Save version {win.ch.version}', '']
+        for label in ('Strength', 'Energy', 'Dexterity', 'Vitality'):
+            lines.append(f'{label}  {win.ch.field(label.lower())}')
+        sections = {}
+        for item, owner in extras_entries(win.ch):
+            title = {'corpse': 'Corpse', 'tail': 'Iron Golem'}[owner[0]] if isinstance(owner, tuple) else (
+                'Mercenary' if owner else 'Character')
+            report = sections.setdefault(title, [])
+            report.append(clean_name(win, item))
+            try:
+                record, children = decode_blob(item.blob, win.data)
+            except ITEM_ERRORS:
+                continue
+            if 'ilvl' in record:
+                report.append(f'  Item level {record["ilvl"]}')
+            for record in (record, *children):
+                if record.get('location') == LOC_SOCKETED:
+                    report.append(f'  Socketed  {win.data.base(record["code"]).name}')
+                for key, values in record.items():
+                    if key in ('stats', 'stats_runeword') or key.startswith('set_stats_'):
+                        report.extend(f'    {stat_text(win.data, stat["id"], stat.get("param"), stat["value"])}'
+                                      for stat in values)
+        for title, report in sections.items():
+            lines.extend(('', f'{title} items', *report))
         try:
             with open(path, 'w', encoding='utf-8') as output:
                 output.write('\n'.join(lines))
@@ -549,56 +589,57 @@ def _vanilla_char_commands(win, menu, entry, clip):
             return
         win.set_status(f'Character information saved to {os.path.basename(path)}.')
 
-    menu.add_command(label='General Item Edit…', command=win.edit)
-    specific = tk.Menu(menu, tearoff=False)
-    menu.add_cascade(label='Specific Editing Functions…', menu=specific)
-    specific.add_command(label='Magic Attribute Editing', command=lambda: open_char_item_stats(win, entry))
-    _socket_cascade(win, specific, win=win, e=entry)
-    try:
-        rec, _ = decode_item(win.ch.stash_blob(entry), win.data)
-    except (CharError, FormatError, OSError, CreateError, AttributeError, ValueError):
-        rec = None
-    if rec is not None and not rec['flags'] & FLAG_SIMPLE:
-        _quality_cascade(win, specific, entry.it['code'], rec['quality'], win=win)
-        _specific_cascade(win, specific, entry.it['code'], rec, win=win, e=entry)
-    stackable = win.data.base(entry.it['code']).stack_max is not None
-    if stackable:
-        _char_quantity_cascade(win, specific, entry)
+    from mxl_vanilla_he_items import (add_specific, add_favorites, buffer_attributes,
+                                     edit_item, mutate, paste_attributes, paste_one, submenu)
 
-    favorites = tk.Menu(menu, tearoff=False)
-    favorites.add_command(label='Add Favorite…', command=lambda: _library_char(win, entry))
-    menu.add_cascade(label='Favorite Items…', menu=favorites)
+    selected('General Edit of Item (in Extras Window)', lambda: edit_item(win, entry), 'Ctrl+G')
+    if entry is None:
+        selected('Specific Editing Functions…', None)
+    else:
+        add_specific(win, menu, entry)
     menu.add_separator()
-    menu.add_command(label='Add Magic Attributes to Buffer', accelerator='Ctrl+Shift+C',
-                     command=lambda: _add_magic_to_buffer(win, None, win, entry))
-    menu.add_command(label='View Buffer', command=view_buffer)
-    menu.add_command(label='Delete Buffer', command=lambda: _delete_magic_buffer(win, win))
-    if _magic_buf(win.app):
-        menu.add_command(label='Apply Buffer to Item', accelerator='Ctrl+Shift+V',
-                         command=lambda: _paste_magic_from_buffer(win, None, win, entry))
+    if entry is None:
+        selected('FAVORITE Item Attributes…', None)
+    else:
+        add_favorites(win, menu, entry)
     menu.add_separator()
-    menu.add_command(label='Export Item to File…', command=lambda: _export_char(win, entry))
-    menu.add_command(label='Import Item from File…', command=import_item)
+    selected('Add All Item Magic Attributes TO Buffer',
+             lambda: buffer_attributes(win, entry), 'Ctrl+A')
+    menu.add_command(label='VIEW what is in Buffer', accelerator='Ctrl+P', command=view_buffer)
+    menu.add_command(label='DELETE Buffer', accelerator='Ctrl+B', command=delete_buffer)
     menu.add_separator()
-    menu.add_command(label='Cut Item', command=lambda: copy() and win.delete())
-    menu.add_command(label='Copy Item', accelerator='Ctrl+C', command=copy)
-    menu.add_command(label='Paste Item', accelerator='Ctrl+V', state='normal' if clip else 'disabled',
-                     command=lambda: _char_paste_over(win, entry, clip))
-    last = menu.index('end')
-    _fill_sockets_entry(win, menu, None, win=win, e=entry)
-    if last == menu.index('end'):
-        menu.add_command(label='Fill Item Sockets', state='disabled')
-    menu.add_command(label='Delete Item', accelerator='Del', command=win.delete)
+    selected('Export Item to File…', lambda: _export_char(win, entry), 'Ctrl+E')
+    menu.add_command(label='Import Item from File…', accelerator='Ctrl+I', command=import_item)
     menu.add_separator()
-    more = tk.Menu(menu, tearoff=False)
-    menu.add_cascade(label='More Item Tools', menu=more)
-    more.add_command(label='To stash', command=win.to_stash)
-    more.add_command(label='Duplicate', command=lambda: _char_duplicate(win, entry))
-    more.add_command(label='Open in Bit editor', command=lambda: _inspect_char(win, entry))
-    if not stackable and rec is not None:
-        _char_quantity_cascade(win, more, entry)
-    menu.add_command(label='Save Character Information to Text File…', command=export_character)
-    menu.add_command(label='Help', command=lambda: set_tab(win, 'info'))
+    selected('Cut Item (move to Picked Up)', lambda: copy() and (cut or delete)(), 'Ctrl+X')
+    selected('Copy Item (copy into Picked Up)', copy, 'Ctrl+C')
+    if paste is None and entry is not None:
+        paste = lambda: paste_one(win, entry, clip, lambda: _char_paste_over(win, entry, clip))
+    menu.add_command(label='Paste Item (copy of Picked Up)', accelerator='Ctrl+V',
+                     state='normal' if clip and paste else 'disabled', command=paste)
+    from mxl_vanilla_he_items import fill, fill_count
+
+    can_fill = entry is not None and fill_count(win, entry, clip)
+    menu.add_command(label='Fill Item Sockets (copy of Picked Up)', accelerator='Ctrl+Z',
+                     state='normal' if can_fill else 'disabled', command=lambda: fill(win, entry, clip))
+    selected('Delete Item (remove)', delete, 'Del')
+    menu.add_separator()
+    menu.add_command(label='Save Character Information to Text file', command=export_character)
+    menu.add_command(label='Help', accelerator='F1', command=lambda: set_tab(win, 'info'))
+    if not extensions:
+        return
+    menu.add_separator()
+    more = submenu(menu, 'More Item Tools')
+    buffered = getattr(win.app, '_capy_he_buffer', ())
+    if entry is not None and buffered:
+        more.add_command(label='Apply Buffer to Item',
+                         command=lambda: mutate(win, entry, 'Applied magic attribute buffer.',
+                                                lambda rec: paste_attributes(rec, buffered)))
+    if entry is not None:
+        _socket_cascade(win, more, win=win, e=entry)
+        more.add_command(label='To stash', command=win.to_stash)
+        more.add_command(label='Duplicate', command=lambda: _char_duplicate(win, entry))
+        more.add_command(label='Open in Bit editor', command=lambda: _inspect_char(win, entry))
 
 
 def _char_copy(win, e):
@@ -738,7 +779,7 @@ def _char_paste(win, ev, clip):
     except (CharError, FormatError, OSError) as err:
         win.set_status(str(err), True)
         return
-    if win.save(rc('pasted', '{name} pasted', name=clip[1])):
+    if win.save(rc('pasted', '{name} pasted', name=clip[1])) and not getattr(win, 'vanilla_he', False):
         _clear_char_clip(win)
 
 
@@ -752,7 +793,7 @@ def _char_paste_slot(win, slot, clip):
     except (CharError, FormatError, OSError) as err:
         win.set_status(str(err), True)
         return
-    if win.save(rc('pasted', '{name} pasted', name=clip[1])):
+    if win.save(rc('pasted', '{name} pasted', name=clip[1])) and not getattr(win, 'vanilla_he', False):
         _clear_char_clip(win)
 
 
@@ -1805,5 +1846,6 @@ def _char_paste_over(win, e, clip):
         win.set_status(str(err), True)
         return
     if win.save(rc('pasted_over', '{name} pasted (the previous item is replaced)', name=clip[1])):
-        _clear_char_clip(win)
+        if not getattr(win, 'vanilla_he', False):
+            _clear_char_clip(win)
         _record_char_write(win, path, before, name)

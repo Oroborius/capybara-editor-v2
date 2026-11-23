@@ -595,7 +595,7 @@ class Character:
             raise FormatError(T('ch.err.no_corpse', 'corpse list not found'))
         cc = struct.unpack_from('<H', b, q + 2)[0]
         r = q + 4
-        if cc:
+        for _ in range(cc):
             r += 12
             if b[r:r + 2] != b'JM':
                 raise FormatError(T('ch.err.no_corpse_items', 'corpse items not found'))
