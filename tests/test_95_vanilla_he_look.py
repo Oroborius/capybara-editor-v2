@@ -166,13 +166,100 @@ def hero_editor_fixed_geometry_follows_ui_scale():
 
     for scale in (1.0, 1.25, 1.5):
         parent = Mock(winfo_fpixels=lambda _unit: 96 * scale)
-        with patch.object(look.tk, 'Canvas') as canvas, patch('PIL.ImageTk.PhotoImage') as photo:
+        with patch.object(look.tk, 'Canvas') as canvas, patch('PIL.ImageTk.PhotoImage') as photo, patch.object(
+                look, 'picture', return_value=None):
             canvas.return_value.winfo_fpixels.side_effect = parent.winfo_fpixels
             look.character_portrait(parent)
             look.action_plaque(parent, 'OPEN', 0)
         T.eq((canvas.call_args.kwargs['width'], canvas.call_args.kwargs['height']),
              (round(207 * scale), round(431 * scale)), 'portrait canvas')
         T.eq(photo.call_args.args[0].size, (round(96 * scale), round(34 * scale)), 'action plaque')
+
+
+@T.test
+def scaled_popup_and_inventory_clipboard_use_canvas_pixels():
+    from types import SimpleNamespace
+    import mxl_rc_menu as rc
+    import mxl_vanilla_he as look
+
+    for scale in (1.0, 1.25, 1.5):
+        cv = Mock(winfo_fpixels=lambda _unit: 96 * scale)
+        cv.winfo_class.return_value = 'Canvas'
+        cv.winfo_rootx.return_value, cv.winfo_rooty.return_value = 600, 260
+        pitch, = look.pixels(cv, 29)
+        cv.winfo_width.return_value, cv.winfo_height.return_value = 10 * pitch, 4 * pitch
+        x, y = 7 * pitch + 2, 3 * pitch + 2
+        expected = (600 + x, 260 + y)
+        reported_root = tuple(round(value / scale) for value in expected)
+        event = SimpleNamespace(widget=cv, x=x, y=y, x_root=reported_root[0], y_root=reported_root[1])
+        menu = Mock()
+        look.popup(menu, event)
+        menu.tk_popup.assert_called_once_with(*expected)
+        menu.grab_release.assert_called_once_with()
+
+        entry = object()
+        clip = (b'copied item', 'Copied item')
+        win = Mock(inv=cv, he_pointer=(cv, look.screen_point(event)), cell=pitch, vanilla_he=False)
+        win.app._capy_clip = clip
+        win.entry_at.side_effect = ((entry, None), (None, None))
+        win.is_merc.return_value = False
+        root = SimpleNamespace(_he_window=lambda: win)
+        with patch.object(rc, '_sync'), patch.object(rc, '_char_copy') as copy:
+            T.eq(look.inventory_clipboard(root, event, False), 'break', 'vanilla consumes Ctrl+C')
+            copy.assert_called_once_with(win, entry)
+            T.eq(look.inventory_clipboard(root, event, True), 'break', 'vanilla consumes Ctrl+V')
+        win.ch.place.assert_called_once_with(clip[0], ('inv', 7, 3), False)
+
+        cv.winfo_rootx.return_value += pitch
+        T.eq(look.clipboard_point(win.he_pointer), (x - pitch, y), 'pointer rebased after scrolling')
+
+
+@T.test
+def scaled_original_cover_fills_its_frame():
+    from PIL import Image
+    import mxl_vanilla_he as look
+
+    for scale in (1.0, 1.25, 1.5):
+        width, height = round(640 * scale), round(435 * scale)
+        edge = round(scale)
+        panel = Mock(winfo_width=lambda: width, winfo_height=lambda: height,
+                     winfo_fpixels=lambda _unit: 96 * scale)
+        art = Image.new('RGB', (638, 433), 'red')
+        with patch.object(look, 'picture', return_value=art), patch('PIL.ImageTk.PhotoImage') as photo:
+            look.draw_cover(panel, 'splash')
+        T.eq(photo.call_args.args[0].size, (width - 2 * edge, height - 2 * edge), 'cover fills frame')
+        T.eq(panel.create_image.call_args.args, (edge, edge), 'cover starts inside frame')
+        panel.create_text.assert_not_called()
+
+
+@T.test
+def original_hero_editor_art_is_read_on_demand():
+    from io import BytesIO
+    from pathlib import Path
+    import struct
+
+    from PIL import Image
+    from mxl_vanilla_he_assets import extract, load
+
+    with BytesIO() as stream:
+        Image.new('RGB', (94, 32), '#345678').save(stream, format='BMP')
+        plaque = stream.getvalue().ljust(9144, b'\0')
+    marker = b'lt\0\0'
+    record = marker + struct.pack('<I', len(plaque)) + plaque
+    invalid = marker + struct.pack('<I', len(plaque)) + b'x' * len(plaque)
+    data = b'MZ' + invalid + record + marker + struct.pack('<I', len(plaque))
+    pictures = extract(data)
+    T.eq(list(pictures), ['button_EXTRAS_0'], 'valid VB6 picture survives malformed records')
+    T.eq(pictures['button_EXTRAS_0'].getpixel((0, 0)), (52, 86, 120), 'original pixel')
+    T.eq(load(None), {}, 'art is opt-in')
+    T.eq(load(T.tmp()), {}, 'missing executable uses fallback')
+
+    folder = Path(T.REPO) / '.cache' / 'heroed' / 'app'
+    if (folder / 'Hero Editor.exe').is_file():
+        originals = load(folder)
+        T.eq(originals['splash'].size, (638, 433), '1.04 splash')
+        T.eq(originals['stash'].size, (320, 432), '1.04 stash')
+        T.eq(sum(key.startswith('button_') for key in originals), 15, '1.04 plaque states')
 
 
 T.main(globals())

@@ -28,6 +28,7 @@ TABS = (
     ('info', 'Info'), ('about', 'About'),
 )
 ACTIONS = ('OPEN', 'SAVE', 'RELOAD', 'EXTRAS', 'CLOSE')
+ART_FOLDER = 'vanilla_he_folder'
 
 
 def active():
@@ -43,6 +44,67 @@ def ui_scale(widget):
 def pixels(widget, *values):
     scale = ui_scale(widget)
     return tuple(round(value * scale) for value in values)
+
+
+def screen_point(event):
+    """Translate widget-local Tk pixels into the same pixel space used to post menus."""
+    return event.widget.winfo_rootx() + event.x, event.widget.winfo_rooty() + event.y
+
+
+def popup(menu, event):
+    try:
+        menu.tk_popup(*screen_point(event))
+    finally:
+        menu.grab_release()
+
+
+def picture(key):
+    import settings
+    from mxl_vanilla_he_assets import load
+
+    return load(settings.get(ART_FOLDER)).get(key)
+
+
+def photo(widget, artwork, size):
+    from PIL import Image, ImageTk
+
+    return ImageTk.PhotoImage(artwork.resize(size, Image.Resampling.LANCZOS), master=widget)
+
+
+def choose_art_folder(win):
+    from tkinter import filedialog, messagebox
+    import settings
+    from mxl_vanilla_he_assets import load
+
+    current = settings.get(ART_FOLDER)
+    folder = filedialog.askdirectory(parent=win.top, title='Hero Editor folder...', initialdir=current or None)
+    if folder:
+        if not {'splash', 'about', 'person'} <= load(folder).keys():
+            messagebox.showerror('Hero Editor artwork', 'Choose a folder containing Hero Editor 1.04.',
+                                 parent=win.top)
+            return
+        set_art_folder(win, folder)
+
+
+def set_art_folder(win, folder):
+    import settings
+    from mxl_char import INV_W, INV_H
+
+    settings.put(ART_FOLDER, folder)
+    for button in win.he_action_buttons:
+        caption = button.cget('text')
+        button.images = [action_plaque(button, caption, shade) for shade in (0, 12, -5)]
+        button.configure(image=button.images[0])
+    for key, panel in win.he_covers.items():
+        draw_cover(panel, key)
+    win.he_portrait._he_class = None
+    refresh_stats(win)
+    win.he_inventory_art = inventory_images(win.inv, INV_W, INV_H, win.cell, win.he_footer_height)
+    page = win.extra.get('containers')
+    if page is not None:
+        page._sig = None
+        page.refresh()
+    win.redraw()
 
 
 def font(spec=FONT):
@@ -206,6 +268,11 @@ def action_plaque(parent, caption, shade):
     import random
     from PIL import Image, ImageDraw, ImageFont, ImageTk
 
+    original = picture(f'button_{caption}_{shade}')
+    if original is not None:
+        im = Image.new('RGB', (96, 34), BLACK)
+        im.paste(original, (1, 1))
+        return photo(parent, im, pixels(parent, 96, 34))
     rng = random.Random(104)
     im = Image.new('RGB', (96, 34), '#000000')
     draw = ImageDraw.Draw(im)
@@ -245,6 +312,7 @@ def chrome(win, bottom, actions):
         button.bind('<ButtonPress-1>', lambda event: event.widget.configure(image=event.widget.images[2]))
         button.bind('<ButtonRelease-1>', lambda event: event.widget.configure(image=event.widget.images[1]))
         buttons.append(button)
+    win.he_action_buttons = buttons
     wrap_buttons(actions, buttons, gap=8, pady=4)
     status = tk.Frame(bottom, bg=FORM)
     status.pack(fill='x')
@@ -312,6 +380,8 @@ def chrome(win, bottom, actions):
     if mock_mode is not None:
         menu.configure(postcommand=lambda: menu.entryconfigure(
             mock_tools_index, state='normal' if mock_mode.get() else 'disabled'))
+    menu.add_command(label='Hero Editor folder...', command=lambda: choose_art_folder(win))
+    menu.add_command(label='Use drawn Hero Editor art', command=lambda: set_art_folder(win, ''))
     add_toolbar_menu(win.app, menu)
 
 
@@ -631,7 +701,7 @@ def stats(win, page, entry):
             menu = tk.Menu(control, tearoff=False)
             menu.add_command(label='Spend a stat point', command=lambda key=key: win.st_plus(key))
             menu.add_command(label='Return a stat point', command=lambda key=key: win.st_plus(key, take=True))
-            control.bind('<Button-3>', lambda event, menu=menu: menu.tk_popup(event.x_root, event.y_root))
+            control.bind('<Button-3>', lambda event, menu=menu: popup(menu, event))
 
     fr = group('Character Type', 231, 265, 184, 59)
     win.sv_type = {}
@@ -703,25 +773,15 @@ def refresh_stats(win):
 
 def build_reference_pages(win):
     """Add the informational pages and expose existing settings commands."""
-    from PIL import Image, ImageTk
-    artwork = splash_image()
+    win.he_covers = {}
     for key in ('splash', 'about'):
-        panel = tk.Canvas(win.pages[key], width=pixels(win.top, 638)[0], height=pixels(win.top, 430)[0], bg=BLACK,
-                          highlightthickness=1, highlightbackground=EDGE)
+        width, height = pixels(win.top, 640, 435)
+        panel = tk.Canvas(win.pages[key], width=width, height=height, bg=BLACK, bd=0, highlightthickness=0)
         panel.pack(expand=True)
-        if artwork is not None:
-            panel.artwork = ImageTk.PhotoImage(artwork.resize(pixels(panel, 638, 430), Image.Resampling.LANCZOS), master=panel)
-            panel.create_image(0, 0, anchor='nw', image=panel.artwork)
-        else:
-            panel.create_text(*pixels(panel, 24, 142), text='Diablo II', fill='#c89b52', anchor='w',
-                              font=('Times New Roman', 34, 'bold'))
-        panel.create_text(*pixels(panel, 24, 187), text='Character Editor', fill='#e2bd74', anchor='w',
-                          font=('Times New Roman', 25, 'bold'))
-        panel.create_text(*pixels(panel, 26, 226), text='Diablo II · Lord of Destruction', fill='#bdd8e0',
-                          anchor='w', font=font(LEGEND_FONT))
-        if key == 'about':
-            panel.create_text(*pixels(panel, 24, 38), text='Layout inspiration: Hero Editor by ZonFire99 and Mastadex',
-                              fill=WHITE, anchor='w', font=font())
+        panel.bind('<Configure>', lambda event, key=key: draw_cover(event.widget, key))
+        win.he_covers[key] = panel
+        draw_cover(panel, key)
+    bind_inventory(win)
     page = win.pages['info']
     info = role(tk.Text(page, wrap='word', width=65, height=22, bg=PEACH,
                         font=font(DOC_FONT), relief='sunken', bd=2), 'document')
@@ -740,6 +800,201 @@ def build_reference_pages(win):
     introductions(win)
 
 
+def anchored_event(event):
+    event.x_root, event.y_root = screen_point(event)
+    return event
+
+
+def bind_inventory(win):
+    """Use canvas-local pointer events for vanilla menus, drags and shortcuts."""
+    from weakref import ref
+    import mxl_rc_menu as rc
+
+    root = win.top.winfo_toplevel()
+    root._he_window = ref(win)
+    redraw = win.redraw
+
+    def redraw_inventory():
+        redraw()
+        draw_mercenary_background(win)
+
+    win.redraw = redraw_inventory
+    if not getattr(root, '_he_clipboard_bound', False):
+        for keys, paste in (('c', False), ('C', False), ('v', True), ('V', True)):
+            sequence = f'<Control-KeyPress-{keys}>'
+            previous = root.bind(sequence)
+            root.bind(sequence, lambda event, paste=paste: inventory_clipboard(root, event, paste))
+            # A vanilla canvas consumes the key before the shared, pointer-based shortcut.
+            root.tk.call('bind', root._w, sequence, root.bind(sequence) + '\n' + previous)
+        root._he_clipboard_bound = True
+
+    def remember(event):
+        win.he_pointer = event.widget, screen_point(event)
+
+    def forget(event):
+        if (getattr(win, 'he_pointer', None) or (None,))[0] is event.widget:
+            win.he_pointer = None
+
+    def track(cv):
+        for sequence in ('<Enter>', '<Motion>', '<ButtonPress-1>', '<ButtonRelease-1>', '<ButtonRelease-3>'):
+            cv.bind(sequence, remember, add='+')
+        cv.bind('<Leave>', forget, add='+')
+
+    for cv in (win.inv, win.doll):
+        cv.bind('<ButtonRelease-3>', lambda event: rc._char_menu(win, event.widget, anchored_event(event)))
+        cv.bind('<ButtonRelease-1>', lambda event: win.on_release(anchored_event(event)))
+        track(cv)
+
+    page = win.extra.get('containers')
+    if page is None:
+        return
+    build = page._build
+    fallback = page._art_for
+
+    def rebuild(boxes):
+        build(boxes)
+        for key, cv in page.canvases.items():
+            cv.bind('<Button-1>', lambda event, key=key: page.on_press(key, anchored_event(event)))
+            cv.bind('<ButtonRelease-1>', lambda event: page.on_release(anchored_event(event)))
+            cv.bind('<ButtonRelease-3>', lambda event, key=key: page.on_menu(key, anchored_event(event)))
+            track(cv)
+
+    page._art_for = lambda key, columns, rows: container_picture(key, columns, rows) or fallback(key, columns, rows)
+    page._build = rebuild
+    page._sig = None
+    page.refresh()
+
+
+def clipboard_point(pointer):
+    """Rebase the last observed pointer after a page or canvas moves."""
+    cv, (sx, sy) = pointer
+    x, y = sx - cv.winfo_rootx(), sy - cv.winfo_rooty()
+    if 0 <= x < cv.winfo_width() and 0 <= y < cv.winfo_height():
+        return x, y
+
+
+def inventory_clipboard(root, event, paste):
+    from types import SimpleNamespace
+    import mxl_rc_menu as rc
+
+    win = root._he_window()
+    pointer = getattr(win, 'he_pointer', None)
+    if pointer is None or not pointer[0].winfo_exists() or not pointer[0].winfo_ismapped():
+        return
+    cv = pointer[0]
+    xy = clipboard_point(pointer)
+    if xy is None:
+        return
+    if event.widget.winfo_class() in ('Entry', 'Text', 'Spinbox', 'Combobox', 'TEntry', 'TCombobox', 'TSpinbox'):
+        return 'break'
+    point = SimpleNamespace(widget=cv, x=xy[0], y=xy[1])
+    rc._sync(win)
+    if not cv.winfo_exists():
+        return 'break'
+    clip = getattr(win.app, '_capy_clip', None)
+    if cv in (win.inv, win.doll):
+        entry, slot = win.entry_at(cv, point)
+        if not paste:
+            if entry is None:
+                win.set_status(rc.rc('hot.none', 'no item under the mouse cursor'), True)
+            else:
+                win.selected = entry
+                rc._char_copy(win, entry)
+        elif clip is None:
+            win.set_status(rc.rc('hot.noclip', 'the item clipboard is empty (copy an item first)'), True)
+        else:
+            if entry is not None:
+                rc._char_paste_over(win, entry, clip)
+            elif cv is win.inv and not win.is_merc():
+                rc._char_paste(win, point, clip)
+            elif slot is not None:
+                rc._char_paste_slot(win, slot, clip)
+    else:
+        page = win.extra.get('containers')
+        if page is not None:
+            key = next((key for key, canvas in page.canvases.items() if canvas is cv), None)
+            if key is not None:
+                entry = page.entry_at(key, *xy)
+                if not paste:
+                    if entry is not None:
+                        win.selected = entry
+                        rc._char_copy(page.as_win(), entry)
+                elif clip is not None and key != 'belt':
+                    if entry is not None:
+                        page.paste_over(entry, clip)
+                    else:
+                        page.paste_here(key, tuple(value // page.cell for value in xy), clip)
+    return 'break'
+
+
+def draw_mercenary_background(win):
+    from mxl_vanilla_pages import NATIVE_GRID
+
+    cv = win.doll
+    original = picture('merc') if win.inv_view.get() == 'merc' else None
+    if original is None:
+        cv.configure(height=pixels(cv, NATIVE_GRID[1])[0])
+        return
+    top = 184
+    size = pixels(cv, original.width, top)
+    cv.configure(height=size[1])
+    if getattr(cv, '_he_merc_source', None) is not original:
+        cv._he_merc_source = original
+        cv._he_merc_art = photo(cv, original.crop((0, 0, original.width, top)), size)
+    if win.is_merc():
+        for item in cv.find_all():
+            if cv.type(item) == 'rectangle' and cv.itemcget(item, 'fill') == '#29231c':
+                cv.itemconfigure(item, fill='', outline='' if cv.itemcget(item, 'width') == '1.0' else '#d4b062')
+    else:
+        cv.delete('all')
+        win.inv.configure(height=1)
+        win.he_inventory_footer.configure(height=1)
+    cv.tag_lower(cv.create_image(0, 0, anchor='nw', image=cv._he_merc_art))
+
+
+def container_picture(key, columns, rows):
+    name, x, y, top, shape = {
+        'stash': ('stash', 74, 83, 0, (6, 8)),
+        'cube': ('cube', 117, 138, 0, (3, 4)),
+        'belt': ('merc', 102, 253, 184, (4, 4)),
+    }.get(key, (None, 0, 0, 0, (0, 0)))
+    if key == 'belt' and columns == 4 and 1 <= rows <= 4:
+        y += (4 - rows) * 29
+    elif (columns, rows) != shape:
+        return None
+    from mxl_vanilla_he_assets import panel_source
+
+    artwork = picture(name)
+    if artwork is not None:
+        return panel_source(artwork, top), (x, y - top), (artwork.width, artwork.height - top), 29
+
+
+def draw_cover(panel, key):
+    panel.delete('all')
+    width = panel.winfo_width()
+    height = panel.winfo_height()
+    if width <= 1 or height <= 1:
+        width, height = pixels(panel, 640, 435)
+    edge = pixels(panel, 1)[0]
+    panel.create_rectangle(0, 0, width - 1, height - 1, outline=EDGE, width=edge)
+    original = picture(key)
+    artwork = original if original is not None else splash_image()
+    if artwork is not None:
+        panel.artwork = photo(panel, artwork, (width - 2 * edge, height - 2 * edge))
+        panel.create_image(edge, edge, anchor='nw', image=panel.artwork)
+    else:
+        panel.create_text(*pixels(panel, 24, 142), text='Diablo II', fill='#c89b52', anchor='w',
+                          font=('Times New Roman', 34, 'bold'))
+    if original is None:
+        panel.create_text(*pixels(panel, 24, 187), text='Character Editor', fill='#e2bd74', anchor='w',
+                          font=('Times New Roman', 25, 'bold'))
+        panel.create_text(*pixels(panel, 26, 226), text='Diablo II · Lord of Destruction', fill='#bdd8e0',
+                          anchor='w', font=font(LEGEND_FONT))
+    if key == 'about':
+        panel.create_text(*pixels(panel, 24, 38), text='Hero Editor by ZonFire99 and Mastadex',
+                          fill=WHITE, anchor='w', font=font())
+
+
 def options(win):
     import mxl_mock_gui
     import mxl_profile
@@ -750,6 +1005,8 @@ def options(win):
     game = ttk.LabelFrame(page, text='Diablo II game folder', padding=6)
     game.grid(row=1, column=0, sticky='nsew', padx=(0, 4))
     ttk.Button(game, text='Game folder…', command=lambda: mxl_profile.open_dialog(win.app)).pack(anchor='w')
+    ttk.Button(game, text='Hero Editor folder...', command=lambda: choose_art_folder(win)).pack(anchor='w')
+    ttk.Button(game, text='Use drawn Hero Editor art', command=lambda: set_art_folder(win, '')).pack(anchor='w')
 
     editing = ttk.LabelFrame(page, text='Character Editing', padding=6)
     editing.grid(row=1, column=1, sticky='nsew')
@@ -885,6 +1142,15 @@ def update_portrait(panel, cls, data):
         return
     panel._he_class = cls
     panel.delete('portrait')
+    original = picture(f'portrait_{cls}')
+    if original is not None:
+        width, height = pixels(panel, 205, 405)
+        panel._he_portrait = photo(panel, original, (width, height))
+        panel.create_image(*pixels(panel, 2, 2), anchor='nw', image=panel._he_portrait, tags='portrait')
+        if 0 <= cls < len(names := class_names(data)):
+            panel.create_text(*pixels(panel, 103, 421), text=names[cls], fill='#d6b36c',
+                              font=font(), tags='portrait')
+        return
     portrait = character_image(cls)
     if portrait is not None:
         scale = min(185 / portrait.width, 345 / portrait.height)
@@ -1077,7 +1343,12 @@ def draw_pickup(win):
 
     paper = win.he_pickup
     paper.delete('all')
-    paper.create_rectangle(*pixels(paper, 4, 4, 72, 106), outline='#55442d')
+    original = picture('pickup')
+    if original is not None:
+        paper.he_art = photo(paper, original, (int(paper.cget('width')), int(paper.cget('height'))))
+        paper.create_image(0, 0, anchor='nw', image=paper.he_art)
+    else:
+        paper.create_rectangle(*pixels(paper, 4, 4, 72, 106), outline='#55442d')
     clip = getattr(win.app, '_capy_clip', None)
     if clip:
         try:
@@ -1100,10 +1371,20 @@ def item_hint(owner):
 
 def inventory_images(grid, columns, rows, cell, footer_height):
     """Use the native panel at one pixel per pixel, shared with the stash-side inventory."""
-    from mxl_d2look import char_art, photo
+    from mxl_d2look import char_art, photo as game_photo
     from mxl_d2look_art import ArtError
     from mxl_vanilla_pages import NATIVE_GRID, NATIVE_PANEL, _NativeArt
 
+    original = picture('person')
+    if original is not None:
+        x, y = NATIVE_GRID
+        bottom = y + rows * 29
+        width, height = original.size
+        return dict(doll=photo(grid, original.crop((0, 0, width, y)), pixels(grid, width, y)),
+                    grid=photo(grid, original.crop((x, y, x + columns * 29, bottom)),
+                               (columns * cell, rows * cell)),
+                    footer=photo(grid, original.crop((0, bottom, width, height)),
+                                 (pixels(grid, width)[0], footer_height)))
     art = char_art()
     if art is None:
         return {}
@@ -1114,9 +1395,9 @@ def inventory_images(grid, columns, rows, cell, footer_height):
         panel_width, panel_height = NATIVE_PANEL
         if x + width > panel_width or y + height >= panel_height:
             return {}
-        return dict(doll=photo(path, size=pixels(grid, panel_width, y), crop=(0, 0, panel_width, y)),
-                    grid=photo(path, size=(columns * cell, rows * cell), crop=(x, y, x + width, y + height)),
-                    footer=photo(path, size=(pixels(grid, panel_width)[0], footer_height),
+        return dict(doll=game_photo(path, size=pixels(grid, panel_width, y), crop=(0, 0, panel_width, y)),
+                    grid=game_photo(path, size=(columns * cell, rows * cell), crop=(x, y, x + width, y + height)),
+                    footer=game_photo(path, size=(pixels(grid, panel_width)[0], footer_height),
                                  crop=(0, y + height, panel_width, panel_height)))
     except (ArtError, OSError, ValueError, IndexError, StructError):
         return {}
