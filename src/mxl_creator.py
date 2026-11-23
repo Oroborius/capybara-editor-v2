@@ -217,13 +217,14 @@ class Tables:
 
     def __init__(self, data):
         self.data = data
-        self.item = {}            # code -> dict(compact, spawnable, dur, nodur, qlvl, rarity)
+        self.item = {}            # code -> extra base item fields
         for kind in ('weapons', 'armor', 'misc'):
             for r in _rows(data, kind):
                 code = r[128:132].decode('latin1')
                 if code in self.item:
                     continue
                 self.item[code] = dict(compact=r[0x143], spawnable=r[0x133], dur=r[0x112], nodur=r[0x113],
+                                       spawnstack=struct.unpack_from('<I', r, 0xEC)[0],
                                        qlvl=r[0xFD], magic_lvl=r[0x140], minac=struct.unpack_from('<i', r, 0xCC)[0],
                                        maxac=struct.unpack_from('<i', r, 0xD0)[0])
         self.itype = []           # index -> dict(magic_only, rare, normal_only, maxsock(1, 25, 40))

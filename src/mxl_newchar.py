@@ -58,6 +58,8 @@ def _starter_items(data, row, version, original):
                 rec.update(location=2, x=i)
             elif not loc:
                 rec.update(location=0, x=9, y=3 - sum(item['panel'] == 1 for item in items), panel=1)
+            elif version == 96:
+                rec['x'] = loc  # equipped starter items repeat the body slot in the x field
             if not rec['simple'] or original:
                 rec.update(id=random.getrandbits(31), seed=random.getrandbits(31), ilvl=1, quality='normal')
             dur = 0 if fields['nodur'] else fields['dur']
@@ -65,12 +67,15 @@ def _starter_items(data, row, version, original):
                 # Historical first-save values predate the selected 1.14d tables.
                 dur = 14 if version == 71 else 2
                 rec['quantity'] = (38 if original else 39) if version == 71 else 60
+            elif code == 'jav ':
+                rec['quantity'] = fields['spawnstack']
             elif base.stack_max is not None:
                 rec['quantity'] = base.stack_max
             if base.kind in ('armor', 'weapons'):
                 rec['max_durability'] = dur + codec.isc[73]['add']
                 rec['durability'] = dur if version == 71 else dur + codec.isc[72]['add']
             if base.kind == 'armor':
+                # 1.09d and 1.14d roll starter defense within the base item's range.
                 lo, hi = base.def_range
                 rec['defense'] = {87: lo, 89: min(lo + 1, hi)}.get(version, random.randint(lo, hi))
             if off == 0x5C and (skill := struct.unpack_from('<h', row, 0xAC)[0]) > 0:
@@ -94,7 +99,7 @@ def skeleton(data, cls, median, expansion=True, version=96, classic_100=False):
     h[0x24] = 0x20 if (median or expansion) else 0
     h[0x28] = cls
     h[0x29], h[0x2A], h[0x2B] = 0x10, (0x5F if median else 0x1E), 1
-    struct.pack_into('<III', h, 0x2C, 0, int(time.time()), 0xFFFFFFFF)
+    struct.pack_into('<III', h, 0x2C, 0, int(time.time()), 0xFFFFFFFF)  # 0x30 is Unix time in seconds
     struct.pack_into('<16I', h, 0x38, *([0xFFFF] * 16))
     h[0x88:0xA8] = b'\xff' * 32
     h[0xA8:0xAB] = b'\x80\x00\x00'

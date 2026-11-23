@@ -2,6 +2,7 @@
 import os
 import shutil
 import sys
+import time
 
 import capytest as T
 
@@ -187,17 +188,49 @@ def vanilla_early_starter_bytes():
             T.eq((bool(ch.status & 0x20), ch.has_jf, ch.merc_id), (version != 71, False, 0), tag)
 
 
+def _normalized_starters(ch, raw):
+    """Clear the checksum, character name, save time, map seed, item IDs and defense rolls."""
+    from mxl_creator import decode_item
+    from mxl_v109 import Data109
+
+    data = Data109(ch.data, ch.version) if ch.version == 92 else ch.data
+    out = bytearray(raw)
+    out[0x0C:0x10] = bytes(4)
+    out[0x14:0x24] = bytes(16)
+    out[0x30:0x34] = bytes(4)
+    out[0xAB:0xAF] = bytes(4)
+    for entry in ch.items:
+        start = entry.it['_offset']
+        rec, size = decode_item(raw[start:], data)
+        if 'id' not in rec:
+            continue
+        pos = start + 2
+        mask = 0xFFFFFFFF << 95
+        if rec['code'] == 'buc ':
+            lo, hi = data.base(rec['code']).def_range
+            T.check(lo <= rec['defense'] <= hi, f"buckler defense {rec['defense']} in {lo}–{hi}")
+            # Normal armor without optional image, affix or name fields starts defense at bit 141.
+            mask |= ((1 << data.isc[31]['bits']) - 1) << 141
+        value = int.from_bytes(raw[pos:start + size], 'little') & ~mask
+        out[pos:start + size] = value.to_bytes(size - 2, 'little')
+    return bytes(out)
+
+
 @T.test
 def vanilla_current_and_109_starters():
     E = _vanilla()
     import mxl_newchar as N
     import mxl_save
-    for version in (92, 96):
-        for cls, name, weapon in ((0, 'TestAmazon', 'jav '), (3, 'TestPaladin', 'ssd ')):
+    for folder, version in (('109d', 92), ('114d', 96)):
+        for cls, name, fixture, weapon in ((0, 'TestAmazon', 'Ashbow', 'jav '),
+                                           (3, 'TestPaladin', 'Dawnshield', 'ssd ')):
+            before = int(time.time())
             raw, _ = N.build(E.data, name, cls, 1, version=version)
+            stamp = int.from_bytes(raw[0x30:0x34], 'little')
             path = N.write(raw, os.path.join(E.saves, str(version)), name)
             ch = E.MC.Character(path, E.data)
             tag = f'{version}, class {cls}'
+            T.check(before <= stamp <= int(time.time()), f'{tag}: current Unix save timestamp')
             T.eq((ch.version, ch.cls, ch.level, ch.name, ch.status), (version, cls, 1, name, 0x20), tag)
             T.eq((ch.offsets[0], ch.offsets[1], ch.skills), (765, 813 if version == 92 else 803,
                                                           b'if' + bytes(30)), tag)
@@ -205,6 +238,12 @@ def vanilla_current_and_109_starters():
             T.eq((ch.corpse, ch.has_jf, ch.merc_id, ch.tail), (b'JM\0\0', True, 0, b'kf\0'), tag)
             T.eq(ch.build(), raw, f'{tag}: byte-identical rebuild')
             T.eq(len(mxl_save.load_character(path, E.data)['items']), 8, f'{tag}: collector can reopen')
+            sample = os.path.join(T.REPO, '.cache', 'samples', 'oldver', folder, fixture + '.d2s')
+            expected = E.MC.Character(sample, E.data)
+            a = _normalized_starters(ch, raw)
+            b = _normalized_starters(expected, T.read(sample))
+            differences = [(hex(i), x, y) for i, (x, y) in enumerate(zip(a, b)) if x != y]
+            T.eq((len(a), differences), (len(b), []), f'{tag}: first-save bytes match the game')
             if version == 96:
                 _independent(path)
 
