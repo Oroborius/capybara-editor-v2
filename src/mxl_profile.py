@@ -523,10 +523,11 @@ def aura_text(data, param, value):
 def vanilla_skill_name(data, sid):
     from mxl_rownames import skill_derived
 
+    sid = sid or 0
     name = data.skill_names.get(sid)
     if name and not missing_stat_text(name):
         return name
-    return (skill_derived(data, sid) if isinstance(sid, int) else None) or f'Skill {sid or 0}'
+    return (skill_derived(data, sid) if isinstance(sid, int) else None) or f'Skill {sid}'
 
 
 def missing_stat_text(text):
@@ -590,10 +591,8 @@ def fallback_stat_line(data, stat):
 
 
 def _stat_skill(st):
-    """Skill id of a skill-carrying stat line: 97 (+n to a skill), 151 (aura), 195-213 (chance to cast, charges)."""
-    sid, p = st.get('id'), st.get('param')
-    if p is None:
-        return None
+    """Skill id of a direct skill bonus, aura, chance to cast, or charged skill."""
+    sid, p = st['id'], st.get('param') or 0
     if sid in (97, 107, 151):
         return p
     if 195 <= sid <= 213:
@@ -604,7 +603,7 @@ def _stat_skill(st):
 def unnamed_skill_text(data, st):
     """Render a skill stat whose skill has no translated display name."""
     sk = _stat_skill(st)
-    if sk is None or not missing_stat_text(data.skill_names.get(sk)):
+    if sk is None or (sk != 0 and not missing_stat_text(data.skill_names.get(sk))):
         return None
     sid, v, nm = st['id'], int(st.get('value') or 0), vanilla_skill_name(data, sk)
     c = data.isc.get(sid) or {}
@@ -613,11 +612,7 @@ def unnamed_skill_text(data, st):
         return aura_text(data, st.get('param'), v)
     if sid in (97, 107):                                   # direct skill bonus
         return f'{v:+d} to {nm}'
-    lvl = st['param'] & 63
-    if c.get('func') == 24:                                # charges: 'Level 2 <skill> (1/3 Charges)'
-        tail = fmt.replace('%d', str(v & 255), 1).replace('%d', str(v >> 8 & 255), 1) if '%d' in fmt else \
-            f'({v & 255}/{v >> 8 & 255} Charges)'
-        return f"{data.key('ModStre10b') or 'Level'} {lvl} {nm} {tail}"
+    lvl = (st.get('param') or 0) & 63
     if c.get('func') == 15 and fmt.count('%d') == 2 and '%s' in fmt:     # '%d%% Chance to cast level %d %s on ...'
         return fmt.replace('%d', str(v), 1).replace('%%', '%').replace('%d', str(lvl), 1).replace('%s', nm, 1)
     return None
@@ -655,7 +650,7 @@ def _patch_text():
     - 252 (descfunc 11) as 'Repairs 1 durability in N seconds';
     - no 'damage per Strength / Dexterity' lines under the weapon damage (Median XL's use of the string keys
       charmontohit1X / 2X, which are 'Average chance %s will hit you: %d%%' in the vanilla tables).
-    The '(B:.. + J:..)' breakdowns stay: B = the item, J = a socketed jewel (G / R gems / runes), the editor's own."""
+    Vanilla tooltips show totals with any combined roll range."""
     try:
         import mxl_stat_text as M
     except Exception:
@@ -672,61 +667,98 @@ def _patch_text():
         t = unnamed_skill_text(data, st)
         if t:
             return t
-        sid = st['id']
-        c = data.isc.get(sid) or {}
-        if missing_stat_text(c.get('desc')) and sid not in (97, 107):
-            return fallback_stat_line(data, st)
+        sid, value = st['id'], st['value']
         if sid == 188:
-            return skill_tab_text(data, st.get('param'), st.get('value'))
-        if st.get('id') == 252:
-            return repair_text(data, st.get('value'))
-        return aura_text(data, st.get('param'), st.get('value'))
+            return skill_tab_text(data, st.get('param'), value)
+        if sid == 252:
+            return repair_text(data, value)
+        if sid == 151:
+            return aura_text(data, st.get('param'), value)
+        return fallback_stat_line(data, st)
 
-    def stat_lines(stats, data, *a, **k):
+    def combined_ranges(ranges):
+        totals = {}
+        for key, sources in (ranges or {}).items():
+            if not sources:
+                continue
+            value = low = high = 0
+            for amount, limits, _source in sources:
+                lo, hi = limits if limits is not None else (amount, amount)
+                value += amount
+                low += lo
+                high += hi
+            totals[key] = [(value, (low, high) if low != high else None, 'B')]
+        return totals
+
+    def charge_text(data, sid, param, current, maximum):
+        skill, level = divmod(param or 0, 64)
+        name = vanilla_skill_name(data, skill)
+        fmt = str(data.isc[sid].get('pos') or '')
+        tail = (fmt.replace('%d', str(current), 1).replace('%d', str(maximum), 1)
+                if fmt.count('%d') >= 2 else f'({current}/{maximum} Charges)')
+        return f"{data.key('ModStre10b') or 'Level'} {level} {name} {tail}"
+
+    def stat_lines(stats, data, char=None, ranges=None, prio=False, two_handed=True,
+                   per_level_rate=False, ranged=()):
+        from mxl_format_fix import bytime_parts, bytime_range_text, is_bytime
+
         _fix_isc(data)
-        stats = list(stats or ())
         mine, rest = [], []
-        for st in stats:
-            sid = st['id']
+        charges, timed = {}, {}
+        for st in stats or ():
+            sid, param = st['id'], st.get('param') or None
+            info = data.isc.get(sid) or {}
+            if info.get('func') == 24:
+                current, maximum = charges.get((sid, param), (0, 0))
+                value = int(st['value'])
+                charges[sid, param] = current + (value & 255), maximum + (value >> 8)
+                continue
+            if is_bytime(info):
+                period, low, high = bytime_parts(st['value'])
+                previous = timed.get((sid, period), (0, 0))
+                timed[sid, period] = previous[0] + low, previous[1] + high
+                continue
+
+            normalized = st if 'param' in st and st['param'] == param else dict(st, param=param)
             if sid in OWN or unnamed_skill_text(data, st) is not None:
-                mine.append(st)
+                mine.append(normalized)
                 continue
             if sid in data.isc:
-                rest.append(st if 'param' in st else dict(st, param=None))
+                rest.append(normalized)
             # The host still needs raw fields such as poison duration to format damage.
-            if sid not in (97, 107) and missing_stat_text((data.isc.get(sid) or {}).get('desc')):
-                mine.append(st)
-        prio_on = k.get('prio', a[2] if len(a) > 2 else False)
-        ti = 2 if prio_on else 1                          # index of the text in a line tuple
-        out = [line for line in o_lines(rest, data, *a, **k) if not missing_stat_text(line[ti])]
-        v17 = {x.get('value') for x in rest if isinstance(x, dict) and x.get('id') == 17}
-        v18 = {x.get('value') for x in rest if isinstance(x, dict) and x.get('id') == 18}
-        if len(v17) == 1 and v17 == v18:                   # the game's one line for equal min / max
-            v = next(iter(v17))
-            ends = (str(data.isc[17]['pos']).strip(), str(data.isc[18]['pos']).strip())
-            hits = [i for i, ln in enumerate(out) if str(ln[ti]).startswith(f'+{v}% ')
-                    and str(ln[ti]).endswith(ends)]
+            if sid not in (97, 107) and missing_stat_text(info.get('desc')):
+                mine.append(normalized)
+
+        out = [line for line in o_lines(rest, data, char, combined_ranges(ranges), True,
+                                        two_handed, per_level_rate, ranged)
+               if not missing_stat_text(line[2])]
+
+        damage = M._merge_stats([st for st in rest if st['id'] in (17, 18)])
+        ed = {st['id']: st['value'] for st in damage}
+        if len(ed) == 2 and ed[17] == ed[18]:
+            value = ed[17]
+            labels = {f"+{value}% {data.isc[sid]['pos'].strip()}" for sid in ed}
+            hits = [i for i, line in enumerate(out) if str(line[2]) in labels]
             if len(hits) == 2:
-                ln = list(out[hits[0]])
-                ln[ti] = f'+{v}% {_ed_text(data)}'
-                out[hits[0]] = tuple(ln)
+                priority, color, _text, inline, below = out[hits[0]]
+                out[hits[0]] = (priority, color, f'+{value}% {_ed_text(data)}', inline, below)
                 del out[hits[1]]
-        seen = []
-        for st in sorted(mine, key=lambda x: -(data.isc.get(x['id']) or {}).get('prio', 0)):
-            t = own_text(data, st)
-            if not t or t in seen:
-                if not t or unnamed_skill_text(data, st) is None:
-                    continue                           # skills without a name: one line per stat, like the game
-            pr = (data.isc.get(st['id']) or {}).get('prio', 0)
-            hi = [x for x in rest if (data.isc.get(x.get('id')) or {}).get('prio', 0) > pr]
-            try:
-                at = (len(o_lines(hi, data, *a, **k)) if hi else 0) + len(seen)
-            except Exception:
-                at = len(seen)
-            seen.append(t)
-            ln = (getattr(M, 'BLUE', '3'), t, [], [])
-            out.insert(min(at, len(out)), ((pr,) + ln) if prio_on else ln)
-        return out
+
+        def append(sid, text):
+            if text:
+                priority = (data.isc.get(sid) or {}).get('prio', 0)
+                out.append((priority, getattr(M, 'BLUE', '3'), text, [], []))
+
+        for st in M._merge_stats(mine):
+            append(st['id'], own_text(data, st))
+        for (sid, param), (current, maximum) in charges.items():
+            append(sid, charge_text(data, sid, param, current, maximum))
+        for (sid, period), (low, high) in timed.items():
+            append(sid, bytime_range_text(data.isc[sid], period, low, high, data))
+
+        out.sort(key=lambda line: -line[0])
+        return out if prio else [line[1:] for line in out]
+
     stat_lines.__wrapped__ = o_lines
     M.stat_lines = stat_lines
     for name in ('mxl_tooltip', 'mxl_statparse', 'mxl_catalog_tooltip', 'mxl_gui_detail'):

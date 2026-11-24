@@ -75,6 +75,8 @@ def unit_lines():
     T.eq(line({'id': 195, 'param': 54 << 6 | 2, 'value': 100}), ['100% Chance to cast level 2 Teleport on attack'],
          'named skill unchanged')
     T.eq(line({'id': 97, 'param': 97, 'value': 63}), ['+63 to Smite'], 'named +skill unchanged')
+    T.eq(line({'id': 97, 'param': 0, 'value': 1}),
+         [f'+1 to {P.vanilla_skill_name(d, 0)}'], 'skill zero keeps its name')
     T.eq(line({'id': 56, 'value': 75}), ['Cold duration: 75'], 'missing ItemStatCost description')
     poison = [str(entry[1]) for entry in M.stat_lines([
         {'id': 57, 'param': None, 'value': 256},
@@ -107,6 +109,40 @@ def sample_items_keep_their_lines():
                 T.check(skill in txt, f'{skill} appears in the item tooltip')
             hits += 1
     T.check(hits >= 3, f'sample items with unnamed-skill stats: {hits}')
+
+
+@T.test
+def vanilla_item_text_combines_duplicate_values_and_groups():
+    cw = _open('clone-101')
+    import mxl_stat_text as text
+    from mxl_vanilla_he_extras import pack_time_values
+
+    def render(entries, ranges=None):
+        stats = [dict(id=sid, param=param, value=value) for sid, param, value in entries]
+        return text.stat_lines(stats, cw.data, ranges=ranges)
+
+    sources = {text.range_key(sid, None): [(461, None, 'B')] * 2 for sid in (17, 18)}
+    damage = render([(17, None, 461), (18, None, 461)] * 2, sources)
+    T.eq([(line[1], line[2], line[3]) for line in damage], [('+922% Enhanced Damage', [], [])],
+         'duplicate enhanced damage has one total with no source labels')
+    defense = render([(16, None, 30), (16, None, 40)],
+                     {text.range_key(16, None): [(30, (25, 35), 'B'), (40, (35, 45), 'RW')]})
+    T.eq([(line[1], [part.strip() for _color, part in line[2] + line[3]]) for line in defense],
+         [('+70% Enhanced Defense', ['[60-80]'])], 'real roll ranges still combine')
+
+    attributes = render([(sid, None, 5) for sid in (0, 1, 2, 3)] * 2)
+    T.eq([line[1] for line in attributes], ['+10 to all Attributes'], 'ItemStatCost description group')
+    repair = render([(252, None, 2), (252, None, 3)])
+    T.eq([line[1] for line in repair], ['Repairs 1 durability in 20 seconds'], 'special stats also sum')
+
+    teleport, packed = 54 << 6 | 2, 200 << 8 | 200
+    charges = render([(204, teleport, packed)] * 2)
+    T.eq([line[1] for line in charges], ['Level 2 Teleport (400/400 Charges)'], 'charge bytes sum separately')
+    timed = render([(288, None, pack_time_values(3, 700, 700))] * 2
+                   + [(288, None, pack_time_values(0, 20, 20))])
+    T.check(len(timed) == 2 and any('+1400%' in line[1] and 'Dawn' in line[1] for line in timed)
+            and any('+20%' in line[1] and 'Daytime' in line[1] for line in timed),
+            'timed values add without overflowing or combining different periods')
 
 
 T.main(globals())

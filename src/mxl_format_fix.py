@@ -539,7 +539,10 @@ def bytime_parts(v):
 
 
 def bytime_text(c, v, data):
-    period, lo, hi = bytime_parts(v)
+    return bytime_range_text(c, *bytime_parts(v), data)
+
+
+def bytime_range_text(c, period, lo, hi, data):
     try:
         when = data.key(TIME_KEYS[period]) or TIME_DEFAULT[period]
     except Exception:
