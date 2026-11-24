@@ -505,26 +505,36 @@ def chrome(win, bottom, actions):
     add_toolbar_menu(win.app, menu)
 
     previous = menu.cget('postcommand')
-    reference = None
+    template = tk.Menu(entry, tearoff=False)      # one scratch menu for the whole window: its commands stay alive
 
     def update_item_commands():
-        nonlocal reference
         if previous:
             menu.tk.call(previous)
         win.sync_file()
         selected = win.selected
         if selected is not None:
             selected = win.current_entry(selected, False) or win.current_entry(selected, True)
-        template = tk.Menu(entry, tearoff=False)
+        old_children = list(template.winfo_children())
+        old_commands = list(template._tclCommands or ())
+        template.tk.call(str(template), 'delete', 0, 'end')    # raw: Tkinter's delete trips on an empty menu
         _vanilla_char_commands(win, template, selected, getattr(win.app, '_capy_clip', None), extensions=False)
-        menu.delete(0, prefix - 1)
-        if reference is not None:
-            reference.destroy()
-        reference = template
+        options = []
         for index in range(prefix):
-            kind = template.type(index)
-            options = {key: info[-1] for key, info in template.entryconfigure(index).items()}
-            menu.insert(index, kind, **options)
+            options.append((template.type(index),
+                            {key: info[-1] for key, info in template.entryconfigure(index).items()}))
+        menu.tk.call(str(menu), 'delete', 0, prefix - 1)
+        for index, (kind, opts) in enumerate(options):
+            menu.insert(index, kind, **opts)
+        for child in old_children:               # the previous build: no entry points at it any more
+            try:
+                child.destroy()
+            except tk.TclError:
+                pass
+        for name in old_commands:
+            try:
+                template.deletecommand(name)
+            except (tk.TclError, ValueError):
+                pass
 
     menu.configure(postcommand=update_item_commands)
 
