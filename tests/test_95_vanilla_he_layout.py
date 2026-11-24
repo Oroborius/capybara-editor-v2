@@ -265,6 +265,7 @@ def vanilla_inventory_draws_socket_contents():
         T.skip('requires the vanilla fixture at 100%')
     from PIL import ImageTk
     from mxl_format_fix import shown_sockets
+    from mxl_gfx import ICON_CELL, socket_positions
     from mxl_tooltip import section_sockets
     from mxl_vanilla_he import description_item
     from types import SimpleNamespace
@@ -286,6 +287,22 @@ def vanilla_inventory_draws_socket_contents():
     if before is not None and after is not None:
         T.check(ImageTk.getimage(before).tobytes() != ImageTk.getimage(after).tobytes(),
                 'filled sockets change the visible container icon')
+
+    armor = next(e.it for e in cw.ch.items if cw.data.base(e.it['code']).size == (2, 3))
+    jewels = [item['socketed'][0]] * 7
+    filled = dict(armor, has_sockets=True, sockets=6, socketed=jewels[:6], stats=[])
+    overflow = dict(filled, socketed=jewels, stats=[dict(id=194, param=None, value=1)])
+    T.eq(socket_positions(2, 3, 7, ICON_CELL), socket_positions(2, 3, 6, ICON_CELL),
+         'oversized socket count uses the native six-cell layout')
+    small = socket_positions(2, 2, 3, ICON_CELL)
+    T.check(len(small) == 3 and all(0 <= x <= ICON_CELL and 0 <= y <= ICON_CELL for x, y in small),
+            'three sockets stay inside a two-by-two icon')
+    six = ImageTk.getimage(cw.icon(filled, bg)[3])
+    seven = ImageTk.getimage(cw.icon(overflow, bg)[3])
+    T.check(seven.tobytes() == six.tobytes(), 'only six fillers are painted')
+    lines = section_sockets(SimpleNamespace(it=description_item(overflow), data=cw.data))
+    text = ' '.join(part for line in lines for _color, part in line)
+    T.check('(7/7)' in text and len(overflow['socketed']) == 7, 'description and item retain all seven fillers')
 
 
 @T.test

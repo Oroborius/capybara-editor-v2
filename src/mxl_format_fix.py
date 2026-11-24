@@ -385,6 +385,29 @@ def _install_socket_display():
     if getattr(orig, '_shown_sock', False):
         return
 
+    native_positions = mxl_gfx.socket_positions
+
+    def socket_positions(w, h, n, cell=mxl_gfx.ICON_CELL):
+        from mxl_profile import is_median
+
+        if is_median():
+            return native_positions(w, h, n, cell)
+        count = min(n, w * h)
+        positions = native_positions(w, h, count, cell)
+        if all(0 <= x <= (w - 1) * cell and 0 <= y <= (h - 1) * cell for x, y in positions):
+            return positions
+        # Small or modded item shapes can require more columns than the native layout uses.
+        rows = (count + w - 1) // w
+        positions = []
+        for row in range(rows):
+            columns = min(w, count - row * w)
+            y = ((h - rows) * cell) // 2 + row * cell
+            left = ((w - columns) * cell) // 2
+            positions.extend((left + col * cell, y) for col in range(columns))
+        return positions
+
+    mxl_gfx.socket_positions = socket_positions
+
     def icon_layers(it, *a, **k):
         return orig(_with_shown_sockets(it), *a, **k)
     icon_layers._shown_sock = True

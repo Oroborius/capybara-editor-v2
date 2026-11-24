@@ -120,7 +120,14 @@ def icon_layers(it, data, bg, folder='data/items'):
         return orig(it, data, bg, folder)
     try:
         from mxl_gfx import icon_name
-        key = (it['code'], icon_name(it, data), it.get('image'), it.get('ethereal'), it.get('sockets'),
+        from mxl_profile import is_median
+
+        sockets = it.get('sockets')
+        if not is_median() and it.get('has_sockets'):
+            from mxl_format_fix import shown_sockets
+
+            sockets = shown_sockets(it)
+        key = (it['code'], icon_name(it, data), it.get('image'), it.get('ethereal'), sockets,
                tuple(icon_name(s, data) for s in it.get('socketed', [])), bg, folder)
         hash(key)
     except Exception:
