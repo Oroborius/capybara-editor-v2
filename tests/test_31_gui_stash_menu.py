@@ -819,9 +819,10 @@ def fill_sockets_then_undo_restores_the_file_bytes():
 
 @T.test
 def undo_of_a_fill_when_the_item_changed_since():
-    """Fill, then the item is changed by an action that is not recorded (Remove socketed items): the undo of the
-    fill refuses to write the old bytes over the newer item; nothing is written."""
+    """An external stash edit invalidates the fill undo while leaving the newer item intact."""
     import mxl_rc_menu
+    import mxl_save
+    import mxl_socket_menu
     import mxl_undo
     was = unrestricted(False)
     try:
@@ -831,9 +832,15 @@ def undo_of_a_fill_when_the_item_changed_since():
         T.invoke(T.stash_menu(*jewel), 'Copy')
         G.app._undo = []
         T.invoke(T.stash_menu(*key), 'Fill sockets with')
-        T.invoke(T.stash_menu(*key), 'Remove socketed items', under='Specific editing functions')
-        T.pump()
+        filled = Ctx()
+        item = T.stash_items(filled.path, G.app.data)[key]
+        replacement, removed = mxl_socket_menu.without(filled.snap[key][1], G.app.data)
+        T.check(removed > 0, 'the external edit removes socket fillers')
+        mxl_save.edit_stash(filled.path, G.app.data, remove=[item['_offset']],
+                            insert=[(*key, replacement)], backup=False)
+        G.app.load(filled.path, keep_selection=True)
         c = Ctx()
+        T.check(c.raw != filled.raw, 'the stash changed after the fill')
         mxl_undo._do_undo(G.app)
         T.check('changed' in T.status_text(), f'status of the refused undo: {T.status_text()!r}')
         same_file(c, 'refused undo of a fill')
