@@ -17,7 +17,7 @@ The engine functions work on a mxl_char.Character; nothing is written until Char
 import random
 import struct
 import tkinter as tk
-from tkinter import ttk
+from tkinter import font as tkfont, ttk
 
 from mxl_char import CharError
 from mxl_lang import T
@@ -301,8 +301,10 @@ class MercPage:
         self.box.configure(width=pixels(self.box, 642)[0], height=pixels(self.box, 435)[0])
         self.box.pack_propagate(False)
 
+        OX, OY = 4, 22                      # reference frame -> page origin
+
         def place(widget, x, y, width, height):
-            x, y, width, height = pixels(self.box, x, y, width, height)
+            x, y, width, height = pixels(self.box, x - OX, y - OY, width, height)
             widget.place(x=x, y=y, width=width, height=height)
 
         def group(text, x, y, width, height):
@@ -310,39 +312,71 @@ class MercPage:
             place(box, x, y, width, height)
             return box
 
-        for y, text, control in ((1, 'Level', self.e_level), (25, 'Experience', self.e_exp)):
-            place(ttk.Label(self.box, text=text), 5, y, 72, 21)
-            place(control, 77, y, 88 if text == 'Experience' else 43, 20)
-        self.b_match.configure(text='Match')
-        place(self.b_match, 123, 1, 42, 20)
+        def label(text, x, y, width, height, **kw):
+            item = ttk.Label(self.box, text=text, **kw)
+            place(item, x, y, width, height)
+            return item
 
-        life = group('Mercenary Life', 4, 50, 161, 85)
+        def field(x, y, width, height, variable=None, readonly=True):
+            item = tk.Entry(self.box, textvariable=variable, justify='center', relief='sunken', bd=2,
+                            font=font(), readonlybackground='#ffffff' if readonly else '#ffffff',
+                            state='readonly' if readonly else 'normal', takefocus=0)
+            place(item, x, y, width, height)
+            return item
+
+        group('Level', 9, 21, 119, 34)
+        group('Experience', 9, 64, 119, 34)
+        for control, y in ((self.e_level, 37), (self.e_exp, 80)):
+            place(control, 17, y, 103, 16)
+            control.lift()
+        self.e_level.configure(justify='center', relief='sunken', bd=2)
+        self.e_exp.configure(justify='center')
+        self.b_match.configure(text='Match Character')
+        place(self.b_match, 9, 340, 119, 20)
+
+        life = group('Mercenary Life', 9, 103, 119, 74)
+        life.configure(padding=(2, 0, 2, 0))
         self.v_life = tk.StringVar()
         self.life_buttons = []
         for text in ('Dead', 'Alive', 'Not Hired'):
-            radio = ttk.Radiobutton(life, text=text, value=text, variable=self.v_life, command=self._change_life)
-            radio.pack(anchor='w')
+            radio = ttk.Radiobutton(life, text=text, value=text, variable=self.v_life, command=self._change_life,
+                                    padding=0)
+            radio.pack(anchor='w', pady=0, ipady=0)
             self.life_buttons.append(radio)
 
-        portrait = group('Portrait', 173, 0, 105, 137)
-        self.vanilla_portrait = tk.Label(portrait, relief='sunken', wraplength=pixels(portrait, 85)[0])
+        portrait = group('Portrait', 133, 20, 102, 113)
+        self.vanilla_portrait = tk.Label(portrait, relief='flat', wraplength=pixels(portrait, 85)[0])
         self.vanilla_portrait.pack(fill='both', expand=True)
-        self.vanilla_seed = ttk.Button(portrait, text='Create New ID', command=self.b_seed.invoke)
-        self.vanilla_seed.pack(fill='x', pady=(3, 0))
+        self.vanilla_seed = ttk.Button(self.box, text='Create New\nMercenary ID', command=self.b_seed.invoke)
+        place(self.vanilla_seed, 137, 140, 95, 36)
 
-        facts = group('Mercenary Record', 4, 142, 161, 154)
-        self.vanilla_facts = ttk.Label(facts, justify='left', wraplength=pixels(facts, 145)[0])
-        self.vanilla_facts.pack(anchor='w')
+        self.facts = {}
+        for index, caption in enumerate(('ID', 'Name ID', 'Code', 'Name', 'Attributes', 'Difficulty')):
+            y = 189 + index * 24
+            label(caption + ':', 16, y, 64, 17)
+            self.facts[caption] = field(81, y, 103, 18)
+        group('', 9, 177, 183, 156).lower()
+
+        group('Base Stats', 246, 20, 170, 176)
+        label('Stats are READ ONLY', 248, 37, 166, 15, anchor='center')
+        self.base_stats = {}
+        for index, caption in enumerate(('Strength', 'Dexterity', 'Life', 'Damage', 'Defense', 'Resists')):
+            y = 53 + index * 24
+            label(caption + ':', 248, y, 62, 17)
+            self.base_stats[caption] = field(313, y, 95, 20)
+        big = tkfont.Font(family=font()[0], size=-18)
+        small = tkfont.Font(family=font()[0], size=-14)
+        for text, y, face in (('Experience and\nAbove Stats Only\nPartly Completed', 208, big),
+                              ('Items Can Be Edited\nUnder The Inventory Tab', 282, small)):
+            item = tk.Label(self.box, text=text, font=face, justify='center')
+            place(item, 246, y, 170, 50 if face is big else 34)
         self.info.configure(wraplength=pixels(self.box, 160)[0])
-        place(self.info, 286, 8, 160, 130)
-        self.type_box.configure(font=font())
-        place(self.type_box, 173, 153, 268, 22)
-        place(self.cb_adv, 173, 181, 115, 22)
+        place(self.info, 246, 372, 170, 40)
 
-        place(ttk.Label(self.box, text='Mercenary Name'), 450, 0, 188, 17)
+        label('Mercenary Name', 432, 22, 188, 15)
         self.name_box.configure(font=font())
-        place(self.name_box, 450, 20, 188, 22)
-        classes = group('Class', 450, 51, 188, 383)
+        place(self.name_box, 432, 37, 208, 22)
+        classes = group('Class', 425, 70, 223, 385)
         self.class_tree = tree = ttk.Treeview(classes, show='tree', height=18)
         tree.column('#0', width=174, minwidth=140)
         scroll = ttk.Scrollbar(classes, command=tree.yview)
@@ -354,6 +388,9 @@ class MercPage:
         for key, kind in self.types.items():
             tree.insert(modes.get(kind.diff, root), 'end', iid=f'type-{key}',
                         text=f'{kind.cls_name} · {kind.variant}')
+        self.type_box.configure(font=font())
+        place(self.type_box, 9, 372, 230, 22)
+        place(self.cb_adv, 9, 398, 115, 22)
 
         def choose(_event):
             selected = tree.selection()
@@ -499,9 +536,14 @@ class MercPage:
             self.refresh_portrait()
             mode = difficulty_name(kind.diff - 1) if kind is not None and 1 <= kind.diff <= 3 else ''
             code = self.cur_type() if on else ''
-            self.vanilla_facts.configure(text=(
-                f'ID: {self.v_seed.get()}\nCode: {code}\nName: {self.v_name.get()}\n'
-                f'Attributes: {kind.variant if kind is not None else ""}\nDifficulty: {mode}') if on else '')
+            values = {'ID': self.v_seed.get(), 'Name ID': str(self.cur_name()), 'Code': str(code),
+                      'Name': self.v_name.get(), 'Attributes': kind.variant if kind is not None else '',
+                      'Difficulty': mode} if on else {}
+            for caption, entry in self.facts.items():
+                entry.configure(state='normal')
+                entry.delete(0, 'end')
+                entry.insert(0, values.get(caption, ''))
+                entry.configure(state='readonly')
 
     def refresh_portrait(self):
         from mxl_vanilla_he import photo, picture, pixels
@@ -529,7 +571,7 @@ class MercPage:
             from mxl_vanilla_he import pixels
 
             if self.v_adv.get():
-                x, y = pixels(self.box, 173, 208)
+                x, y = pixels(self.box, 5, 402)
                 self.adv.place(x=x, y=y)
             else:
                 self.adv.place_forget()

@@ -183,21 +183,28 @@ def open_extras(win, entry=None, group='Basic1'):
     header.pack(fill='x')
     entries = extras_entries(win.ch, include_socketed=True)
     total = sum(1 + len(e.it.get('socketed', ())) for e, owner in entries if not isinstance(owner, SocketChild))
-    ttk.Label(header, text=f'Total Number of Items (including in sockets)  {total}').grid(row=0, column=0)
-    offset = tk.StringVar(value='?')
-    ttk.Label(header, text='Item Edit Bit Offset').grid(row=0, column=1, padx=5)
-    ttk.Label(header, textvariable=offset).grid(row=0, column=2)
+    def box(text, width, disabled=False, anchor='center'):
+        cell = tk.Entry(header, width=width, font=font(), justify=anchor, relief='sunken', bd=2,
+                        readonlybackground='#c0c0c0' if disabled else '#ffffff',
+                        fg='#808080' if disabled else '#000000', takefocus=0)
+        cell.insert(0, text)
+        cell.configure(state='readonly')
+        return cell
+
     from mxl_vanilla_he import ITEM_DECODE_VERSIONS, decode_version
 
     selected_decode = getattr(win, 'he_decode_version', decode_version(win.ch.version))
-    ttk.Label(header, text=f'{ITEM_DECODE_VERSIONS[selected_decode]} Items').grid(row=1, column=0, sticky='w')
-    ttk.Label(header, text='Character Name').grid(row=1, column=1, sticky='e')
-    name = ttk.Entry(header, width=17, font=font())
-    name.insert(0, win.ch.name)
-    name.state(['disabled'])
-    name.grid(row=1, column=2, sticky='w')
-    header.columnconfigure(3, weight=1)
-    ttk.Button(header, text='Close', command=top.destroy).grid(row=0, column=4, rowspan=2)
+    ttk.Label(header, text='Total Number of Items\n(including in sockets)', justify='right').grid(row=0, column=0)
+    box(str(total), 4, True).grid(row=0, column=1, padx=(4, 12))
+    ttk.Label(header, text='Item Edit\nBit Offset', justify='left').grid(row=0, column=2)
+    offset = tk.StringVar(value='?')
+    shown = tk.Entry(header, textvariable=offset, width=4, font=font(), relief='sunken', bd=2,
+                     state='readonly', readonlybackground='#ffffff', takefocus=0)
+    shown.grid(row=0, column=3, padx=(4, 12))
+    box(f'{ITEM_DECODE_VERSIONS[selected_decode]} Items', 17).grid(row=0, column=4, padx=(0, 12))
+    ttk.Button(header, text='Close', command=top.destroy).grid(row=0, column=5, padx=(0, 12))
+    ttk.Label(header, text='Character\nName:', justify='left').grid(row=0, column=6)
+    box(win.ch.name, 13, True).grid(row=0, column=7, padx=(4, 0))
     rule = role(tk.Frame(top, height=pixels(top, 1)[0], bg=BLACK), 'art')
     rule.pack(fill='x')
     notebook = ttk.Notebook(top, style='Extras.TNotebook')
@@ -398,17 +405,28 @@ def hotkey_controls(parent, win, refresh):
         show()
 
 
+def _area(entry, owner):
+    """Where a listed item sits, in the Hero Editor's words (Hands, Stash(6,8), Inv(5,4) ...)."""
+    from mxl_char import LOC_BELT, LOC_EQUIPPED, PANEL_CUBE, PANEL_INVENTORY, slot_name
+    from mxl_creator import PANEL_STASH
+    it = entry.it
+    if isinstance(owner, SocketChild):
+        return f'Socket {owner.index + 1}'
+    if isinstance(owner, tuple):
+        return 'Iron Golem' if owner[0] == 'tail' else 'Corpse'
+    if it.get('location') == LOC_EQUIPPED:
+        return ('Merc ' if owner else '') + slot_name(it['equipped'], 'Equipped')
+    if it.get('location') == LOC_BELT:
+        return f'Belt({it["x"] % 4 + 1},{it["x"] // 4 + 1})'
+    panel = {PANEL_INVENTORY: 'Inv', PANEL_STASH: 'Stash', PANEL_CUBE: 'Cube'}.get(it.get('panel'))
+    return f'{panel}({it["x"] + 1},{it["y"] + 1})' if panel else 'Character'
+
+
 def item_list(parent, win, entries, height):
     from mxl_rc_menu import clean_name
     widget = tk.Listbox(parent, exportselection=False, width=29, height=height)
     for entry, owner in entries:
-        if isinstance(owner, SocketChild):
-            location = f'  Socket {owner.index + 1}'
-        elif isinstance(owner, tuple):
-            location = 'Iron Golem' if owner[0] == 'tail' else 'Corpse'
-        else:
-            location = 'Merc' if owner else str(entry.it.get('location', ''))
-        widget.insert('end', f'{location}  {clean_name(win, entry)}')
+        widget.insert('end', f'{len(entry.blob)} {_area(entry, owner)}: {clean_name(win, entry)}')
     if entries:
         widget.selection_set(0)
     return widget
@@ -709,7 +727,9 @@ class ItemEdit:
         self.selection = 0
         self.initial = group
         self.preview_image = None
-        left = ttk.Frame(page, style='Peach.TFrame')
+        self.outer = outer = ttk.LabelFrame(page, text='Item Edit', style='Peach.TLabelframe')
+        outer.pack(fill='both', expand=True)
+        left = ttk.Frame(outer, style='Peach.TFrame')
         left.pack(side='left', fill='y')
         items_frame = ttk.Frame(left, style='Peach.TFrame')
         items_frame.pack(fill='both', expand=True)
@@ -722,24 +742,30 @@ class ItemEdit:
         actions.pack(fill='x', pady=2)
         self.preview = item_preview(actions)
         self.preview.pack(side='left', padx=(0, 3))
+        buttons = ttk.Frame(actions, style='Peach.TFrame')
+        buttons.pack(side='left', fill='x', expand=True)
+        ttk.Label(buttons, text='Click to select Item to Edit ^', style='Peach.TLabel').pack()
         for caption, callback in (
             ('Copy Item to "Picked Up"', self.copy),
             ('Remove socketed Item to "Picked Up"', self.remove_child),
             ('Test Item for Errors', self.test),
         ):
-            ttk.Button(actions, text=caption, command=callback, width=23).pack(fill='x', pady=1)
+            ttk.Button(buttons, text=caption, command=callback, width=23).pack(fill='x', pady=1)
         ttk.Button(left, text='Delete Magic Attribute - ALL ITEMS', command=self.delete_all).pack(fill='x')
-        middle = ttk.Frame(page, style='Peach.TFrame')
+        middle = ttk.Frame(outer, style='Peach.TFrame')
         middle.pack(side='left', fill='y', padx=4)
+        ttk.Label(middle, text='Item Attributes (in order)', style='Peach.TLabel').pack(anchor='w')
         self.tree = ttk.Treeview(middle, show='tree', selectmode='browse', height=9)
         self.tree.column('#0', width=pixels(page, 172)[0])
         self.tree.pack(fill='both', expand=True)
         ttk.Button(middle, text='Save Modified Item', command=self.save).pack(fill='x')
         moves = ttk.Frame(middle, style='Peach.TFrame')
         moves.pack(fill='x')
-        ttk.Button(moves, text='Move Attrib ↑', command=lambda: self.move(-1)).pack(side='left')
-        ttk.Button(moves, text='↓', width=3, command=lambda: self.move(1)).pack(side='right')
-        self.details = ttk.LabelFrame(page, text='Item Attributes', style='Peach.TLabelframe')
+        ttk.Label(middle, text='(i.e. changes are initially buffered)', style='Peach.TLabel').pack(anchor='center')
+        ttk.Label(moves, text='Move\nAttrib:', style='Peach.TLabel', justify='left').pack(side='left', padx=(6, 2))
+        ttk.Button(moves, text='↑', width=3, command=lambda: self.move(-1)).pack(side='left')
+        ttk.Button(moves, text='↓', width=3, command=lambda: self.move(1)).pack(side='left', padx=(2, 0))
+        self.details = ttk.LabelFrame(outer, text='Basic1:', style='Peach.TLabelframe')
         self.details.pack(side='left', fill='both', expand=True)
         self.items.bind('<<ListboxSelect>>', self.load)
         self.tree.bind('<<TreeviewSelect>>', self.display)
@@ -896,7 +922,7 @@ class ItemEdit:
             widget.destroy()
         selected = next(iter(self.tree.selection()), 'Basic1')
         group, _, field = selected.partition(':')
-        self.details.configure(text=group)
+        self.details.configure(text=f'{group}:')
         self.offsets.clear()
         if not self.record:
             self.offset.set('?')
