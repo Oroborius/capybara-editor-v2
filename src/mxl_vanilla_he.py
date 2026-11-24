@@ -704,7 +704,7 @@ def stats(win, page, entry):
         label(fr, name, 6, y)
         box(fr, key, 71, y, 96)
         button(fr, 'Max', lambda key=key: win.st_set(key, win.st_range(key)[1]), 175, y, 33)
-    label(form, 'The following stats are READ ONLY', 17, 300)
+    label(form, 'Checksum, sizes and title are worked out', 17, 300)
 
     fr = group('Class', 231, 0, 184, 44)
     win.class_box = ttk.Combobox(fr, state='readonly', textvariable=win.new_class, values=win.class_names,
@@ -791,8 +791,7 @@ def refresh_stats(win):
     if not ch.early:
         size, checksum = struct.unpack_from('<II', ch.raw, 8)
         vals.update(checksum=f'{checksum:08X}', reported_size=size,
-                    map_id=f'{struct.unpack_from("<I", ch.raw, 171)[0]:08X}',
-                    timestamp=f'{struct.unpack_from("<I", ch.raw, 48)[0]:08X}')
+                    map_id=win.st_value('map_id'), timestamp=win.st_value('timestamp'))
     for key, control in win.sv.items():
         text = str(vals.get(key, ''))
         editable = win._grey_editable(key)

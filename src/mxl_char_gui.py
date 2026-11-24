@@ -1567,7 +1567,8 @@ class CharacterWindow(StatEditMixin):
             sticky='w', padx=4, pady=(2, 0))
 
     def _grey_editable(self, key):
-        return key in self.GREY_KEYS or (self.vanilla_he and key.endswith('_frac'))
+        return (key in self.GREY_KEYS or (self.vanilla_he and key.endswith('_frac'))
+                or (self.vanilla_he and key in ('map_id', 'timestamp') and not self.ch.early))
 
     def _grey_commit(self, key, leaving=False):
         e = self.sv.get(key)

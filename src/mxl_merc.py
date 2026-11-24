@@ -91,6 +91,10 @@ def hirelings(data):
                     desc = []
     except Exception:
         pass
+    brackets = {}
+    for r in rows:
+        brackets.setdefault(struct.unpack_from('<I', r, 4)[0], []).append(struct.unpack_from('<I', r, 0x1C)[0:1] +
+                                                                           struct.unpack_from('<17I', r, 0x24))
     for r in rows:
         hid, cls, act, diff = struct.unpack_from('<4I', r, 4)
         if hid in out:
@@ -126,7 +130,8 @@ def hirelings(data):
         if not variant or 'BUFFALO' in variant or 'an evil force' in variant.lower():
             variant = cls_name
         out[hid] = Hireling(id=hid, cls=cls, act=act, diff=diff, level=level, exp_per_level=max(1, xpl),
-                            names=names, variant=variant, cls_name=cls_name)
+                            names=names, variant=variant, cls_name=cls_name,
+                            brackets=sorted(brackets[hid]))
     data._hirelings = out
     return out
 
@@ -141,6 +146,24 @@ def level_for_exp(xpl, exp):
     while xpl * (lv + 1) ** 2 * (lv + 2) <= exp:
         lv += 1
     return lv
+
+
+def base_stats(h, lv):
+    """The mercenary's own stats at a level, worked out from the hireling table (the save does not store them):
+    the row of the highest bracket whose level is not above lv, value + (lv - row level) * per-level / 8.
+    Row fields from 0x24: hp, hp/lvl, def, def/lvl, str, str/lvl, dex, dex/lvl, ar, ar/lvl, share, dmg min, dmg max,
+    dmg/lvl, resist, resist/lvl. None without table rows."""
+    if h is None or not getattr(h, 'brackets', None):
+        return None
+    row = next((b for b in reversed(h.brackets) if b[0] <= lv), h.brackets[0])
+    n = lv - row[0]
+    g = lambda i: row[1 + i]
+
+    def grow(base, per):
+        return base + n * per // 8
+    return dict(level=lv, life=grow(g(0), g(1)), defense=grow(g(2), g(3)), strength=grow(g(4), g(5)),
+                dexterity=grow(g(6), g(7)), attack=grow(g(8), g(9)), dmg_min=grow(g(11), g(13)),
+                dmg_max=grow(g(12), g(13)), resist=grow(g(14), g(15)))
 
 
 def max_level(xpl):
@@ -354,11 +377,13 @@ class MercPage:
         for index, caption in enumerate(('ID', 'Name ID', 'Code', 'Name', 'Attributes', 'Difficulty')):
             y = 189 + index * 24
             label(caption + ':', 16, y, 64, 17)
-            self.facts[caption] = field(81, y, 103, 18)
+            self.facts[caption] = field(81, y, 103, 18, readonly=caption not in self.EDITABLE_FACTS)
+            if caption in self.EDITABLE_FACTS:
+                self.facts[caption].bind('<KeyRelease>', lambda _e, c=caption: self.fact_typed(c))
         group('', 9, 177, 183, 156).lower()
 
         group('Base Stats', 246, 20, 170, 176)
-        label('Stats are READ ONLY', 248, 37, 166, 15, anchor='center')
+        label('Derived from game data', 248, 37, 166, 15, anchor='center')
         self.base_stats = {}
         for index, caption in enumerate(('Strength', 'Dexterity', 'Life', 'Damage', 'Defense', 'Resists')):
             y = 53 + index * 24
@@ -401,6 +426,32 @@ class MercPage:
                     self.on_type()
 
         tree.bind('<<TreeviewSelect>>', choose)
+
+    EDITABLE_FACTS = ('ID', 'Name ID', 'Code')
+
+    def fact_typed(self, caption):
+        """A typed ID (hex) / Name ID / Code box: sets the matching control (the page's values) at once."""
+        if self.busy or not self.v_hired.get():
+            return
+        text = self.facts[caption].get()
+        if caption == 'ID':
+            self.v_seed.set(text.strip().upper())
+        elif caption == 'Name ID':
+            n = self._int(text)
+            if n is None or not 0 <= n <= 0xFFFF:
+                return
+            self._fill_names(n)
+        else:
+            n = self._int(text)
+            if n is None or not 0 <= n <= 0xFFFF:
+                return
+            name = self.cur_name()
+            self.raw_type = n
+            self.v_type.set(self.labels[n] if n in self.labels else T('merc.type_unknown', 'unknown type {n}', n=n))
+            self._fill_names(name if n not in self.types or name < len(self.types[n].names) else 0)
+            self.on_level()
+            return
+        self.changed()
 
     def _wrap(self, e):
         if self.vanilla_he:
@@ -539,11 +590,35 @@ class MercPage:
             values = {'ID': self.v_seed.get(), 'Name ID': str(self.cur_name()), 'Code': str(code),
                       'Name': self.v_name.get(), 'Attributes': kind.variant if kind is not None else '',
                       'Difficulty': mode} if on else {}
+            focus = self.facts_focus()
             for caption, entry in self.facts.items():
-                entry.configure(state='normal')
+                if caption in self.EDITABLE_FACTS:
+                    entry.configure(state='normal' if on else 'disabled')
+                    if entry is focus:                      # being typed in: leave the text alone
+                        continue
+                    entry.configure(state='normal')
+                else:
+                    entry.configure(state='normal')
                 entry.delete(0, 'end')
                 entry.insert(0, values.get(caption, ''))
+                entry.configure(state='normal' if caption in self.EDITABLE_FACTS and on else 'readonly')
+            lv = self._int(self.v_level.get())
+            stats = base_stats(kind, lv) if on and kind is not None and lv is not None else None
+            shown = {} if stats is None else {
+                'Strength': stats['strength'], 'Dexterity': stats['dexterity'], 'Life': stats['life'],
+                'Damage': f"{stats['dmg_min']}-{stats['dmg_max']}", 'Defense': stats['defense'],
+                'Resists': f"{stats['resist']}%"}
+            for caption, entry in self.base_stats.items():
+                entry.configure(state='normal')
+                entry.delete(0, 'end')
+                entry.insert(0, str(shown.get(caption, '')))
                 entry.configure(state='readonly')
+
+    def facts_focus(self):
+        try:
+            return self.box.focus_get()
+        except Exception:
+            return None
 
     def refresh_portrait(self):
         from mxl_vanilla_he import photo, picture, pixels

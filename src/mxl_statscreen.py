@@ -53,6 +53,7 @@ ITEM_LOCAL = frozenset({16, 17, 18, 72, 73, 75, 91, 92, 152, 194, 204, 252, 253,
 RES_IDS = {'fire_res': 39, 'light_res': 41, 'cold_res': 43, 'poison_res': 45, 'phys_res': 36, 'magic_res': 37}
 ATTR_IDS = {'strength': 0, 'energy': 1, 'dexterity': 2, 'vitality': 3}
 TEXT_KEYS = ('name', 'copy_as')
+HEADER_WORDS = {'map_id': 171, 'timestamp': 48}      # stored u32 words of the header, shown and typed in hex
 
 
 # ====================================================================================== controller
@@ -103,6 +104,8 @@ class StatEditMixin:
             target.set_difficulties_done(op[1])
         elif kind == 'prog':
             target.set_progression(op[1])
+        elif kind == 'word':
+            struct.pack_into('<I', target.head, op[1], op[2])
         elif kind == 'matchexp':
             target.match_exp_to_level()
         else:
@@ -150,6 +153,8 @@ class StatEditMixin:
         if key.endswith('_frac'):
             field, raw = sim._field_raw(key.removesuffix('_frac') + '_max')
             return raw & ((1 << field[2]) - 1)
+        if key in HEADER_WORDS:
+            return f'{struct.unpack_from("<I", sim.head, HEADER_WORDS[key])[0]:08X}'
         if key == 'name':
             return self.st_name or self.ch.name
         if key == 'copy_as':
@@ -176,6 +181,15 @@ class StatEditMixin:
     def st_parse(self, key, text):
         """The typed text as a storable value: (value, None) or (None, message)."""
         text = str(text).strip()
+        if key in HEADER_WORDS:
+            try:
+                v = int(text.replace(' ', ''), 16)
+            except ValueError:
+                v = -1
+            if not 0 <= v <= 0xFFFFFFFF:
+                return None, T('ss.err.hex', '{label}: a hexadecimal number of up to 8 digits is expected',
+                               label=self.st_label(key))
+            return v, None
         if key in TEXT_KEYS:
             if key == 'copy_as' and not text:
                 return '', None
@@ -195,6 +209,8 @@ class StatEditMixin:
         return v, None
 
     def st_label(self, key):
+        if key in HEADER_WORDS:
+            return {'map_id': T('he.map_id', 'Map ID'), 'timestamp': T('he.timestamp', 'Time Stamp')}[key]
         if key == 'name':
             return T('he.name', 'Name')
         if key == 'copy_as':
@@ -229,6 +245,10 @@ class StatEditMixin:
             self.copy_name.set(v)
             self.st_changed()
             return True
+        if key in HEADER_WORDS:
+            if f'{v:08X}' == self.st_value(key):
+                return True
+            return self.st_do('word', HEADER_WORDS[key], v)
         if v == self.st_value(key):
             return True
         if key == 'progression':
