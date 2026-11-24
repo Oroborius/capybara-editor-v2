@@ -296,10 +296,11 @@ def _check_generated(key, raw, P, path):
     T.check(exp['pvm'] - 400 <= v['smite']['max'] <= exp['pvm'] <= M.ROLL, f"{key}: smite {v['smite']['max']}")
     T.check(abs(v['life'] - P['o']['life']) < 2000 and v['life'] < M.ROLL, f"{key}: life {float(v['life'])}")
     srcs = {k: sum(x.values()) for k, x in v['sources'].items()}
-    want = {M.AURA_NAMES[k]: n for k, n in exp['sources'].items()}
+    want = {M.AURA_NAMES[k]: n for k, n in exp['sources'].items() if n}
     T.eq(srcs, want, f'{key}: aura sources')
-    T.eq(v['sources'].get('Prayer'), {'charm': exp['sources'][M.PRAYER]}, f'{key}: Prayer sources only on charms')
-    T.eq(v['prayer_level'], 31 * v['lists'], f'{key}: Prayer 31 on every list')
+    funky = P['o'].get('role') == 'funky'   # no Prayer aura on a Funky
+    T.eq(v['sources'].get('Prayer'), None if funky else {'charm': exp['sources'][M.PRAYER]}, f'{key}: Prayer sources only on charms')
+    T.eq(v['prayer_level'], 0 if funky else 31 * v['lists'], f'{key}: Prayer 31 on every list')
     T.eq(v['lists'], 198 if P['o']['weapon'] else 178, f'{key}: lists')
     T.check(len(raw) == v['size'] <= 8191, f'{key}: {len(raw)} bytes (the game loads at most 8191)')
     T.eq(v['excess_jewels'], 0, f'{key}: every jewel fits the socket count (field + item_numsockets)')
@@ -764,7 +765,7 @@ def rule_thorns_first_barbs_only_if_needed():
         T.check(M.thorns_safe(o['thorns'], 0, dr, int(o['dr_pct']), es), f'{key}: Thorns alone safe')
         T.eq(o['barbs'], 0, f'{key}: Barbs 0 (Thorns alone is safe)')
         T.check(not [x for x in _lines(P) if x == (151, M.BARBS)], f'{key}: no Barbs line')
-    T.eq((M.plan('mock_high', 'T')['o']['thorns'], M.plan('mock_high', 'T', weapon=True)['o']['thorns']),
+    T.eq((M.plan('mock_high', 'T')['o']['thorns'], M.plan('mock_high', 'T', weapon=True, dex_bug=True)['o']['thorns']),
          (4278, 4898),
          '138 / 158 non-charm lists x 31')
     # a Thorns the return rolls with alone: Barbs comes back only then (the ES-off windows above)
@@ -1021,6 +1022,27 @@ def shield_base_option_from_the_tables():
         T.check(False, 'a paladin shield on a Sorceress is refused')
     except M.PlanError as e:
         T.eq(getattr(e, 'key', None), 'shield', 'error on the shield field')
+
+
+
+
+@T.test
+def rule_no_prayer_aura_on_funky_and_no_weapon_in_dopplezon():
+    """Funky mocks carry no Prayer aura (its mana drain can kill a Funky) while the PI mock keeps it; a Dopplezon
+    morph build equips no weapon unless it is a dex-bug build or the weapon is Ith."""
+    M = engine().M
+    for key in ('funky', 'funky28', 'funky26', 'funky24'):
+        P = M.plan(key, 'NoPr')
+        T.check(not [x for x in _lines(P) if x[0] in (151, 97) and x[1] == M.PRAYER], f'{key}: no Prayer aura / oskill')
+        T.eq(P['expect_sources'].get(M.PRAYER, 0), 0, f'{key}: no Prayer source')
+        T.check(any(x[0] == 74 for x in _lines(P)), f'{key}: Replenish Life present')
+    T.check([x for x in _lines(M.plan('mock_high', 'Pr')) if x == (151, M.PRAYER)], 'PI mock keeps Prayer')
+    for key in M.PRESET_ORDER:
+        o = M.plan(key, 'Dz')['o']
+        T.check(not (o['dopplezon'] and o['weapon']) or o['dex_bug'] or o['ith_weapon'], f'{key}: weapon rule')
+    T.eq(M.plan('mock_high', 'W', weapon=True)['o']['weapon'], False, 'weapon dropped in a Dopplezon morph')
+    T.eq(M.plan('mock_high', 'W', weapon=True, dex_bug=True)['o']['weapon'], True, 'dex-bug build keeps it')
+    T.eq(M.plan('mock_high', 'W', weapon=True, dopplezon=False)['o']['weapon'], True, 'no morph keeps it')
 
 
 T.main(globals())

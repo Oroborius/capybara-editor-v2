@@ -1154,7 +1154,7 @@ PRESETS = {
     'funky26': dict(label='Funky TK26', role='funky', tk=26, mana=3145728, exact=True, hf_sources=7, hf_level=3100,
                     stun=100, **_FUNKY, note='funky zero 3145728 at TK26 (q 6, stable)'),
     'funky24': dict(label='Funky TK24', role='funky', tk=24, mana=4194304, exact=True, hf_sources=7, hf_level=3100,
-                    stun=100, **_FUNKY, weapon=True, note='funky zero 4194304 at TK24 (q 8); needs a socketed '
+                    stun=100, **_FUNKY, weapon=True, ith_weapon=True, note='funky zero 4194304 at TK24 (q 8); needs an Ith-weapon (socketed) '
                                                              'weapon (198 lists) for the exact product'),
     'balance_switch': dict(label='Balance switch', role='mock', tk=31, mana=1572500, mana_b=1211974, hf_sources=7,
                            hf_level=3100, switch='balance', res_cold=3528,
@@ -1423,7 +1423,14 @@ def options(preset='mock_high', **over):
     if PRESETS[preset].get('exact') and over.get('tk') is not None and over.get('mana') is None:
         o['mana'] = (1 << 19) * max(32 - int(o['tk']), 1)     # a funky at another TK: that TK's first funky zero
     o.setdefault('exact', False)
+    o.setdefault('dex_bug', False)
+    o.setdefault('ith_weapon', False)
     o.setdefault('weapon', False)
+    o.setdefault('dopplezon', True)
+    # Dopplezon morph: a weapon vanishes in the morph, so none is equipped unless the build is a dex-bug build or
+    # the weapon is Ith (user rule)
+    if o['dopplezon'] and not (o['dex_bug'] or o['ith_weapon']):
+        o['weapon'] = False
     o.setdefault('switch', None)
     o['smite_max'] = bool(o.get('smite_max', False))
     o['holy_shield_cast'] = max(0, min(99, int(o.get('holy_shield_cast') or 0)))
@@ -1524,6 +1531,8 @@ def plan(preset='mock_high', name='Mock', **over):
             g.socketed = True
             for j in range(JEWELS):
                 units.append(PUnit('jewel', f'{role}/{j}', 2, 'cover', parent=g, side=g.side))
+    if o.get('role') == 'funky':        # a Funky's mana drain from a Prayer aura can kill it: no aura sources
+        o['prayer_sources'] = 0
     nps = CHARM_COUNT if o['prayer_sources'] is None else max(0, min(CHARM_COUNT, int(o['prayer_sources'])))
     charms = [PUnit('charm', f'charm{i}', 1, 'prayer' if i < nps else 'cover') for i in range(CHARM_COUNT)]
     units += charms
@@ -1558,7 +1567,9 @@ def plan(preset='mock_high', name='Mock', **over):
     nl = len(lists)
     by_role = lambda *roles: [s for s in lists if s.unit.role in roles]
     # ---- Prayer 31 on EVERY list (178 x 31 = 5518); sources only where nothing higher sits (the charms)
-    if o['prayer'] is None:
+    if o.get('role') == 'funky':            # no Prayer aura on a Funky (Replenish Life bulk gives the regen)
+        pass
+    elif o['prayer'] is None:
         for s in lists:
             s.add(151, AURA_LINE_MAX, PRAYER)
     else:                                   # a total Prayer level: the source charms first, then the other lists
@@ -1684,7 +1695,8 @@ def plan(preset='mock_high', name='Mock', **over):
         raise PlanError('smite target cannot be reached', key='damage')
     sh = U['shield']
     sh.slots[0].add(97, 63, SMITE)
-    sh.slots[1].add(97, 63, PRAYER)
+    if o.get('role') != 'funky':
+        sh.slots[1].add(97, 63, PRAYER)
     for i, v in enumerate(split(o['bo'], 63)):              # non-class BO (cast before the duel)
         sh.slots[2 + 3 * i].add(97, v, BATTLE_ORDERS)
     for v in split(hs_cast, 63):                            # non-class Holy Shield (cast before the duel)
