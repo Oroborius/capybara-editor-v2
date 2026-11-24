@@ -35,7 +35,7 @@ EXCEL = ('armor arena armtype automagic automap belts bodylocs books charstats c
          'storepage superuniques treasureclassex uniqueappellation uniqueitems uniqueprefix uniquesuffix uniquetitle '
          'weapons itemscode skillscode skilldesccode missilescode monstatscode').split()
 STRINGS = ('string', 'expansionstring', 'patchstring')
-EXTRACT_VERSION = 1
+EXTRACT_VERSION = 2
 
 _state = None                 # the active profile (dict) once install() ran
 
@@ -289,6 +289,9 @@ def extract(game_dir, out, progress=None, icons=True):
             files[n + '.bin'] = d
         if progress:
             progress('tables', k + 1, len(names))
+    statcost = _read(stack, r'data\global\excel\itemstatcost.txt')
+    if statcost:
+        files['itemstatcost.txt'] = statcost
     for n in STRINGS:
         d = _read(stack, f'data\\local\\lng\\eng\\{n}.tbl')
         if d:
@@ -511,21 +514,79 @@ def aura_text(data, param, value):
         fmt = data.isc[151]['pos']
     except Exception:
         fmt = 'Level %d %s Aura When Equipped'
-    nm = (data.skill_names.get(param) if isinstance(data.skill_names, dict) else None) or \
-        (evil_force(data) if _is_skill_row(data, param) else f'skill {param}')
+    nm = vanilla_skill_name(data, param)
     if '%d' in fmt and '%s' in fmt:
         return fmt.replace('%d', str(value), 1).replace('%s', str(nm), 1)
     return f'Level {value} {nm} Aura When Equipped'
 
 
-def evil_force(data):
-    """The game's text for a string that is not there ('dummy' row of the tables: 'an evil force')."""
-    return _string(data, 'dummy') or 'an evil force'
+def vanilla_skill_name(data, sid):
+    from mxl_rownames import skill_derived
+
+    name = data.skill_names.get(sid)
+    if name and not missing_stat_text(name):
+        return name
+    return (skill_derived(data, sid) if isinstance(sid, int) else None) or f'Skill {sid or 0}'
 
 
-def _is_skill_row(data, sid):
-    sc = getattr(data, 'skill_class', None)
-    return isinstance(sid, int) and isinstance(sc, dict) and sid in sc
+def missing_stat_text(text):
+    return not text or 'an evil force' in str(text).casefold()
+
+
+def stat_row_name(data, sid):
+    """Readable ItemStatCost key from the selected game's text table."""
+    if is_median():
+        return None
+    if '_capy_stat_row_names' not in data.__dict__:
+        import csv
+
+        names = {}
+        try:
+            with open(os.path.join(data.folder, 'itemstatcost.txt'),
+                      encoding='latin-1', newline='') as table:
+                for row in csv.DictReader(table, delimiter='\t'):
+                    key = row.get('Stat', '')
+                    index = row.get('ID', '').strip()
+                    if key and index.isdecimal():
+                        names[int(index)] = key
+        except (AttributeError, OSError):
+            pass
+        data._capy_stat_row_names = names
+    key = data._capy_stat_row_names.get(sid)
+    if not key:
+        return f'Stat {sid}'
+    key = key.removeprefix('item_')
+    labels = {
+        'damagepercent': 'Damage %', 'manarecovery': 'Mana recovery',
+        'coldlength': 'Cold duration', 'poisonlength': 'Poison duration',
+        'velocitypercent': 'Movement speed %', 'attackrate': 'Attack rate',
+        'maxdurability': 'Maximum durability', 'timeduration': 'Duration',
+        'doubleherbduration': 'Double potion duration', 'lightcolor': 'Light color',
+        'levelreq': 'Required level', 'levelreqpct': 'Required level %',
+        'nonclassskill': 'Non-class skill bonus', 'singleskill': 'Class skill bonus',
+        'extrablood': 'Extra blood', 'throw_mindamage': 'Minimum throw damage',
+        'throw_maxdamage': 'Maximum throw damage', 'numsockets': 'Socket count',
+        'absorb_pois_perlevel': 'Poison absorb per level',
+        'absorb_pois_bytime': 'Poison absorb by time',
+        'passive_mastery_melee_th': 'Melee mastery attack rating',
+        'passive_mastery_melee_dmg': 'Melee mastery damage',
+        'passive_mastery_melee_crit': 'Melee mastery critical strike',
+        'passive_mastery_throw_th': 'Throwing mastery attack rating',
+        'passive_mastery_throw_dmg': 'Throwing mastery damage',
+        'passive_mastery_throw_crit': 'Throwing mastery critical strike',
+        'passive_weaponblock': 'Passive weapon block',
+        'questitemdifficulty': 'Quest item difficulty',
+        'passive_mag_mastery': 'Passive magic mastery',
+        'passive_mag_pierce': 'Passive magic pierce',
+    }
+    return labels.get(key, key.replace('_', ' ').capitalize())
+
+
+def fallback_stat_line(data, stat):
+    sid = stat['id']
+    param = stat.get('param')
+    suffix = f' (parameter {param})' if param is not None else ''
+    return f"{stat_row_name(data, sid)}: {stat['value']}{suffix}"
 
 
 def _stat_skill(st):
@@ -533,7 +594,7 @@ def _stat_skill(st):
     sid, p = st.get('id'), st.get('param')
     if p is None:
         return None
-    if sid in (97, 151):
+    if sid in (97, 107, 151):
         return p
     if 195 <= sid <= 213:
         return p >> 6
@@ -541,20 +602,16 @@ def _stat_skill(st):
 
 
 def unnamed_skill_text(data, st):
-    """A skill stat whose skill is a row of skills.bin without a name (monster skills: hacked clone items): the game
-    prints the line with 'an evil force' for the name, the host dropped it. None for named skills / other stats."""
+    """Render a skill stat whose skill has no translated display name."""
     sk = _stat_skill(st)
-    if sk is None or not _is_skill_row(data, sk):
+    if sk is None or not missing_stat_text(data.skill_names.get(sk)):
         return None
-    names = data.skill_names if isinstance(getattr(data, 'skill_names', None), dict) else {}
-    if names.get(sk):
-        return None
-    sid, v, nm = st['id'], int(st.get('value') or 0), evil_force(data)
+    sid, v, nm = st['id'], int(st.get('value') or 0), vanilla_skill_name(data, sk)
     c = data.isc.get(sid) or {}
     fmt = str(c.get('pos') or '')
     if sid == 151:
         return aura_text(data, st.get('param'), v)
-    if sid == 97:                                          # descfunc 28
+    if sid in (97, 107):                                   # direct skill bonus
         return f'{v:+d} to {nm}'
     lvl = st['param'] & 63
     if c.get('func') == 24:                                # charges: 'Level 2 <skill> (1/3 Charges)'
@@ -615,7 +672,11 @@ def _patch_text():
         t = unnamed_skill_text(data, st)
         if t:
             return t
-        if st.get('id') == 188:
+        sid = st['id']
+        c = data.isc.get(sid) or {}
+        if missing_stat_text(c.get('desc')) and sid not in (97, 107):
+            return fallback_stat_line(data, st)
+        if sid == 188:
             return skill_tab_text(data, st.get('param'), st.get('value'))
         if st.get('id') == 252:
             return repair_text(data, st.get('value'))
@@ -624,12 +685,20 @@ def _patch_text():
     def stat_lines(stats, data, *a, **k):
         _fix_isc(data)
         stats = list(stats or ())
-        own = [isinstance(x, dict) and (x.get('id') in OWN or unnamed_skill_text(data, x) is not None) for x in stats]
-        mine = [x for x, o in zip(stats, own) if o]
-        rest = [x for x, o in zip(stats, own) if not o]
-        out = list(o_lines(rest, data, *a, **k)) if rest or not mine else []
+        mine, rest = [], []
+        for st in stats:
+            sid = st['id']
+            if sid in OWN or unnamed_skill_text(data, st) is not None:
+                mine.append(st)
+                continue
+            if sid in data.isc:
+                rest.append(st if 'param' in st else dict(st, param=None))
+            # The host still needs raw fields such as poison duration to format damage.
+            if sid not in (97, 107) and missing_stat_text((data.isc.get(sid) or {}).get('desc')):
+                mine.append(st)
         prio_on = k.get('prio', a[2] if len(a) > 2 else False)
         ti = 2 if prio_on else 1                          # index of the text in a line tuple
+        out = [line for line in o_lines(rest, data, *a, **k) if not missing_stat_text(line[ti])]
         v17 = {x.get('value') for x in rest if isinstance(x, dict) and x.get('id') == 17}
         v18 = {x.get('value') for x in rest if isinstance(x, dict) and x.get('id') == 18}
         if len(v17) == 1 and v17 == v18:                   # the game's one line for equal min / max
@@ -660,7 +729,7 @@ def _patch_text():
         return out
     stat_lines.__wrapped__ = o_lines
     M.stat_lines = stat_lines
-    for name in ('mxl_tooltip', 'mxl_statparse', 'mxl_catalog_tooltip'):
+    for name in ('mxl_tooltip', 'mxl_statparse', 'mxl_catalog_tooltip', 'mxl_gui_detail'):
         mod = __import__('sys').modules.get(name)
         if mod is not None and getattr(mod, 'stat_lines', None) is o_lines:
             mod.stat_lines = stat_lines

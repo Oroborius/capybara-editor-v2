@@ -512,7 +512,7 @@ def _char_menu(win, cv, ev):
 
 def _vanilla_char_commands(win, menu, entry, clip, *, paste=None, delete=None, extensions=True):
     from tkinter import filedialog, messagebox
-    from mxl_statnames import stat_text
+    from mxl_statnames import vanilla_stat_value
     from mxl_vanilla_he import allows, set_tab
 
     can_transfer = allows(win, 'transfer')
@@ -531,7 +531,7 @@ def _vanilla_char_commands(win, menu, entry, clip, *, paste=None, delete=None, e
 
     def view_buffer():
         rows = getattr(win.app, '_capy_he_buffer', ())
-        text = '\n'.join(stat_text(win.data, stat['id'], stat.get('param'), stat['value']) or str(stat['id'])
+        text = '\n'.join(vanilla_stat_value(win.data, stat['id'], stat.get('param'), stat['value'])
                          for stat in rows)
         messagebox.showinfo('Magic Attribute Buffer', text or 'The buffer is empty.', parent=win.top)
 

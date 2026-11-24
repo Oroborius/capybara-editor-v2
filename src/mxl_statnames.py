@@ -44,12 +44,24 @@ def param_spec(sid):
 def stat_text(data, sid, param=None, value=1, desc=None):
     """The stat's own game text (plain, no colour codes); '' when the game shows none for it
     (hidden stat, or the buffalo placeholder of the mod's unused stats)."""
+    from mxl_profile import is_median, missing_stat_text, stat_row_name
+
+    if not is_median():
+        info = data.isc.get(sid) or {}
+        if param is not None:
+            line = rendered_line(data, sid, param, value)
+            if line and not missing_stat_text(line):
+                return line
+        if missing_stat_text(info.get('desc')):
+            return stat_row_name(data, sid)
     try:
         from mxl_rules import stat_label
         from mxl_creator import _plain
         txt = _plain(stat_label(dict(id=sid, param=param, value=value, desc=desc), data))
     except Exception:
         return ''
+    if not is_median() and missing_stat_text(txt):
+        return stat_row_name(data, sid)
     if not txt or 'OLAR BUFFALO' in txt.upper():
         txt = ''
     spec = param_spec(sid)
@@ -84,6 +96,15 @@ def rendered_line(data, sid, param, value):
     if not txt or BUFFALO in txt.upper() or '%s' in txt or '%d' in txt:
         return ''
     return txt
+
+
+def vanilla_stat_value(data, sid, param, value):
+    """A vanilla item attribute and its value for reports and attribute buffers."""
+    from mxl_profile import fallback_stat_line, missing_stat_text
+
+    line = rendered_line(data, sid, param, value)
+    return (fallback_stat_line(data, dict(id=sid, param=param, value=value))
+            if missing_stat_text(line) else line)
 
 
 def generic_label(sid):

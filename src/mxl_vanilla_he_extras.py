@@ -917,8 +917,8 @@ class ItemEdit:
             if field:
                 self.magic_slot(group, int(field))
             else:
-                from mxl_statnames import stat_text
-                self.show_list(stat_text(self.win.data, s['id'], s.get('param'), s['value'])
+                from mxl_statnames import vanilla_stat_value
+                self.show_list(vanilla_stat_value(self.win.data, s['id'], s.get('param'), s['value'])
                                for s in self.record.get(self.MAGIC[group], ()))
             return
         if not field:

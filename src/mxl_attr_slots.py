@@ -66,7 +66,11 @@ def row_label(data, s):
     name or '(stat #N)' for the internal ones (and for the mod's 'FLYING POLAR BUFFALO' placeholder strings).
     Clean Hero-Editor labels: no stat ids, bit counts or param numbers (the status bar shows those)."""
     sid, param = s['id'], s.get('param')
+    from mxl_profile import is_median, stat_row_name
+
     c = stat_info(data, sid)
+    if c is None and not is_median():
+        return stat_row_name(data, sid)
     if c is None:
         return f'stat #{sid}'
     try:
@@ -74,7 +78,7 @@ def row_label(data, s):
     except Exception:
         hidden = False
     txt = ''
-    if not hidden:
+    if not hidden or not is_median():
         shown = s.get('value') if param_kind(sid) == 'skill' else 1      # '5% Chance to cast level 3 ...'
         if param_spec(sid) is not None:         # a stat with a param: the line the item shows on hover
             shown = s.get('value')

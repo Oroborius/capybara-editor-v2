@@ -1494,6 +1494,11 @@ class CreatorWindow:
     def mod_label(self, m):
         d = self.data
         stats = m.stats(d)
+        from mxl_profile import is_median
+
+        if stats and not is_median():
+            from mxl_attr_slots import row_label
+            return row_label(d, stats[0])
         for s in stats:
             if stat_hidden(s['id'], d, s['value']):
                 continue

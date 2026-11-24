@@ -1692,6 +1692,8 @@ class Creator:
         raw stat rows (unrestricted mode). Labels use the stat's tooltip text at value 1."""
         cache = self.__dict__.get('_stat_choices')
         if cache is None:
+            from mxl_profile import is_median
+
             d = self.data
             out = []
             for sid in range(0x1FF):                   # the save stores a 9-bit stat id, 0x1FF is the end mark
@@ -1702,7 +1704,7 @@ class Creator:
                     continue
                 if not bits:
                     continue
-                txt = generic_label(sid)                   # the game's string names ONE param value: the neutral name
+                txt = generic_label(sid) if is_median() else None  # the game's string names ONE param value: the neutral name
                 if not txt:
                     try:
                         txt = stat_text(d, sid, None, value=1, desc=ic.get('desc'))

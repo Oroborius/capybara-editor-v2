@@ -263,7 +263,7 @@ def replace_item(win, entry, before, blob, caption, owner=None, *, allow_type_ch
 def report_summary(data, rows):
     """Combine report attributes by component, keeping separate states and time periods."""
     from mxl_attr_slots import row_label
-    from mxl_statnames import skill_label, stat_text
+    from mxl_statnames import skill_label, vanilla_stat_value
     from mxl_vanilla_he_extras import CHARGED_SKILL, is_timed_stat, time_values
 
     groups = {}
@@ -292,7 +292,7 @@ def report_summary(data, rows):
             period = ('Daytime', 'Dusk', 'Nighttime', 'Dawn')[key[2]]
             yield f'{row_label(data, original)}: {components[0]} to {components[1]} ({period})'
         else:
-            yield stat_text(data, sid, param, components[0])
+            yield vanilla_stat_value(data, sid, param, components[0])
 
 
 def character_report(win):
@@ -690,7 +690,7 @@ def paste_attributes(record, values):
 
 def add_favorites(win, menu, entry):
     from mxl_itemlib import game_tag
-    from mxl_statnames import stat_text
+    from mxl_statnames import vanilla_stat_value
     import paths
 
     path = Path(paths.USER_DIR) / 'hero-editor-favorites.json'
@@ -750,7 +750,7 @@ def add_favorites(win, menu, entry):
                 lambda values=stats: mutate(win, entry, 'Paste Favorite',
                                            lambda rec: paste_attributes(rec, values)), bool(stats))
         command(child, f'VIEW what is in Favorite {index}', lambda n=name, values=stats: messagebox.showinfo(
-            n, '\n'.join(stat_text(win.data, s['id'], s.get('param'), s['value']) for s in values),
+            n, '\n'.join(vanilla_stat_value(win.data, s['id'], s.get('param'), s['value']) for s in values),
             parent=win.top), bool(stats))
         command(child, f'DELETE Favorite {index}', lambda i=index: save(i, lambda _: None))
 
