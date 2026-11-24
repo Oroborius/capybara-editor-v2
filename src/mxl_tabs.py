@@ -87,7 +87,7 @@ def _vanilla_host(app, nb):
     if app.character_file():
         from mxl_vanilla_he import pixels
 
-        width, height = pixels(root, 760, 620)
+        width, height = pixels(root, 656, 558)
         root.geometry(f'{min(width, root.winfo_screenwidth() - 24)}x'
                       f'{min(height, root.winfo_screenheight() - 48)}')
     chrome = []

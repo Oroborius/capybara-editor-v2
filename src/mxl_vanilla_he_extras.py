@@ -2,7 +2,7 @@
 import tkinter as tk
 from tkinter import messagebox, simpledialog, ttk
 
-from mxl_vanilla_he import allows
+from mxl_vanilla_he import BLACK, allows, center_mouse, font, photo, picture, pixels, role
 from mxl_char import CharError, blob_item
 from mxl_creator import (
     FLAG_EAR, FLAG_IDENTIFIED, FLAG_RUNEWORD, FLAG_SIMPLE, NUM_SOCKETS, build_blob, decode_blob, decode_item,
@@ -177,8 +177,9 @@ def open_extras(win, entry=None, group='Basic1'):
     win.sync_file()
     top = tk.Toplevel(win.top)
     top.title('Extras')
-    top.geometry('681x371')
-    header = ttk.Frame(top, padding=(8, 3))
+    width, height = pixels(top, 681, 371)
+    top.geometry(f'{min(width, top.winfo_screenwidth())}x{min(height, top.winfo_screenheight() - 24)}')
+    header = ttk.Frame(top, padding=pixels(top, 8, 3))
     header.pack(fill='x')
     entries = extras_entries(win.ch, include_socketed=True)
     total = sum(1 + len(e.it.get('socketed', ())) for e, owner in entries if not isinstance(owner, SocketChild))
@@ -190,12 +191,18 @@ def open_extras(win, entry=None, group='Basic1'):
 
     selected_decode = getattr(win, 'he_decode_version', decode_version(win.ch.version))
     ttk.Label(header, text=f'{ITEM_DECODE_VERSIONS[selected_decode]} Items').grid(row=1, column=0, sticky='w')
-    ttk.Label(header, text=f'Character Name  {win.ch.name}').grid(row=1, column=1, columnspan=2)
+    ttk.Label(header, text='Character Name').grid(row=1, column=1, sticky='e')
+    name = ttk.Entry(header, width=17, font=font())
+    name.insert(0, win.ch.name)
+    name.state(['disabled'])
+    name.grid(row=1, column=2, sticky='w')
     header.columnconfigure(3, weight=1)
     ttk.Button(header, text='Close', command=top.destroy).grid(row=0, column=4, rowspan=2)
+    rule = role(tk.Frame(top, height=pixels(top, 1)[0], bg=BLACK), 'art')
+    rule.pack(fill='x')
     notebook = ttk.Notebook(top, style='Extras.TNotebook')
-    notebook.pack(fill='both', expand=True, padx=8, pady=(6, 0))
-    pages = [ttk.Frame(notebook, style='Peach.TFrame', padding=5) for _ in TABS]
+    notebook.pack(fill='both', expand=True, padx=pixels(top, 8)[0], pady=(pixels(top, 6)[0], 0))
+    pages = [ttk.Frame(notebook, style='Peach.TFrame', padding=pixels(top, 5)[0]) for _ in TABS]
     for page, caption in zip(pages, TABS):
         notebook.add(page, text=caption)
     character_hex(pages[0], win)
@@ -203,8 +210,6 @@ def open_extras(win, entry=None, group='Basic1'):
     ItemEdit(pages[2], win, entries, entry, group, offset)
     create_items(pages[3], win)
     notebook.select(pages[2])
-    from mxl_vanilla_he import center_mouse
-
     center_mouse(top)
     return top
 
@@ -232,16 +237,19 @@ def character_hex(page, win):
     address, value = tk.StringVar(value='0'), tk.StringVar()
     displayed = tk.StringVar(value=str(win.ch.level))
     real = tk.StringVar(value=str(win.ch.field('level')))
-    ttk.Label(page, text='Character Hex (Plus Items as initially loaded)').pack(anchor='w')
+    ttk.Label(page, text='Character Hex (Plus Items as initially loaded)', style='HexTitle.TLabel').pack(anchor='w')
     row = ttk.Entry(page, textvariable=value, font='TkFixedFont')
     row.pack(fill='x')
     if not allows(win, 'header'):
         row.state(['readonly'])
-    shell = ttk.Frame(page)
+    shell = ttk.Frame(page, style='Peach.TFrame')
     shell.pack(fill='both', expand=True)
-    controls = ttk.Frame(shell)
+    controls = ttk.Frame(shell, style='Peach.TFrame')
     controls.pack(side='left', fill='both', expand=True)
-    fields = tk.Listbox(shell, width=27, exportselection=False)
+    fields = tk.Listbox(shell, width=35, exportselection=False)
+    scrollbar = ttk.Scrollbar(shell, command=fields.yview)
+    fields.configure(yscrollcommand=scrollbar.set)
+    scrollbar.pack(side='right', fill='y')
     fields.pack(side='right', fill='y')
     catalog = header_catalog(win.ch)
     for _start, length, label in catalog:
@@ -450,21 +458,22 @@ def apply_staged_binary(win):
 
 
 def binary_compare(page, win, entries):
-    ttk.Label(page, text='Item "Reverse" Binary Comparison').grid(row=0, column=0, sticky='w')
+    ttk.Label(page, text='Item "Reverse" Binary Comparison', style='HexTitle.TLabel').grid(row=0, column=0, sticky='w')
+    ttk.Label(page, text='Bits are shown in reverse byte order.', style='HexTitle.TLabel').grid(row=1, column=0, sticky='w')
     page.columnconfigure(0, weight=1)
     states = []
     for index in range(2):
         address, text = tk.StringVar(), tk.StringVar()
         items = item_list(page, win, entries, 4)
-        items.grid(row=1 + 3 * index, column=1, rowspan=2, sticky='nsew')
-        nav = ttk.Frame(page)
-        nav.grid(row=1 + 3 * index, column=0, sticky='w')
-        ttk.Label(nav, text='Left Byte Addr').pack(side='left')
+        items.grid(row=2 + 3 * index, column=1, rowspan=2, sticky='nsew')
+        nav = ttk.Frame(page, style='Peach.TFrame')
+        nav.grid(row=3 + 3 * index, column=0, sticky='sw')
+        ttk.Label(nav, text='Left Byte Addr', style='Peach.TLabel').pack(side='left')
         offset = ttk.Entry(nav, width=6, textvariable=address)
         offset.pack(side='left')
         row = ttk.Entry(page, textvariable=text, font='TkFixedFont',
                         state='readonly' if not index or not allows(win, 'item') else 'normal')
-        row.grid(row=3 + 3 * index, column=0, columnspan=2, sticky='ew', pady=4)
+        row.grid(row=4 + 3 * index, column=0, columnspan=2, sticky='ew', pady=3)
 
         def show(step=0, items=items, address=address, text=text, index=index):
             sel = items.curselection()
@@ -495,8 +504,8 @@ def binary_compare(page, win, entries):
         show()
         if not index:
             first = show
-    controls = ttk.Frame(page)
-    controls.grid(row=7, column=0, columnspan=2, sticky='w')
+    controls = ttk.Frame(page, style='Peach.TFrame')
+    controls.grid(row=9, column=0, columnspan=2, sticky='w')
     for label, step in (('Incr Both', 1), ('Decr Both', -1)):
         ttk.Button(controls, text=label, command=lambda d=step: (first(d), show(d))).pack(side='left')
     count = tk.StringVar(value='0')
@@ -515,7 +524,7 @@ def binary_compare(page, win, entries):
     bind_overwrite(row, text, '01', stage)
     row.bind('<KeyRelease>', lambda _event: cursor.set(
         f'Cursor Bit Loc’n {len("".join(text.get()[row.index(tk.INSERT):].split()))}'))
-    ttk.Label(page, textvariable=cursor).grid(row=8, column=0, sticky='w')
+    ttk.Label(page, textvariable=cursor, style='Peach.TLabel').grid(row=8, column=0, sticky='w')
 
     def shift(insert):
         if not allows(win, 'item'):
@@ -665,6 +674,18 @@ def move_attribute(rows, index, delta):
     return sum(end - begin for begin, end in chunks[:other]) + index - start
 
 
+def item_preview(parent):
+    width, height = pixels(parent, 76, 94)
+    canvas = tk.Canvas(parent, width=width, height=height, bd=1, relief='sunken',
+                       highlightthickness=0, bg='#211e1a')
+    artwork = picture('pickup')
+    if artwork is not None:
+        canvas.artwork = photo(canvas, artwork, (width, height))
+        canvas.create_image(1, 1, image=canvas.artwork, anchor='nw')
+    canvas.create_image(width // 2 + 1, height // 2 + 1, tags=('item',))
+    return canvas
+
+
 class ItemEdit:
     GROUPS = {
         'Basic1': ('flags', *BASIC_FLAGS, 'version'),
@@ -688,35 +709,37 @@ class ItemEdit:
         self.selection = 0
         self.initial = group
         self.preview_image = None
-        left = ttk.Frame(page)
+        left = ttk.Frame(page, style='Peach.TFrame')
         left.pack(side='left', fill='y')
-        items_frame = ttk.Frame(left)
+        items_frame = ttk.Frame(left, style='Peach.TFrame')
         items_frame.pack(fill='both', expand=True)
         self.items = item_list(items_frame, win, entries, 6)
         sb = ttk.Scrollbar(items_frame, orient='vertical', command=self.items.yview)
         self.items.configure(yscrollcommand=sb.set)
         sb.pack(side='right', fill='y')
         self.items.pack(side='left', fill='both', expand=True)
-        self.preview = ttk.Label(left)
-        self.preview.pack(anchor='w')
+        actions = ttk.Frame(left, style='Peach.TFrame')
+        actions.pack(fill='x', pady=2)
+        self.preview = item_preview(actions)
+        self.preview.pack(side='left', padx=(0, 3))
         for caption, callback in (
             ('Copy Item to "Picked Up"', self.copy),
             ('Remove socketed Item to "Picked Up"', self.remove_child),
             ('Test Item for Errors', self.test),
-            ('Delete Magic Attribute - ALL ITEMS', self.delete_all),
         ):
-            ttk.Button(left, text=caption, command=callback).pack(fill='x')
-        middle = ttk.Frame(page)
+            ttk.Button(actions, text=caption, command=callback, width=23).pack(fill='x', pady=1)
+        ttk.Button(left, text='Delete Magic Attribute - ALL ITEMS', command=self.delete_all).pack(fill='x')
+        middle = ttk.Frame(page, style='Peach.TFrame')
         middle.pack(side='left', fill='y', padx=4)
         self.tree = ttk.Treeview(middle, show='tree', selectmode='browse', height=9)
-        self.tree.column('#0', width=145)
+        self.tree.column('#0', width=pixels(page, 172)[0])
         self.tree.pack(fill='both', expand=True)
         ttk.Button(middle, text='Save Modified Item', command=self.save).pack(fill='x')
-        moves = ttk.Frame(middle)
+        moves = ttk.Frame(middle, style='Peach.TFrame')
         moves.pack(fill='x')
         ttk.Button(moves, text='Move Attrib ↑', command=lambda: self.move(-1)).pack(side='left')
         ttk.Button(moves, text='↓', width=3, command=lambda: self.move(1)).pack(side='right')
-        self.details = ttk.LabelFrame(page, text='Item Attributes')
+        self.details = ttk.LabelFrame(page, text='Item Attributes', style='Peach.TLabelframe')
         self.details.pack(side='left', fill='both', expand=True)
         self.items.bind('<<ListboxSelect>>', self.load)
         self.tree.bind('<<TreeviewSelect>>', self.display)
@@ -768,7 +791,7 @@ class ItemEdit:
     def render_icon(self, item):
         layers = self.win.icon(item, '#404040') or {}
         self.preview_image = layers.get(1)
-        self.preview.configure(image=self.preview_image or '', text=item['code'].strip())
+        self.preview.itemconfigure('item', image=self.preview_image or '')
 
     def rebuild(self, selected):
         self.tree.delete(*self.tree.get_children())
@@ -1567,15 +1590,14 @@ def create_items(page, win):
     tree.insert('', 'end', iid='all', text='All Items')
     by_code = populate_item_tree(tree, creator)
     description = tk.Text(page, width=24, height=8, wrap='word', state='disabled')
-    options = ttk.Frame(page)
+    options = ttk.Frame(page, style='Peach.TFrame')
     options.pack(side='right', fill='y', padx=(4, 0))
     description.pack(side='left', fill='both', expand=True, padx=(4, 0))
     code = tk.StringVar()
-    ttk.Label(options, text='Type Code').pack(anchor='w')
+    ttk.Label(options, text='Type Code', style='Peach.TLabel').pack(anchor='w')
     field = ttk.Entry(options, textvariable=code, width=9)
     field.pack(anchor='w')
-    preview = ttk.Label(options)
-    preview.pack(anchor='w')
+    preview = item_preview(options)
 
     def select(_event=None):
         chosen = next(iter(tree.selection()), '')
@@ -1594,7 +1616,7 @@ def create_items(page, win):
             preview.image = (win.icon(item, '#404040') or {}).get(1)
         except ITEM_ERRORS:
             preview.image = None
-        preview.configure(image=preview.image or '')
+        preview.itemconfigure('item', image=preview.image or '')
 
     def lookup(_event=None):
         iid = by_code.get(code.get().strip())
@@ -1621,6 +1643,7 @@ def create_items(page, win):
     tree.bind('<<TreeviewSelect>>', select)
     field.bind('<Return>', lookup)
     ttk.Button(options, text='Save New Item To PickedUp', command=save).pack(fill='x', pady=4)
+    preview.pack(anchor='e')
     ttk.Button(options, text='Item Creator', command=lambda: CreatorWindow(
         win.app, target=lambda blob: put_picked_up(win, blob), target_label='Picked Up', data=win.data)).pack(fill='x')
     new = ttk.LabelFrame(options, text='Create New Character')

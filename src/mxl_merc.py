@@ -286,49 +286,66 @@ class MercPage:
                         'the game does not let a mercenary outlevel the character. Not tested in the running game: '
                         'keep the backup.')).grid(row=r, column=0, columnspan=5, sticky='w')
         if self.vanilla_he:
-            self._vanilla_controls(r + 1)
-            box.configure(text='Mercenary')
-            self.b_match.configure(text='Match Level')
-            self.cb_hired.grid_remove()
-            self.cb_dead.grid_remove()
-            from mxl_vanilla_he import font
-            self.type_box.configure(font=font())
-            self.name_box.configure(font=font())
-            life = ttk.LabelFrame(box, text='Mercenary Life', padding=2)
-            life.grid(row=0, column=0, columnspan=5, sticky='ew', pady=(0, 4))
-            self.v_life = tk.StringVar()
-            self.life_buttons = []
-            for text in ('Dead', 'Alive', 'Not Hired'):
-                radio = ttk.Radiobutton(life, text=text, value=text, variable=self.v_life,
-                                        command=self._change_life)
-                radio.pack(side='left', padx=6)
-                self.life_buttons.append(radio)
-            self.info.configure(wraplength=350)
+            self._vanilla_controls()
         frame.bind('<Configure>', self._wrap, add='+')
         self.refresh()
 
-    def _vanilla_controls(self, row):
+    def _vanilla_controls(self):
         from mxl_char import difficulty_name
-        from mxl_vanilla_he import FORM, FONT, font
+        from mxl_vanilla_he import font, pixels
 
-        portrait = tk.LabelFrame(self.box, text='Portrait', bg=FORM, padx=2, pady=2)
-        portrait.grid(row=row, column=0, columnspan=2, sticky='nw')
-        self.vanilla_portrait = tk.Label(portrait, width=14, height=5, font=font(FONT),
-                                         relief='sunken', bg=FORM, wraplength=85)
-        self.vanilla_portrait.pack()
-        self.vanilla_seed = ttk.Button(portrait, text='Create New Mercenary ID', command=self.b_seed.invoke)
+        self.box.configure(text='', bd=0, padx=0, pady=0)
+        for widget in self.box.grid_slaves():
+            widget.grid_forget()
+        self.box.pack_configure(fill='both', expand=True, padx=0)
+        self.box.configure(width=pixels(self.box, 642)[0], height=pixels(self.box, 435)[0])
+        self.box.pack_propagate(False)
+
+        def place(widget, x, y, width, height):
+            x, y, width, height = pixels(self.box, x, y, width, height)
+            widget.place(x=x, y=y, width=width, height=height)
+
+        def group(text, x, y, width, height):
+            box = ttk.LabelFrame(self.box, text=text, padding=2)
+            place(box, x, y, width, height)
+            return box
+
+        for y, text, control in ((1, 'Level', self.e_level), (25, 'Experience', self.e_exp)):
+            place(ttk.Label(self.box, text=text), 5, y, 72, 21)
+            place(control, 77, y, 88 if text == 'Experience' else 43, 20)
+        self.b_match.configure(text='Match')
+        place(self.b_match, 123, 1, 42, 20)
+
+        life = group('Mercenary Life', 4, 50, 161, 85)
+        self.v_life = tk.StringVar()
+        self.life_buttons = []
+        for text in ('Dead', 'Alive', 'Not Hired'):
+            radio = ttk.Radiobutton(life, text=text, value=text, variable=self.v_life, command=self._change_life)
+            radio.pack(anchor='w')
+            self.life_buttons.append(radio)
+
+        portrait = group('Portrait', 173, 0, 105, 137)
+        self.vanilla_portrait = tk.Label(portrait, relief='sunken', wraplength=pixels(portrait, 85)[0])
+        self.vanilla_portrait.pack(fill='both', expand=True)
+        self.vanilla_seed = ttk.Button(portrait, text='Create New ID', command=self.b_seed.invoke)
         self.vanilla_seed.pack(fill='x', pady=(3, 0))
 
-        facts = ttk.LabelFrame(self.box, text='Mercenary Record', padding=4)
-        facts.grid(row=row, column=2, columnspan=3, sticky='nsew', padx=(4, 0))
-        self.vanilla_facts = ttk.Label(facts, justify='left')
+        facts = group('Mercenary Record', 4, 142, 161, 154)
+        self.vanilla_facts = ttk.Label(facts, justify='left', wraplength=pixels(facts, 145)[0])
         self.vanilla_facts.pack(anchor='w')
+        self.info.configure(wraplength=pixels(self.box, 160)[0])
+        place(self.info, 286, 8, 160, 130)
+        self.type_box.configure(font=font())
+        place(self.type_box, 173, 153, 268, 22)
+        place(self.cb_adv, 173, 181, 115, 22)
 
-        group = ttk.LabelFrame(self.frame, text='Class', padding=4)
-        group.pack(side='right', fill='both', expand=True)
-        self.class_tree = tree = ttk.Treeview(group, show='tree', height=18)
-        tree.column('#0', width=202, minwidth=150)
-        scroll = ttk.Scrollbar(group, command=tree.yview)
+        place(ttk.Label(self.box, text='Mercenary Name'), 450, 0, 188, 17)
+        self.name_box.configure(font=font())
+        place(self.name_box, 450, 20, 188, 22)
+        classes = group('Class', 450, 51, 188, 383)
+        self.class_tree = tree = ttk.Treeview(classes, show='tree', height=18)
+        tree.column('#0', width=174, minwidth=140)
+        scroll = ttk.Scrollbar(classes, command=tree.yview)
         tree.configure(yscrollcommand=scroll.set)
         scroll.pack(side='right', fill='y')
         tree.pack(fill='both', expand=True)
@@ -349,7 +366,9 @@ class MercPage:
         tree.bind('<<TreeviewSelect>>', choose)
 
     def _wrap(self, e):
-        w = max(240, min(360 if self.vanilla_he else 560, e.width - 40))
+        if self.vanilla_he:
+            return
+        w = max(240, min(560, e.width - 40))
         for lab in self.box.grid_slaves():
             if isinstance(lab, tk.Label) and lab.cget('wraplength'):
                 lab.configure(wraplength=w)
@@ -477,12 +496,27 @@ class MercPage:
                 self.info.configure(text=text)
             kind = self.types.get(self.cur_type())
             self.vanilla_seed.state(['!disabled'] if on else ['disabled'])
-            self.vanilla_portrait.configure(text=kind.cls_name if on and kind is not None else '')
+            self.refresh_portrait()
             mode = difficulty_name(kind.diff - 1) if kind is not None and 1 <= kind.diff <= 3 else ''
             code = self.cur_type() if on else ''
             self.vanilla_facts.configure(text=(
                 f'ID: {self.v_seed.get()}\nCode: {code}\nName: {self.v_name.get()}\n'
                 f'Attributes: {kind.variant if kind is not None else ""}\nDifficulty: {mode}') if on else '')
+
+    def refresh_portrait(self):
+        from mxl_vanilla_he import photo, picture, pixels
+
+        kind = self.types.get(self.cur_type()) if self.v_hired.get() else None
+        offset = {1: 0, 2: 270, 3: 180, 5: 90}.get(kind.act) if kind is not None else None
+        artwork = picture('merc_portraits') if offset is not None else None
+        view = self.vanilla_portrait
+        signature = artwork, offset, kind.cls_name if kind is not None else ''
+        if getattr(view, 'art_signature', None) == signature:
+            return
+        view.art_signature = signature
+        view.image = (photo(view, artwork.crop((offset, 0, offset + 90, 90)), pixels(view, 90, 90))
+                      if artwork is not None else None)
+        view.configure(image=view.image or '', text='' if view.image else signature[2])
 
     def _change_life(self):
         life = self.v_life.get()
@@ -491,6 +525,15 @@ class MercPage:
         self.on_hired()
 
     def show_adv(self):
+        if self.vanilla_he:
+            from mxl_vanilla_he import pixels
+
+            if self.v_adv.get():
+                x, y = pixels(self.box, 173, 208)
+                self.adv.place(x=x, y=y)
+            else:
+                self.adv.place_forget()
+            return
         if self.v_adv.get():
             self.adv.grid(row=self.adv_row, column=1, columnspan=4, sticky='w', pady=1)
         else:

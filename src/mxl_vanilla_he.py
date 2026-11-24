@@ -99,6 +99,10 @@ def set_art_folder(win, folder):
         button.configure(image=button.images[0])
     for key, panel in win.he_covers.items():
         draw_cover(panel, key)
+    win.he_refresh_quest()
+    merc = win.extra.get('merc')
+    if merc is not None:
+        merc.refresh_portrait()
     win.he_portrait._he_class = None
     refresh_stats(win)
     win.he_inventory_art = inventory_images(win.inv, INV_W, INV_H, win.cell, win.he_footer_height)
@@ -125,6 +129,7 @@ def style(root):
                  selectforeground=WHITE, bordercolor=EDGE, lightcolor=WHITE, darkcolor=INSET, font=font())
     st.map('.', foreground=[('disabled', DESCRIPTION)])
     st.configure('TButton', padding=pixels(root, 5, 1), relief='raised')
+    st.configure('Inventory.TButton', padding=pixels(root, 3, 0))
     st.configure('TNotebook.Tab', padding=pixels(root, 6, 1))
     st.map('TNotebook.Tab', background=[('selected', FORM), ('!selected', LIGHT)])
     st.configure('TNotebook', tabmargins=(0, 0, 0, 0))
@@ -139,6 +144,8 @@ def style(root):
     st.map('Treeview', background=[('selected', SELECT)], foreground=[('selected', WHITE)])
     st.map('TCombobox', fieldbackground=[('readonly', WHITE)])
     st.configure('Peach.TFrame', background=PEACH)
+    st.configure('Peach.TLabel', background=PEACH)
+    st.configure('HexTitle.TLabel', background=PEACH, foreground=HEX_TITLE)
     st.configure('Peach.TLabelframe', background=PEACH)
     st.configure('Peach.TLabelframe.Label', background=PEACH, font=font(LEGEND_FONT))
     st.configure('TLabelframe.Label', font=font(LEGEND_FONT))
@@ -388,21 +395,22 @@ def chrome(win, bottom, actions):
         button.bind('<ButtonRelease-1>', lambda event: event.widget.configure(image=event.widget.images[1]))
         buttons.append(button)
     win.he_action_buttons = buttons
-    wrap_buttons(actions, buttons, gap=8, pady=4)
-    status = tk.Frame(bottom, bg=FORM)
+    wrap_buttons(actions, buttons, gap=4, pady=5, positions=(8, 112, 216, 384, 552))
+    status = tk.Frame(bottom, bg=FORM, height=pixels(bottom, 22)[0])
     status.pack(fill='x')
+    status.pack_propagate(False)
     for label, width in (('Hero Editor', 70), ('Version 1.04', 108)):
-        width, height = pixels(status, width, 19)
-        cell = tk.Frame(status, width=width, height=height)
-        cell.pack(side='left')
+        cell = tk.Frame(status, width=pixels(status, width)[0])
+        cell.pack(side='left', fill='y')
         cell.pack_propagate(False)
         tk.Label(cell, text=label, anchor='w', bd=1, relief='sunken',
                  font=font(), bg=FORM, padx=1).pack(fill='both', expand=True)
     win.bar_status = role(tk.Label(status, text='Character Open: ' + win.ch.path, anchor='w',
                               bd=1, relief='sunken', font=font(), bg=FORM), 'art')
-    win.bar_status.pack(side='left', fill='x', expand=True, ipady=2)
-    bar = role(tk.Frame(win.top, bg=WHITE), 'art')
+    win.bar_status.pack(side='left', fill='both', expand=True)
+    bar = role(tk.Frame(win.top, bg=WHITE, height=pixels(win.top, 20)[0]), 'art')
     bar.pack(side='top', fill='x')
+    bar.pack_propagate(False)
     entry = role(tk.Menubutton(bar, text='Menu', underline=0, font=font(), bd=0,
                               bg=WHITE, activebackground=SELECT, activeforeground=WHITE), 'menu')
     entry.pack(side='left', padx=3, ipady=1)
@@ -521,15 +529,29 @@ def add_toolbar_menu(app, menu):
     refresh()
 
 
-def wrap_buttons(bar, buttons, gap=0, pady=0):
+def wrap_buttons(bar, buttons, gap=0, pady=0, positions=()):
     """Wrap the bottom controls when the viewport is narrower than their requests."""
     gap, pady = pixels(bar, gap, pady)
+    positions = pixels(bar, *positions)
+    positioned_height = pixels(bar, 45)[0]
     rows = []
     current = None
 
     def layout(event):
         nonlocal current
         if event.width < 2:
+            return
+        if positions and event.width >= positions[-1] + buttons[-1].winfo_reqwidth():
+            if current == positions:
+                return
+            for row in rows:
+                row.destroy()
+            rows.clear()
+            for button, x in zip(buttons, positions):
+                button.pack_forget()
+                button.place(x=x, y=pady)
+            current = positions
+            bar.configure(height=positioned_height)
             return
         groups = [[]]
         used = 0
@@ -544,20 +566,21 @@ def wrap_buttons(bar, buttons, gap=0, pady=0):
             return
         current = groups
         for button in buttons:
+            button.place_forget()
             button.pack_forget()
         for row in rows:
             row.destroy()
         rows.clear()
         for group in groups:
             row = role(tk.Frame(bar, bg=bar.cget('bg')), 'art')
-            row.pack()
+            row.pack(anchor='w')
             rows.append(row)
             for button in group:
                 button.pack(in_=row, side='left', padx=gap, pady=pady)
                 button.lift(row)
 
     # Seed a request so a packed bar receives its first Configure event.
-    bar.configure(height=max(button.winfo_reqheight() for button in buttons) + 2 * pady)
+    bar.configure(height=positioned_height if positions else pixels(bar, 20)[0])
     bar.bind('<Configure>', layout, add='+')
 
 
@@ -763,9 +786,10 @@ def build_reference_pages(win):
         win.he_covers[key] = panel
         draw_cover(panel, key)
     bind_inventory(win)
-    page = win.pages['info']
+    page = ttk.Frame(win.pages['info'])
+    page.pack(fill='both', expand=True, padx=pixels(page, 4)[0], pady=pixels(page, 7)[0])
     info = role(tk.Text(page, wrap='word', width=65, height=22, bg=PEACH,
-                        font=font(DOC_FONT), relief='sunken', bd=2), 'document')
+                        font=font(DOC_FONT), relief='sunken', bd=2, padx=1, pady=1), 'document')
     scroll = ttk.Scrollbar(page, command=info.yview)
     scroll.pack(side='right', fill='y')
     info.configure(yscrollcommand=scroll.set)
@@ -775,7 +799,15 @@ def build_reference_pages(win):
                        'Use Save to write pending character changes and Reload to read the character again. '
                        'Finish a field with Enter. Up and Down step the selected value. '
                        'Hold Shift to step by ten. Right-click a characteristic to spend or return a stat point.\n\n'
-                       'Right-click inventory items for editing and clipboard commands.')
+                       'Inventory: Right-click an item for editing, import, export and clipboard commands. '
+                       'Switch between Person, Stash, Cube and Merc / Belt using the vertical tabs. '
+                       'Use Up and Down to scroll a hovered item’s description.\n\n'
+                       'Skills: Select a skill tile to edit one skill, or use Set Skills to change the group.\n\n'
+                       'Waypoints and Quests: Expand a difficulty or act to see its entries. Select a quest '
+                       'to view its flags or apply a status to an act or difficulty.\n\n'
+                       'Extras: Inspect character bytes, compare item data, edit item attributes, and create '
+                       'items or characters.\n\n'
+                       'Use Menu → Hero Editor folder to load art from a local Hero Editor 1.04 installation.')
     info.configure(state='disabled')
     options(win)
     introductions(win)
@@ -904,7 +936,7 @@ def bind_inventory(win):
             cv.bind('<ButtonRelease-1>', lambda event: page.on_release(anchored_event(event)))
             cv.bind('<ButtonRelease-3>', lambda event, key=key: page.on_menu(key, anchored_event(event)))
             track(cv, lambda event, key=key: page.entry_at(key, event.x, event.y),
-                  dragging=lambda: page.drag)
+                  expanded=key in ('stash', 'cube', 'belt'), dragging=lambda: page.drag)
 
     page._art_for = lambda key, columns, rows: container_picture(key, columns, rows) or fallback(key, columns, rows)
     page._build = rebuild
@@ -1155,8 +1187,11 @@ def draw_cover(panel, key):
         panel.create_text(*pixels(panel, 26, 226), text='Diablo II · Lord of Destruction', fill='#bdd8e0',
                           anchor='w', font=font(LEGEND_FONT))
     if key == 'about':
-        panel.create_text(*pixels(panel, 24, 38), text='Hero Editor by ZonFire99 and Mastadex',
-                          fill=WHITE, anchor='w', font=font())
+        panel.create_rectangle(*pixels(panel, 8, 8, 324, 151), fill=BLACK, outline='')
+        panel.create_text(*pixels(panel, 166, 20), anchor='n', justify='center', fill=WHITE, font=font(),
+                          text='Diablo II Character Editor\n\nHero Editor 1.04\n'
+                               'ZonFire99 and Mastadex\n\nDiablo II and Lord of Destruction\n'
+                               'Blizzard Entertainment\n\nMXL Capybara Editor V2')
 
 
 def option(key, default=None):
@@ -1338,8 +1373,11 @@ def bonus_weapon_controls(parent, win):
     bonus = tk.StringVar(box, value='0')
     ranges = tk.StringVar(box)
     real = tk.StringVar(box)
-    ttk.Label(box, textvariable=ranges).grid(row=0, column=0, columnspan=3, sticky='w')
-    ttk.Label(box, textvariable=real).grid(row=1, column=0, columnspan=3, sticky='w')
+    summaries = []
+    for row, text in enumerate((ranges, real)):
+        label = ttk.Label(box, textvariable=text, wraplength=pixels(box, 198)[0])
+        label.grid(row=row, column=0, columnspan=3, sticky='w')
+        summaries.append(label)
 
     def redraw():
         selected = win.selected
@@ -1351,6 +1389,11 @@ def bonus_weapon_controls(parent, win):
         ranges.set('    '.join(f'{labels[kind]} Bonus {lo} to {hi}' for kind, (lo, hi), _ in rows[:2]))
         real.set('    '.join(f'{labels[kind]} Damage {lo} to {hi}' for kind, _, (lo, hi) in rows
                              if sim.version != 96 or kind not in ('kick', 'smite')))
+        for label, line in zip(summaries, (ranges, real)):
+            if line.get():
+                label.grid()
+            else:
+                label.grid_remove()
 
     def edit(*_args):
         entered = bonus.get()
@@ -1365,8 +1408,8 @@ def bonus_weapon_controls(parent, win):
 
     bonus.trace_add('write', edit)
     ttk.Label(box, text='Extra Bonus').grid(row=2, column=0)
-    ttk.Entry(box, textvariable=bonus, width=5).grid(row=2, column=1, padx=2)
-    ttk.Button(box, text='Calculate', command=lambda: messagebox.showinfo(
+    ttk.Entry(box, textvariable=bonus, width=4).grid(row=2, column=1, padx=2)
+    ttk.Button(box, text='Calculate', width=9, style='Inventory.TButton', command=lambda: messagebox.showinfo(
         'Bonus Weapon Damage', 'Calculation is unfinished. Enter a bonus manually.', parent=box)).grid(row=2, column=2)
     return box, redraw
 
@@ -1377,71 +1420,73 @@ def options(win):
     import settings
 
     page = win.pages['options']
-    for column in range(2):
-        page.columnconfigure(column, weight=1, uniform='options')
-    game = ttk.LabelFrame(page, text='Diablo II game folder', padding=6)
-    game.grid(row=1, column=0, sticky='nsew', padx=(0, 4))
-    ttk.Button(game, text='Game folder…', command=lambda: mxl_profile.open_dialog(win.app)).pack(anchor='w')
-    ttk.Button(game, text='Hero Editor folder...', command=lambda: choose_art_folder(win)).pack(anchor='w')
-    ttk.Button(game, text='Use drawn Hero Editor art', command=lambda: set_art_folder(win, '')).pack(anchor='w')
+    ttk.Label(page, text='These settings apply to the Diablo II character editor. Changes are saved immediately. '
+                        'Use the game folder to select the tables and artwork for the version you are editing.',
+              wraplength=pixels(page, 630)[0], justify='left').pack(anchor='w', padx=2, pady=(3, 5))
+    body = ttk.Frame(page)
+    body.pack(fill='both', expand=True)
+    columns = [ttk.Frame(body), ttk.Frame(body)]
+    for index, column in enumerate(columns):
+        body.columnconfigure(index, weight=1, uniform='options')
+        column.grid(row=0, column=index, sticky='nsew', padx=2)
 
-    def radio_group(row, column, key, caption, choices):
-        frame = ttk.LabelFrame(page, text=caption, padding=2)
-        frame.grid(row=row, column=column, sticky='nsew', padx=2, pady=2)
-        selected = tk.StringVar(frame, value=option(key, choices[0][0]))
+    def group(column, caption):
+        frame = ttk.LabelFrame(columns[column], text=caption, padding=(4, 0))
+        frame.pack(fill='x', pady=(0, 2))
+        return frame
+
+    def radio_group(column, key, caption, choices, convert=str):
+        frame = group(column, caption)
+        values = dict(choices)
+        saved = str(option(key, choices[0][0]))
+        selected = tk.StringVar(frame, value=saved if saved in values else choices[0][0])
         for value, label in choices:
-            ttk.Radiobutton(frame, text=label, value=value, variable=selected,
-                            command=lambda: settings.put('vanilla_he_' + key, selected.get())).pack(anchor='w')
+            tk.Radiobutton(frame, text=label, value=value, variable=selected, font=font(),
+                           padx=0, pady=0, bd=0, highlightthickness=0,
+                           command=lambda: settings.put('vanilla_he_' + key, convert(selected.get()))).pack(anchor='w')
 
-    radio_group(1, 1, 'item_access', 'Item Edit Options',
-                (('all', 'All editing, including binary'), ('transfer', 'Move, import and export'),
-                 ('view', 'View only')))
-    radio_group(2, 0, 'character_access', 'Character Edit Options',
-                (('all', 'All editing, including hex'), ('stats', 'Attributes and stats'), ('view', 'View only')))
-    radio_group(2, 1, 'error_response', 'Error Reporting and Response',
+    game = group(0, '1) Diablo II Game Folder')
+    ttk.Button(game, text='Game folder…', command=lambda: mxl_profile.open_dialog(win.app)).pack(side='left')
+    ttk.Button(game, text='Hero Editor folder...', command=lambda: choose_art_folder(win)).pack(side='left', padx=4)
+    radio_group(0, 'error_response', '2) Error Reporting and Response',
                 (('normal', 'Normal error response'), ('inspect', 'Show errors in Extras'),
                  ('status', 'Report errors in status bar')))
-    radio_group(3, 0, 'decode_check', 'Check Item Decode on Open',
+    mouse = group(0, '3) Mouse Cursor')
+    center = tk.BooleanVar(page, value=bool(settings.get(CENTER_MOUSE)))
+    for value, label in ((False, 'Leave the cursor where it is'), (True, 'Center the cursor on dialogs')):
+        tk.Radiobutton(mouse, text=label, value=value, variable=center, font=font(),
+                       padx=0, pady=0, bd=0, highlightthickness=0,
+                       command=lambda: settings.put(CENTER_MOUSE, center.get())).pack(anchor='w')
+    radio_group(0, 'item_access', '4) Item Edit Options',
+                (('all', 'All editing, including binary'), ('transfer', 'Move, import and export'),
+                 ('view', 'View only')))
+    radio_group(0, 'decode_check', '5) Check Item Decode on Open',
                 (('complete', 'Complete checking'), ('basic', 'Basic checking')))
-    radio_group(3, 1, 'version_warning', 'Version Warning Messages',
+    radio_group(1, 'character_access', '6) Character Edit Options',
+                (('all', 'All editing, including hex'), ('stats', 'Attributes and stats'), ('view', 'View only')))
+    radio_group(1, 'backups', '7) Character Backups',
+                (('', 'Use app settings'), ('one', 'Keep one backup'), ('all', 'Keep all backups'),
+                 ('off', 'Skip new backups')))
+    radio_group(1, 'version_warning', '8) Version Warning Messages',
                 (('show', 'Show version warnings'), ('hide', 'Hide version warnings')))
-    radio_group(4, 0, 'set_attributes', 'Display Set Magic Attributes',
-                (('show', 'Show in Description'), ('hide', 'Hide in Description')))
-    radio_group(4, 1, 'unique_pictures', 'Display Unique Item Pictures',
-                (('show', 'Use unique pictures'), ('hide', 'Use base pictures')))
-    radio_group(5, 0, 'header_checks', 'Save Header Checks on Open',
-                (('verify', 'Report checksum and file size issues'), ('ignore', 'Skip header warnings')))
 
-    tools = ttk.LabelFrame(page, text='Item and Character Tools', padding=3)
-    tools.grid(row=6, column=0, columnspan=2, sticky='ew', pady=2)
+    levels = ('90', '10', '99')
+    radio_group(1, 'item_level', '9) Default Item Level',
+                tuple((value, value) for value in levels), convert=int)
+
+    radio_group(1, 'set_attributes', '10) Display Set Magic Attributes',
+                (('show', 'Show in Description'), ('hide', 'Hide in Description')))
+    radio_group(1, 'unique_pictures', '11) Display Unique Item Pictures',
+                (('show', 'Use unique pictures'), ('hide', 'Use base pictures')))
+    radio_group(0, 'header_checks', 'Save Header Checks on Open',
+                (('verify', 'Report checksum and file size issues'), ('ignore', 'Skip header warnings')))
+    tools = group(0, 'Item and Character Tools')
     mock_mode = mxl_mock_gui._state['var']
     if mock_mode is not None:
         ttk.Checkbutton(tools, text='Mock Mode', variable=mock_mode,
                         command=lambda: mxl_mock_gui.set_mode(mock_mode.get(), select=False)).pack(side='left')
     if 'quests_adv' in win.pages:
         ttk.Button(tools, text='Quest words…', command=lambda: set_tab(win, 'quests_adv')).pack(side='left')
-    center = tk.BooleanVar(page, value=bool(settings.get(CENTER_MOUSE)))
-    ttk.Checkbutton(tools, text='Center mouse', variable=center,
-                    command=lambda: settings.put(CENTER_MOUSE, center.get())).pack(side='left')
-    levels = ('90', '10', '99')
-    saved_level = str(settings.get(ITEM_LEVEL))
-    row = ttk.Frame(tools)
-    row.pack(anchor='w')
-    ttk.Label(row, text='Default item level').pack(side='left', padx=(0, 5))
-    level = ttk.Combobox(row, state='readonly', values=levels, width=14)
-    level.set(saved_level if saved_level in levels else levels[0])
-    level.pack(side='left')
-    level.bind('<<ComboboxSelected>>', lambda _event: settings.put(
-        ITEM_LEVEL, int(level.get())))
-    modes = {'Use app settings': '', 'Keep one backup': 'one', 'Keep all backups': 'all', 'Skip new backups': 'off'}
-    row = ttk.Frame(tools)
-    row.pack(anchor='w', pady=(2, 0))
-    ttk.Label(row, text='Character backups').pack(side='left', padx=(0, 5))
-    backups = ttk.Combobox(row, state='readonly', values=tuple(modes), width=20)
-    backups.set(next((label for label, mode in modes.items()
-                      if mode == settings.get('vanilla_he_backups')), next(iter(modes))))
-    backups.pack(side='left')
-    backups.bind('<<ComboboxSelected>>', lambda _event: settings.put('vanilla_he_backups', modes[backups.get()]))
 
 
 def introductions(win):
@@ -1461,11 +1506,17 @@ def introductions(win):
     def refresh():
         for tree, diff, title, returning in trees:
             tree.delete(*tree.get_children())
-            root = tree.insert('', 'end', text=title, open=True)
             offset = NPC_OFF + 4 + 8 * diff + 24 * returning
             bits = int.from_bytes(win.ch.head[offset:offset + 8], 'little')
+
+            def checkbox(members):
+                states = [bool(bits & (1 << bit)) != returning for bit, _name in members]
+                return '☑' if states and all(states) else '◩' if any(states) else '☐'
+
+            root = tree.insert('', 'end', text=f'{checkbox([npc for group in groups for npc in group])} '
+                                               f'{difficulty_name(diff)} Mode {title}', open=True)
             for group, (act, _intro, _quests, _travel) in zip(groups, win.ch.quest_acts()):
-                node = tree.insert(root, 'end', text=act)
+                node = tree.insert(root, 'end', text=f'{checkbox(group)} {act}')
                 for bit, name in group:
                     checked = bool(bits & (1 << bit)) != returning
                     tree.insert(node, 'end', text=f'{"☑" if checked else "☐"} {name}')
@@ -1682,11 +1733,11 @@ def quest_details(win, parent):
     states = []
     for state, text in enumerate(QUEST_STAGES):
         radio = ttk.Radiobutton(status, text=text, variable=value, value=state, command=apply)
-        radio.pack(anchor='w', pady=2)
+        radio.pack(anchor='w')
         states.append(radio)
 
     batch = ttk.LabelFrame(left, text='Batch', padding=3)
-    batch.pack(fill='x', pady=(5, 0))
+    batch.pack(side='bottom', fill='x', pady=(5, 0), before=details)
 
     def group_root(tree, iid, scope):
         root = tree.tv.get_children()[0]
@@ -1712,9 +1763,9 @@ def quest_details(win, parent):
         column.pack(side='left', fill='both', expand=True, padx=1)
         mode = tk.IntVar(value=0)
         for stage, label in enumerate(QUEST_STAGES):
-            ttk.Radiobutton(column, text=label, variable=mode, value=stage).pack(anchor='w', pady=3)
+            ttk.Radiobutton(column, text=label, variable=mode, value=stage).pack(anchor='w', pady=1)
         button = ttk.Button(column, text='Batch', command=lambda scope=scope, mode=mode: change_group(scope, mode.get()))
-        button.pack(fill='x', pady=(10, 2))
+        button.pack(fill='x', pady=(4, 2))
         buttons[scope] = button
 
     def show_flags(difficulty, word, options):

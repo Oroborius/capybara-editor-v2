@@ -152,16 +152,16 @@ class CharacterWindow(StatEditMixin):
         window.protocol('WM_DELETE_WINDOW', self.close)
         import mxl_scroll                            # the pages scroll when the window is smaller than they are
         self.scroll = mxl_scroll.Scrolled(self.top, bg=HE_BG)
-        self.scroll.pack(fill='both', expand=True, padx=3 if self.vanilla_he else 2,
+        self.scroll.pack(fill='both', expand=True, padx=V.pixels(self.top, 4)[0] if self.vanilla_he else 2,
                          pady=(0, 0) if self.vanilla_he else (2, 0))
         body = self.scroll.inner
         self.body = body
         self.scroll.bind('<Configure>', self._fit_later, add='+')
         self.st_tab = tk.Frame(body, bg=HE_BG)
-        self.eq_tab = ttk.Frame(body, padding=2 if self.vanilla_he else 3)
+        self.eq_tab = ttk.Frame(body, padding=V.pixels(body, 4, 4, 2, 4) if self.vanilla_he else 3)
         if self.vanilla_he:
             self.inv_canvas_column = ttk.Frame(self.eq_tab)
-            self.inv_canvas_column.pack(side='left', anchor='n')
+            self.inv_canvas_column.pack(side='left', anchor='nw')
         self.sk_tab = tk.Frame(body, bg=HE_BG)
         self.wp_tab = tk.Frame(body, bg=HE_BG)
         self.q_tab = tk.Frame(body, bg=HE_BG)
@@ -423,10 +423,10 @@ class CharacterWindow(StatEditMixin):
             V.role(self.preview, 'description')
             self.preview.configure(width=32, height=19, bd=2, relief='sunken', pady=2, padx=4)
             self.preview.configure(height=1)
-            controls = ttk.Frame(self.inv_right)
-            controls.pack(fill='x', pady=(4, 0))
-            clip = ttk.LabelFrame(controls, text='Item Picked Up', padding=3)
-            clip.pack(side='left', fill='y', padx=(0, 3))
+            footer = ttk.Frame(self.inv_right)
+            footer.pack(fill='x', pady=(3, 0))
+            clip = ttk.LabelFrame(footer, text='Item Picked Up', padding=3)
+            clip.pack(side='left', anchor='n', padx=(0, 3))
             pickup_width, pickup_height = V.pixels(f, 77, 111)
             paper = tk.Canvas(clip, width=pickup_width, height=pickup_height, bg='#211e1a', highlightthickness=2,
                               highlightbackground='#83704c')
@@ -436,26 +436,32 @@ class CharacterWindow(StatEditMixin):
             from mxl_vanilla_he_items import delete_inventory, golem_menu, paste_all
 
             ttk.Button(clip, text='Paste All', command=lambda: paste_all(self)).pack(fill='x', pady=3)
+            editing = ttk.Frame(footer)
+            editing.pack(side='left', fill='x', expand=True)
+            controls = ttk.Frame(editing)
+            controls.pack(fill='x')
             actions = ttk.LabelFrame(controls, text='Item Deletion', padding=2)
             actions.pack(side='left', anchor='n', fill='x', expand=True)
             for target in ('ALL', 'Person', 'Stash', 'Cube', 'Merc', 'Belt'):
                 text = 'ALL Items' if target == 'ALL' else f'All in "{target}"'
-                ttk.Button(actions, text=text, command=lambda key=target: delete_inventory(self, key)).pack(fill='x')
+                ttk.Button(actions, text=text, style='Inventory.TButton', width=11,
+                           command=lambda key=target: delete_inventory(self, key)).pack(fill='x')
             decode = ttk.LabelFrame(controls, text='Item Decode', padding=2)
             decode.pack(side='left', anchor='n', padx=(3, 0))
             self.he_decode_version = V.decode_version(self.ch.version)
             self.he_decode_label = tk.StringVar(decode, value=V.ITEM_DECODE_VERSIONS[self.he_decode_version])
             ttk.Label(decode, textvariable=self.he_decode_label).pack(padx=6)
-            ttk.Button(decode, text='Change', command=lambda: V.change_item_decode(self)).pack(fill='x')
+            ttk.Button(decode, text='Change', width=9, command=lambda: V.change_item_decode(self)).pack(fill='x')
             self.he_expansion_label = tk.StringVar(decode)
             ttk.Entry(decode, textvariable=self.he_expansion_label, width=5, state='readonly',
                       justify='center').pack(pady=2)
-            self.he_golem = ttk.Button(decode, text='Iron Golem', command=lambda: golem_menu(self, self.he_golem))
+            self.he_golem = ttk.Button(decode, text='Iron Golem', width=9,
+                                       command=lambda: golem_menu(self, self.he_golem))
             self.he_golem.pack(fill='x', pady=(3, 0))
             self.he_golem.bind('<ButtonRelease-3>', lambda event: golem_menu(self, self.he_golem, event))
-            bonus, self.he_show_damage = V.bonus_weapon_controls(self.inv_right, self)
-            bonus.pack(fill='x')
-            self.he_inventory_controls = [(controls, controls.pack_info()), (bonus, bonus.pack_info())]
+            bonus, self.he_show_damage = V.bonus_weapon_controls(editing, self)
+            bonus.pack(anchor='e')
+            self.he_inventory_controls = [(footer, footer.pack_info())]
             if not self.he_inventory_art:
                 row.pack(fill='x', pady=2)
                 self.he_inventory_controls.append((row, row.pack_info()))
@@ -1366,12 +1372,14 @@ class CharacterWindow(StatEditMixin):
             quest_tree = CheckTree(quest_frame, self.on_tree_change)
             quest_root = quest_tree.tv.insert('', 'end', text='Quests', open=True)
             quest_tree.tv.bind('<<TreeviewSelect>>', lambda _event: quest_detail(quest_tree))
+            self.he_refresh_quest = lambda: quest_detail(quest_tree)
         for k, _dn in enumerate(DIFFICULTIES):
             dn = difficulty_name(k)
             self.wp_tab.grid_columnconfigure(k, weight=1, uniform='he')
             self.q_tab.grid_columnconfigure(k, weight=1, uniform='he')
             fr = tk.LabelFrame(self.wp_tab, text=dn, font=HE_FONT_I, bg=SK_STONE, bd=2, relief='groove', padx=2, pady=2)
-            fr.grid(row=0, column=k, sticky='nsew', padx=2, pady=2)
+            fr.grid(row=0, column=k, sticky='nsew', padx=4 if self.vanilla_he else 2,
+                    pady=(5, 7) if self.vanilla_he else 2)
             t = CheckTree(fr, self.on_tree_change)
             root = t.add('', T('he.mode_waypoints', '{mode} Mode Waypoints', mode=dn))
             ids = set(self.ch.waypoint_ids(k))

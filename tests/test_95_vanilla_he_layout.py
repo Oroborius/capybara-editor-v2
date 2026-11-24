@@ -112,8 +112,11 @@ def vanilla_workspace_pages_and_tools():
         types = {w.winfo_class() for w in descendants(page) if w.winfo_ismapped()}
         T.check(set(expectations[key]) <= types, f'{key} controls are visible: {types}')
         T.check(page.winfo_rooty() < tab.winfo_rooty(), f'{key} is above the tab strip')
-        if key in ('stats', 'skills') and (T.G.root.winfo_width(), T.G.root.winfo_height()) == (656, 558):
-            T.check(not any(cw.scroll._shown), f'{key} fits the reference viewport without scrollbars')
+        if key in ('stats', 'inventory', 'skills') and (T.G.root.winfo_width(), T.G.root.winfo_height()) == (656, 558):
+            viewport, inner = cw.scroll, cw.scroll.inner
+            T.check(not any(viewport._shown),
+                    f'{key} requests {inner.winfo_reqwidth()}x{inner.winfo_reqheight()} in the '
+                    f'{viewport.winfo_width()}x{viewport.winfo_height()} reference viewport')
         shot(key)
         if key == 'stats':
             T.check(cw.he_portrait.winfo_rootx() < cw.sv['name'].winfo_rootx(), 'portrait left of the form')
@@ -134,6 +137,10 @@ def vanilla_workspace_pages_and_tools():
                 container = {'stash': 'stash', 'cube': 'cube', 'merc': 'belt'}.get(view)
                 canvas = cw.extra['containers'].canvases[container] if container else cw.inv
                 T.check(canvas.winfo_ismapped(), f'{view} grid is visible')
+                if view in ('stash', 'cube') and container in cw.extra['containers'].arts:
+                    artwork = cw.extra['containers'].arts[container]['bg']
+                    T.eq(artwork.winfo_rootx(), cw.inv_canvas_column.winfo_rootx(),
+                         f'{view} artwork sits at the left edge of the inventory')
                 if container:
                     shot(f"inventory-{view}")
             box = next(b for b in cw.visible_boxes() if cw.slot_of(b) in cw.ch.equipped(False))

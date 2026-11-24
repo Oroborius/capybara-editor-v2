@@ -143,10 +143,11 @@ class ContainersPage:
         self.hits = {}
         self.frames = {}
         self.arts = {}
+        self.side_grids = None
         self._art_cache = {}
         self.drag = None
         self._sig = None
-        body = ttk.Frame(frame, padding=4)
+        body = ttk.Frame(frame, padding=0 if win.vanilla_he else 4)
         body.pack(fill='both', expand=True)
         self.body = body
         self.note = ttk.Label(body, text=T('van.note2', 'The character file\'s own stash, cube and belt. Drag items '
@@ -164,14 +165,27 @@ class ContainersPage:
 
     def show_container(self, key):
         self.he_container = key
-        if key == 'transfer':
+        transfer = key == 'transfer'
+        if self.side_grids is not None:
+            self.side_grids.pack_forget()
+        for frame, _out in self.frames.values():
+            frame.pack_forget()
+        if transfer:
             self.note.pack(anchor='w', before=self.row)
         else:
             self.note.pack_forget()
         for name, (frame, _out) in self.frames.items():
-            frame.pack_forget()
-            if key == 'transfer' or name == ('belt' if key == 'merc' else key):
-                frame.pack(side='left', anchor='nw', padx=(0, 4))
+            if transfer:
+                frame.title_label.pack(anchor='w', before=frame.panel)
+                if frame.master is self.side_grids:
+                    frame.pack(side='top', anchor='nw', pady=(0, 6))
+                else:
+                    frame.pack(side='left', anchor='nw', padx=(0, 4))
+            elif name == ('belt' if key == 'merc' else key):
+                frame.title_label.pack_forget()
+                frame.pack(side='left', anchor='nw')
+        if self.side_grids is not None and (transfer or key == 'merc'):
+            self.side_grids.pack(side='left', anchor='nw')
 
     def as_win(self):
         return _Win(self)
@@ -254,11 +268,12 @@ class ContainersPage:
                 w.destroy()
         self.canvases, self.frames, self.arts = {}, {}, {}
         arts = {key: self._art_for(key, cols, rows) for key, _t, cols, rows, _e in boxes}
-        self.cell = 29 if getattr(self.win, 'vanilla_he', False) else (self._art_cell() if any(arts.values()) else 30)
+        self.cell = self.win.cell if self.win.vanilla_he else (self._art_cell() if any(arts.values()) else 30)
         c = self.cell
         col = None
         if any(arts.values()):
             col = ttk.Frame(self.row)
+        self.side_grids = col
         for key, title, cols, rows, _e in boxes:
             if col is not None and key in ('belt', 'inv') and not col.winfo_manager():
                 col.pack(side='left', anchor='nw')
@@ -285,8 +300,9 @@ class ContainersPage:
             else:
                 cv = tk.Canvas(fr, width=cols * c + 1, height=rows * c + 1, bg='#101010', highlightthickness=0)
                 cv.pack(anchor='nw')
+            fr.title_label = lab
+            fr.panel = self.arts[key]['bg'] if art is not None else cv
             out = ttk.Label(fr, text='', wraplength=max(120, cols * c))
-            out.pack(anchor='w')
             cv.bind('<Motion>', lambda ev, k=key: self._hover(k, ev))
             cv.bind('<Button-1>', lambda ev, k=key: self.on_press(k, ev))
             cv.bind('<B1-Motion>', self.on_drag)
@@ -307,7 +323,8 @@ class ContainersPage:
             for row in (self.row, self.row2):
                 for w in row.winfo_children():
                     w.destroy()
-            self.canvases, self._sig = {}, None
+            self.canvases, self.frames, self.arts = {}, {}, {}
+            self.side_grids = self._sig = None
             ttk.Label(self.row, text=f'{type(err).__name__}: {err}').pack(anchor='w')
             return
         sig = tuple((k, cols, rows) for k, _t, cols, rows, _e in boxes)
@@ -348,8 +365,13 @@ class ContainersPage:
                 else:
                     cv.create_text(x0 + w * c / 2, y0 + h * c / 2, text=it['code'].strip(), fill='#c0c0c0')
                 hits.append((x, y, w, h, e))
-            self.frames[key][1].configure(text=T('van.outside', 'outside the grid: {items}', items=', '.join(
-                e.it.get('name') or e.it['code'] for e in outside)) if outside else '')
+            out = self.frames[key][1]
+            if outside:
+                out.configure(text=T('van.outside', 'outside the grid: {items}', items=', '.join(
+                    e.it.get('name') or e.it['code'] for e in outside)))
+                out.pack(anchor='w')
+            else:
+                out.pack_forget()
             self.hits[key] = hits
 
     def entry_at(self, key, x, y):
