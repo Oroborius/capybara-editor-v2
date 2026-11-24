@@ -190,13 +190,30 @@ def replace_item(win, entry, before, blob, caption, owner=None, *, allow_type_ch
         current = current_extras_entry(win, entry, owner)
     if current is None or bytes(current.blob) != before:
         raise CharError('The selected item has changed.')
-    from mxl_socket_insert import children
+    from mxl_creator import decode_blob
+    from mxl_early_save import ClassicData, ClassicRaw, decode_classic, is_original
+    from mxl_v109 import Data109, Raw109
 
-    _record, used = decode_item(blob, win.data)
-    _record, socketed = children(blob, win.data)
-    if used + sum(map(len, socketed)) != len(blob):
-        raise CharError('The bytes do not form one complete item and its socketed items.')
-    item = blob_item(blob, win.data)
+    ch = win.ch
+    if reason := getattr(current.blob, 'read_only_reason', None):
+        raise CharError(reason)
+    if isinstance(current.blob, ClassicRaw):
+        _, used = decode_classic(blob)
+        if used != len(blob):
+            raise CharError('The bytes do not form one native Classic item.')
+        if is_original(blob) != is_original(current.blob):
+            raise CharError('The item uses a different Classic layout.')
+        blob = ClassicRaw(blob)
+        item = blob_item(blob, ClassicData(ch.data))
+        socketed = ()
+    elif isinstance(current.blob, Raw109):
+        data = Data109(ch.data, ch.version)
+        _, socketed = decode_blob(blob, data, exact=True)
+        blob = Raw109(blob)
+        item = blob_item(blob, data)
+    else:
+        _, socketed = decode_blob(blob, win.data, exact=True)
+        item = blob_item(blob, win.data)
     if item['code'] != current.it['code']:
         if not allow_type_change:
             raise CharError('The replacement changes the item type.')
@@ -218,10 +235,9 @@ def replace_item(win, entry, before, blob, caption, owner=None, *, allow_type_ch
         if commit:
             owner.parent = actual
         return actual
-    ch = win.ch
     snapshot = bytes(ch.raw)
     corpse, tail = ch.corpse, ch.tail
-    old_item = current.it
+    old_item, old_blob = current.it, current.blob
     if win.ch.old:
         from mxl_char import Entry
 
@@ -237,7 +253,7 @@ def replace_item(win, entry, before, blob, caption, owner=None, *, allow_type_ch
         if commit and not win.save(caption):
             raise CharError('The item could not be saved.')
     except ITEM_ERRORS:
-        current.blob, current.it = before, old_item
+        current.blob, current.it = old_blob, old_item
         ch.corpse, ch.tail = corpse, tail
         raise
     if commit:
@@ -283,9 +299,9 @@ def character_report(win):
     from pathlib import Path
     from mxl_char import LOC_BELT, LOC_EQUIPPED, LOC_STORED, PANEL_CUBE, PANEL_INVENTORY, class_names, slot_name
     from mxl_creator import FLAG_ETHEREAL, PANEL_STASH
-    from mxl_creator import decode_blob
+    from mxl_creator import Creator, decode_blob
+    from mxl_creator_gui import clean
     from mxl_rc_menu import clean_name
-    from mxl_statnames import stat_text
     from mxl_vanilla_he import ITEM_DECODE_VERSIONS, character_title, decode_version
 
     ch, data = win.ch, win.data
@@ -314,8 +330,7 @@ def character_report(win):
     magic_lists = {'stats': 'Normal Magic', **{f'set_stats_{i}': f'Set{i + 1} Magic' for i in range(5)},
                    'stats_runeword': 'Runeword Magic'}
 
-    def stat_line(stat):
-        return stat_text(data, stat['id'], stat.get('param'), stat['value'])
+    creator = Creator(data)
 
     def area(entry, owner):
         it = entry.it
@@ -333,14 +348,17 @@ def character_report(win):
         details = f'{len(entry.blob)} {area(entry, owner)}: {name}'
         lines.extend(('', details))
         try:
-            record, children = decode_blob(entry.blob, data)
-        except ITEM_ERRORS:
-            lines.append('  Item properties could not be decoded.')
-            continue
+            record, children = decode_blob(entry.blob, data, exact=True)
+        except ITEM_ERRORS as error:
+            lines.append(f'  Item editor: {error}')
+            record = entry.it
+            children = list(entry.it.get('socketed', ()))
         combined = []
         for index, part in enumerate((record, *children)):
             base = data.base(part['code'])
-            lines.append(f'  Socket {index}: {base.name}' if index else name)
+            nested = entry.it.get('socketed', ())
+            name_in_socket = clean(nested[index - 1].get('name') or base.name) if 0 < index <= len(nested) else base.name
+            lines.append(f'  Socket {index}: {name_in_socket}' if index else name)
             if 'ilvl' in part:
                 lines.append(f'  Item level = {part["ilvl"]}')
             damage = getattr(base, 'damage', None) or {}
@@ -352,18 +370,20 @@ def character_report(win):
             for key, label in (('defense', 'Defense'), ('quantity', 'Quantity')):
                 if key in part:
                     lines.append(f'  {label} = {part[key]}')
-            if part['flags'] & FLAG_ETHEREAL:
+            if part.get('flags', 0) & FLAG_ETHEREAL or part.get('ethereal'):
                 lines.append('  Ethereal')
             if 'durability' in part:
                 durability = part['durability'] - data.isc[S.DURABILITY]['add']
                 maximum = part['max_durability'] - data.isc[S.MAX_DURABILITY]['add']
                 lines.append(f'  Durability = {durability}/{maximum}')
             if part.get('sockets'):
-                lines.append(f'  Sockets = {len(children) if index == 0 else 0}/{socket_total(part)}')
+                total = socket_total(part) if 'flags' in part else part['sockets']
+                lines.append(f'  Sockets = {len(children) if index == 0 else 0}/{total}')
             for key, label in magic_lists.items():
                 if key in part:
                     lines.append(f'{indent}{label}')
-                    lines.extend(f'{indent * 2}{stat_line(stat)}' for stat in part[key])
+                    for stat in part[key]:
+                        lines.extend(f'{indent * 2}{line}' for line in report_summary(data, [stat]))
                     combined.extend(part[key])
         if owner is False:
             slot = record.get('equipped') if record.get('location') == LOC_EQUIPPED else None
@@ -371,7 +391,7 @@ def character_report(win):
                 sections[weapon_names[slot]] = combined
             elif slot is not None or (record.get('location') == LOC_STORED
                                      and record.get('panel') == PANEL_INVENTORY
-                                     and record['code'] in ('cm1 ', 'cm2 ', 'cm3 ')):
+                                     and 'char' in creator.type_codes(record['code'])):
                 sections[non_weapons].extend(combined)
 
     for title, rows in sections.items():
@@ -404,7 +424,7 @@ def validate_replacement_size(win, current, item, owner):
 def mutate(win, entry, caption, update):
     try:
         before = bytes(entry.blob)
-        record, size = decode_item(before, win.data)
+        record, size = decode_item(entry.blob, win.data)
         update(record)
         replace_item(win, entry, before, encode_item(record, win.data) + before[size:], caption)
     except ITEM_ERRORS as error:
@@ -412,12 +432,13 @@ def mutate(win, entry, caption, update):
 
 
 def fill_count(win, entry, clip):
-    from mxl_socket_insert import blob_socketable, free_sockets
+    from mxl_socket_insert import free_sockets, is_socketable
 
-    if not clip or not blob_socketable(win.app, clip[0]) or win.ch.old:
+    if not clip or win.ch.old:
         return 0
     try:
-        return free_sockets(entry.blob, win.data)
+        record, _ = decode_item(clip[0], win.data)
+        return free_sockets(entry.blob, win.data) if is_socketable(win.app, record['code']) else 0
     except ITEM_ERRORS:
         return 0
 

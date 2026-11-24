@@ -83,6 +83,7 @@ class CharacterWindow(StatEditMixin):
         except (FormatError, CharError, OSError, KeyError) as e:
             messagebox.showerror(T('ch.title', 'Character'), f'{path}\n\n{e}')
             return
+        self.data = self.ch.data
         self.merc = tk.BooleanVar(value=False)
         self.wset = tk.IntVar(value=1)
         self.selected = None          # Entry
@@ -768,7 +769,8 @@ class CharacterWindow(StatEditMixin):
         written from the Stash tab): the edits pending on the pages - stats, skills, waypoints, quests, the
         plug-in pages - stay pending on top of the file as it is now. keep=False is the RELOAD button: the file
         as it is, nothing pending."""
-        self.ch = Character(self.ch.path, self.data)
+        self.ch = Character(self.ch.path, self.app.data)
+        self.data = self.ch.data
         if self.vanilla_he and not keep:
             self.he_decode_version = V.decode_version(self.ch.version)
             self.he_decode_label.set(V.ITEM_DECODE_VERSIONS[self.he_decode_version])
@@ -888,8 +890,8 @@ class CharacterWindow(StatEditMixin):
         try:
             blob = self.ch.stash_blob(e)
             before = read_file(app.path)
-            items = parse_stash(app.path, self.data)
-            new = mxl_save.blob_item(blob, self.data)
+            items = parse_stash(app.path, app.data)
+            new = MC.blob_item(blob, app.data)
             pages = [app.page()] + [i for i in range(STASH_PAGES) if i != app.page()]
             spot = free_spot(items, new, self.data, pages)
             if spot is None:
@@ -920,14 +922,14 @@ class CharacterWindow(StatEditMixin):
         merc = self.is_merc()
         try:
             buf = read_file(app.path)
-            blob = item_blob(buf, it)
+            blob = self.ch.from_stash_blob(item_blob(buf, it), app.data)
             cur_slot = self.sel_slot
             if cur_slot is not None and self.ch.equipped(merc).get(cur_slot) is None:
                 where = ('slot', cur_slot)
             else:
                 if merc:
                     raise CharError(T('ch.err.merc_slot', 'select an empty mercenary slot first'))
-                spot = self.ch.free_inventory_spot(mxl_save.blob_item(blob, self.data))
+                spot = self.ch.free_inventory_spot(MC.blob_item(blob, self.data))
                 if spot is None:
                     raise CharError(T('ch.err.inv_full', 'no free place in the inventory'))
                 where = ('inv',) + spot
@@ -996,7 +998,7 @@ class CharacterWindow(StatEditMixin):
                     self.ch.place(blob, where, merc)
                 except CharError:
                     if where[0] in ('inv', 'store'):
-                        spot = self.ch.free_inventory_spot(mxl_save.blob_item(blob, self.data))
+                        spot = self.ch.free_inventory_spot(MC.blob_item(blob, self.data))
                         if spot is None:
                             self.reload()
                             raise
@@ -1007,7 +1009,7 @@ class CharacterWindow(StatEditMixin):
             if not self.save(T('ch.replaced', '{item} replaced', item=clean(e.it['name']))):
                 raise CharError(T('ch.err.not_saved', 'character not saved'))
             return T('ch.item_replaced', '{name}: item replaced', name=self.ch.name)
-        CreatorWindow(self.app, edit_item=e.it, target=write, target_label=f'{self.ch.name}')
+        CreatorWindow(self.app, edit_item=e.it, target=write, target_label=f'{self.ch.name}', data=self.data)
 
     def create_here(self):
         merc = self.is_merc()
@@ -1020,7 +1022,7 @@ class CharacterWindow(StatEditMixin):
             else:
                 if merc:
                     raise CharError(T('ch.err.merc_slot', 'select an empty mercenary slot first'))
-                spot = self.ch.free_inventory_spot(mxl_save.blob_item(blob, self.data))
+                spot = self.ch.free_inventory_spot(MC.blob_item(blob, self.data))
                 if spot is None:
                     raise CharError(T('ch.err.inv_full', 'no free place in the inventory'))
                 where = ('inv',) + spot
@@ -1035,7 +1037,7 @@ class CharacterWindow(StatEditMixin):
                      where=slot_name(where[1]) if where[0] == 'slot' else T('ch.the_inventory', 'the inventory'))
         label = (f"{self.ch.name}{T('ch.merc_suffix', ' (mercenary)') if merc else ''} - "
                  + (slot_name(slot, T('ch.inventory_l', 'inventory')) if slot else T('ch.inventory_l', 'inventory')))
-        CreatorWindow(self.app, target=write, target_label=label)
+        CreatorWindow(self.app, target=write, target_label=label, data=self.data)
 
     # ---- mouse extras: double-click opens the item editor / creates in an empty spot
     def on_double(self, ev):

@@ -217,20 +217,77 @@ def vanilla_special_records_keep_their_sections_and_undo():
 def vanilla_beta_character_round_trip():
     if not AVAILABLE:
         T.skip('vanilla game data or sample character is unavailable')
-    from mxl_char import Character
+    from mxl_char import Character, blob_item
+    from mxl_creator import (
+        Creator, FLAG_ALWAYS, FLAG_IDENTIFIED, FLAG_SIMPLE, FLAG_SOCKETED, LOC_SOCKETED, decode_blob, decode_item,
+        encode_item,
+    )
+    from mxl_format import FormatError
     from mxl_newchar import build, write
     from mxl_save import load_character
+    from unittest.mock import patch
+    from mxl_vanilla_he_extras import ItemEdit, open_extras
+    from mxl_vanilla_he_items import SocketChild, character_report, extras_entries
 
     win = T.chartab()
-    raw, _ = build(win.data, 'ama_none', 0, 1, version=95)
-    path = write(raw, SAVES, 'ama_none')
-    ch = Character(path, win.data)
+    data = win.data
+    raw, _ = build(data, 'BetaExample', 0, 1, version=95)
+    path = write(raw, SAVES, 'BetaExample')
+    ch = Character(path, data)
     T.eq((ch.version, ch.cls, ch.level, len(ch.items)), (95, 0, 1, 0), 'beta Amazon template')
-    T.eq(ch.build(), raw, 'beta file reads back byte for byte')
-    T.eq(load_character(path, win.data)['name'], 'ama_none', 'collector opens beta save')
+    T.eq(ch.build(), raw, 'empty beta file reads back byte for byte')
+    creator = Creator(ch.data)
+    blob, _ = creator.build(creator.new_spec('normal', 'hax '))
+    record, _ = decode_item(blob, ch.data)
+    stamp = 0x123456789ABCDEF123456789
+    record.update(realm_bit=1, realm_stamp=stamp, durability=175)
+    record.update(flags=record['flags'] | FLAG_SOCKETED, sockets=1, socketed_count=1)
+    filler = encode_item(dict(code='r01 ', flags=FLAG_ALWAYS | FLAG_IDENTIFIED | FLAG_SIMPLE,
+                              location=LOC_SOCKETED), ch.data)
+    inventory_blob = encode_item(record, ch.data) + filler
+    entry = ch.place(inventory_blob, ('inv', 0, 0))
+    try:
+        blob_item(ch.stash_blob(entry), data)
+    except FormatError:
+        pass
+    else:
+        T.check(False, 'beta clipboard bytes must be rejected by the standard stash reader')
     ch.set_stat(14, 7)
     ch.save(backup=False)
-    T.eq(Character(path, win.data).stat(14), 7, 'beta stats survive an edit')
+    T.eq(load_character(path, data)['items'][0]['durability'], 175, 'collector opens a populated beta save')
+
+    old_path = win.ch.path
+    extras = None
+    try:
+        win.ch.path = path
+        win.reload(keep=False)
+        T.eq(win.ch.build(), Path(path).read_bytes(), 'populated beta file reads back byte for byte')
+        entry = win.ch.items[0]
+        win.ch.move(entry, ('inv', 2, 0))
+        T.check(win.save('Moved beta item'), 'inventory move saves in the beta layout')
+        editors = []
+
+        def capture_editor(*args):
+            editors.append(ItemEdit(*args))
+
+        with patch('mxl_vanilla_he_extras.ItemEdit', side_effect=capture_editor):
+            extras = open_extras(win, win.ch.items[0], 'Other:durability')
+        edit, = editors
+        edit.stage_field('durability', 180)
+        edit.save()
+        saved = Character(path, data)
+        parsed, children = decode_blob(saved.items[0].blob, saved.data, exact=True)
+        T.eq((saved.stat(14), parsed['x'], parsed['durability'], parsed['realm_stamp']),
+             (7, 2, 180, stamp), 'Extras preserves beta fields and item framing')
+        T.eq([child['code'] for child in children], ['r01 '], 'Extras preserves native socket fillers')
+        T.check(any(isinstance(owner, SocketChild) for _, owner in extras_entries(saved, include_socketed=True)),
+                'Extras lists the individual beta socket filler')
+        T.check('Durability = 180/' in character_report(win), 'report uses the beta item layout')
+    finally:
+        if extras:
+            extras.destroy()
+        win.ch.path = old_path
+        win.reload(keep=False)
 
 
 @T.test
@@ -303,7 +360,8 @@ def vanilla_extended_pickers_and_socket_child_replacement():
     from mxl_creator import Creator, decode_item, encode_item
     from mxl_vanilla_he import QUEST_NOTES, next_decode_version
     from mxl_vanilla_he_extras import (
-        BASIC_FLAGS, create_item_blob, header_catalog, move_attribute, pack_time_values, skill_tab_choices, time_values,
+        BASIC_FLAGS, attribute_groups, create_item_blob, header_catalog, move_attribute, pack_time_values,
+        skill_tab_choices, time_values,
     )
     from mxl_vanilla_he_items import SocketChild, character_report, extras_entries, replace_item, report_summary
 
@@ -314,6 +372,7 @@ def vanilla_extended_pickers_and_socket_child_replacement():
     T.eq(versions, [96, 71, 87, 92, 95, 96], 'reference decode cycle')
     T.eq(time_values(pack_time_values(3, -7, 8)), (3, -7, 8), 'time and signed min/max values')
     grouped = [{'id': sid} for sid in (54, 55, 56, 31)]
+    T.eq(list(attribute_groups(grouped)), [(0, 3), (3, 4)], 'picker uses one row for grouped cold damage')
     T.eq(move_attribute(grouped, 1, 1), 2, 'moving a component moves its group')
     T.eq([row['id'] for row in grouped], [31, 54, 55, 56], 'cold components stay together')
     T.eq(BASIC_FLAGS['identified'], (4, 1), 'identified bit')

@@ -1238,10 +1238,10 @@ def decoded_item(win, entry):
     from mxl_early_save import ClassicData
     from mxl_v109 import Data109
     from mxl_char import blob_item
-    from mxl_creator import BetaItemData, decode_blob, encode_item
+    from mxl_creator import BetaItemData, decode_blob
     from mxl_vanilla_he_items import ITEM_ERRORS
 
-    data = win.data
+    data = win.app.data if detected == 95 else win.data
     if selected == 71:
         data = ClassicData(data)
     elif selected in (87, 92):
@@ -1250,11 +1250,8 @@ def decoded_item(win, entry):
         raw = win.ch._old_blob(entry) if win.ch.old else entry.blob
         if selected == 95:
             beta = BetaItemData(data)
-            record, children = decode_blob(raw, beta)
-            records = (record, *children)
-            if sum(len(encode_item(part, beta, preserve_stat_order=True)) for part in records) != len(raw):
-                raise ValueError('Item length does not match the beta layout.')
-            raw = b''.join(encode_item(part, data, preserve_stat_order=True) for part in records)
+            decode_blob(raw, beta, exact=True)
+            data = beta
         return blob_item(raw, data)
     except ITEM_ERRORS as error:
         win.set_status(f'Item Decode {ITEM_DECODE_VERSIONS[selected]}: {error}', True)

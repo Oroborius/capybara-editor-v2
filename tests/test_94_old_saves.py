@@ -376,6 +376,15 @@ def old_item_kept_as_read_moves():
         ch = E.MC.Character(path, E.data)
         k, e = next((i, e) for i, e in enumerate(ch.items) if isinstance(e.blob, V.Raw109))
         stats = [(s['id'], s['param'], s['value']) for s in e.it['stats']]
+        from mxl_vanilla_he_items import replace_item
+
+        win = T.NS(ch=ch, data=ch.data, current_entry=lambda entry, merc: entry)
+        old_identified = e.it['identified']
+        edited = bytearray(e.blob)
+        edited[2] ^= 1 << 4
+        replace_item(win, e, bytes(e.blob), bytes(edited), 'Binary item saved.', False, commit=False)
+        T.eq(e.it['identified'], not old_identified, 'native binary edit updates the recorded item')
+        T.check(isinstance(e.blob, V.Raw109), 'binary edit retains the native record')
         x = (e.it['x'] + 1) % 10
         ch.items[k] = E.MC.Entry(None, e.moved(E.data, location=0, equipped=0, x=x, y=0, panel=5))
         it = _reread(E, path, ch).items[k].it

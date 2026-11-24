@@ -14,7 +14,7 @@ import shutil
 import struct
 
 from mxl_format import read_item_list, FormatError
-from mxl_creator import decode_item, encode_item, CreateError
+from mxl_creator import BetaItemBlob, BetaItemData, decode_blob, decode_item, encode_item, CreateError
 from mxl_lang import T
 import mxl_early_save
 import mxl_v109
@@ -520,7 +520,7 @@ class Entry:
             return mxl_v109.moved_raw(self.blob, fields)
         rec, n = decode_item(self.blob, data)
         rec.update(fields)
-        return encode_item(rec, data) + self.blob[n:]
+        return encode_item(rec, data, preserve_stat_order=getattr(data, 'beta_items', False)) + self.blob[n:]
 
 
 class Character:
@@ -533,7 +533,6 @@ class Character:
 
     # ------------------------------------------------------------------ parse / build
     def parse(self, b):
-        d = self.data
         if struct.unpack_from('<I', b, 0)[0] != MAGIC:
             raise FormatError(T('ch.err.not_char', 'not a character file'))
         self.version = struct.unpack_from('<I', b, 4)[0]
@@ -543,6 +542,12 @@ class Character:
         if self.version != 96 and not self.old and (self.version != 95 or _median()):
             raise FormatError(T('ch.err.old_version', 'unsupported old save version ({v}); only 1.10+ saves (96)',
                                 v=self.version))
+        if isinstance(self.data, BetaItemData):
+            if self.version != 95:
+                self.data = self.data.source
+        elif self.version == 95:
+            self.data = BetaItemData(self.data)
+        d = self.data
         if self.early:
             self._early_header = bytes(b[:mxl_early_save.HEADER_END])
             self.head = mxl_early_save.read_header(b, QUEST_OFF)
@@ -760,6 +765,8 @@ class Character:
     def build(self):
         d = self.data
         out = bytearray(self.head)
+        if (self.version == 95) != (struct.unpack_from('<I', out, 4)[0] == 95):
+            raise CharError('The beta save version cannot be changed in the character header.')
         if getattr(self, 'old', False):
             if self.early and self.version != 71 and self._early_raw_items() != self._read_only_items:
                 raise CharError(mxl_early_save.RawEarly.read_only_reason)
@@ -1391,6 +1398,17 @@ class Character:
                     return x, y
         return None
 
+    def from_stash_blob(self, blob, stash_data):
+        """Use the destination character's codec for items from a shared stash."""
+        if self.version != 95:
+            return blob
+        try:
+            record, children = decode_blob(blob, stash_data, exact=True)
+            return b''.join(encode_item(part, self.data, preserve_stat_order=True)
+                            for part in (record, *children))
+        except (CreateError, KeyError) as error:
+            raise CharError(str(error)) from error
+
     def place(self, blob, where, merc=False, *, replace=None):
         """Adds an item (bytes incl. socketed items, from a stash or the creator) at where = ('slot', n) or
         ('inv', x, y). Returns the new Entry."""
@@ -1497,6 +1515,8 @@ class Character:
             raise CharError(T('cr.err.old_raw', 'This 1.09 item holds values the item editor cannot keep: it can be '
                               'moved or deleted, not edited.'))
         blob = entry.moved(self.data, location=LOC_STORED, equipped=0, x=0, y=0, panel=5)
+        if self.version == 95:
+            return BetaItemBlob(blob)
         if self.version == 71 and entry.classic is not None:
             return mxl_early_save.ClassicClipboard(blob, entry.classic)
         return blob
@@ -1615,9 +1635,15 @@ def _old_reader_bytes(raw, data):
     out = bytes(ch.head) + b'gf\xff\x01' + bytes(ch.skills) + b'JM\0\0' + b'JM\0\0'
     if ch.has_jf:
         out += b'jf' + (b'JM\0\0' if ch.merc_items is not None else b'')
-    out = bytearray(out if ch.early else out + bytes(ch.tail))
+    if ch.version == 95:
+        out += b'kf\0' if ch.tail.startswith(b'kf') else b''
+    elif not ch.early:
+        out += ch.tail
+    out = bytearray(out)
     struct.pack_into('<I', out, 4, 96)
     struct.pack_into('<I', out, 8, len(out))
+    if ch.version == 95:
+        struct.pack_into('<I', out, 12, checksum(out))
     return bytes(out), ch
 
 
@@ -1641,14 +1667,8 @@ def install_reader_fix():
             if refuse_legacy:
                 version = struct.unpack_from('<I', raw, 4)[0]
                 raise FormatError(f'Unsupported save version ({version}) in the Median XL profile')
-            old = legacy
+            old = legacy or beta
             fixed = _old_reader_bytes(raw, data) if old else _reader_bytes(raw, data)
-            if beta:
-                # The host only accepts format 96. The character framing is shared.
-                normalized = bytearray(fixed or raw)
-                struct.pack_into('<I', normalized, 4, 96)
-                struct.pack_into('<I', normalized, 12, checksum(normalized))
-                fixed = bytes(normalized)
         except Exception:
             if old or refuse_legacy:
                 raise
@@ -1713,6 +1733,14 @@ def rollback_note(path, err):
 
 def blob_item(blob, data):
     from mxl_save import blob_item as _bi
+    beta = getattr(data, 'beta_items', False)
+    if getattr(blob, 'beta_item', False) and not beta:
+        raise FormatError('This item uses the 1.10s beta layout. Open a beta character to use it.')
+    if beta:
+        try:
+            decode_blob(blob, data, exact=True)
+        except (CreateError, KeyError) as error:
+            raise FormatError(str(error)) from error
     return _bi(blob, data)
 
 

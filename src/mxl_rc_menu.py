@@ -191,6 +191,10 @@ def _duplicate(app, it):
 def _paste(app, it, clip):
     """Replaces the clicked item by the copied one (its socketed items follow)."""
     try:
+        if getattr(clip[0], 'beta_item', False):
+            from mxl_char import blob_item as character_blob_item
+
+            character_blob_item(clip[0], app.data)
         old = bytes(item_blob(read_file(app.path), it))
         bak = edit_stash(app.path, app.data, remove=[it['_offset']],
                          insert=[(it['page'], it['x'], it['y'], clip[0])],
@@ -209,6 +213,10 @@ def _paste_empty(app, ev, clip):
     page = app.page()
     cx, cy = ev.x // app.cell, ev.y // app.cell
     try:
+        if getattr(clip[0], 'beta_item', False):
+            from mxl_char import blob_item as character_blob_item
+
+            character_blob_item(clip[0], app.data)
         bak = edit_stash(app.path, app.data, insert=[(page, cx, cy, clip[0])],
                          backup=app.needs_backup(app.path))
     except (EditError, FormatError, OSError) as e:
@@ -532,7 +540,7 @@ def _vanilla_char_commands(win, menu, entry, clip, *, paste=None, delete=None, e
         win.set_status('Magic attribute buffer deleted.')
 
     def import_item():
-        from mxl_vanilla_he import draw_pickup
+        from mxl_vanilla_he_extras import put_picked_up
 
         path = filedialog.askopenfilename(title='Import Item', filetypes=[('Diablo II item', '*.d2i')],
                                           parent=win.top)
@@ -540,13 +548,10 @@ def _vanilla_char_commands(win, menu, entry, clip, *, paste=None, delete=None, e
             return
         try:
             blob = read_file(path)
-            item = blob_item(blob, win.data)
+            put_picked_up(win, blob)
         except (EditError, FormatError, OSError) as error:
             win.set_status(str(error), True)
             return
-        from mxl_creator_gui import clean
-        win.app._capy_clip = blob, clean(item.get('name') or item['code'])
-        draw_pickup(win)
         win.set_status('Item imported into Picked Up.')
 
     def export_character():
@@ -818,7 +823,15 @@ def _creator(app):
 def _creator_for(holder):
     """The Creator cache (held on the app, shared with the Item Editor); holder may be the app or the
     character window."""
-    return _creator(getattr(holder, 'app', holder))
+    app = getattr(holder, 'app', holder)
+    if getattr(holder.data, 'beta_items', False):
+        from mxl_creator import Creator
+
+        creator = getattr(holder, '_beta_creator', None)
+        if creator is None or creator.data is not holder.data:
+            creator = holder._beta_creator = Creator(holder.data)
+        return creator
+    return _creator(app)
 
 
 def _mutate_stash(app, it, fn, msg):

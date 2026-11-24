@@ -154,6 +154,8 @@ def _trailing(blob, it, br):
 
 
 def parse_item(blob, data):
+    if getattr(blob, 'beta_item', False) and not getattr(data, 'beta_items', False):
+        raise mxl_format.FormatError('This item uses the 1.10s beta layout. Open a beta character to use it.')
     legacy = getattr(data, 'parse_legacy_item', None)
     if legacy is not None:
         return legacy(blob)
@@ -298,7 +300,10 @@ def _parse_item(blob, data):
     else:
         if code in ('tbk ', 'ibk '):
             br.read(5)
-        br.read(1)
+        realm_bit = br.read(1)
+        stamp_bits = getattr(data, 'realm_stamp_bits', 0)
+        if realm_bit and stamp_bits:
+            br.read(stamp_bits)
     if kind == 'armor':
         it['_def_bit'] = br.pos
         c = data.isc[S.DEFENSE]

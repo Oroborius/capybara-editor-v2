@@ -967,16 +967,16 @@ class MainInventory:
                     try:
                         self.ch.place(blob, where, merc)
                     except CharError:
-                        new = mxl_save.blob_item(blob, self.data)
+                        new = MC.blob_item(blob, self.ch.data)
                         if where[0] == 'slot':
                             if new['code'] != e.it['code']:
                                 raise
                             # same base in the slot the game itself put it in (Sigma mercenaries wear amulets,
                             # rings... that the slot rules here do not know): it goes back there as it was
                             ent = MC.Entry(new, blob)
-                            ent.blob = ent.moved(self.data, location=MC.LOC_EQUIPPED, equipped=where[1], x=where[1],
+                            ent.blob = ent.moved(self.ch.data, location=MC.LOC_EQUIPPED, equipped=where[1], x=where[1],
                                                  y=0, panel=0)
-                            ent.it = mxl_save.blob_item(ent.blob, self.data)
+                            ent.it = MC.blob_item(ent.blob, self.ch.data)
                             self.ch.entries(merc).append(ent)
                         else:
                             spot = self.ch.free_inventory_spot(new)
@@ -991,7 +991,7 @@ class MainInventory:
             msg = T('ch.item_replaced', '{name}: item replaced', name=self.ch.name)
             self._done(msg, [bak])
             return msg
-        CreatorWindow(self.app, edit_item=e.it, target=write, target_label=f'{self.ch.name}')
+        CreatorWindow(self.app, edit_item=e.it, target=write, target_label=f'{self.ch.name}', data=self.ch.data)
 
     def to_stash(self, e, src_merc, page, x, y):
         """Character (inventory or slot) -> stash page shown in the main window, at (x, y)."""
@@ -1003,7 +1003,7 @@ class MainInventory:
             blob = self.ch.stash_blob(e)
             before = read_file(path)
             items = parse_stash(path, self.data)
-            new = mxl_save.blob_item(blob, self.data)
+            new = MC.blob_item(blob, self.data)
             new['page'] = page
             err = placement_error(items, new, page, x, y, self.data)
             if err:
@@ -1054,7 +1054,7 @@ class MainInventory:
             cur = next((i for i in items if i['_offset'] == it['_offset'] and i['code'] == it['code']), None)
             if cur is None:
                 raise EditError(T('inv.err.stash_changed', 'the stash changed on disk since it was read: try again'))
-            blob = item_blob(read_file(src), cur)
+            blob = self.ch.from_stash_blob(item_blob(read_file(src), cur), self.data)
             before_char = self.ch.raw
             self.ch.place(blob, where, merc)
             bak_c = self._save_char()
@@ -1092,7 +1092,7 @@ class PanelWin:
 
     def __init__(self, panel):
         self.panel = panel
-        self.app, self.data = panel.app, panel.data
+        self.app = panel.app
         self.doll, self.inv = panel.doll, panel.canvas
         self.top = panel.app.root
         self.sel_slot = None
@@ -1104,6 +1104,7 @@ class PanelWin:
 
     # ---- what the panel shows
     ch = property(lambda self: self._ch)
+    data = property(lambda self: self._ch.data if self._ch is not None else self.panel.data)
     cell = property(lambda self: self.panel.cell)
 
     def current(self):
@@ -1225,9 +1226,9 @@ class PanelWin:
         if self._stale():
             return
         try:
-            new = mxl_save.blob_item(self._ch.stash_blob(e), self.data)
+            new = MC.blob_item(self._ch.stash_blob(e), p.data)
             pages = [app.page()] + [i for i in range(mxl_save.STASH_PAGES) if i != app.page()]
-            spot = mxl_save.free_spot(parse_stash(app.path, self.data), new, self.data, pages)
+            spot = mxl_save.free_spot(parse_stash(app.path, p.data), new, p.data, pages)
         except ERRORS as err:
             self.set_status(str(err), True)
             return
@@ -1247,7 +1248,7 @@ class PanelWin:
             p._check_char()
             ch = p.ch                                     # the creator stays open: the character as it is now
             m = bool(merc and ch.merc_hired)
-            new = mxl_save.blob_item(blob, self.data)
+            new = MC.blob_item(blob, ch.data)
             if slot is not None and ch.equipped(m).get(slot) is None:
                 where = ('slot', slot)
             else:
@@ -1272,7 +1273,7 @@ class PanelWin:
             return msg
         label = (f"{self._ch.name}{T('ch.merc_suffix', ' (mercenary)') if merc and slot is not None else ''} - "
                  + (slot_name(slot, T('ch.inventory_l', 'inventory')) if slot else T('ch.inventory_l', 'inventory')))
-        CreatorWindow(self.app, target=write, target_label=label)
+        CreatorWindow(self.app, target=write, target_label=label, data=self.data)
 
 
 # ---------------------------------------------------------------------------------------- main window hooks

@@ -402,13 +402,15 @@ def _bonus_disk_save(k, cache):
 class CreatorWindow:
     """Toplevel of the creator. edit_item: item of the open stash to edit (None: create a new item)."""
 
-    def __init__(self, app, edit_item=None, target=None, target_label=None):
+    def __init__(self, app, edit_item=None, target=None, target_label=None, *, data=None):
         self.app = app
         self.target = target              # callable(blob) -> message: writes somewhere else than the stash
         self.target_label = target_label
-        self.data = app.data
+        self.data = app.data if data is None else data
         self.cr = getattr(app, '_creator', None)
-        if self.cr is None or self.cr.data is not app.data:
+        if self.data is not app.data:
+            self.cr = Creator(self.data)
+        elif self.cr is None or self.cr.data is not app.data:
             self.cr = app._creator = Creator(app.data)
         self.edit_item = edit_item
         self.spec = None

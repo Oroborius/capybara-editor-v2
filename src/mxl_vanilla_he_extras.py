@@ -151,10 +151,13 @@ def bind_overwrite(entry, variable, alphabet, changed=None):
 
 
 def put_picked_up(win, blob):
+    from mxl_creator import BetaItemBlob
     from mxl_creator_gui import clean
     from mxl_vanilla_he import draw_pickup
 
     item = blob_item(blob, win.data)
+    if getattr(win.data, 'beta_items', False):
+        blob = BetaItemBlob(blob)
     win.app._capy_clip = blob, clean(item.get('name') or item['code'])
     draw_pickup(win)
     win.set_status('Item copied into Picked Up.')
@@ -416,7 +419,7 @@ def stage_binary(win, entry, owner, bits):
     if bits == reverse_bits(entry.blob).replace(' ', ''):
         win.he_binary_edits.pop(key, None)
     else:
-        snapshot = Entry(entry.it, bytes(entry.blob), entry.classic)
+        snapshot = Entry(entry.it, entry.blob, entry.classic)
         if isinstance(owner, SocketChild):
             parent = owner.parent
             owner = SocketChild(Entry(parent.it, bytes(parent.blob), parent.classic), owner.owner, owner.index)
@@ -621,7 +624,8 @@ def skill_tab_choices(data):
 
 
 def is_timed_stat(data, sid):
-    return 268 <= sid <= 304 and data.isc[sid]['bits'] == 22 and not data.isc[sid]['param']
+    fields = data.isc.get(sid, {})
+    return 268 <= sid <= 304 and fields.get('bits') == 22 and not fields.get('param')
 
 
 def time_values(number):
@@ -634,10 +638,10 @@ def pack_time_values(time, minimum, maximum):
     return time | (minimum + 256) << 2 | (maximum + 256) << 12
 
 
-def move_attribute(rows, index, delta):
+def attribute_groups(rows):
+    """Yield the bounds of each attribute, including its encoded component rows."""
     from mxl_format import STAT_GROUPS
 
-    chunks = []
     cursor = 0
     while cursor < len(rows):
         start = cursor
@@ -645,7 +649,11 @@ def move_attribute(rows, index, delta):
         for follower in STAT_GROUPS.get(rows[start]['id'], ()):
             if cursor < len(rows) and rows[cursor]['id'] == follower:
                 cursor += 1
-        chunks.append((start, cursor))
+        yield start, cursor
+
+
+def move_attribute(rows, index, delta):
+    chunks = list(attribute_groups(rows))
     selected = next((i for i, (start, end) in enumerate(chunks) if start <= index < end), None)
     if selected is None or not 0 <= selected + delta < len(chunks):
         return None
@@ -665,7 +673,7 @@ class ItemEdit:
         'Basic2': ('id', 'ilvl', 'image', 'auto_affix'),
         'Quality': ('quality', 'subquality', 'prefix', 'suffix', 'set_unique_id', 'rare_names', 'rare_affixes'),
         'Other': ('runeword_id', 'personalized_name', 'defense', 'max_durability', 'durability',
-                  'quantity', 'sockets', 'socketed_count', 'realm_bit', 'tome_bits'),
+                  'quantity', 'sockets', 'socketed_count', 'realm_bit', 'realm_stamp', 'tome_bits'),
     }
     MAGIC = {'Magic': 'stats', 'Runeword Magic': 'stats_runeword',
              **{f'Set{i + 1} Magic': f'set_stats_{i}' for i in range(5)}}
@@ -744,11 +752,13 @@ class ItemEdit:
         self.dirty = False
         self.decode_error = ''
         try:
-            self.record, self.children = decode_blob(entry.blob, self.win.data)
+            self.record, self.children = decode_blob(entry.blob, self.win.data, exact=True)
         except ITEM_ERRORS as error:
             self.record, self.children = {}, []
             self.decode_error = str(error)
-        self.render_icon(entry.it)
+        from mxl_vanilla_he import decoded_item
+
+        self.render_icon(decoded_item(self.win, entry) or entry.it)
         group, _, quality = self.initial.partition(':')
         self.initial = 'Basic1'
         self.rebuild(group)
@@ -771,9 +781,9 @@ class ItemEdit:
                     self.tree.insert(group, 'end', iid=f'{group}:{field}', text=field.replace('_', ' ').title())
             if key and self.magic_available(group):
                 stats = self.record.get(key, ())
-                for index in range(len(stats) + 1):
-                    label = f'Magic Attribute {index + 1}'
-                    self.tree.insert(group, 'end', iid=f'{group}:{index}', text=label)
+                for number, (start, _) in enumerate(attribute_groups(stats), 1):
+                    self.tree.insert(group, 'end', iid=f'{group}:{start}', text=f'Magic Attribute {number}')
+                self.tree.insert(group, 'end', iid=f'{group}:{len(stats)}', text='Add Magic Attribute')
         parent = selected.split(':')[0]
         self.tree.item(parent, open=True)
         if not self.tree.exists(selected):
@@ -1119,13 +1129,16 @@ class ItemEdit:
         from mxl_attr_slots import value_range
         from mxl_rc_menu import _creator_for
         from mxl_format import STAT_GROUPS
+        from mxl_creator import FOLLOWERS
         from mxl_statnames import encode_skill_param, param_bits, param_choices, param_kind
 
         data = self.win.data
         key = self.MAGIC[group]
         rows = self.record.setdefault(key, [])
         current = rows[index] if index < len(rows) else None
-        choices = _creator_for(self.win).stat_choices()
+        end = dict(attribute_groups(rows)).get(index, index)
+        choices = [(sid, label) for sid, label in _creator_for(self.win).stat_choices()
+                   if sid not in FOLLOWERS or (current and current['id'] == sid)]
         labels = [label for _sid, label in choices]
         attribute = ttk.Combobox(self.details, values=labels, state='readonly', width=25)
         attribute.pack(fill='x')
@@ -1211,11 +1224,6 @@ class ItemEdit:
             if not allows(self.win, 'item'):
                 return
             try:
-                end = index + 1
-                if current:
-                    for sid in STAT_GROUPS.get(current['id'], ()):
-                        if end < len(rows) and rows[end]['id'] == sid:
-                            end += 1
                 if remove:
                     if current is None:
                         return
@@ -1614,7 +1622,7 @@ def create_items(page, win):
     field.bind('<Return>', lookup)
     ttk.Button(options, text='Save New Item To PickedUp', command=save).pack(fill='x', pady=4)
     ttk.Button(options, text='Item Creator', command=lambda: CreatorWindow(
-        win.app, target=lambda blob: put_picked_up(win, blob), target_label='Picked Up')).pack(fill='x')
+        win.app, target=lambda blob: put_picked_up(win, blob), target_label='Picked Up', data=win.data)).pack(fill='x')
     new = ttk.LabelFrame(options, text='Create New Character')
     new.pack(fill='x', pady=4)
     for label, version, row, col in (

@@ -283,18 +283,25 @@ def _write_stats(bw, stats, data, preserve_order=False):
     bw.write(9, 0x1FF)
 
 
+class BetaItemBlob(bytes):
+    """Mark native beta clipboard bytes when they leave a character window."""
+
+    beta_item = True
+
+
 class BetaItemData:
     """Item tables with the durability width used in the 1.10s beta."""
 
     realm_stamp_bits = 96
+    beta_items = True
 
     def __init__(self, data):
-        self._data = data
+        self.source = data
         self.isc = dict(data.isc)
         self.isc[S.DURABILITY] = dict(self.isc[S.DURABILITY], bits=8)
 
     def __getattr__(self, name):
-        return getattr(self._data, name)
+        return getattr(self.source, name)
 
 
 def encode_item(rec, data, *, preserve_stat_order=False):
@@ -460,6 +467,8 @@ def _read_stats(br, data, starts=None):
 
 def decode_item(blob, data, *, offsets=None):
     """Read one item and its byte length. Optionally record the field offsets from the start of JM."""
+    if getattr(blob, 'beta_item', False) and not getattr(data, 'beta_items', False):
+        raise CreateError('This item uses the 1.10s beta layout. Open a beta character to use it.')
     if blob[:2] != b'JM':
         raise CreateError('not an item')
     reason = getattr(blob, 'read_only_reason', None) or getattr(blob, 'edit_reason', None)
@@ -614,15 +623,18 @@ def decode_item(blob, data, *, offsets=None):
     return r, 2 + (br.pos + 7) // 8
 
 
-def decode_blob(blob, data):
+def decode_blob(blob, data, *, exact=False):
     """Item + socketed children of a stash entry: (record, [child records])."""
     rec, n = decode_item(blob, data)
     kids = []
     p = n
-    for _ in range(rec.get('socketed_count', 0) if rec['flags'] & FLAG_SOCKETED else 0):
+    socketed = rec['flags'] & FLAG_SOCKETED and not rec['flags'] & FLAG_SIMPLE
+    for _ in range(rec.get('socketed_count', 0) if socketed else 0):
         k, m = decode_item(blob[p:], data)
         kids.append(k)
         p += m
+    if exact and p != len(blob):
+        raise CreateError(f'Item data consumes {p} bytes of a {len(blob)}-byte record.')
     return rec, kids
 
 
