@@ -2,8 +2,7 @@
 the Mock tab on / off and is kept in the settings; the analyzer lists colour-coded checks and the summary of the
 loaded mock per weapon switch; the generator's fields are prefilled, an edited field reaches the plan, a bad value
 is reported next to its field, the summary panel follows the switch selector; Generate writes a NEW save (no
-question) that the analyzer scores without a bad check; the item crafter adds a
-charm to the loaded character. Copies of the mock samples only; skipped without the vanilla install / samples
+question) that the analyzer scores without a bad check. Copies of the mock samples only; skipped without the vanilla install / samples
 (see test 75). The Median XL side (no toggle) is test 81."""
 import glob
 import os
@@ -67,7 +66,7 @@ def _shot(name, geo):
 
 
 @T.test
-def toggle_tab_analyzer_generator_crafter():
+def toggle_tab_analyzer_generator():
     if _S is None:
         T.skip('no vanilla install / mock samples')
     import mxl_mock_gui as MG
@@ -82,7 +81,7 @@ def toggle_tab_analyzer_generator_crafter():
     T.check('Mock' in _tab_names(), 'Mock tab after the toggle')
     T.eq(settings.get('mock_mode'), True, 'setting kept')
     page = MG._state['page']
-    T.eq([page.nb.tab(t, 'text') for t in page.nb.tabs()], ['Generator', 'Analyzer', 'Item crafter'], 'sub tabs')
+    T.eq([page.nb.tab(t, 'text') for t in page.nb.tabs()], ['Generator', 'Analyzer'], 'sub tabs')
     # ---- analyzer: checks + summary of the loaded character, per switch
     G.app.select_character('clone-90', G.app.view.get())
     T.pump(10, 0.02)
@@ -116,14 +115,14 @@ def toggle_tab_analyzer_generator_crafter():
             'summary sections')
     T.check(any(r[0] == 'Clone profile' and r[3] == 'good' for r in srows), 'no clone category missing')
     # an edited field reaches plan() and the summary
-    page.ov['ias'].set('-121')
+    page.ov['ias'].set('-100')
     T.check(page.check() is not None, 'Check with an edited field')
-    T.eq(page.over, {'ias': -121}, 'only the edited field is passed on')
-    T.check(any(r[1] == 'IAS' and r[2].startswith('-121') for r in _rows(page.summary.tree)), 'IAS -121 in the summary')
+    T.eq(page.over, {'ias': -100}, 'only the edited field is passed on')
+    T.check(any(r[1] == 'IAS' and r[2].startswith('-100') for r in _rows(page.summary.tree)), 'IAS -100 in the summary')
     # a bad value: the message sits next to its field, nothing is generated
     page.ov['position'].set('Host')                     # a solved field follows the edit (DTM 500 on a Host)
     T.check(page.check() is not None, 'Check with Host')
-    T.eq((page.ov['dtm'].get(), page.ov['ias'].get()), ('500', '-121'), 'DTM re-solved, the edited IAS kept')
+    T.eq((page.ov['dtm'].get(), page.ov['ias'].get()), ('500', '-100'), 'DTM re-solved, the edited IAS kept')
     page.ov['position'].set('LPJ')
     page.ov['level'].set('140')
     T.check(page.check() is None, 'level 140 refused')
@@ -170,36 +169,6 @@ def toggle_tab_analyzer_generator_crafter():
     T.eq(sorted(set(os.listdir(_S)) - before), ['GuiMock.d2s', 'GuiMocka.d2s'], 'second file, free name')
     page.name.set('9')
     T.check(page.generate() is None and 'Name' in page.status.cget('text'), 'bad name: message, no file')
-    # ---- crafter: a charm into the loaded character
-    G.app.select_character('GuiMock', G.app.view.get())
-    T.pump(10, 0.02)
-    import mxl_char
-    n0 = len(mxl_char.Character(os.path.join(_S, 'GuiMock.d2s'), G.app.data).items)
-    page.lines.delete('1.0', 'end')
-    page.lines.insert('end', 'aura thorns 5\nmana 1\n')
-    G.boxes.clear()
-    page.craft()
-    T.pump(5, 0.02)
-    T.check(any(x[0] == 'showerror' for x in G.boxes), 'full 40-charm inventory: an error, nothing added')
-    T.eq(len(mxl_char.Character(os.path.join(_S, 'GuiMock.d2s'), G.app.data).items), n0, 'item count')
-    room = None
-    for f in sorted(os.listdir(_S)):
-        c = mxl_char.Character(os.path.join(_S, f), G.app.data)
-        if M.free_cell(c, G.app.data):
-            room = (os.path.splitext(f)[0], len(c.items))
-            break
-    T.check(room is not None, 'a sample with a free inventory cell')
-    if room:
-        G.app.select_character(room[0], G.app.view.get())
-        T.pump(10, 0.02)
-        G.boxes.clear()
-        page.craft()
-        T.pump(5, 0.02)
-        T.eq([x for x in G.boxes if x[0] == 'showerror'], [], 'no error')
-        ch = mxl_char.Character(os.path.join(_S, room[0] + '.d2s'), G.app.data)
-        T.eq(len(ch.items), room[1] + 1, 'the crafted charm is in the file')
-        st = [(x['id'], x.get('param'), x['value']) for x in ch.items[-1].it['stats']]
-        T.eq(st, [(151, 103, 5), (9, None, 1)], 'its stat lines, in the given order')
     G.app.select_character('clone-41', G.app.view.get())
     T.pump(10, 0.02)
     # ---- off again

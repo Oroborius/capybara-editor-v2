@@ -8,8 +8,6 @@ A small "Mock Mode" toggle at the very right of the top bar switches the mode (k
   Generate) validates the form, shows problems next to their fields and fills the summary panel on the right.
   Generate writes a NEW .d2s in the profile's save folder without a question (never overwrites: a free name);
 - Analyzer: the checks and the same summary panel for the loaded character;
-- Item crafter: a small charm / jewel with arbitrary stat lines added to the loaded character's inventory
-  (asked first; the editor's safe writer with a backup).
 The summary panel (SummaryPanel) shows ONE weapon switch (A / B, weapon slots I / II): the other switch's items
 count nothing. The engine is mxl_mock (no GUI there)."""
 import os
@@ -260,23 +258,23 @@ class SummaryPanel:
 
 
 class MockPage:
-    """The Mock tab: Generator | Analyzer | Item crafter (a notebook of its own: fits 800 x 600)."""
+    """The Mock tab: Generator | Analyzer (a notebook of its own: fits 800 x 600)."""
 
     def __init__(self, app, host):
         self.app, self.host = app, host
         self.last = None
+        if getattr(app, 'data', None) is not None:
+            M.set_data(app.data)                    # the skills tables of the selected game (aura damage)
         try:
             host.title(TAB)
         except Exception:
             pass
         nb = self.nb = ttk.Notebook(host)
         nb.pack(fill='both', expand=True, padx=2, pady=2)
-        g, a, c = (ttk.Frame(nb, padding=2) for _ in range(3))
+        g, a = (ttk.Frame(nb, padding=2) for _ in range(2))
         nb.add(g, text=T('mock.gen', 'Generator'))
         nb.add(a, text=T('mock.ana', 'Analyzer'))
-        nb.add(c, text=T('mock.craft', 'Item crafter'))
         self._analyzer(a)
-        self._crafter(c)
         self._generator(g)
         host.bind('<Map>', lambda e: self.analyze() if e.widget is host else None, add='+')
 
@@ -303,6 +301,8 @@ class MockPage:
         ttk.Entry(left, textvariable=self.name, width=16).grid(row=1, column=1, sticky='ew', pady=1)
         self.gen_btn = ttk.Button(left, text=T('mock.generate', 'Generate'), command=self.generate)
         self.gen_btn.grid(row=0, column=2, rowspan=2, sticky='nsew', padx=(4, 0), ipadx=10, ipady=4)
+        self.calc_btn = ttk.Button(left, text=T('mock.calc_all', 'Calc all'), command=self.calc)
+        self.calc_btn.grid(row=2, column=2, sticky='ew', padx=(4, 0))
         # read-only: the game cannot save the clone (gaining xp at level 127 resets it to 99); the editor keeps
         # the flag when it saves
         bar = ttk.Frame(left)
@@ -337,6 +337,12 @@ class MockPage:
             box = ttk.Frame(sc.inner, padding=2)
             box.pack(fill='both', expand=True)
             box.columnconfigure(2, weight=1)
+            if group in M.CALC_GROUPS:                          # Calc: this group's solver fills its boxes
+                cb = ttk.Button(box, text=T('mock.calc', 'Calc'), width=6,
+                                command=lambda g=group: self.calc(g))
+                cb.grid(row=len(fields), column=0, sticky='w', pady=(4, 0))
+                _Tip(cb, T('mock.calc.tip', 'Solve this group the most efficient way and put the values in the boxes '
+                                           '(they then count as your values)'))
             for i, (k, lab, kind, extra) in enumerate(fields):
                 hint = T(f'mock.h.{k}', M.HINTS.get(k, ''))
                 if kind == 'bool':
@@ -361,6 +367,9 @@ class MockPage:
                 self.ov[k], self.err[k] = v, e
                 self.field_tab[k] = gi
                 v.trace_add('write', lambda *_a, k=k: self._touch(k))
+                if kind != 'bool':                  # Enter / leaving the field re-solves the untouched fields at once
+                    w.bind('<Return>', lambda _e: self._live(0), add='+')
+                    w.bind('<FocusOut>', lambda _e: self._live(0), add='+')
         self.summary = SummaryPanel(right, title=T('mock.sum.plan', 'Summary of the plan'))
         self.summary.frame.pack(fill='both', expand=True)
         self._preset_changed()
@@ -380,6 +389,7 @@ class MockPage:
     def _touch(self, k):
         if not self._filling:
             self.touched.add(k)
+            self._live(700)                                 # a short debounce, then the solved fields follow
         if k == 'cls' and self.dyn_choice:                  # the shields that class may use
             c = self.ov['cls'].get()
             cls = M.CLASSES.index(c) if c in M.CLASSES else 1
@@ -388,6 +398,39 @@ class MockPage:
                     w.configure(values=list(fn(cls, data=getattr(self.app, 'data', None))))
                 except tk.TclError:
                     pass
+
+    def calc(self, group=None):
+        """Calc / Calc all: the solved values of a group (or every group) replace the boxes; they become the
+        user's values (touched) and stay."""
+        try:
+            vals = (M.calc_group(self.key(), group, self.form(), self.pre) if group
+                    else M.calc_all(self.key(), self.form(), self.pre))
+        except M.PlanError as e:
+            self._show_errors({getattr(e, 'key', None) or '': str(e)})
+            return
+        self._fill(vals, [k for k in vals if k in self.ov])
+        self.touched.update(k for k in vals if k in self.ov)
+        self.check()
+
+    def _live(self, ms):
+        """Re-check (re-solving Meditation, Oak, regen ... that the user did not touch) after a pause."""
+        job = getattr(self, '_live_job', None)
+        if job:
+            try:
+                self.host.after_cancel(job)
+            except Exception:
+                pass
+            self._live_job = None
+        if self._filling:
+            return
+        self._live_job = self.host.after(ms, self._live_run) if ms else None
+        if not ms:
+            self._live_run()
+
+    def _live_run(self):
+        self._live_job = None
+        if self.touched and not self._filling:
+            self.check()
 
     def _fill(self, values, keys):
         self._filling = True
@@ -529,51 +572,3 @@ class MockPage:
 
         self.ana.show(m, self.role.get(), extra=checks, side=side)
         return self.report
-
-    # ------------------------------------------------------------------ item crafter
-    def _crafter(self, f):
-        f.columnconfigure(1, weight=1)
-        ttk.Label(f, text=T('mock.c.base', 'Item')).grid(row=0, column=0, sticky='w')
-        self.base = tk.StringVar(value='charm')
-        ttk.Combobox(f, textvariable=self.base, values=list(M.CRAFT_BASES), state='readonly', width=7).grid(
-            row=0, column=1, sticky='w')
-        ttk.Button(f, text=T('mock.c.add', 'Add to the loaded character'), command=self.craft).grid(
-            row=0, column=2, sticky='e')
-        self.lines = tk.Text(f, width=40, height=12, wrap='none', relief='flat', borderwidth=1)
-        self.lines.grid(row=1, column=0, columnspan=3, sticky='nsew', pady=(2, 0))
-        f.rowconfigure(1, weight=1)
-        self.lines.insert('end', 'aura prayer 31\nmana 223\nmana% 53\ndr 63\n')
-        ttk.Label(f, text=T('mock.c.help', "One line per stat: 'stat [param] value', 'mana 223', 'aura prayer 31', "
-                                           "'ctc_attack stun 63 10', 'skill smite 63'; '--' starts the jewel's "
-                                           "second list."), wraplength=480, justify='left').grid(
-            row=2, column=0, columnspan=3, sticky='w')
-
-    def craft(self):
-        root = self.app.root
-        try:
-            path, ch = self._character()
-            if ch is None:
-                raise M.PlanError(T('mock.nochar', 'no character loaded'))
-            isc = M.isc_from_data(self.app.data)
-            lists = M.parse_lines(self.lines.get('1.0', 'end'), isc)
-            cell = M.free_cell(ch, self.app.data)
-            if cell is None:
-                raise M.PlanError(T('mock.c.full', 'The inventory has no free cell.'))
-            blob = M.craft_item(self.base.get(), lists, *cell, isc=isc)
-            if not messagebox.askyesno(T('mock.title', 'Mock Mode'),
-                                       T('mock.c.ask', 'Add the {item} to {name} (inventory cell {x},{y})?\n'
-                                                       'A backup of the file is made.', item=self.base.get(),
-                                         name=ch.name, x=cell[0], y=cell[1]), parent=root):
-                return
-            import mxl_char
-            ch.items.append(mxl_char.Entry(None, blob))
-            ch.reload_items()
-            ch.save(backup=True)
-        except Exception as e:
-            messagebox.showerror(T('mock.title', 'Mock Mode'), f'{e}', parent=root)
-            return
-        try:
-            self.app.select_character(ch.name, self.app.view.get())
-        except Exception:
-            pass
-        self.analyze()

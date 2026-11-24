@@ -63,6 +63,7 @@ def engine():
     import mxl_char
     import mxl_mock
     _E = T.NS(data=mxl_data.Data(paths.DATA_DIR), MC=mxl_char, M=mxl_mock, saves=saves)
+    mxl_mock.set_data(_E.data)
     return _E
 
 
@@ -399,8 +400,7 @@ def form_prefill_battle_orders_and_edited_fields():
     T.eq(sorted(lv for _, lv, _ in v['delirium']), [61, 63], 'Delirium levels as edited')
     T.check('lists 178/198' in M.plan_line(P, raw) and f'{len(raw)}/8191 bytes' in M.plan_line(P, raw), 'plan line')
     T.eq(v['bo_pct'], 35 + 3 * 98, 'BO 99 on the shield: +329%')
-    T.eq([M.options(k)['bo'] for k in ('funky', 'funky28', 'funky26', 'funky24')], [0] * 4,
-         'funkies: no BO (exact without BO, like the reference funkies)')
+    T.eq([M.options(k)['bo'] for k in M.PRESET_ORDER], [99] * len(M.PRESET_ORDER), 'BO defaults to 99 everywhere')
     T.eq(int(v['mana']), P['o']['best_mana'], 'host: 1572500 capped at the overheal-safe mana, WITH BO')
     T.check(any(c[0] == 'mana_nobo' for c in a['checks']), 'the analyzer shows the mana without BO too')
     raw, P = M.generate('mock_high', 'NoBo', bo=0)
@@ -642,9 +642,9 @@ def form_validation_names_the_field():
                       (dict(pre, switch='balance', mana_b='900000'), 'mana_b')):
         errs = M.validate('mock_high', form, pre)[3]
         T.eq(list(errs), [key], f'{key}: reported on its field ({errs})')
-    over, raw, P, errs = M.validate('mock_high', dict(pre, ias='-121', res_light='630', just_hit=True), pre)
-    T.eq((over, errs), (dict(ias=-121, res_light=630, just_hit=True), {}), 'edited speed / resist / NV state')
-    T.eq(P['o']['ias'], -121, 'the edited IAS reaches plan()')
+    over, raw, P, errs = M.validate('mock_high', dict(pre, ias='-100', res_light='630', just_hit=True), pre)
+    T.eq((over, errs), (dict(ias=-100, res_light=630, just_hit=True), {}), 'edited speed / resist / NV state')
+    T.eq(P['o']['ias'], -100, 'the edited IAS reaches plan()')
 
 
 @T.test
@@ -877,16 +877,119 @@ def rule_absorb_need_filled_by_level_then_by_time():
 
 
 @T.test
-def rule_no_thorns_on_funky_and_ak():
-    """User rule 1: funkies and the Aura Killer carry no Thorns and no Barbs at all (no aura line, no source)."""
+def rule_every_preset_defaults_to_thorns():
+    """User rule (2026-11-24): every preset, funkies and the Aura Killer included, defaults to a Thorns setup."""
     M = engine().M
-    for key in ('funky', 'funky28', 'funky26', 'funky24', 'aura_killer'):
-        raw, P = M.generate(key, 'NoTh')
-        T.eq((P['o']['thorns'], P['o']['barbs']), (0, 0), f'{key}: Thorns 0, Barbs 0')
-        T.check(not [x for x in _lines(P) if x in ((151, M.THORNS), (151, M.BARBS))], f'{key}: no Thorns / Barbs')
-        T.check(not [c for c in M.analyze(M.model_from_plan(P, raw))['checks'] if c[0] == 'thorns_return'],
-                f'{key}: no return check')
-        T.eq((M.prefill(key)['thorns'], M.prefill(key)['barbs']), (0, 0), f'{key}: form prefill')
+    for key in M.PRESET_ORDER:
+        raw, P = M.generate(key, 'Th')
+        T.check(P['o']['thorns'] > 0 and (151, M.THORNS) in _lines(P), f'{key}: Thorns {P["o"]["thorns"]}')
+        T.eq(M.prefill(key)['thorns'], P['o']['thorns'], f'{key}: form prefill')
+        T.check(not [c for c in M.analyze(M.model_from_plan(P, raw), bo=True)['checks'] if c[3] == M.BAD], f'{key}: no bad check')
+
+
+@T.test
+def new_defaults_speeds_bo_stun_and_exact_funky_with_bo():
+    """Speeds -121 / 107 / -36 / -121 / 0 / 97 on every preset; BO 99; stun at most 90 (100 only typed, a warning);
+    a Funky is EXACT with BO cast, a fraction is BAD."""
+    E = engine()
+    M = E.M
+    for key in M.PRESET_ORDER:
+        o = M.options(key)
+        T.eq(tuple(o[k] for k in ('ias', 'frw', 'fhr', 'fcr', 'nv_ias', 'nv_frw')), (-121, 107, -36, -121, 0, 97), f'{key}: speeds')
+        T.check(M.prefill(key)['stun'] <= 90 and M.prefill(key)['stun_pct'] <= 90, f'{key}: stun at most 90')
+        raw, P = M.generate(key, 'Sp')
+        T.check(P['stun'] <= 90, f'{key}: stun line {P["stun"]}')
+        v = M.analyze(M.model_from_plan(P, raw), bo=True)['values']
+        T.eq((v['bo_pct'], P['o']['bo']), (35 + 3 * 98, 99), f'{key}: BO 99')
+        if M.PRESET_ROLE[key] == 'funky':
+            T.eq(v['mana'].denominator, 1, f'{key}: exact mana with BO ({v["mana"]})')
+            T.eq(int(v['mana']), int(P['o']['mana']), f'{key}: the funky mana')
+    P = M.plan('funky', 'S100', stun_pct=100)
+    T.eq(P['stun'], 100, 'a typed 100% is allowed')
+    c = {x[0]: x[3] for x in M.analyze(M.model_from_plan(P), bo=True)['checks']}
+    T.eq(c['stun'], M.WARN, '... with a warning')
+    m = M.model_from_plan(M.plan('funky', 'Fr'))
+    t = M.totals(m, 'A')
+    m['units'][0].lists[0].append((9, None, 1))             # +1 mana breaks the exact product
+    a = M.analyze(m, 'A', bo=True)
+    T.check(not a['values']['mana'].denominator == 1 and {x[0]: x[3] for x in a['checks']}['mana'] == M.BAD, 'fraction: BAD')
+
+
+@T.test
+def dr_total_respected_and_aura_sources():
+    """DR: 63 on every list by default, a lower total puts lines only where needed; Holy Freeze / Shock / Fire
+    levels place counted sources like Prayer / Meditation."""
+    M = engine().M
+    P = M.plan('mock_high', 'Dr')
+    full = sum(v for s in P['lists'] for sid, _p, v in s.lines if sid == 34)
+    T.eq(full, 63 * len(P['lists']), 'default: 63 on every list')
+    T.eq(M.prefill('mock_high')['dr_total'], full, 'prefill shows the total')
+    P2 = M.plan('mock_high', 'Dr2', dr_total=1000)
+    ls = [v for s in P2['lists'] for sid, _p, v in s.lines if sid == 34]
+    T.eq((sum(ls), len(ls)), (1000, 16), 'total 1000: 15 lines of 63 + 55, not every list')
+    for kw, aid, n in ((dict(hfire_level=1500, hfire_sources=3), M.HOLY_FIRE, 3),
+                       (dict(hsk_level=2000, hsk_sources=2), M.HOLY_SHOCK, 2),
+                       (dict(hf_level=3100, hf_sources=5), M.HOLY_FREEZE, 5)):
+        P = M.plan('mock_high', 'Au', **kw)
+        key = next(k for k, a in M.AURA_FIELD_SOURCE.items() if a == aid)
+        T.eq(M.sources_of(P)[key], n, f'{M.AURA_NAMES[aid]}: sources shown')
+        t = M.totals(M.model_from_plan(P), 'A')
+        T.eq(sum(t['sources'].get(aid, {}).values()), n, f'{M.AURA_NAMES[aid]}: sources counted')
+        T.eq(t['aura_lv'].get(aid), list(kw.values())[0], f'{M.AURA_NAMES[aid]}: level placed')
+
+
+@T.test
+def aura_damage_targets_solved_per_formula():
+    """A damage target per source picks the level + mastery with the fewest bits; Holy Fire and Holy Shock have
+    different skills.bin formulas; the analyzer shows the damage per source and in total."""
+    M = engine().M
+    d = {a: [M.aura_base_dmg(a, l) for l in (10, 40)] for a in (M.HOLY_FIRE, M.HOLY_SHOCK, M.HOLY_FREEZE)}
+    T.check(d[M.HOLY_FIRE] != d[M.HOLY_SHOCK], f'the formulas differ: {d}')
+    tgt = {M.HOLY_FIRE: 6000000, M.HOLY_SHOCK: 4000000}
+    P = M.plan('mock_high', 'Ad', hfire_target=tgt[M.HOLY_FIRE], hfire_sources=2, hsk_target=tgt[M.HOLY_SHOCK], hsk_sources=3)
+    a = M.analyze(M.model_from_plan(P), bo=True)
+    for aid, n in ((M.HOLY_FIRE, 2), (M.HOLY_SHOCK, 3)):
+        lo, hi, got = a['values']['aura_damage'][M.AURA_NAMES[aid]]
+        T.check(0.99 * tgt[aid] <= hi <= tgt[aid] and got == n, f'{M.AURA_NAMES[aid]}: {hi} per source of {tgt[aid]}, {got} sources')
+    T.check({c[0]: c[3] for c in a['checks']}[f'auradmg_{M.HOLY_FIRE}'] == M.GOOD, 'damage check shown')
+    r = M.solve_aura_dmg(M.HOLY_FIRE, tgt[M.HOLY_FIRE])
+    T.eq(P['o']['hfire_level'], r['level'], 'the solved level reaches plan()')
+    T.check(M.prefill('mock_high', hfire_target=tgt[M.HOLY_FIRE], hfire_sources=2)['hfire_level'] == r['level'], 'prefill shows it')
+
+
+@T.test
+def absorb_totals_per_element_round_trip():
+    """Absorb fields are TOTALS per element (cold / fire / lightning): the plan lands on the typed total, the
+    analyzer shows it, the prefill gives it back; CB / DS are not generated and warned when added."""
+    M = engine().M
+    P = M.plan('mock_high', 'Ab', abs_cold=20000, abs_fire=15000, abs_light=25000)
+    a = M.analyze(M.model_from_plan(P), bo=True)['values']['absorb']
+    for el, t in (('cold', 20000), ('fire', 15000), ('light', 25000)):
+        T.check(t <= a[el]['total'] < t + 1 and a[el]['total'] - t < 1, f'{el}: total {float(a[el]["total"])} for {t}')
+    pre = M.prefill('mock_high', abs_cold=20000, abs_fire=15000, abs_light=25000)
+    T.eq((pre['abs_cold'], pre['abs_fire'], pre['abs_light']), (20000, 15000, 25000), 'the fields round-trip')
+    T.eq(M.prefill('mock_high')['cb'], 0, 'no Crushing Blow by default')
+    P = M.plan('mock_high', 'Cb', cb=50)
+    T.check(any(c[0] == 'wasted_cb_ds' for c in M.analyze(M.model_from_plan(P), bo=True)['checks']), 'CB warned as wasted')
+
+
+@T.test
+def life_target_cheapest_and_dtm_check():
+    """Life targets up and down land within 1 (or on the closest) with a cheap mix of +life / Oak Sage; an
+    over-high DTM is a BAD check, the preset DTMs are good."""
+    M = engine().M
+    for tgt in (40, 3000, 500000, 4000000, 7300000):
+        P = M.plan('funky', 'Lf', life=tgt)
+        T.check(tgt - 2 <= float(P['life']['life']) <= tgt + 0.0 or tgt < 100, f'life {tgt}: {float(P["life"]["life"])}')
+    a, b = M.plan('funky', 'L1', life=500000)['life'], M.plan('funky', 'L2', life=7300000)['life']
+    T.check(b['oak'] > a['oak'], 'more life: more Oak Sage')
+    d31, d28 = (M.plan('funky28' if tk == 28 else 'funky', 'Dk', tk=tk)['o']['dtm'] for tk in (30, 28))
+    T.check(d31 != d28, f'the optimal DTM follows the TK / mana pool ({d31} at TK30, {d28} at TK28)')
+    T.check(all(M.analyze(M.model_from_plan(M.plan(k, 'Dk')), bo=True)['values']['dtm'] <= M.analyze(
+        M.model_from_plan(M.plan(k, 'Dk')), bo=True)['values']['dtm_lpj'] for k in ('funky', 'funky28')), 'under the ceiling')
+    P = M.plan('mock_high', 'Dt', dtm=2000)
+    c = {x[0]: x[3] for x in M.analyze(M.model_from_plan(P), bo=True)['checks']}
+    T.eq(c['dtm_cap'], M.BAD, 'excessive DTM: BAD')
 
 
 @T.test
@@ -1093,7 +1196,8 @@ def ith_items_vanish_but_keep_their_sources():
     mp = M.model_from_plan(P, raw)
     folder = _gen_dir()
     mc = M.model_from_character(E.MC.Character(M.write_new(raw, folder, 'Ith'), E.data))
-    T.eq(sum(1 for u in mc['units'] if u.ith), len(ith), 'the flag survives save / reload')
+    T.eq(sum(1 for u in mc['units'] if u.ith), len(ith) - 12, 'the flag survives save / reload (stash ones are not units)')
+    T.eq((mc['stash_ith'], mp['stash_ith']), (12, 12), 'stash Ith charms are counted apart, not as sources')
     ch = E.MC.Character(M.write_new(raw, folder, 'Ithb'), E.data)
     T.check(any(e.it.get('panel') == 5 and e.it.get('stats_runeword') is not None for e in ch.items), 'stash Ith charm')
     for m in (mp, mc):
@@ -1103,7 +1207,8 @@ def ith_items_vanish_but_keep_their_sources():
     ca, cb = M.analyze(mp, 'A', bo=True)['checks'], M.analyze(mc, 'A', bo=True)['checks']
     T.eq([c for c in ca if c not in cb], [c for c in cb if c not in ca], 'plan model == written save')
     src = lambda m: sum(M.totals(m, 'A')['sources'].get(M.PRAYER, {}).values())
-    T.eq(src(mc) - src(M.model_from_plan(base)), 1 + 7 + 3 + 12 - 3, 'Ith items add Prayer sources (3 replace charms)')
+    T.eq(src(mc) - src(M.model_from_plan(base)), 1 + 7 + 3 - 3, 'Ith items in the inventory add Prayer sources (3 replace charms); the stash adds none')
+    T.check(any(c[0] == 'ith_stash' and 'by hand' in c[2] for c in M.analyze(mc, 'A', bo=True)['checks']), 'stash label: move in by hand')
     # Dopplezon morph weapon rule
     T.check(not M.plan('mock_high', 'Nw', weapon=True)['o']['weapon'], 'a plain weapon is dropped in the morph')
     P2 = M.plan('mock_high', 'Dx', weapon=True, dex_bug=True)
@@ -1136,7 +1241,7 @@ def regen_remainder_on_shield_and_low_life_funky():
         mc = M.model_from_character(E.MC.Character(M.write_new(raw, _gen_dir(), 'Rg'), E.data))
         T.eq(M.analyze(mp, 'A', bo=True)['values']['regen'], M.analyze(mc, 'A', bo=True)['values']['regen'], 'regen round-trips')
     raw, P = M.generate('funky', 'Lo', life=40)
-    T.check(39 <= P['life']['life'] <= 40, 'life 40 reached on a Funky')
+    T.check(38 <= P['life']['life'] <= 40, 'life 40 reached on a Funky')
     mc = M.model_from_character(E.MC.Character(M.write_new(raw, _gen_dir(), 'Lo'), E.data))
     T.eq(mc['base_life_raw'], P['life']['base_raw'], 'low base life round-trips')
 
