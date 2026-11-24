@@ -332,4 +332,63 @@ def scaled_stats_fit_or_scroll_and_bottom_controls_stay_visible():
          (round(96 * scale), round(34 * scale)), 'scaled file actions')
 
 
+@T.test
+def vanilla_popups_survive_crossing_storms():
+    if T.VARIANT != '100' or not AVAILABLE:
+        T.skip('requires the vanilla fixture at 100%')
+    import tkinter as tk
+    import mxl_vanilla_he as look
+
+    root = T.G.root
+    top = tk.Toplevel(root)
+    top.geometry('480x300+80+80')
+    owner = tk.Canvas(top, width=400, height=230)
+    owner.pack()
+    tip = look.item_hint(top)
+    owner.bind('<Enter>', lambda _event: tip.show(owner, key='same item'))
+    owner.bind('<Leave>', lambda _event: tip.leave(owner))
+    menu = tk.Menu(owner, tearoff=False)
+    menu.add_command(label='Example', command=lambda: None)
+    # Exercise the actual Tcl menu; the harness captures Python's usual tk_popup.
+    menu.tk_popup = lambda x, y: menu.tk.call('tk_popup', menu._w, x, y)
+    menu.grab_release = lambda: menu.tk.call('grab', 'release', menu._w)
+
+    try:
+        T.pump(3)
+        owner.event_generate('<Motion>', x=60, y=60, warp=True)
+        owner.focus_force()
+        owner.event_generate('<Enter>')
+        T.settle(.25)
+        window = tip.win
+        T.check(tip.shown and window.winfo_ismapped(), 'tooltip mapped')
+        T.check(not window.overrideredirect(), 'vanilla X11 tooltip is managed')
+        for _ in range(25):
+            owner.event_generate('<Leave>')
+            owner.event_generate('<Enter>')
+        owner.event_generate('<Leave>')
+        T.settle(.25)
+        T.check(tip.shown and tip.win is window and tip.maps == 1, 'crossing storm kept one tooltip')
+        T.eq(root.focus_get(), owner, 'tooltip leaves keyboard focus on owner')
+        top.event_generate('<Motion>', x=470, y=285, warp=True)
+        T.settle(.35)
+        T.check(not tip.shown, 'real departure hides tooltip')
+        look.popup(menu, T.ev(owner, 60, 60))
+        T.pump(3)
+        T.check(menu.winfo_ismapped(), 'context menu posted')
+        T.eq(menu.tk.call('grab', 'status', menu._w), 'none', 'popup released its grab')
+        T.check(menu.winfo_rootx() > owner.winfo_rootx() + 60, 'menu opens beside the click')
+        menu.event_generate('<Motion>', x=12, y=9, warp=True)
+        T.pump(3)
+        menu.activate(0)
+        for _ in range(25):
+            menu.event_generate('<Leave>', x=12, y=9)
+            menu.event_generate('<Enter>', x=12, y=9)
+        T.settle(.25)
+        T.check(menu.winfo_ismapped() and str(menu.tk.call(menu._w, 'index', 'active')) == '0', 'crossing storm kept menu and selection')
+    finally:
+        menu.tk.call('tk::MenuUnpost', menu._w)
+        tip.destroy()
+        top.destroy()
+
+
 T.main(globals())

@@ -137,6 +137,11 @@ def _stash_menu(app, ev):
                              command=lambda: _paste_empty(app, ev, clip))
         menu.add_command(label=rc('import', 'Import item...'), command=lambda: _import_stash(app, ev))
         menu.add_command(label=rc('creator', 'Item Creator...'), command=lambda: CreatorWindow(app))
+    from mxl_vanilla_he import active, popup
+
+    if active():
+        popup(menu, ev)
+        return
     try:
         menu.tk_popup(ev.x_root, ev.y_root)
     finally:
@@ -504,6 +509,11 @@ def _char_menu(win, cv, ev):
         if cv is win.inv:
             menu.add_command(label=rc('import', 'Import item...'), command=lambda: _import_char(win, ev))
         menu.add_command(label=rc('create_here', 'Create here...'), command=win.create_here)
+    if vanilla:
+        from mxl_vanilla_he import popup
+
+        popup(menu, ev)
+        return
     try:
         menu.tk_popup(ev.x_root, ev.y_root)
     finally:

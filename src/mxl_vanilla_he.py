@@ -53,9 +53,41 @@ def screen_point(event):
     return event.widget.winfo_rootx() + event.x, event.widget.winfo_rooty() + event.y
 
 
+MENU_GAP = 8
+
+
 def popup(menu, event):
+    x, y = screen_point(event)
+    menu.update_idletasks()
+    w, h = menu.winfo_reqwidth(), menu.winfo_reqheight()
+    if x + MENU_GAP + w <= menu.winfo_screenwidth():
+        x += MENU_GAP
+    else:
+        x = max(0, x - w - MENU_GAP)
+    if y + MENU_GAP + h <= menu.winfo_screenheight():
+        y += MENU_GAP
+    else:
+        y = max(0, y - h - MENU_GAP)
+
+    root = event.widget.winfo_toplevel()
+    if not getattr(menu, '_he_crossings', False):
+        def leave(_event):
+            px, py = menu.winfo_pointerxy()
+            left, top = menu.winfo_rootx(), menu.winfo_rooty()
+            if left <= px < left + menu.winfo_width() and top <= py < top + menu.winfo_height():
+                return 'break'
+
+        def unmap(_event):
+            if getattr(root, '_he_posted_menu', None) is menu:
+                root._he_posted_menu = None
+
+        menu.bind('<Leave>', leave, add='+')
+        menu.bind('<Unmap>', unmap, add='+')
+        menu._he_crossings = True
+
+    root._he_posted_menu = menu
     try:
-        menu.tk_popup(*screen_point(event))
+        menu.tk_popup(x, y)
     finally:
         menu.grab_release()
 
@@ -880,6 +912,9 @@ def bind_inventory(win):
     def track(cv, lookup, expanded=False, dragging=lambda: win.drag):
         def hover(event):
             nonlocal hovered
+            menu = getattr(root, '_he_posted_menu', None)
+            if menu is not None and menu.winfo_exists() and menu.winfo_ismapped():
+                return
             remember(event)
             if dragging() is not None:
                 return
@@ -899,7 +934,8 @@ def bind_inventory(win):
             hint.show(cv, key=id(entry))
 
         def leave(event):
-            forget(event)
+            if not hint._pointer_in(cv):
+                forget(event)
             if hint.owner is cv:
                 hint.leave(cv)
 

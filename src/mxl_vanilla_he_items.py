@@ -160,10 +160,9 @@ def golem_menu(win, control, event=None):
     menu.add_command(label='Edit Iron Golem item…', command=lambda: edit_item(win, owner))
     menu.add_command(label='Copy into Picked Up', command=lambda: put_picked_up(win, entry.blob))
     menu.add_command(label='Delete Iron Golem item', command=remove)
-    try:
-        menu.tk_popup(event.x_root, event.y_root)
-    finally:
-        menu.grab_release()
+    from mxl_vanilla_he import popup
+
+    popup(menu, event)
 
 
 def edit_item(win, entry, group='Basic1'):

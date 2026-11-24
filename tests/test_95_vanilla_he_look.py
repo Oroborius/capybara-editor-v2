@@ -81,7 +81,7 @@ def vanilla_widget_palette_is_applied():
         T.eq((options['background'], options['foreground'], options['font']),
              ('#707070', '#000000', ('Tahoma', 7)), 'item description')
 
-        menu = Mock(_vanilla_he_menu=False)
+        menu = Mock(_vanilla_he_menu=False, winfo_ismapped=lambda: False)
         mxl_he_theme._menu_colours(menu)
         options = menu.configure.call_args.kwargs
         T.eq((options['bg'], options['activebackground'], options['activeforeground'],
@@ -178,6 +178,7 @@ def hero_editor_fixed_geometry_follows_ui_scale():
 
 @T.test
 def scaled_popup_and_inventory_clipboard_use_canvas_pixels():
+    sys.path.insert(0, T.APP)
     from types import SimpleNamespace
     import mxl_rc_menu as rc
     import mxl_vanilla_he as look
@@ -192,9 +193,10 @@ def scaled_popup_and_inventory_clipboard_use_canvas_pixels():
         expected = (600 + x, 260 + y)
         reported_root = tuple(round(value / scale) for value in expected)
         event = SimpleNamespace(widget=cv, x=x, y=y, x_root=reported_root[0], y_root=reported_root[1])
-        menu = Mock()
+        menu = Mock(winfo_reqwidth=lambda: 100, winfo_reqheight=lambda: 80,
+                    winfo_screenwidth=lambda: 1280, winfo_screenheight=lambda: 720)
         look.popup(menu, event)
-        menu.tk_popup.assert_called_once_with(*expected)
+        menu.tk_popup.assert_called_once_with(*(coordinate + look.MENU_GAP for coordinate in expected))
         menu.grab_release.assert_called_once_with()
 
         entry = object()

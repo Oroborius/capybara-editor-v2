@@ -223,6 +223,8 @@ def _menu_colours(m):
     want = dict(bg=HE_BG, fg=HE_FG, activebackground='#000000', activeforeground=HE_GOLD,
                 disabledforeground='#999999')
     if V.active():
+        if m.winfo_ismapped():
+            return
         want = dict(bg=V.WHITE, fg=V.BLACK, activebackground=V.SELECT, activeforeground=V.WHITE,
                     disabledforeground=V.DESCRIPTION)
         if getattr(m, '_vanilla_he_menu', False) is False:

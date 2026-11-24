@@ -26,7 +26,10 @@ that desktop is a FRESH override-redirect window shown once at its final size. S
   the content (whatever the compositor does) shows nothing but the tip's own background; no highlight rings;
 - MXL_TIP_TYPE=1 also types the window _NET_WM_WINDOW_TYPE_TOOLTIP (X11). Default 0: the untyped
   override-redirect window is how the tips were made when they looked right on Hyprland (the type was added on an
-  inference - "focused on map" - that was never seen). Nothing here ever takes the focus."""
+  inference - "focused on map" - that was never seen). Nothing here ever takes the focus.
+
+Vanilla on X11 uses a managed tooltip with a non-input focus model and debounces repeated Leave events.
+"""
 import os
 import tkinter as tk
 
@@ -59,6 +62,9 @@ class FloatTip:
     background (window and frame inside); edge: colour of a 1 px frame around the content (None: no frame)."""
 
     def __init__(self, master, build=None, gap=(18, 14, 14), within=None, alpha=None, bg='#000000', edge=None):
+        from mxl_profile import is_median
+
+        self.managed = not is_median() and master.tk.call('tk', 'windowingsystem') == 'x11'
         self.master = master
         self.build = build
         self.gap = gap
@@ -80,15 +86,19 @@ class FloatTip:
 
     # ------------------------------------------------------------------ the window
     def _make(self):
-        """A fresh, withdrawn, override-redirect window with the content built into it (not mapped)."""
+        """Build the content in a fresh, withdrawn window."""
         w = tk.Toplevel(self.master, bg=self.bg, bd=0, highlightthickness=0, takefocus=0)
         w.withdraw()                                   # nothing is mapped before the attributes are set
-        w.overrideredirect(True)
+        if self.managed:
+            w.focusmodel('active')
+            w.protocol('WM_TAKE_FOCUS', lambda: None)
+        else:
+            w.overrideredirect(True)
         try:
             ws = w.tk.call('tk', 'windowingsystem')
         except tk.TclError:
             ws = ''
-        if ws == 'x11' and tip_type():
+        if ws == 'x11' and (self.managed or tip_type()):
             try:
                 w.wm_attributes('-type', 'tooltip')
             except tk.TclError:
@@ -168,7 +178,8 @@ class FloatTip:
         self.place()
         try:
             w.deiconify()
-            w.lift()
+            if not self.managed:
+                w.lift()
         except tk.TclError:
             self.shown = False
             return
@@ -197,9 +208,9 @@ class FloatTip:
 
     def leave(self, widget=None):
         """For <Leave>: hides a moment later, unless the pointer is still on the widget (or on the tip)."""
-        self._cancel()
-        if not self.shown:
+        if not self.shown or (self.managed and self._job is not None):
             return
+        self._cancel()
         widget = widget if widget is not None else self.owner
         try:
             self._job = self.master.after(HIDE_DELAY, self._check, widget)
@@ -292,7 +303,8 @@ class FloatTip:
         if w is None:
             return
         try:
-            w.update_idletasks()
+            if not self.managed or self._geo is None:
+                w.update_idletasks()
             px, py = w.winfo_pointerxy()
             tw, th = self.size()
             sw, sh = w.winfo_screenwidth(), w.winfo_screenheight()

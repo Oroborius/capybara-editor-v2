@@ -546,6 +546,11 @@ class ContainersPage:
             print('stash page menu:', err)
         if menu.index('end') is None:
             return
+        if self.win.vanilla_he:
+            from mxl_vanilla_he import popup
+
+            popup(menu, ev)
+            return
         try:
             menu.tk_popup(ev.x_root, ev.y_root)
         finally:
