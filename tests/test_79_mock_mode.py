@@ -1119,4 +1119,47 @@ def ith_items_vanish_but_keep_their_sources():
     T.check(M.generate('funky24', 'Fkc')[1]['o']['weapon'], 'funky24 keeps a counted dex-bug weapon')
 
 
+
+
+@T.test
+def regen_remainder_on_shield_and_low_life_funky():
+    """The leftover mana regen line sits on the shield (also side B of a switch), total <= cap; Funky life 40 is solvable."""
+    E = engine()
+    M = E.M
+    for kw in ({}, dict(switch='balance', mana_b=1211974)):
+        raw, P = M.generate('balance_switch' if kw else 'mock_high', 'Rg', **({} if kw else kw))
+        sh = P['U']['shield']
+        got = sum(v for s in sh.slots for sid, _p, v in s.lines if sid == 27)
+        T.eq(got, P['regen']['pct'], 'the regen remainder is on the shield')
+        T.check(P['regen']['total'] <= P['regen']['cap'], 'regen within the cap')
+        mp = M.model_from_plan(P, raw)
+        mc = M.model_from_character(E.MC.Character(M.write_new(raw, _gen_dir(), 'Rg'), E.data))
+        T.eq(M.analyze(mp, 'A', bo=True)['values']['regen'], M.analyze(mc, 'A', bo=True)['values']['regen'], 'regen round-trips')
+    raw, P = M.generate('funky', 'Lo', life=40)
+    T.check(39 <= P['life']['life'] <= 40, 'life 40 reached on a Funky')
+    mc = M.model_from_character(E.MC.Character(M.write_new(raw, _gen_dir(), 'Lo'), E.data))
+    T.eq(mc['base_life_raw'], P['life']['base_raw'], 'low base life round-trips')
+
+
+@T.test
+def auto_meditation_lands_at_the_cap_and_rollover_is_bad():
+    """Auto Meditation: level > 0 and total regen in [cap - 40, cap] on every preset; the cap itself does not roll
+    (8388607 mana x (100 + regen) / 3000 <= ROLL); a rolled regen is BAD and a typed over-cap Meditation is refused."""
+    E = engine()
+    M = E.M
+    for pr in M.PRESETS:
+        P = M.plan(pr, 'Au')
+        r = P['regen']
+        T.check(r['med'] > 0 and r['cap'] - 40 <= r['total'] <= r['cap'], f'{pr}: auto regen at the cap')
+    for mana in (1048576, 1572500, 2000000):
+        c = M.regen_cap(mana)
+        T.check(mana * (100 + c) <= M.ROLL * 3000 < mana * (100 + c + 1), 'regen_cap has no off-by-one')
+    P = M.plan('funky', 'Ro')
+    try:
+        M.plan('funky', 'Ro', med=P['regen']['med'] + 50)
+        T.check(False, 'over-cap Meditation refused')
+    except M.PlanError:
+        pass
+
+
 T.main(globals())

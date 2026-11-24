@@ -1659,6 +1659,9 @@ def plan(preset='mock_high', name='Mock', **over):
         else:                                  # a typed Meditation: the regen line tops up to the roll-over cap
             pct = max(0, min(255, room - (meditation_pct(med) if med else 0)))
         rg = dict(rg, med=med, pct=pct, total=warmth_pct(warmth) + (meditation_pct(med) if med else 0) + pct)
+        if rg['total'] > rg['cap']:
+            raise PlanError(f"regen {rg['total']}% is over the roll-over cap {rg['cap']}% (mana would wrap to 0)",
+                            key='med' if o['med'] is not None else 'regen')
     # ---- Prayer drain vs regen (1 + 0.1875 (L - 1) per source per 2 s pulse) and the DTM: at least the position's
     # DTM and the refill the target ES% / TK need (dtm_need), never over the LPJ ceiling (dtm_ceiling with the drain)
     pr_lv = sum(v for s in lists for sid, p, v in s.lines if sid == 151 and p == PRAYER)
@@ -1692,7 +1695,19 @@ def plan(preset='mock_high', name='Mock', **over):
             oak_lo = oak_hi = int(o['oak'])
     else:
         oak_zero = True                        # auto: no Oak Sage only when the (lower) life target needs none
-    life = solve_life(o['life'], (1 << 21) - 1, oak_lo, oak_hi, nl, extra_pct=o['bo_pct'], allow_zero=oak_zero)
+    life_base = (1 << 21) - 1
+    life = solve_life(o['life'], life_base, oak_lo, oak_hi, nl, extra_pct=o['bo_pct'], allow_zero=oak_zero)
+    if life is None and o['life'] < 8191:              # a low target: lower the character's base life (no negative lines)
+        pc, lim = oak_pct(oak_lo) + o['bo_pct'], int(Fraction(o['life']) * 256)
+        lo_b, hi_b = 256, max(256, lim)
+        while lo_b < hi_b:                             # the largest base whose percent step stays within the target
+            mid = (lo_b + hi_b + 1) // 2
+            lo_b, hi_b = (mid, hi_b) if pct_fp(mid, pc) <= lim else (lo_b, mid - 1)
+        life_base = lo_b
+        oak_hi = oak_lo                                # the base life carries the target; one Oak Sage level
+        life = solve_life(o['life'], life_base, oak_lo, oak_hi, nl, extra_pct=o['bo_pct'], allow_zero=oak_zero)
+    if life is not None:
+        life['base_raw'] = life_base
     if life is None:
         raise PlanError(f"life {o['life']} cannot be reached", key='life')
     for s, v in zip(pref, split(life['flat'], 479)):
@@ -1736,9 +1751,10 @@ def plan(preset='mock_high', name='Mock', **over):
                             key=_AURA_KEY.get(aid))
         for s, v in zip(targets, vals):
             s.add(151, v, aid)
-    # ---- regen % remainder (gloves: the Meditation unit)
+    # ---- regen % remainder (user: the leftover regen goes on the SHIELD, which a mana switch build carries to side B)
     if rg['pct']:
-        U['gloves'].slots[1].add(27, rg['pct'])
+        tgt = next((s for s in U['shield'].slots if s.ok(27)), None) or U['gloves'].slots[1]
+        tgt.add(27, rg['pct'])
     # ---- smite: non-class Smite 63 on the shield + str/lvl + damage lines
     slider = int(o['stun'])
     # the slider trades smite damage only when the user moved it (presets keep the capped smite)
@@ -1999,7 +2015,7 @@ CHAR_STAT_BITS = {0: 10, 1: 10, 2: 10, 3: 10, 4: 10, 5: 8, 6: 21, 7: 21, 8: 21, 
 
 def _stats(P):
     o = P['o']
-    life = (1 << 21) - 1
+    life = P['life'].get('base_raw', (1 << 21) - 1)
     st = [(0, 1023), (2, 1), (6, life), (7, life), (8, P['mana']['base_raw']), (9, P['mana']['base_raw']),
           (10, 8000 * 256), (11, 8000 * 256), (12, o['level']), (13, 3520485254)]
     bw = BitWriter()
@@ -2196,7 +2212,7 @@ def model_from_plan(P, raw=None):
     sk = _skills(P)[2:]
     first = CLASS_FIRST_SKILL[o['cls']] if o['cls'] < 7 else 0
     return dict(name=P['name'], cls=o['cls'], level=o['level'], active_weapon=0, base_str=1023, base_ene=0,
-                base_vit=0, base_mana_raw=P['mana']['base_raw'], base_life_raw=(1 << 21) - 1, stat_points=0,
+                base_vit=0, base_mana_raw=P['mana']['base_raw'], base_life_raw=P['life'].get('base_raw', (1 << 21) - 1), stat_points=0,
                 skills={first + i: lv for i, lv in enumerate(sk) if lv}, units=units, set_ids=set_ids,
                 shields=shields, size=len(raw) if raw is not None else len(build(P)), excess_jewels=0, es=o['es'])
 
