@@ -1192,7 +1192,7 @@ DEFAULTS = dict(cls=1, level=127, position='LPJ', life=7300000, damage=Fraction(
                 # every category the proven clones carry (docs/review/mock-pi-data/clone-profile.txt, CLONE_PROFILE):
                 # the clone median unless a preset says otherwise
                 thorns=None, barbs=None, dtm=None, es=ES_PCT, tk=TK_DEFAULT, holy_shield_cast=0,   # None: solved
-                hf_cap=True, hf_target=HF_MOCK_TARGET, thorns_lvl=0,
+                hf_cap=True, hf_target=HF_MOCK_TARGET, thorns_lvl=0, hsk_level=0, hsk_sources=0,
                 ias=107, frw=107, fhr=-36, fcr=0, nv_ias=97, nv_frw=97,      # IAS 93, FRW 96, FHR 99, FCR 105, 68, 67
                 curse_res=511, target_def=381, dodge=127, ow=127, cb=127, ds=0, itd=False, cbf=False,
                 dr=63, dr_pct=255, mdr=0, abs_pct=127, abs_flat=0, abs_lvl=True, abs_time=True, replenish=True,
@@ -1333,11 +1333,13 @@ def solve_regen(mana, warmth_lvl):
     return dict(cap=cap, med=med, pct=r, total=w + meditation_pct(med) + r)
 
 
-def solve_life(target, base_raw, oak_min, oak_max, max_lines, extra_pct=0):
-    """Life = (base + sum(+life lines <= 479)) x (100 + Oak Sage %) / 100 <= target, fewest bits, nearest."""
+def solve_life(target, base_raw, oak_min, oak_max, max_lines, extra_pct=0, allow_zero=False):
+    """Life = (base + sum(+life lines <= 479)) x (100 + Oak Sage %) / 100, never over the target. Oak Sage levels
+    are preferred (fewest +life lines first, then the nearest life); L = 0 (no Oak Sage) only when allow_zero and
+    nothing else fits, or when oak_max is 0 (the user set Oak Sage to 0)."""
     best = None
     base = Fraction(base_raw, 256)
-    for L in range(oak_min, oak_max + 1):
+    for L in ([0] if allow_zero else []) + list(range(oak_min, oak_max + 1)):
         pct = 100 + oak_pct(L) + extra_pct
         x = math.floor(Fraction(target) * 100 / pct - base)
         if x < 0:
@@ -1346,8 +1348,7 @@ def solve_life(target, base_raw, oak_min, oak_max, max_lines, extra_pct=0):
         if a > max_lines:
             continue
         life = Fraction(pct_fp(base_raw + 256 * x, pct - 100), 256)       # the game's percent step
-        cost = 18 * a + 23 * max(0, -(-L // AURA_LINE_MAX) - oak_min)
-        key = (cost + float(target - life) / 2000, cost)
+        key = (L == 0 and oak_max > 0, a, float(target - life))
         if best is None or key < best[0]:
             best = (key, dict(oak=L, flat=x, life=life))
     return best[1] if best else None
@@ -1484,7 +1485,8 @@ def _damage_from_slider(s, target):
 # FRW, FHR, target defense mostly there); the user: "some stats do not function on set or runeword lists"
 MAGIC_ONLY = {93, 96, 99, 105, 67, 68, 109, 116, 135, 136, 141, 35, 36, 142, 143, 144, 145, 146, 147, 148, 149, 338,
               339, 340, 153, 115, 238, 39, 41, 43, 45}
-_AURA_KEY = {OAK: 'oak', BARBS: 'barbs', MEDITATION: 'med', HOLY_FREEZE: 'hf_level', THORNS: 'thorns'}
+_AURA_KEY = {OAK: 'oak', BARBS: 'barbs', MEDITATION: 'med', HOLY_FREEZE: 'hf_level', HOLY_SHOCK: 'hsk_level',
+            THORNS: 'thorns'}
 
 
 def plan(preset='mock_high', name='Mock', **over):
@@ -1558,6 +1560,11 @@ def plan(preset='mock_high', name='Mock', **over):
                         key='hf_sources')
     for u in hf_jewels[:H]:
         u.role = 'hf'
+    HS = (max(1, int(o['hsk_sources'] or 0)) if int(o['hsk_level'] or 0) else 0)
+    if H + HS > len(hf_jewels):
+        raise PlanError(f'{HS} Holy Shock sources: at most {len(hf_jewels) - H} more gear jewels', key='hsk_sources')
+    for u in hf_jewels[H:H + HS]:
+        u.role = 'hsk'
     U['gloves'].role = 'med'
     if o['thorns']:
         U['boots'].role = 'thorns'
@@ -1606,8 +1613,19 @@ def plan(preset='mock_high', name='Mock', **over):
     # stays under the cap before BO is cast too
     rg = solve_regen(mana['mana'], warmth)
     if o['med'] is not None or o['regen'] is not None:     # the user's Meditation level / regen% line
-        med = rg['med'] if o['med'] is None else max(0, int(o['med']))
-        pct = rg['pct'] if o['regen'] is None else max(0, min(255, int(o['regen'])))
+        room = max(0, rg['cap'] - warmth_pct(warmth))
+        if o['med'] is not None:
+            med = max(0, int(o['med']))
+        elif o['regen'] is None:
+            med = rg['med']
+        else:                                  # a typed regen line: Meditation fills the rest of the room
+            med = max(0, (room - int(o['regen']) - 275) // 25)
+            while med and meditation_pct(med) > room - int(o['regen']):
+                med -= 1
+        if o['regen'] is not None:
+            pct = max(0, min(255, int(o['regen'])))
+        else:                                  # a typed Meditation: the regen line tops up to the roll-over cap
+            pct = max(0, min(255, room - (meditation_pct(med) if med else 0)))
         rg = dict(rg, med=med, pct=pct, total=warmth_pct(warmth) + (meditation_pct(med) if med else 0) + pct)
     # ---- Prayer drain vs regen (1 + 0.1875 (L - 1) per source per 2 s pulse) and the DTM: at least the position's
     # DTM and the refill the target ES% / TK need (dtm_need), never over the LPJ ceiling (dtm_ceiling with the drain)
@@ -1631,17 +1649,23 @@ def plan(preset='mock_high', name='Mock', **over):
     # ---- life: +479 lines + Oak Sage on the cover units
     oak_lists = by_role('cover')
     oak_lo, oak_hi = len(cover_units), len(oak_lists) * AURA_LINE_MAX
+    oak_zero = False
     if o['oak'] is not None:
-        if not oak_lo <= int(o['oak']) <= oak_hi:
-            raise PlanError(f"Oak Sage {o['oak']}: {oak_lo}-{oak_hi} on {len(cover_units)} sources", key='oak')
-        oak_lo = oak_hi = int(o['oak'])
-    life = solve_life(o['life'], (1 << 21) - 1, oak_lo, oak_hi, nl, extra_pct=o['bo_pct'])
+        if int(o['oak']) == 0:                 # 0 = no Oak Sage source at all
+            oak_lo = oak_hi = 0
+        elif not oak_lo <= int(o['oak']) <= oak_hi:
+            raise PlanError(f"Oak Sage {o['oak']}: 0 or {oak_lo}-{oak_hi} on {len(cover_units)} sources", key='oak')
+        else:
+            oak_lo = oak_hi = int(o['oak'])
+    else:
+        oak_zero = True                        # auto: no Oak Sage only when the (lower) life target needs none
+    life = solve_life(o['life'], (1 << 21) - 1, oak_lo, oak_hi, nl, extra_pct=o['bo_pct'], allow_zero=oak_zero)
     if life is None:
         raise PlanError(f"life {o['life']} cannot be reached", key='life')
     for s, v in zip(pref, split(life['flat'], 479)):
         s.add(7, v)
     # ---- aura levels
-    plan_auras = [(OAK, life['oak'], 'cover', ('cover',))]
+    plan_auras = [(OAK, life['oak'], 'cover', ('cover',))] if life['oak'] else []
     if o['barbs']:
         plan_auras.append((BARBS, int(o['barbs']), 'barbs', ('barbs', 'cover')))
     if rg['med']:
@@ -1655,8 +1679,10 @@ def plan(preset='mock_high', name='Mock', **over):
             hf_mast = max(0, math.floor((Fraction(tgt) / base - 1) * 100))
             while base * (100 + hf_mast) / 100 > tgt:
                 hf_mast -= 1
+    if HS:
+        plan_auras.append((HOLY_SHOCK, int(o['hsk_level']), 'hsk', ('hsk', 'hf', 'med', 'barbs', 'cover')))
     if o['thorns']:
-        plan_auras.append((THORNS, int(o['thorns']), 'thorns', ('thorns', 'hf', 'med', 'barbs', 'cover')))
+        plan_auras.append((THORNS, int(o['thorns']), 'thorns', ('thorns', 'hsk', 'hf', 'med', 'barbs', 'cover')))
     expect_src = {PRAYER: sum(1 for u in units if u.role == 'prayer')}
     for aid, total, src_role, allowed in plan_auras:
         seeds = [u for u in units if u.role == src_role]
@@ -2301,7 +2327,8 @@ FIELDS = (
     ('Auras', (('prayer', 'Prayer', 'int', (0, 6200)), ('prayer_sources', 'Prayer src', 'int', (0, CHARM_COUNT)),
                ('thorns', 'Thorns', 'int', (0, 6000)), ('barbs', 'Barbs', 'int', (0, 6000)),
                ('oak', 'Oak Sage', 'int', (0, 6000)), ('hf_level', 'Holy Freeze', 'int', (0, 6000)),
-               ('hf_sources', 'HF src', 'int', (0, 49)), ('hf_target', 'HF per src', 'int', (0, ROLL)),
+               ('hf_sources', 'HF src', 'int', (0, 49)), ('hsk_level', 'Holy Shock', 'int', (0, 6000)),
+               ('hsk_sources', 'HS src', 'int', (0, 49)), ('hf_target', 'HF per src', 'int', (0, ROLL)),
                ('hf_cap', 'HF mastery', 'bool', None), ('thorns_lvl', 'Thorns / lvl', 'int', (0, 2000)))),
     ('Damage', (('damage', 'Smite PvP', 'int', (0, int(DMG_CAP_PVP))), ('smite_max', 'Max smite', 'bool', None),
                 ('shield', 'Smite shield', 'choice', shield_choices),
@@ -2332,7 +2359,8 @@ FIELD_KEYS = tuple(f[0] for _, fs in FIELDS for f in fs)
 FIELD_KIND = {f[0]: f[2] for _, fs in FIELDS for f in fs}
 FIELD_EXTRA = {f[0]: f[3] for _, fs in FIELDS for f in fs}
 # the aura fields with the source count shown next to them (the plan's expected sources)
-AURA_FIELD_SOURCE = dict(prayer=PRAYER, thorns=THORNS, barbs=BARBS, oak=OAK, med=MEDITATION, hf_level=HOLY_FREEZE)
+AURA_FIELD_SOURCE = dict(prayer=PRAYER, thorns=THORNS, barbs=BARBS, oak=OAK, med=MEDITATION, hf_level=HOLY_FREEZE,
+                     hsk_level=HOLY_SHOCK)
 # a short hint per field: unit and range
 HINTS = dict(tk='hard TK points 0-99 (default 31; 31: band 524288, 30: funky 1048576); changing it re-solves the '
              'DTM, its ceilings and a funky\'s mana',
@@ -2351,6 +2379,7 @@ HINTS = dict(tk='hard TK points 0-99 (default 31; 31: band 524288, 30: funky 104
              med='Meditation level (one source: mana regen to the cap)',
              regen='mana regen % line 0-255', hf_level='Holy Freeze total level',
              hf_sources='Holy Freeze sources 0-42 (gear jewels)',
+             hsk_level='Holy Shock total level', hsk_sources='Holy Shock sources (gear jewels after the Holy Freeze ones; 1 when a level is set)',
              hf_target='Holy Freeze damage per source (PvM) the cold mastery aims at; cap 8388607 (x 0.17 PvP)',
              hf_cap='cold mastery up to the per-source target (the clones: 43k-82k%)',
              thorns_lvl='attacker takes damage per level (sum of the lines)',

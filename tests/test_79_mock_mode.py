@@ -1045,4 +1045,36 @@ def rule_no_prayer_aura_on_funky_and_no_weapon_in_dopplezon():
     T.eq(M.plan('mock_high', 'W', weapon=True, dopplezon=False)['o']['weapon'], True, 'no morph keeps it')
 
 
+@T.test
+def rule_meditation_life_oak_holy_shock():
+    """Typed Meditation / regen top up to the roll-over cap, a lower life is never exceeded, Oak Sage 0 means no
+    Oak source, Oak is preferred over +life lines, and Holy Shock is an aura option."""
+    M = engine().M
+    base = M.plan('mock_high', 'Ms')
+    cap = base['regen']['cap']
+    P = M.plan('mock_high', 'Ms', med=40)
+    r = P['regen']
+    T.eq(r['med'], 40, 'typed Meditation kept')
+    T.check(r['total'] <= cap and cap - r['total'] < 25 + 1 or r['pct'] == 255, f"regen near the cap {r['total']}/{cap}")
+    T.eq(P['expect_sources'].get(M.MEDITATION, 0), 1, 'one Meditation source')
+    P = M.plan('mock_high', 'Lf', life=1000000)
+    T.check(P['life']['life'] <= 1000000, f"life {P['life']['life']} not raised over 1000000")
+    P = M.plan('mock_high', 'Ok', oak=0, life=150000)
+    T.eq(P['life']['oak'], 0, 'oak 0 solved as 0')
+    T.eq(P['expect_sources'].get(M.OAK, 0), 0, 'no Oak Sage source')
+    T.check(not [x for x in _lines(P) if x[0] == 151 and x[1] == M.OAK], 'no Oak Sage lines')
+    T.check(P['life']['life'] <= P['o']['life'], 'life under target with Oak 0')
+    A = M.plan('mock_high', 'Ok')
+    T.check(A['life']['oak'] > 0, 'auto life uses Oak Sage')
+    P = M.plan('mock_high', 'Hs', hsk_level=1500, hsk_sources=2)
+    T.eq(P['expect_sources'].get(M.HOLY_SHOCK, 0), 2, 'Holy Shock sources')
+    T.eq(sum(x[2] if len(x) > 2 else 0 for x in []), 0, 'noop')
+    T.check('hsk_level' in M.FIELD_KEYS and M.sources_of(P)['hsk_level'] == 2, 'Holy Shock field + source count')
+    try:
+        M.plan('mock_high', 'Hs', hsk_level=1500, hsk_sources=40)
+        T.check(False, 'too many Holy Shock sources refused')
+    except M.PlanError as e:
+        T.eq(getattr(e, 'key', None), 'hsk_sources', 'refused on the field')
+
+
 T.main(globals())
