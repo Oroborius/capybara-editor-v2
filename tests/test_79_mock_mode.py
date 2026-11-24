@@ -1077,4 +1077,46 @@ def rule_meditation_life_oak_holy_shock():
         T.eq(getattr(e, 'key', None), 'hsk_sources', 'refused on the field')
 
 
+@T.test
+def ith_items_vanish_but_keep_their_sources():
+    """Ith (runeword flag, id 0xFFFF, empty runeword list): the weapon, its jewels and the Ith charms (inventory and
+    stash) count as aura sources but add no levels; the flag round-trips through save and reload; a Dopplezon morph
+    weapon is only an Ith weapon or a dex-bug weapon whose requirements stay unmet."""
+    E = engine()
+    M = E.M
+    base = M.generate('mock_high', 'Ba')[1]
+    raw, P = M.generate('mock_high', 'Ith', ith_weapon=True, ith_charms=12, ith_inv=3)
+    ith = [u for u in P['units'] if u.ith]
+    T.eq(len(ith), 1 + 7 + 3 + 12, 'weapon + 7 jewels + 3 inventory + 12 stash charms')
+    for u in ith:
+        T.check(not any(s.lines and sid != 151 for s in u.slots for sid, _p, _v in s.lines), 'only the Prayer source line')
+    mp = M.model_from_plan(P, raw)
+    folder = _gen_dir()
+    mc = M.model_from_character(E.MC.Character(M.write_new(raw, folder, 'Ith'), E.data))
+    T.eq(sum(1 for u in mc['units'] if u.ith), len(ith), 'the flag survives save / reload')
+    ch = E.MC.Character(M.write_new(raw, folder, 'Ithb'), E.data)
+    T.check(any(e.it.get('panel') == 5 and e.it.get('stats_runeword') is not None for e in ch.items), 'stash Ith charm')
+    for m in (mp, mc):
+        t = M.totals(m, 'A')
+        T.eq(sum(t['sources'].get(M.PRAYER, {}).values()), P['expect_sources'][M.PRAYER], 'sources counted')
+        T.eq(sum(1 for u in t['units'] if u.ith for _ in u.lines()), 0, 'Ith units add no stat lines')
+    ca, cb = M.analyze(mp, 'A', bo=True)['checks'], M.analyze(mc, 'A', bo=True)['checks']
+    T.eq([c for c in ca if c not in cb], [c for c in cb if c not in ca], 'plan model == written save')
+    src = lambda m: sum(M.totals(m, 'A')['sources'].get(M.PRAYER, {}).values())
+    T.eq(src(mc) - src(M.model_from_plan(base)), 1 + 7 + 3 + 12 - 3, 'Ith items add Prayer sources (3 replace charms)')
+    # Dopplezon morph weapon rule
+    T.check(not M.plan('mock_high', 'Nw', weapon=True)['o']['weapon'], 'a plain weapon is dropped in the morph')
+    P2 = M.plan('mock_high', 'Dx', weapon=True, dex_bug=True)
+    T.check(P2['o']['weapon'], 'dex-bug weapon kept: its requirements stay unmet (dexterity 1 < 27)')
+    d = M.WEAPON_REQ[M.WEAPON[2]]
+    T.check(1 < d[1] and not any(sid == 2 for u in P2['units'] for s in u.slots for sid, _p, _v in s.lines), 'no dexterity lines')
+    # funky24 (Ith weapon) still hits its exact mana, or fails loudly
+    try:
+        M.generate('funky24', 'Fkb', ith_weapon=True)
+        T.check(False, 'an Ith weapon lacks the lists for the funky24 exact mana')
+    except M.PlanError as e:
+        T.check('cannot be hit exactly' in str(e), 'funky24 needs its weapon counted: ' + str(e))
+    T.check(M.generate('funky24', 'Fkc')[1]['o']['weapon'], 'funky24 keeps a counted dex-bug weapon')
+
+
 T.main(globals())

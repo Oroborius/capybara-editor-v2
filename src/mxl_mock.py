@@ -488,12 +488,15 @@ def decode_blob(blob, isc, base):
 # ============================================================================================ analyzer
 class Unit:
     """One aura 'source' holder: a top-level item (its own + set lists), a socketed jewel or a charm."""
-    __slots__ = ('kind', 'name', 'lists', 'side')
+    __slots__ = ('kind', 'name', 'lists', 'side', 'ith')
 
-    def __init__(self, kind, name, lists, side=None):
-        self.kind, self.name, self.lists, self.side = kind, name, lists, side
+    def __init__(self, kind, name, lists, side=None, ith=False):
+        self.kind, self.name, self.lists, self.side, self.ith = kind, name, lists, side, ith
 
     def lines(self):
+        """The stat lines that ADD (an Ith unit vanishes: no levels / stats; its aura sources still count)."""
+        if self.ith:
+            return
         for L in self.lists:
             yield from L
 
@@ -538,7 +541,9 @@ def model_from_character(ch, size=None):
         if it.get('location') == 1:
             side = _side_of_body(it.get('equipped'))
             nm = f"{code.strip()}@{it.get('equipped')}"
-            units.append(Unit('gear', nm, lists_of(it), side))
+            is_wpn = it.get('equipped') in (4, 5, 11, 12) and not is_shield(code)
+            ith = is_wpn and it.get('stats_runeword') is not None   # nondescript runeword: vanishes, sources stay
+            units.append(Unit('gear', nm, lists_of(it), side, ith))
             if it.get('quality') in (5, 'set'):
                 set_ids[side].add(it.get('set_unique_id'))
             if it.get('equipped') in (4, 5, 11, 12) and is_shield(code):
@@ -552,9 +557,12 @@ def model_from_character(ch, size=None):
             cap = field + sum(s['value'] for s in it.get('stats', []) if s['id'] == 194)
             excess += max(0, len(kids) - cap)
             for j, s in enumerate(kids[:cap]):          # the game drops children beyond the socket count
-                units.append(Unit('jewel', f'{nm}/{j}', lists_of(s), side))
-        elif it.get('location') == 0 and it.get('panel') == 1 and code in CHARMS:
-            units.append(Unit('charm', f"{code.strip()}@{it.get('x')},{it.get('y')}", lists_of(it)))
+                units.append(Unit('jewel', f'{nm}/{j}', lists_of(s), side, ith))
+        elif it.get('location') == 0 and it.get('panel') in (1, 5) and code in CHARMS:
+            ith = it.get('stats_runeword') is not None           # Ith charm: sources count in the stash too
+            if it.get('panel') == 1 or ith:
+                units.append(Unit('charm', f"{code.strip()}@{it.get('x')},{it.get('y')}"
+                                  f"{'s' if it.get('panel') == 5 else ''}", lists_of(it), None, ith))
     return dict(name=ch.name, cls=cls, level=st.get(12, 0), active_weapon=struct.unpack_from('<I', head, 0x10)[0],
                 base_str=st.get(0, 0), base_ene=st.get(1, 0), base_vit=st.get(3, 0),
                 base_mana_raw=st.get(9, 0), base_life_raw=st.get(7, 0), stat_points=st.get(4, 0), skills=sk,
@@ -1154,7 +1162,7 @@ PRESETS = {
     'funky26': dict(label='Funky TK26', role='funky', tk=26, mana=3145728, exact=True, hf_sources=7, hf_level=3100,
                     stun=100, **_FUNKY, note='funky zero 3145728 at TK26 (q 6, stable)'),
     'funky24': dict(label='Funky TK24', role='funky', tk=24, mana=4194304, exact=True, hf_sources=7, hf_level=3100,
-                    stun=100, **_FUNKY, weapon=True, ith_weapon=True, note='funky zero 4194304 at TK24 (q 8); needs an Ith-weapon (socketed) '
+                    stun=100, **_FUNKY, weapon=True, dex_bug=True, note='funky zero 4194304 at TK24 (q 8); needs a dex-bug (requirements unmet) socketed '
                                                              'weapon (198 lists) for the exact product'),
     'balance_switch': dict(label='Balance switch', role='mock', tk=31, mana=1572500, mana_b=1211974, hf_sources=7,
                            hf_level=3100, switch='balance', res_cold=3528,
@@ -1225,6 +1233,8 @@ SOCKET_STAT = 8
 MAX_SOCKETS = 7
 JEWELS = 7
 CHARM_COUNT = 40
+ITH_STASH_MAX = 100                  # Ith charms in the stash (10 x 10 cells)
+WEAPON_REQ = {'crs ': (43, 27)}      # str / dex requirement of the weapon base (weapons.txt)
 # size tricks of the reference clones (docs/review/mock-pi-data/editor-tricks.txt): socketed jewels are NORMAL
 # quality (q2: no 3-bit sub-quality; clone-09, clone-32, Cold, clone-23, clone-52, Prototype) and every
 # jewel / charm has no picture field ("no img": 1 flag bit instead of 4; clone-32's 40 charms, clone-83's
@@ -1287,6 +1297,7 @@ class PUnit:
         self.body, self.code, self.set_id, self.parent, self.side = body, code, set_id, parent, side
         self.slots = [Slot(self, i) for i in range(nlists)]
         self.socketed = False
+        self.ith = False
 
 
 # ---------------------------------------------------------------------------------- integer solvers
@@ -1426,6 +1437,10 @@ def options(preset='mock_high', **over):
     o.setdefault('exact', False)
     o.setdefault('dex_bug', False)
     o.setdefault('ith_weapon', False)
+    o['ith_charms'] = max(0, min(ITH_STASH_MAX, int(o.get('ith_charms') or 0)))
+    o['ith_inv'] = max(0, min(CHARM_COUNT - 1, int(o.get('ith_inv') or 0)))
+    if o['ith_weapon']:
+        o['weapon'] = True
     o.setdefault('weapon', False)
     o.setdefault('dopplezon', True)
     # Dopplezon morph: a weapon vanishes in the morph, so none is equipped unless the build is a dex-bug build or
@@ -1493,7 +1508,8 @@ def plan(preset='mock_high', name='Mock', **over):
     """The whole character as data: units with their stat lists, header values, targets and the expected
     analyzer results. Raises PlanError when a target cannot be hit on the list budget."""
     o = options(preset, **over)
-    nl_est = sum(6 + (2 * JEWELS if g[4] else 0) for g in list(GEAR) + ([WEAPON] if o['weapon'] else [])) + CHARM_COUNT
+    nl_est = sum(6 + (2 * JEWELS if g[4] else 0) for g in list(GEAR) + ([WEAPON] if o['weapon'] and not o['ith_weapon'] else [])) \
+        + CHARM_COUNT - o['ith_inv']
     o['absorb'] = absorb_plan(o, nl_est)
     abs_max = max([a['total'] for a in o['absorb'].values()] or [0])
     if not o['exact']:
@@ -1528,22 +1544,34 @@ def plan(preset='mock_high', name='Mock', **over):
         if role == 'shield':
             code = o['shield']                              # the form's base (Sigon's Guard on it, same lists)
         g = PUnit('gear', role, 6, 'cover', body, code, sid, side='A' if body in (4, 5) else None)
+        g.ith = role == 'weapon' and bool(o['ith_weapon'])
         units.append(g)
         if sock:
             g.socketed = True
             for j in range(JEWELS):
-                units.append(PUnit('jewel', f'{role}/{j}', 2, 'cover', parent=g, side=g.side))
+                k = PUnit('jewel', f'{role}/{j}', 2, 'cover', parent=g, side=g.side)
+                k.ith = g.ith
+                units.append(k)
     if o.get('role') == 'funky':        # a Funky's mana drain from a Prayer aura can kill it: no aura sources
         o['prayer_sources'] = 0
     nps = CHARM_COUNT if o['prayer_sources'] is None else max(0, min(CHARM_COUNT, int(o['prayer_sources'])))
-    charms = [PUnit('charm', f'charm{i}', 1, 'prayer' if i < nps else 'cover') for i in range(CHARM_COUNT)]
+    n_norm = CHARM_COUNT - o['ith_inv']
+    charms = [PUnit('charm', f'charm{i}', 1, 'prayer' if i < min(nps, n_norm) else 'cover') for i in range(n_norm)]
+    charms += [PUnit('charm', f'ith{i}', 1, 'ith') for i in range(o['ith_inv'])]
+    charms += [PUnit('charm', f'ithstash{i}', 1, 'ith') for i in range(o['ith_charms'])]
+    for c in charms[n_norm:]:
+        c.ith = True
+    for u in units:
+        if u.ith:
+            u.role = 'ith'
     units += charms
+    ith_units = [u for u in units if u.ith]
     U = {u.name: u for u in units}
     # ---- Thorns first, Barbs only if still needed (user): against the flat DR the plan writes (one line per list)
     # and the target ES% of the form; a user's Thorns / Barbs stay as typed (the analyzer warns)
     es = Fraction(o['es'], 100)
-    n_all = sum(len(u.slots) for u in units)
-    th_cap = AURA_LINE_MAX * sum(len(u.slots) for u in units if u.kind != 'charm')
+    n_all = sum(len(u.slots) for u in units if not u.ith)
+    th_cap = AURA_LINE_MAX * sum(len(u.slots) for u in units if u.kind != 'charm' and not u.ith)
     dr_est = n_all * max(0, min(63, int(o['dr'])))
     if o['thorns'] is None:
         o['thorns'] = max_thorns(th_cap, dr_est, int(o['dr_pct']), es)
@@ -1554,7 +1582,7 @@ def plan(preset='mock_high', name='Mock', **over):
     H = max(0, int(o['hf_sources'])) if o['hf_level'] else 0
     # Holy Freeze sources on gear jewels (shield first), like the reference clone-05; charms stay Prayer
     hf_jewels = [u for r in ('shield', 'helm', 'armor', 'amulet', 'ring1', 'ring2', 'weapon')
-                 for u in units if u.kind == 'jewel' and u.parent.name == r]
+                 for u in units if u.kind == 'jewel' and u.parent.name == r and not u.ith]
     if H > len(hf_jewels):
         raise PlanError(f'{H} Holy Freeze sources: at most {len(hf_jewels)} (gear jewels; charms stay Prayer)',
                         key='hf_sources')
@@ -1570,8 +1598,12 @@ def plan(preset='mock_high', name='Mock', **over):
         U['boots'].role = 'thorns'
     if o['barbs']:
         U['belt'].role = 'barbs'
-    lists = [s for u in units for s in u.slots]
+    lists = [s for u in units if not u.ith for s in u.slots]
     nl = len(lists)
+    if o.get('role') != 'funky':        # Ith items vanish: no levels, one Prayer line each keeps their source
+        for u in ith_units:
+            u.slots[0].add(151, AURA_LINE_MAX, PRAYER)
+    n_ith_src = 0 if o.get('role') == 'funky' else len(ith_units)
     by_role = lambda *roles: [s for s in lists if s.unit.role in roles]
     # ---- Prayer 31 on EVERY list (178 x 31 = 5518); sources only where nothing higher sits (the charms)
     if o.get('role') == 'funky':            # no Prayer aura on a Funky (Replenish Life bulk gives the regen)
@@ -1630,8 +1662,9 @@ def plan(preset='mock_high', name='Mock', **over):
     # ---- Prayer drain vs regen (1 + 0.1875 (L - 1) per source per 2 s pulse) and the DTM: at least the position's
     # DTM and the refill the target ES% / TK need (dtm_need), never over the LPJ ceiling (dtm_ceiling with the drain)
     pr_lv = sum(v for s in lists for sid, p, v in s.lines if sid == 151 and p == PRAYER)
-    drain = prayer_drain(pr_lv) if nps else 0
-    drain_s = drain * nps / 2
+    nps_all = nps_eff = sum(1 for u in units if u.role == 'prayer') + n_ith_src
+    drain = prayer_drain(pr_lv) if nps_all else 0
+    drain_s = drain * nps_all / 2
     regen_s = mana['mana'] / 120 * (100 + rg['total']) / 100
     if drain_s >= regen_s:
         raise PlanError(f'Prayer {pr_lv} x {nps} sources drains {float(drain_s):.0f} mana/s, regen only '
@@ -1644,7 +1677,7 @@ def plan(preset='mock_high', name='Mock', **over):
     th_ret = thorns_return(int(o['thorns']), int(o['barbs']), dr_est, int(o['dr_pct']), es) \
         if o['thorns'] or o['barbs'] else None
     dtm_info = dict(need=need, hpj=dtm_ceiling(mana['mana'], dr_est, 0, o['tk']), lpj=ceil,
-                    drain_s=drain_s, regen_s=regen_s, prayer_level=pr_lv, prayer_sources=nps, thorns_return=th_ret,
+                    drain_s=drain_s, regen_s=regen_s, prayer_level=pr_lv, prayer_sources=nps_all, thorns_return=th_ret,
                     thorns_dtm=thorns_dtm(th_ret, es, o['tk']) if th_ret is not None else None)
     # ---- life: +479 lines + Oak Sage on the cover units
     oak_lists = by_role('cover')
@@ -1683,7 +1716,7 @@ def plan(preset='mock_high', name='Mock', **over):
         plan_auras.append((HOLY_SHOCK, int(o['hsk_level']), 'hsk', ('hsk', 'hf', 'med', 'barbs', 'cover')))
     if o['thorns']:
         plan_auras.append((THORNS, int(o['thorns']), 'thorns', ('thorns', 'hsk', 'hf', 'med', 'barbs', 'cover')))
-    expect_src = {PRAYER: sum(1 for u in units if u.role == 'prayer')}
+    expect_src = {PRAYER: sum(1 for u in units if u.role == 'prayer') + n_ith_src}
     for aid, total, src_role, allowed in plan_auras:
         seeds = [u for u in units if u.role == src_role]
         if not seeds:
@@ -1787,6 +1820,15 @@ def plan(preset='mock_high', name='Mock', **over):
     for sid, key in ((230, 'res_cold'), (231, 'res_fire'), (232, 'res_light')):
         if int(o[key]) > 0:
             put(sid, split(int(o[key]), 63), gear_first=False)
+    if o['weapon'] and o['dopplezon'] and not o['ith_weapon']:
+        # Dopplezon morph: a weapon the character can wield blocks Smite; only a dex-bug weapon whose requirements
+        # stay unmet (strength / dexterity below the base's) is allowed
+        rs, rd = WEAPON_REQ.get(WEAPON[2], (0, 0))
+        dex = 1 + sum(v for u in units for sid, _p, v in (l for sl in u.slots for l in sl.lines) if sid == 2)
+        strn = 1023 + sum(v for u in units for sid, _p, v in (l for sl in u.slots for l in sl.lines) if sid == 0)
+        if not (dex < rd or strn < rs):
+            raise PlanError('Dopplezon: the weapon\'s requirements are met and would block Smite; use no weapon, '
+                            'an Ith weapon or a dex-bug weapon with unmet requirements', key='weapon')
     P = dict(o=o, units=units, lists=lists, U=U, mana=mana, regen=rg, life=life, smite=sm, stun=stun,
              hf_mastery=hf_mast, expect_sources=expect_src, name=name, rng_seed=rng.getrandbits(64),
              dmg_target=dmg_target, pvm=pvm, balance=dtm_info)
@@ -1884,7 +1926,7 @@ def _fill_absorb(P):
     item's magic list - never a charm; a switch shield copy mirrors its original's by-clvl lines), then the clones' bulk lines (BULK_REPLENISH,
     or BULK_HOST_RES first on a Host) while the file stays within the size budget."""
     budget = P['o']['size_budget']
-    lists = [s for u in P['units'] for s in u.slots]       # with the switch side B copies
+    lists = [s for u in P['units'] if not u.ith for s in u.slots]       # with the switch side B copies
     order = sorted(lists, key=lambda s: {'charm': 0, 'jewel': 1}.get(s.unit.kind, 2))
     o = P['o']
     side_a = [s for s in order if s.unit.side != 'B']
@@ -1987,13 +2029,15 @@ def _item_records(P):
         if u.kind != 'gear':
             continue
         kids = [k for k in units if k.parent is u]
-        f = FLAG_IDENTIFIED | FLAG_ALWAYS | (FLAG_SOCKETED if kids else 0)
+        f = FLAG_IDENTIFIED | FLAG_ALWAYS | (FLAG_SOCKETED if kids else 0) | (FLAG_RUNEWORD if u.ith else 0)
         rec = dict(flags=f, version=ITEM_VERSION, location=1, equipped=u.body, x=0, y=0, panel=0, code=u.code,
                    socketed_count=len(kids), id=rng.getrandbits(32), ilvl=90, quality=5, image=None,
                    auto_affix=None, set_unique_id=u.set_id, realm_bit=0, defense_raw=10, max_durability=0,
                    sockets=socket_field(u.code) or 0, set_mask=31,
                    lists=[([(194, None, MAX_SOCKETS - (socket_field(u.code) or 0))] if kids else []) + u.slots[0].lines],
                    set_lists=[s.lines for s in u.slots[1:6]])
+        if u.ith:                       # nondescript runeword: flag set, id 0xFFFF, empty runeword list
+            rec.update(runeword_id=0xFFFF, rw_list=[])
         grp = [rec]
         for j, k in enumerate(kids):
             grp.append(dict(flags=FLAG_IDENTIFIED | FLAG_ALWAYS | FLAG_RUNEWORD, version=ITEM_VERSION,
@@ -2003,8 +2047,10 @@ def _item_records(P):
                             rw_list=k.slots[1].lines))
         out.append(grp)
     for i, u in enumerate(x for x in units if x.kind == 'charm'):
-        out.append([dict(flags=FLAG_IDENTIFIED | FLAG_ALWAYS, version=ITEM_VERSION, location=0, equipped=0,
-                         x=i % 10, y=i // 10, panel=1, code='cm1 ', socketed_count=0, id=rng.getrandbits(32),
+        j = i - CHARM_COUNT if i >= CHARM_COUNT else i            # the stash (panel 5) takes the Ith charms past 40
+        out.append([dict(flags=FLAG_IDENTIFIED | FLAG_ALWAYS | (FLAG_RUNEWORD if u.ith else 0), version=ITEM_VERSION,
+                         location=0, equipped=0, runeword_id=0xFFFF, rw_list=[] if u.ith else None,
+                         x=j % 10, y=j // 10, panel=5 if i >= CHARM_COUNT else 1, code='cm1 ', socketed_count=0, id=rng.getrandbits(32),
                          ilvl=90, quality=CHARM_QUALITY, image=None, auto_affix=None, subquality=1, realm_bit=0,
                          lists=[u.slots[0].lines])])
     return out
@@ -2130,6 +2176,8 @@ def model_from_plan(P, raw=None):
     units, set_ids, shields = [], {'A': set(), 'B': set(), None: set()}, {}
     for u in P['units']:
         L = [list(s.lines) for s in u.slots]
+        if u.ith and u.kind != 'jewel':
+            L.append([])                                   # the Ith item's empty runeword list
         if u.kind == 'gear':
             kids = [k for k in P['units'] if k.parent is u]
             if kids:
@@ -2142,8 +2190,9 @@ def model_from_plan(P, raw=None):
             nm = f'{u.parent.code.strip()}@{u.parent.body}/{[k for k in P["units"] if k.parent is u.parent].index(u)}'
         else:
             i = [x for x in P['units'] if x.kind == 'charm'].index(u)
-            nm = f'cm1@{i % 10},{i // 10}'
-        units.append(Unit(u.kind, nm, L, u.side))
+            j = i % CHARM_COUNT
+            nm = f"cm1@{j % 10},{j // 10}{'s' if i >= CHARM_COUNT else ''}"
+        units.append(Unit(u.kind, nm, L, u.side, u.ith))
     sk = _skills(P)[2:]
     first = CLASS_FIRST_SKILL[o['cls']] if o['cls'] < 7 else 0
     return dict(name=P['name'], cls=o['cls'], level=o['level'], active_weapon=0, base_str=1023, base_ene=0,
@@ -2325,6 +2374,8 @@ FIELDS = (
     ('Life / regen', (('life', 'Life (BO)', 'int', (1, ROLL - 1)), ('med', 'Meditation', 'int', (0, 2000)),
                       ('regen', 'Regen % line', 'int', (0, 255)), ('replenish', 'Replenish bulk', 'bool', None))),
     ('Auras', (('prayer', 'Prayer', 'int', (0, 6200)), ('prayer_sources', 'Prayer src', 'int', (0, CHARM_COUNT)),
+               ('ith_inv', 'Ith charms (inventory)', 'int', (0, CHARM_COUNT - 1)),
+               ('ith_charms', 'Ith charms (stash)', 'int', (0, ITH_STASH_MAX)),
                ('thorns', 'Thorns', 'int', (0, 6000)), ('barbs', 'Barbs', 'int', (0, 6000)),
                ('oak', 'Oak Sage', 'int', (0, 6000)), ('hf_level', 'Holy Freeze', 'int', (0, 6000)),
                ('hf_sources', 'HF src', 'int', (0, 49)), ('hsk_level', 'Holy Shock', 'int', (0, 6000)),
@@ -2337,7 +2388,8 @@ FIELDS = (
                 ('ds', 'Deadly strike', 'int', (0, 1000)), ('target_def', '-% Target def', 'int', (0, 3000)),
                 ('dtm', 'DTM %', 'int', (0, 2000)), ('pierce', 'Cold pierce', 'int', (0, 60000)),
                 ('itd', 'Ignore target def', 'bool', None),
-                ('weapon', 'Weapon (+20 lists)', 'bool', None))),
+                ('weapon', 'Weapon (+20 lists)', 'bool', None),
+                ('ith_weapon', 'Ith weapon (vanishes, sources only)', 'bool', None))),
     ('Stun / Delirium', (('stun', 'Stun slider', 'int', (0, 100)), ('stun_lvl', 'Stun level', 'int', (0, 63)),
                          ('deli_attack', f'Deli att {DELIRIUM_CHANCE}%', 'int', (1, 63)),
                          ('deli_strike', f'Deli hit {DELIRIUM_CHANCE}%', 'int', (1, 63)))),
