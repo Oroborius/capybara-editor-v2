@@ -118,6 +118,8 @@ def toggle_tab_analyzer_generator():
     T.check({'Caps', 'Auras', 'Defenses', 'Speeds', 'Damage', 'Clone profile'} <= {r[0] for r in srows},
             'summary sections')
     T.check(any(r[0] == 'Clone profile' and r[3] == 'good' for r in srows), 'no clone category missing')
+    T.check(any(r[0] == 'Damage' and r[1] == 'Thorns damage' and 'per source' in r[2] for r in srows),
+            'the generator shows reflective damage per Thorns source')
     # an edited field reaches plan() and the summary
     page.ov['ias'].set('-100')
     T.check(page.check() is not None, 'Check with an edited field')

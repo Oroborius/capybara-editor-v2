@@ -816,11 +816,30 @@ def aura_damage(sid, lvl, mast=0):
     return lo * (100 + mast) // 100, hi * (100 + mast) // 100
 
 
-def solve_aura_dmg(sid, target, max_lines=200):
+def _solve_thorns_damage(target, max_lines, dr, dr_pct, es):
+    """Choose a safe Thorns level for one capped incoming hit with the target's ES up."""
+    best = None
+    for level in range(1, AURA_LINE_MAX * max_lines + 1):
+        damage = thorns_return(level, 0, dr, dr_pct, es)
+        if not 0 < damage <= target or not thorns_safe(level, 0, dr, dr_pct, es):
+            continue
+        bits = -(-level // AURA_LINE_MAX) * line_bits(151)
+        gap = target - damage
+        near = gap <= Fraction(target, 1000)
+        key = (not near, bits if near else gap, gap if near else bits)
+        if best is None or key < best[0]:
+            best = key, dict(level=level, mast=0, min=damage, max=damage, bits=bits)
+    return best[1] if best else None
+
+
+def solve_aura_dmg(sid, target, max_lines=200, *, dr=0, dr_pct=0, es=ES_ABSORB):
     """The cheapest (fewest bits) aura level + mastery % whose MAX damage per source stays at or under the target
     and is closest to it: for every line count k (levels <= 31 k) the highest level the target allows, the mastery
-    that tops it up (lines of at most 461). dict(level, mast, min, max, bits) or None."""
+    that tops it up (lines of at most 461). Thorns instead solves its reflected damage with the target defenses.
+    Returns dict(level, mast, min, max, bits) or None."""
     target = min(int(target), ROLL)
+    if sid == THORNS:
+        return _solve_thorns_damage(target, max_lines, dr, dr_pct, es)
     mid, mline = MASTERY_STAT[sid], line_max(MASTERY_STAT[sid])
     best = None
     for k in range(1, max_lines + 1):
@@ -1154,7 +1173,7 @@ def analyze(model, side=None, bo=False, energy=False, *, targets=None):
             BAD if hf_top > ROLL else GOOD)      # user: aura damage caps like smite (x 0.17 PvP, no DR%)
     for aid in (HOLY_FIRE, HOLY_FREEZE, HOLY_SHOCK):             # damage per source and over all sources
         lv, n = t['aura_lv'].get(aid, 0), sum(t['sources'].get(aid, {}).values())
-        if not lv or not n or aid == HOLY_FREEZE and not _DATA and False:
+        if not lv or not n:
             continue
         mp = T.get(MASTERY_STAT[aid], 0)
         try:
@@ -1164,6 +1183,13 @@ def analyze(model, side=None, bo=False, energy=False, *, targets=None):
         v.setdefault('aura_damage', {})[AURA_NAMES[aid]] = (lo, hi, n)
         add(f'auradmg_{aid}', f'{AURA_NAMES[aid]} damage', f'{lo}-{hi} PvM per source (level {lv}, mastery {mp}%) x {n} '
             f'source(s) = {hi * n} max in total; per source vs the roll {ROLL}', BAD if hi > ROLL else GOOD)
+    thorns_sources = sum(t['sources'].get(THORNS, {}).values())
+    if thl and thorns_sources:
+        damage = thorns_return(thl, 0, v['dr'], v['dr_pct'], es)
+        v.setdefault('aura_damage', {})[AURA_NAMES[THORNS]] = (damage, damage, 1)
+        add(f'auradmg_{THORNS}', 'Thorns damage', f'{_num(damage)} returned per source (level {thl}, '
+            f'capped incoming hit with ES {float(es * 100):g}%); {thorns_sources} source(s) stack into one aura',
+            GOOD if thorns_safe(thl, 0, v['dr'], v['dr_pct'], es) else WARN)
     if prayer_src:
         add('prayer', 'Prayer per second', f'Prayer {prayer_lv} x {prayer_src} source(s): heal {heal_s:.0f}, drain '
             f'{drain_s:.0f} (1 + 0.1875 (L - 1) per source per 2 s) vs regen {regen_s:.0f} mana/s',
@@ -1354,7 +1380,7 @@ DEFAULTS = dict(cls=1, level=127, position='LPJ', life=7300000, damage=Fraction(
                 size_budget=FILE_LIMIT - 1 - SIZE_MARGIN,
                 # every category the proven clones carry (docs/review/mock-pi-data/clone-profile.txt, CLONE_PROFILE):
                 # the clone median unless a preset says otherwise
-                thorns=None, barbs=None, dtm=None, es=ES_PCT, tk=TK_DEFAULT, holy_shield_cast=0,   # None: solved
+                thorns=None, thorns_target=0, barbs=None, dtm=None, es=ES_PCT, tk=TK_DEFAULT, holy_shield_cast=0,   # None: solved
                 hf_cap=True, hf_target=HF_MOCK_TARGET, thorns_lvl=0, hsk_level=0, hsk_sources=0, hfire_level=0, hfire_sources=0, hfire_target=0, hsk_target=0, abs_cold=0, abs_fire=0, abs_light=0, hf_solve=False,
                 ias=-121, frw=107, fhr=-36, fcr=-121, nv_ias=0, nv_frw=97,      # IAS 93, FRW 96, FHR 99, FCR 105, 68, 67
                 curse_res=511, target_def=381, dodge=127, ow=127, cb=0, ds=0,   # CB / DS do nothing against players
@@ -1773,7 +1799,14 @@ def plan(preset='mock_high', name='Mock', **over):
     # target ('dr_total') puts lines on just the lists it needs
     dr_total = n_all * dr_per if o.get('dr_total') is None else max(0, min(n_all * 63, int(o['dr_total'])))
     dr_est = dr_total
-    if o['thorns'] is None:
+    if o['thorns_target']:
+        result = solve_aura_dmg(THORNS, o['thorns_target'], th_cap // AURA_LINE_MAX,
+                                dr=dr_est, dr_pct=int(o['dr_pct']), es=es)
+        if result is None:
+            raise PlanError(f"Thorns: no safe level returns up to {o['thorns_target']} per source",
+                            key='thorns_target')
+        o['thorns'] = result['level']
+    elif o['thorns'] is None:
         o['thorns'] = max_thorns(th_cap, dr_est, int(o['dr_pct']), es)
     if o['barbs'] is None:
         o['barbs'] = pick_barbs(int(o['thorns']), th_cap, dr_est, int(o['dr_pct']), es)
@@ -2558,6 +2591,9 @@ def summary_rows(model, side=None, bo=False, role=None):
         if k in status:
             lab, txt, st = status[k]
             rows.append(('Caps', lab, txt, st))
+    thorns = status.get(f'auradmg_{THORNS}')
+    if thorns:
+        rows.append(('Damage', *thorns))
     for aid in sorted(set(t['aura_lv']) | set(t['sources'])):
         n = sum(t['sources'].get(aid, {}).values())
         groups = source_groups(t['source_units'].get(aid, []))
@@ -2624,6 +2660,7 @@ FIELDS = (
                ('hfire_level', 'Holy Fire', 'int', (0, UNCAPPED)), ('hfire_sources', 'Holy Fire src', 'int', (0, 49)),
                ('hfire_target', 'Holy Fire dmg / src', 'int', (0, ROLL)), ('hsk_target', 'Holy Shock dmg / src', 'int', (0, ROLL)),
                ('hf_solve', 'Solve HF level for HF per src', 'bool', None), ('hf_target', 'HF per src', 'int', (0, ROLL)),
+               ('thorns_target', 'Thorns dmg / src', 'int', (0, ROLL)),
                ('hf_cap', 'HF mastery', 'bool', None), ('thorns_lvl', 'Thorns / lvl', 'int', (0, UNCAPPED)))),
     ('Damage', (('damage', 'Smite PvP', 'int', (0, int(DMG_CAP_PVP))), ('smite_max', 'Max smite', 'bool', None),
                 ('shield', 'Smite shield', 'choice', shield_choices),
@@ -2687,6 +2724,8 @@ HINTS = dict(tk='hard TK points 0-99 (default 31; 31: band 524288, 30: funky 104
              hf_solve='solve the Holy Freeze level AND cold mastery for HF per src (instead of the level field)',
              hf_target='Holy Freeze damage per source (PvM) the cold mastery aims at; cap 8388607 (x 0.17 PvP)',
              hf_cap='cold mastery up to the per-source target (the clones: 43k-82k%)',
+             thorns_target='Thorns return from a capped incoming hit, with the target ES up; '
+                           '0 keeps level-based planning',
              thorns_lvl='attacker takes damage per level (sum of the lines)',
              damage='smite PvP damage, at most 713031', stun='0-100: more stun, less smite (the line % tops out at 90)',
              stun_pct='stun % of each attack / strike line; defaults to 90 at most. 100 crashes the game: allowed only when typed',

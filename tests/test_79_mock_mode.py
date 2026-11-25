@@ -999,6 +999,27 @@ def aura_damage_targets_solved_per_formula():
 
 
 @T.test
+def thorns_damage_target_uses_reflection_and_active_defenses():
+    M = engine().M
+    target = 1800000
+    for es, dr in ((95, 1000), (90, 2000)):
+        plan = M.plan('mock_high', 'Th', dr_total=dr, es=es, thorns_target=target)
+        model = M.model_from_plan(plan)
+        report = M.analyze(model)
+        level = plan['o']['thorns']
+        damage, maximum, sources = report['values']['aura_damage']['Thorns']
+        T.eq((damage, maximum, sources), (M.thorns_return(level, 0, dr, 255, Fraction(es, 100)),
+                                        damage, 1), 'one source returns Thorns only')
+        T.check(target * .99 <= damage <= target, f'closest safe hit to {target}: {damage}')
+        T.eq(plan['o']['barbs'], 0, 'the safe Thorns hit needs no Barbs')
+        T.check(any(key == f'auradmg_{M.THORNS}' and status == M.GOOD
+                    for key, _, _, status in report['checks']), 'Thorns source damage is in the analyzer')
+        T.check(any(section == 'Damage' and label == 'Thorns damage'
+                    for section, label, *_ in M.summary_rows(model)), 'Thorns damage is in the generator summary')
+    T.eq(M.solve_aura_dmg(M.THORNS, 1, max_lines=1), None, 'an unreachable target does not select an unsafe level')
+
+
+@T.test
 def absorb_totals_per_element_round_trip():
     """Absorb fields are TOTALS per element (cold / fire / lightning): the plan lands on the typed total, the
     analyzer shows it, the prefill gives it back; CB / DS are not generated and warned when added."""
