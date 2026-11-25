@@ -2550,31 +2550,33 @@ PRESET_ROLE = {k: p.get('role', 'mock') for k, p in PRESETS.items()}
 # (group, [(key, label, kind, extra)]): kind 'int' = a spin box (extra = (lo, hi)), 'bool' = a check box, 'choice' =
 # a combo box (extra = the values); every key is an options() key. 'src' after an aura: its source count (shown).
 SWITCHES = ('none', 'balance')
+# stat totals have no made-up upper limit: the file size is the limit (size_estimate); only the bit fields keep theirs
+UNCAPPED = 10 ** 9
 FIELDS = (
     ('Mana / TK', (('tk', 'TK', 'int', (0, 99)), ('es', 'Energy Shield %', 'int', (0, 99)),
                    ('mana', 'Mana (BO)', 'int', (1, 16777215)),
                    ('bo', 'BO level', 'int', (0, 99)), ('level', 'Level', 'int', (99, 127)),
                    ('cls', 'Class', 'choice', CLASSES), ('position', 'Position', 'choice', tuple(POSITIONS)),
                    ('enemy_aura', 'Enemy aura', 'choice', ('preset',) + tuple(ENEMY_AURA_MANA)))),
-    ('Life / regen', (('life', 'Life (BO)', 'int', (1, ROLL - 1)), ('med', 'Meditation', 'int', (0, 2000)),
+    ('Life / regen', (('life', 'Life (BO)', 'int', (1, ROLL - 1)), ('med', 'Meditation', 'int', (0, UNCAPPED)),
                       ('regen', 'Regen % line', 'int', (0, 255)), ('replenish', 'Replenish bulk', 'bool', None))),
-    ('Auras', (('prayer', 'Prayer', 'int', (0, 6200)), ('prayer_sources', 'Prayer src', 'int', (0, CHARM_COUNT)),
+    ('Auras', (('prayer', 'Prayer', 'int', (0, UNCAPPED)), ('prayer_sources', 'Prayer src', 'int', (0, CHARM_COUNT)),
                ('ith_inv', 'Ith charms (inventory)', 'int', (0, CHARM_COUNT - 1)),
                ('ith_charms', 'Ith charms (stash, move in by hand)', 'int', (0, ITH_STASH_MAX)),
-               ('thorns', 'Thorns', 'int', (0, 6000)), ('barbs', 'Barbs', 'int', (0, 6000)),
-               ('oak', 'Oak Sage', 'int', (0, 6000)), ('hf_level', 'Holy Freeze', 'int', (0, 6000)),
-               ('hf_sources', 'HF src', 'int', (0, 49)), ('hsk_level', 'Holy Shock', 'int', (0, 6000)),
+               ('thorns', 'Thorns', 'int', (0, UNCAPPED)), ('barbs', 'Barbs', 'int', (0, UNCAPPED)),
+               ('oak', 'Oak Sage', 'int', (0, UNCAPPED)), ('hf_level', 'Holy Freeze', 'int', (0, UNCAPPED)),
+               ('hf_sources', 'HF src', 'int', (0, 49)), ('hsk_level', 'Holy Shock', 'int', (0, UNCAPPED)),
                ('hsk_sources', 'HS src', 'int', (0, 49)),
-               ('hfire_level', 'Holy Fire', 'int', (0, 6000)), ('hfire_sources', 'Holy Fire src', 'int', (0, 49)),
+               ('hfire_level', 'Holy Fire', 'int', (0, UNCAPPED)), ('hfire_sources', 'Holy Fire src', 'int', (0, 49)),
                ('hfire_target', 'Holy Fire dmg / src', 'int', (0, ROLL)), ('hsk_target', 'Holy Shock dmg / src', 'int', (0, ROLL)),
                ('hf_solve', 'Solve HF level for HF per src', 'bool', None), ('hf_target', 'HF per src', 'int', (0, ROLL)),
-               ('hf_cap', 'HF mastery', 'bool', None), ('thorns_lvl', 'Thorns / lvl', 'int', (0, 2000)))),
+               ('hf_cap', 'HF mastery', 'bool', None), ('thorns_lvl', 'Thorns / lvl', 'int', (0, UNCAPPED)))),
     ('Damage', (('damage', 'Smite PvP', 'int', (0, int(DMG_CAP_PVP))), ('smite_max', 'Max smite', 'bool', None),
                 ('shield', 'Smite shield', 'choice', shield_choices),
                 ('holy_shield_cast', 'Holy Shield lvl', 'int', (0, 99)),
-                ('ow', 'Open wounds', 'int', (0, 1000)), ('cb', 'Crushing blow', 'int', (0, 1000)),
-                ('ds', 'Deadly strike', 'int', (0, 1000)), ('target_def', '-% Target def', 'int', (0, 3000)),
-                ('dtm', 'DTM %', 'int', (0, 2000)), ('pierce', 'Cold pierce', 'int', (0, 60000)),
+                ('ow', 'Open wounds', 'int', (0, UNCAPPED)), ('cb', 'Crushing blow', 'int', (0, UNCAPPED)),
+                ('ds', 'Deadly strike', 'int', (0, UNCAPPED)), ('target_def', '-% Target def', 'int', (0, UNCAPPED)),
+                ('dtm', 'DTM %', 'int', (0, UNCAPPED)), ('pierce', 'Cold pierce', 'int', (0, UNCAPPED)),
                 ('itd', 'Ignore target def', 'bool', None),
                 ('weapon', 'Weapon (+20 lists)', 'bool', None),
                 ('ith_weapon', 'Ith weapon (vanishes, sources only)', 'bool', None))),
@@ -2582,14 +2584,14 @@ FIELDS = (
                          ('stun_lvl', 'Stun level', 'int', (0, 63)),
                          ('deli_attack', f'Deli att {DELIRIUM_CHANCE}%', 'int', (1, 63)),
                          ('deli_strike', f'Deli hit {DELIRIUM_CHANCE}%', 'int', (1, 63)))),
-    ('Defenses', (('dr', 'DR / list', 'int', (0, 63)), ('dr_total', 'DR total', 'int', (0, 63 * 250)), ('dr_pct', 'DR %', 'int', (0, 2000)),
-                  ('mdr', 'Magic DR', 'int', (0, 2000)), ('abs_pct', 'Absorb %', 'int', (0, 1000)),
-                  ('abs_flat', 'Absorb flat', 'int', (0, 5000)),
-                  ('abs_cold', 'Absorb cold (total)', 'int', (0, 60000)), ('abs_fire', 'Absorb fire (total)', 'int', (0, 60000)),
-                  ('abs_light', 'Absorb lightning (total)', 'int', (0, 60000)), ('res_cold', 'Res/lvl cold', 'int', (0, 8000)),
-                  ('res_fire', 'Res/lvl fire', 'int', (0, 8000)), ('res_light', 'Res/lvl light', 'int', (0, 8000)),
-                  ('res_flat', 'Resist all', 'int', (-200, 8000)), ('curse_res', 'Curse res', 'int', (0, 2000)),
-                  ('dodge', 'Dodge/avoid/evade', 'int', (0, 1000)), ('abs_lvl', 'Absorb / lvl', 'bool', None),
+    ('Defenses', (('dr', 'DR / list', 'int', (0, 63)), ('dr_total', 'DR total', 'int', (0, UNCAPPED)), ('dr_pct', 'DR %', 'int', (0, UNCAPPED)),
+                  ('mdr', 'Magic DR', 'int', (0, UNCAPPED)), ('abs_pct', 'Absorb %', 'int', (0, UNCAPPED)),
+                  ('abs_flat', 'Absorb flat', 'int', (0, UNCAPPED)),
+                  ('abs_cold', 'Absorb cold (total)', 'int', (0, UNCAPPED)), ('abs_fire', 'Absorb fire (total)', 'int', (0, UNCAPPED)),
+                  ('abs_light', 'Absorb lightning (total)', 'int', (0, UNCAPPED)), ('res_cold', 'Res/lvl cold', 'int', (0, UNCAPPED)),
+                  ('res_fire', 'Res/lvl fire', 'int', (0, UNCAPPED)), ('res_light', 'Res/lvl light', 'int', (0, UNCAPPED)),
+                  ('res_flat', 'Resist all', 'int', (-200, UNCAPPED)), ('curse_res', 'Curse res', 'int', (0, UNCAPPED)),
+                  ('dodge', 'Dodge/avoid/evade', 'int', (0, UNCAPPED)), ('abs_lvl', 'Absorb / lvl', 'bool', None),
                   ('abs_time', 'Absorb by time', 'bool', None), ('cbf', 'Cannot be frozen', 'bool', None))),
     ('Speeds', (('ias', 'IAS', 'int', (-200, 1000)), ('frw', 'FRW', 'int', (-200, 1000)),
                 ('fhr', 'FHR', 'int', (-200, 1000)), ('fcr', 'FCR', 'int', (-200, 1000)),
@@ -2741,7 +2743,7 @@ def edited(fields, pre):
             continue
         ex = FIELD_EXTRA[k]
         if FIELD_KIND[k] == 'int' and not ex[0] <= n <= ex[1]:
-            raise PlanError(f'{n} outside {ex[0]}-{ex[1]}', key=k)
+            raise PlanError(f'{n} outside {ex[0]}-{ex[1]}' if ex[1] != UNCAPPED else f'{n} is below {ex[0]}', key=k)
         if k == 'cls':
             n = CLASSES.index(n) if n in CLASSES else 1
         elif k == 'shield':
@@ -2758,12 +2760,55 @@ def edited(fields, pre):
     return over
 
 
+# field -> (stat ids written per total, split per line); lines x line_bits is what the field costs in the file
+SIZE_STATS = dict(res_cold=((230,), None), res_fire=((231,), None), res_light=((232,), None),
+                  res_flat=((39, 41, 43, 45), None), pierce=((335,), None), curse_res=((109,), None),
+                  target_def=((116,), None), dr_pct=((36,), None), mdr=((35,), None), dtm=((114,), None),
+                  ow=((135,), None), cb=((136,), None), ds=((141,), None), thorns_lvl=((238,), None),
+                  abs_pct=((142, 144, 148), None), abs_flat=((143, 145, 149), None), dr_total=((34,), None),
+                  dodge=((338, 339, 340), None),
+                  prayer=((151,), AURA_LINE_MAX), thorns=((151,), AURA_LINE_MAX), barbs=((151,), AURA_LINE_MAX),
+                  oak=((151,), AURA_LINE_MAX), hf_level=((151,), AURA_LINE_MAX), hsk_level=((151,), AURA_LINE_MAX),
+                  hfire_level=((151,), AURA_LINE_MAX))
+
+
+def size_estimate(values):
+    """({field: bytes}, total) the typed stat totals cost in lines (lines x bits of each stat's save field): the
+    only real limit of a total is the 8 KB file. values = the form's numbers (prefill merged with the edits)."""
+    cost = {}
+    for k, (sids, per) in SIZE_STATS.items():
+        v = values.get(k)
+        if not isinstance(v, (int, Fraction)) or v == 0:
+            continue
+        bits = 0
+        for sid in sids:
+            m = per or line_max(sid)
+            bits += -(-abs(int(v)) // m) * line_bits(sid)
+        cost[k] = (bits + 7) // 8
+    return cost, sum(cost.values())
+
+
+def size_message(values):
+    cost, tot = size_estimate(values)
+    top = ', '.join(f'{k} ~{b}' for k, b in sorted(cost.items(), key=lambda x: -x[1])[:3])
+    return (f'settings need ~{tot} bytes of stat lines: over the 8 KB save limit '
+            f'({FILE_LIMIT - 1} bytes); most lines: {top}')
+
+
 def validate(preset, fields, pre):
     """(overrides, raw, plan, {field key: message}) of the form: the per-field problems (bad number, out of
     range, a target the plan cannot reach) keyed by the field they belong to ('' = the form as a whole)."""
     try:
         over = edited(fields, pre)
-        raw, P = generate(preset, 'Mock', **over)
+        vals = dict(pre, **over)
+        if size_estimate(vals)[1] >= FILE_LIMIT:
+            raise PlanError(size_message(vals))
+        try:
+            raw, P = generate(preset, 'Mock', **over)
+        except PlanError as e:
+            if 'no list with room' in str(e) or ('more than' in str(e) and 'lines in' in str(e)):
+                raise PlanError(f'does not fit the stat lists (the game reads one line of a stat per list, so a stat is capped by the lists): {e}')
+            raise
     except PlanError as e:
         return None, None, None, {getattr(e, 'key', None) or '': str(e)}
     return over, raw, P, {}

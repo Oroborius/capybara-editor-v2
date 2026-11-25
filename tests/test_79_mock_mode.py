@@ -648,6 +648,18 @@ def form_validation_names_the_field():
 
 
 @T.test
+def stat_totals_limited_by_file_size_not_made_up_caps():
+    """No made-up upper limits on stat totals: 8000+ res/lvl is accepted when it fits, an absurd value gives the
+    size warning (with the costliest fields) instead of a field-range error."""
+    M = engine().M
+    pre = M.prefill('mock_high')
+    errs = M.validate('mock_high', dict(pre, res_fire='9000'), pre)[3]
+    T.eq(errs, {}, '9000 res/lvl fits')
+    errs = M.validate('mock_high', dict(pre, res_fire='100000000'), pre)[3]
+    T.check(list(errs) == [''] and 'over the 8 KB save limit' in errs[''] and 'res_fire' in errs[''], f'size warning: {errs}')
+
+
+@T.test
 def prayer_drain_energy_vitality_and_dtm_ceiling():
     """Prayer drains 1 + 0.1875 (L - 1) per source per pulse; item Energy (stat 1) / Vitality (stat 3) add after
     the % boost (in game: sorceress 1000 base, +50%, +90 Energy / Vitality -> 1680 mana and life); the
