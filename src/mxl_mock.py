@@ -850,14 +850,18 @@ def solve_aura_dmg(sid, target, max_lines=200, *, dr=0, dr_pct=0, es=ES_ABSORB):
             m = (lo + hi + 1) // 2
             lo, hi = (m, hi) if aura_base_dmg(sid, m)[1] <= target else (lo, m - 1)
         base = aura_base_dmg(sid, lo)[1]
-        mast = 0
-        if base:
-            mast = max(0, math.floor((Fraction(target) / base - 1) * 100))
-            while base * (100 + mast) // 100 > target:
-                mast -= 1
+        if not base:
+            continue
+        tolerance = target // 1000
+        max_mast = min(mline * max_lines, ((target + 1) * 100 - 1) // base - 100)
+        min_mast = max(0, -(-((target - tolerance) * 100) // base) - 100)
+        # Within the tolerance, buy only as many lines as needed and use their spare capacity.
+        mast = min(max_mast, -(-min_mast // mline) * mline)
         d = aura_damage(sid, lo, mast)
         bits = k * line_bits(151) + -(-mast // mline) * line_bits(mid)
-        key = (target - d[1] > target // 1000, bits, target - d[1])      # within 0.1%, then the cheapest, then closest
+        gap = target - d[1]
+        near = gap <= tolerance
+        key = (not near, bits if near else gap, gap if near else bits)
         if best is None or key < best[0]:
             best = (key, dict(level=lo, mast=mast, min=d[0], max=d[1], bits=bits))
     return best[1] if best else None
@@ -1042,6 +1046,7 @@ def analyze(model, side=None, bo=False, energy=False, *, targets=None):
     t = totals(model, side)
     T = t['T']
     tk = model['skills'].get(TELEKINESIS, 0) if model['cls'] == 1 else 0
+    target_tk = model.get('target_tk', tk if model['cls'] == 1 else TK_DEFAULT)
     mana, full = mana_of(model, t, bo, energy)
     b = band_info(mana, tk)
     warmth = warmth_pct(model['skills'].get(WARMTH, 0) if model['cls'] == 1 else 0)
@@ -1070,15 +1075,15 @@ def analyze(model, side=None, bo=False, energy=False, *, targets=None):
              sources={AURA_NAMES.get(k, str(k)): dict(x) for k, x in t['sources'].items()},
              hf_per_source=hf_dmg, hf_sources=hf_src, lists=t['lists'], size=model['size'], side=t['side'],
              dtm=T.get(114, 0), dr=T.get(34, 0), dr_pct=T.get(36, 0), units=len(t['units']))
-    v['dtm_hpj'] = dtm_ceiling(mana, v['dr'], 0, tk or 31)
-    v['dtm_lpj'] = dtm_ceiling(mana, v['dr'], prayer_drain(prayer_lv) if prayer_src else 0, tk or 31)
+    v['dtm_hpj'] = dtm_ceiling(mana, v['dr'], 0, target_tk)
+    v['dtm_lpj'] = dtm_ceiling(mana, v['dr'], prayer_drain(prayer_lv) if prayer_src else 0, target_tk)
     es = Fraction(max(0, min(99, int(model.get('es', ES_PCT)))), 100)     # the target ES% (saves: 95, ES 99)
     v['es'] = es
-    v['dtm_need'] = dtm_need(es, tk or 31, v['dr'], v['dr_pct'])
+    v['dtm_need'] = dtm_need(es, target_tk, v['dr'], v['dr_pct'])
     thl, bal = t['aura_lv'].get(THORNS, 0), t['aura_lv'].get(BARBS, 0)
     v['thorns_return'] = thorns_return(thl, bal, v['dr'], v['dr_pct']) if thl or bal else None
     v['thorns_return_es'] = thorns_return(thl, bal, v['dr'], v['dr_pct'], es) if thl or bal else None
-    v['thorns_dtm'] = thorns_dtm(v['thorns_return_es'], es, tk or 31) if thl or bal else None
+    v['thorns_dtm'] = thorns_dtm(v['thorns_return_es'], es, target_tk) if thl or bal else None
     v['absorb_lvl'] = sum(T.get(k, 0) for k in (234, 235, 236))
     clvl = model['level']
     raws, on_charm = {}, 0                      # by time: raw fields summed by the game, nothing from charms
@@ -1102,7 +1107,7 @@ def analyze(model, side=None, bo=False, energy=False, *, targets=None):
         v['absorb'][name] = dict(res=res, need=absorb_need(res), lvl=lvl, time=tv.get(at, 0),
                                  total=lvl + tv.get(at, 0))
     ab = max([a['total'] for a in v['absorb'].values()] or [0])
-    v['best_mana'] = best_mana(tk or 31, ab) if ab else None
+    v['best_mana'] = best_mana(target_tk, ab) if ab else None
     C = list(defense_checks(T, clvl, v['absorb'], targets)) if targets is not None else []
 
     def add(key, label, text, status):
@@ -1198,7 +1203,7 @@ def analyze(model, side=None, bo=False, energy=False, *, targets=None):
         nd = v['dtm_need']
         add('dtm_cap', 'Damage to mana ceiling', f"DTM {v['dtm']}% vs max HPJ {float(v['dtm_hpj']):.0f}% / LPJ "
             f"{float(v['dtm_lpj']):.0f}% (a capped hit must not roll the mana over); ES {float(es * 100):.0f}% / "
-            f"TK {tk or 31} refill {float(nd or 0):.0f}%"
+            f"TK {target_tk} refill {float(nd or 0):.0f}%"
             + ('' if v['dtm'] <= v['dtm_lpj'] else ' - TOO HIGH: a capped hit gives back more mana than the room to '
                'the wrap point'), GOOD if v['dtm'] <= v['dtm_lpj'] else BAD)
     if v['thorns_return'] is not None:
@@ -1209,7 +1214,7 @@ def analyze(model, side=None, bo=False, energy=False, *, targets=None):
             f"{float(re_):.0f} with ES {float(es * 100):.0f}% (DR {v['dr']}, DR% {min(DR_PCT_CAP, v['dr_pct'])})"
             + ('' if safe else ' ROLLED OVER / NOT SAFE')
             + (' - Thorns alone is safe: Barbs 0 saves the lines' if alone else '')
-            + (f"; {float(v['thorns_dtm']):.0f} mana damage per hit on the target (TK {tk or 31})"
+            + (f"; {float(v['thorns_dtm']):.0f} mana damage per hit on the target (TK {target_tk})"
                if safe else ''), GOOD if safe else WARN)
     n_t, n_c, face = v['absorb_time_lines']
     if n_c or n_t > len(raws):
@@ -1232,7 +1237,7 @@ def analyze(model, side=None, bo=False, energy=False, *, targets=None):
                                                     if short else ''), WARN if short else GOOD)
     if v['best_mana'] is not None and not b['funky']:
         safe_m = math.floor(mana) <= v['best_mana']
-        add('best_mana', 'Overheal-safe mana', f"{_num(mana)} vs {v['best_mana']} (TK {tk or 31}, absorb "
+        add('best_mana', 'Overheal-safe mana', f"{_num(mana)} vs {v['best_mana']} (TK {target_tk}, absorb "
             f"{float(ab):.0f} at -100 res): " + ('the absorb heal cannot overflow the mana' if safe_m
                                                  else 'OVER: the absorb heal can overflow the mana'),
             GOOD if safe_m else WARN)
@@ -1383,7 +1388,7 @@ DEFAULTS = dict(cls=1, level=127, position='LPJ', life=7300000, damage=Fraction(
                 thorns=None, thorns_target=0, barbs=None, dtm=None, es=ES_PCT, tk=TK_DEFAULT, holy_shield_cast=0,   # None: solved
                 hf_cap=True, hf_target=HF_MOCK_TARGET, thorns_lvl=0, hsk_level=0, hsk_sources=0, hfire_level=0, hfire_sources=0, hfire_target=0, hsk_target=0, abs_cold=0, abs_fire=0, abs_light=0, hf_solve=False,
                 ias=-121, frw=107, fhr=-36, fcr=-121, nv_ias=0, nv_frw=97,      # IAS 93, FRW 96, FHR 99, FCR 105, 68, 67
-                curse_res=511, target_def=381, dodge=127, ow=127, cb=0, ds=0,   # CB / DS do nothing against players
+                curse_res=511, target_def=381, dodge=127, ow=127,
                  itd=False, cbf=False,
                 dr=63, dr_total=None, dr_pct=255, mdr=0, abs_pct=127, abs_flat=0, abs_lvl=True, abs_time=True, replenish=True,
                 res_cold=HELL_RES, res_fire=HELL_RES, res_light=HELL_RES, res_flat=0, pierce=0, pierce_fire=0, pierce_light=0,
@@ -1697,12 +1702,16 @@ def plan(preset='mock_high', name='Mock', **over):
     o = options(preset, **over)
     # damage targets per aura source (user): the level + mastery that reach it with the fewest bits
     o['aura_mast'] = {}
+    if over.get('hf_target') is not None and over.get('hf_solve') is None:
+        o['hf_solve'] = True
     for lk, aid, tk, on in (('hfire_level', HOLY_FIRE, 'hfire_target', True), ('hsk_level', HOLY_SHOCK, 'hsk_target', True),
                             ('hf_level', HOLY_FREEZE, 'hf_target', o['hf_solve'])):
-        if on and int(o[tk] or 0) > 0 and (aid != HOLY_FREEZE or int(o['hf_sources'])):
+        if on and int(o[tk] or 0) > 0:
             r = solve_aura_dmg(aid, int(o[tk]))
             if r is None:
                 raise PlanError(f'{AURA_NAMES[aid]}: no level reaches a damage of {o[tk]} per source', key=tk)
+            if aid == HOLY_FREEZE and not o['hf_sources']:
+                o['hf_sources'] = 1
             o[lk] = r['level']
             o['aura_mast'][aid] = r['mast']
     nl_est = sum(6 + (2 * JEWELS if g[4] else 0) for g in list(GEAR) + ([WEAPON] if o['weapon'] and not o['ith_weapon'] else [])) \
@@ -1797,7 +1806,9 @@ def plan(preset='mock_high', name='Mock', **over):
     dr_per = max(0, min(63, int(o['dr'])))
     # DR (user, 2026-11-24): every list carries the per-list value only at the full 63 (11221 DR); a lower total
     # target ('dr_total') puts lines on just the lists it needs
-    dr_total = n_all * dr_per if o.get('dr_total') is None else max(0, min(n_all * 63, int(o['dr_total'])))
+    dr_total = n_all * dr_per if o['dr_total'] is None else int(o['dr_total'])
+    if not 0 <= dr_total <= n_all * line_max(34):
+        raise PlanError(f'DR total {dr_total}: at most {n_all * line_max(34)} fits on the active lists', key='dr_total')
     dr_est = dr_total
     if o['thorns_target']:
         result = solve_aura_dmg(THORNS, o['thorns_target'], th_cap // AURA_LINE_MAX,
@@ -1822,21 +1833,6 @@ def plan(preset='mock_high', name='Mock', **over):
             u.slots[0].add(151, AURA_LINE_MAX, PRAYER)
     n_ith_src = 0 if o.get('role') == 'funky' else sum(1 for u in ith_units if not u.name.startswith('ithstash'))
     by_role = lambda *roles: [s for s in lists if s.unit.role in roles]
-    # ---- Prayer 31 on EVERY list (178 x 31 = 5518); sources only where nothing higher sits (the charms)
-    if o.get('role') == 'funky':            # no Prayer aura on a Funky (Replenish Life bulk gives the regen)
-        pass
-    elif o['prayer'] is None:
-        for s in lists:
-            s.add(151, AURA_LINE_MAX, PRAYER)
-    else:                                   # a total Prayer level: the source charms first, then the other lists
-        total = int(o['prayer'])
-        srcs = [u.slots[0] for u in charms if u.role == 'prayer']
-        n = max(len(srcs), -(-total // AURA_LINE_MAX))
-        if total < len(srcs) or n > nl:
-            raise PlanError(f'Prayer {total}: {len(srcs)} sources need {len(srcs)}-{AURA_LINE_MAX * nl} levels',
-                            key='prayer')
-        for s, v in zip(srcs + [s for s in lists if s not in srcs], spread(total, n) if n else []):
-            s.add(151, v, PRAYER)
     cover_units = [u for u in units if u.role == 'cover']
     # ---- mana
     mana = solve_mana(o['mana'], o['exact'], nl, extra_pct=o['bo_pct'])
@@ -1879,26 +1875,6 @@ def plan(preset='mock_high', name='Mock', **over):
         if rg['total'] > rg['cap']:
             raise PlanError(f"regen {rg['total']}% is over the roll-over cap {rg['cap']}% (mana would wrap to 0)",
                             key='med' if o['med'] is not None else 'regen')
-    # ---- Prayer drain vs regen (1 + 0.1875 (L - 1) per source per 2 s pulse) and the DTM: at least the position's
-    # DTM and the refill the target ES% / TK need (dtm_need), never over the LPJ ceiling (dtm_ceiling with the drain)
-    pr_lv = sum(v for s in lists for sid, p, v in s.lines if sid == 151 and p == PRAYER)
-    nps_all = nps_eff = sum(1 for u in units if u.role == 'prayer') + n_ith_src
-    drain = prayer_drain(pr_lv) if nps_all else 0
-    drain_s = drain * nps_all / 2
-    regen_s = mana['mana'] / 120 * (100 + rg['total']) / 100
-    if drain_s >= regen_s:
-        raise PlanError(f'Prayer {pr_lv} x {nps} sources drains {float(drain_s):.0f} mana/s, regen only '
-                        f'{float(regen_s):.0f}', key='prayer')
-    need = dtm_need(es, o['tk'], dr_est, int(o['dr_pct']))
-    ceil = dtm_ceiling(mana['mana'], dr_est, drain, o['tk'])
-    if o['dtm'] is None:
-        d = max(int(o['dtm_position']), math.ceil(need) if need is not None else 0)
-        o['dtm'] = min(d, math.floor(ceil)) if ceil is not None else d
-    th_ret = thorns_return(int(o['thorns']), int(o['barbs']), dr_est, int(o['dr_pct']), es) \
-        if o['thorns'] or o['barbs'] else None
-    dtm_info = dict(need=need, hpj=dtm_ceiling(mana['mana'], dr_est, 0, o['tk']), lpj=ceil,
-                    drain_s=drain_s, regen_s=regen_s, prayer_level=pr_lv, prayer_sources=nps_all, thorns_return=th_ret,
-                    thorns_dtm=thorns_dtm(th_ret, es, o['tk']) if th_ret is not None else None)
     # ---- life: +479 lines + Oak Sage on the cover units
     oak_lists = by_role('cover')
     oak_lo, oak_hi = len(cover_units), len(oak_lists) * AURA_LINE_MAX
@@ -1963,7 +1939,7 @@ def plan(preset='mock_high', name='Mock', **over):
     if HFI:             # Holy Fire (id 102) sits under every other aura: any of their units hosts its extra levels
         plan_auras.append((HOLY_FIRE, int(o['hfire_level']), 'hfire',
                            ('hfire', 'thorns', 'hsk', 'hf', 'med', 'barbs', 'cover')))
-    expect_src = {PRAYER: sum(1 for u in units if u.role == 'prayer') + n_ith_src}
+    expect_src = {}
     for aid, total, src_role, allowed in plan_auras:
         seeds = [u for u in units if u.role == src_role]
         if not seeds:
@@ -1983,6 +1959,42 @@ def plan(preset='mock_high', name='Mock', **over):
                             key=_AURA_KEY.get(aid))
         for s, v in zip(targets, vals):
             s.add(151, v, aid)
+    # A unit's highest aura id supplies its source. Put passive Prayer levels
+    # on units already carrying a higher aura to preserve the requested Prayer sources.
+    prayer_units = {u for u in units if u.role == 'prayer'
+                    or any(sid == 151 and aid > PRAYER for s in u.slots for sid, aid, _ in s.lines)}
+    seeds = [u.slots[0] for u in units if u.role == 'prayer']
+    prayer_slots = [s for s in lists if s.unit in prayer_units and s not in seeds and s.ok(151, PRAYER)]
+    prayer_slots = seeds + prayer_slots
+    pr_lv = 0
+    if o.get('role') != 'funky':
+        pr_lv = AURA_LINE_MAX * len(prayer_slots) if o['prayer'] is None else int(o['prayer'])
+        if not len(seeds) <= pr_lv <= AURA_LINE_MAX * len(prayer_slots):
+            raise PlanError(f'Prayer {pr_lv}: {len(seeds)} sources need {len(seeds)}-'
+                            f'{AURA_LINE_MAX * len(prayer_slots)} levels', key='prayer')
+        n = max(len(seeds), -(-pr_lv // AURA_LINE_MAX))
+        for s, v in zip(prayer_slots, spread(pr_lv, n)):
+            s.add(151, v, PRAYER)
+    expect_src[PRAYER] = len(seeds) + n_ith_src
+    # ---- Prayer drain vs regen (1 + 0.1875 (L - 1) per source per 2 s pulse) and the DTM: at least the position's
+    # DTM and the refill the target ES% / TK need (dtm_need), never over the LPJ ceiling (dtm_ceiling with the drain)
+    nps_all = expect_src[PRAYER]
+    drain = prayer_drain(pr_lv) if nps_all else 0
+    drain_s = drain * nps_all / 2
+    regen_s = mana['mana'] / 120 * (100 + rg['total']) / 100
+    if drain_s >= regen_s:
+        raise PlanError(f'Prayer {pr_lv} x {nps_all} sources drains {float(drain_s):.0f} mana/s, regen only '
+                        f'{float(regen_s):.0f}', key='prayer')
+    need = dtm_need(es, o['tk'], dr_est, int(o['dr_pct']))
+    ceil = dtm_ceiling(mana['mana'], dr_est, drain, o['tk'])
+    if o['dtm'] is None:
+        d = max(int(o['dtm_position']), math.ceil(need) if need is not None else 0)
+        o['dtm'] = min(d, math.floor(ceil)) if ceil is not None else d
+    th_ret = thorns_return(int(o['thorns']), int(o['barbs']), dr_est, int(o['dr_pct']), es) \
+        if o['thorns'] or o['barbs'] else None
+    dtm_info = dict(need=need, hpj=dtm_ceiling(mana['mana'], dr_est, 0, o['tk']), lpj=ceil,
+                    drain_s=drain_s, regen_s=regen_s, prayer_level=pr_lv, prayer_sources=nps_all, thorns_return=th_ret,
+                    thorns_dtm=thorns_dtm(th_ret, es, o['tk']) if th_ret is not None else None)
     # ---- regen % remainder (user: the leftover regen goes on the SHIELD, which a mana switch build carries to side B)
     if rg['pct']:
         tgt = next((s for s in U['shield'].slots if s.ok(27)), None) or U['gloves'].slots[1]
@@ -2042,10 +2054,10 @@ def plan(preset='mock_high', name='Mock', **over):
         sh.slots[4].add(195, stun, (STUN << 6) | o['stun_lvl'])
         sh.slots[4].add(198, stun, (STUN << 6) | o['stun_lvl'])
     # ---- the categories every proven clone carries (CLONE_PROFILE): speeds, NV speeds, curse resist, target
-    # defense, dodge / avoid / evade, OW / CB / DS, DR, absorb %, flat absorb, DTM, holy aura mastery
+    # defense, dodge / avoid / evade, OW, DR, absorb %, flat absorb, DTM, holy aura mastery
     fixed = [(93, o['ias']), (96, o['frw']), (99, o['fhr']), (105, o['fcr']), (68, o['nv_ias']), (67, o['nv_frw']),
              (109, o['curse_res']), (116, o['target_def']), (338, o['dodge']), (339, o['dodge']), (340, o['dodge']),
-             (135, o['ow']), (136, o['cb']), (141, o['ds']), (36, o['dr_pct']), (35, o['mdr']),
+             (135, o['ow']), (36, o['dr_pct']), (35, o['mdr']),
              (142, o['abs_pct']), (144, o['abs_pct']), (148, o['abs_pct']),
              (143, o['abs_flat']), (145, o['abs_flat']), (149, o['abs_flat']), (238, o['thorns_lvl']),
              (114, int(o['dtm'])), (331, hf_mast), (335, o['pierce']),
@@ -2056,12 +2068,12 @@ def plan(preset='mock_high', name='Mock', **over):
     for sid, total in fixed:
         if int(total):
             put(sid, signed(int(total), sid))
-    if dr_total and dr_total >= n_all * dr_per and o.get('dr_total') is None and dr_per:
-        for s in lists:                                 # DR on every list (the clones: 155-178 lists)
-            if s.ok(34):
-                s.add(34, max(1, dr_per))
-    elif dr_total:                                      # a lower target: only the lines it needs, fewest lists
-        for s, v in zip([x for x in pref if x.ok(34)], split(dr_total, line_max(34))):
+    if dr_total:
+        vals = [dr_per] * n_all if o['dr_total'] is None else split(dr_total, line_max(34))
+        slots = [s for s in pref if s.ok(34)]
+        if len(vals) > len(slots):
+            raise PlanError(f'DR total {dr_total} needs {len(vals)} lists, {len(slots)} free', key='dr_total')
+        for s, v in zip(slots, vals):
             s.add(34, v)
     # ---- NV states on one charm: Dopplezon (with the Delirium reset it steadies and speeds the attack), Just Hit
     # and Holy Shield (reference funky)
@@ -2466,6 +2478,7 @@ def model_from_plan(P, raw=None):
                 base_vit=0, base_mana_raw=P['mana']['base_raw'], base_life_raw=P['life'].get('base_raw', (1 << 21) - 1), stat_points=0,
                 skills={first + i: lv for i, lv in enumerate(sk) if lv}, units=units, set_ids=set_ids,
                 shields=shields, size=len(raw) if raw is not None else len(build(P)), excess_jewels=0, es=o['es'],
+                target_tk=o['tk'],
                 stash_ith=stash_ith)
 
 
@@ -2665,8 +2678,7 @@ FIELDS = (
     ('Damage', (('damage', 'Smite PvP', 'int', (0, int(DMG_CAP_PVP))), ('smite_max', 'Max smite', 'bool', None),
                 ('shield', 'Smite shield', 'choice', shield_choices),
                 ('holy_shield_cast', 'Holy Shield lvl', 'int', (0, 99)),
-                ('ow', 'Open wounds', 'int', (0, UNCAPPED)), ('cb', 'Crushing blow', 'int', (0, UNCAPPED)),
-                ('ds', 'Deadly strike', 'int', (0, UNCAPPED)), ('target_def', '-% Target def', 'int', (0, UNCAPPED)),
+                ('ow', 'Open wounds', 'int', (0, UNCAPPED)), ('target_def', '-% Target def', 'int', (0, UNCAPPED)),
                 ('dtm', 'DTM %', 'int', (0, UNCAPPED)), ('pierce', 'Cold pierce', 'int', (0, UNCAPPED)),
                 ('pierce_fire', 'Fire pierce', 'int', (0, UNCAPPED)),
                 ('pierce_light', 'Lightning pierce', 'int', (0, UNCAPPED)),
@@ -2722,7 +2734,7 @@ HINTS = dict(tk='hard TK points 0-99 (default 31; 31: band 524288, 30: funky 104
              hfire_target='damage per Holy Fire source (PvM) to reach: the solver picks the level and fire mastery with the fewest bits (0 = off, the level field rules)',
              hsk_target='damage per Holy Shock source (PvM): the solver picks the level and lightning mastery with the fewest bits (0 = off)',
              hf_solve='solve the Holy Freeze level AND cold mastery for HF per src (instead of the level field)',
-             hf_target='Holy Freeze damage per source (PvM) the cold mastery aims at; cap 8388607 (x 0.17 PvP)',
+             hf_target='Holy Freeze damage per source (PvM), solves level and mastery; cap 8388607 (x 0.17 PvP)',
              hf_cap='cold mastery up to the per-source target (the clones: 43k-82k%)',
              thorns_target='Thorns return from a capped incoming hit, with the target ES up; '
                            '0 keeps level-based planning',
@@ -2736,8 +2748,7 @@ HINTS = dict(tk='hard TK points 0-99 (default 31; 31: band 524288, 30: funky 104
                     'cap and the hits spread down by (max - min) x the Smite multiplier: Tower Shield 1-5 ~306 PvP, '
                     'a narrower base less. The base does not change the lists or the file size',
              smite_max='on: the max smite exactly at the cap (min lower by the shield spread); off: within 0.1% of the cap for the fewest bits',
-             ow='chance of open wounds % (the bleed finishes a 1 HP target)', cb='crushing blow %',
-             ds='deadly strike %', target_def='-% target defense (clones 254-1016)',
+             ow='chance of open wounds % (the bleed scales with character level)', target_def='-% target defense (clones 254-1016)',
              dtm='damage taken goes to mana %: solved as the position\'s (Host 500 / HPJ 420 / LPJ 330) or the ES refill '
                  '(ES% / TK), whichever is higher, never over the LPJ ceiling (mana, DR, Prayer drain, TK)',
              itd="ignore target's defense", pierce='-% enemy cold resist (clone-05: 255 on every list)', weapon='a socketed weapon (198 lists)',
@@ -2822,7 +2833,7 @@ def _parse(k, v):
         return None
     try:
         return int(float(s))
-    except ValueError:
+    except (ValueError, OverflowError):
         raise PlanError(f'{s!r} is not a number', key=k)
 
 
@@ -2837,7 +2848,7 @@ def edited(fields, pre):
         if n is None or n == pre[k]:
             continue
         ex = FIELD_EXTRA[k]
-        if FIELD_KIND[k] == 'int' and not ex[0] <= n <= ex[1]:
+        if FIELD_KIND[k] == 'int' and (n < ex[0] or (ex[1] != UNCAPPED and n > ex[1])):
             raise PlanError(f'{n} outside {ex[0]}-{ex[1]}' if ex[1] != UNCAPPED else f'{n} is below {ex[0]}', key=k)
         if k == 'cls':
             n = CLASSES.index(n) if n in CLASSES else 1
@@ -2859,7 +2870,7 @@ def edited(fields, pre):
 SIZE_STATS = dict(                  res_flat=((39, 41, 43, 45), None), pierce=((335,), None), pierce_fire=((333,), None),
                   pierce_light=((334,), None), curse_res=((109,), None),
                   target_def=((116,), None), dr_pct=((36,), None), mdr=((35,), None), dtm=((114,), None),
-                  ow=((135,), None), cb=((136,), None), ds=((141,), None), thorns_lvl=((238,), None),
+                  ow=((135,), None), thorns_lvl=((238,), None),
                   abs_pct=((142, 144, 148), None), abs_flat=((143, 145, 149), None), dr_total=((34,), None),
                   dodge=((338, 339, 340), None),
                   prayer=((151,), AURA_LINE_MAX), thorns=((151,), AURA_LINE_MAX), barbs=((151,), AURA_LINE_MAX),

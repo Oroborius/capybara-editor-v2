@@ -659,7 +659,7 @@ def stat_totals_limited_by_file_size_not_made_up_caps():
     T.eq(errs, {}, '60000 total at clvl 99 fits')
     rl = sum(v for l in P['lists'] for sid, _p, v in l.lines if sid == 231)
     T.check(60000 <= M.element_res(0, rl, 99, 10 ** 6) < 60013, 'res/lvl sum gives the total (+ step rounding)')
-    errs = M.validate('mock_high', dict(pre, res_fire='100000000'), pre)[3]
+    errs = M.validate('mock_high', dict(pre, res_fire='2000000000'), pre)[3]
     T.check(list(errs) == [''] and 'over the 8 KB save limit' in errs[''] and 'res_fire' in errs[''], f'size warning: {errs}')
 
 
@@ -725,7 +725,9 @@ def old_save_versions_open():
     T.check(any(os.path.basename(f) == 'clone-59.d2s' for f in old), 'clone-59 is a version 92 save')
     for f in old:
         ch = E.MC.Character(f, E.data)
-        T.check(ch.old and ch.stat(12) > 0, f'{os.path.basename(f)}: opened, level read')
+        T.check(ch.old and ch.stat(12) > 0, 'version 92 opened and level read')
+        report = E.M.analyze(E.M.model_from_character(ch))
+        T.check(report['checks'] and report['values']['mana'] >= 0, 'version 92 analyzed')
     E.MC.Character(_sample('clones/clone-35.d2s'), E.data)
 
 
@@ -822,6 +824,11 @@ def rule_es_and_tk_defaults_drive_everything():
     T.check(f['balance']['need'] > f['balance']['lpj'], 'TK 28: refill over the ceiling')
     T.eq(M.plan('mock_high', 'Tk')['o']['dtm'], 330, 'TK31 LPJ: the position DTM (refill 282 under it)')
     T.eq(round(float(M.dtm_need(Fraction(95, 100), 31, 11214, 255))), 282, 'refill ES95 / TK31')
+    model = M.model_from_plan(M.plan('mock_high', 'TkZero'))
+    model.pop('target_tk')
+    model['skills'].pop(M.TELEKINESIS)
+    a = M.analyze(model)['values']
+    T.eq(a['dtm_need'], M.dtm_need(a['es'], 0, a['dr'], a['dr_pct']), 'a save with no TK points uses TK 0')
 
 
 @T.test
@@ -943,6 +950,11 @@ def dr_total_respected_and_aura_sources():
     P2 = M.plan('mock_high', 'Dr2', dr_total=1000)
     ls = [v for s in P2['lists'] for sid, _p, v in s.lines if sid == 34]
     T.eq((sum(ls), len(ls)), (1000, 16), 'total 1000: 15 lines of 63 + 55, not every list')
+    try:
+        M.plan('mock_high', 'Dr3', dr_total=full + 1)
+        T.check(False, 'a DR total beyond the available lists should be rejected')
+    except M.PlanError as e:
+        T.eq(e.key, 'dr_total', 'the impossible DR target is identified')
     for kw, aid, n in ((dict(hfire_level=1500, hfire_sources=3), M.HOLY_FIRE, 3),
                        (dict(hsk_level=2000, hsk_sources=2), M.HOLY_SHOCK, 2),
                        (dict(hf_level=3100, hf_sources=5), M.HOLY_FREEZE, 5)):
@@ -996,6 +1008,11 @@ def aura_damage_targets_solved_per_formula():
     r = M.solve_aura_dmg(M.HOLY_FIRE, tgt[M.HOLY_FIRE])
     T.eq(P['o']['hfire_level'], r['level'], 'the solved level reaches plan()')
     T.check(M.prefill('mock_high', hfire_target=tgt[M.HOLY_FIRE], hfire_sources=2)['hfire_level'] == r['level'], 'prefill shows it')
+    target = 4000000
+    P = M.plan('mock_high', 'Au', hf_sources=0, hf_target=target)
+    a = M.analyze(M.model_from_plan(P))['values']['aura_damage']['Holy Freeze']
+    T.eq(a[2], 1, 'a typed Holy Freeze damage target adds a source when the source count is zero')
+    T.check(target - target // 1000 <= a[1] <= target, 'the Holy Freeze target uses the selected formula')
 
 
 @T.test
@@ -1016,6 +1033,11 @@ def thorns_damage_target_uses_reflection_and_active_defenses():
                     for key, _, _, status in report['checks']), 'Thorns source damage is in the analyzer')
         T.check(any(section == 'Damage' and label == 'Thorns damage'
                     for section, label, *_ in M.summary_rows(model)), 'Thorns damage is in the generator summary')
+    model['units'].append(M.Unit('charm', 'extra', [[(151, M.THORNS, 1)]]))
+    a = M.analyze(model)['values']
+    T.eq(a['sources']['Thorns'].get('charm'), 1, 'the added source is counted')
+    returned = M.thorns_return(level + 1, 0, dr, 255, Fraction(es, 100))
+    T.eq(a['aura_damage']['Thorns'], (returned, returned, 1), 'both item sources form one aura')
     T.eq(M.solve_aura_dmg(M.THORNS, 1, max_lines=1), None, 'an unreachable target does not select an unsafe level')
 
 
@@ -1030,9 +1052,13 @@ def absorb_totals_per_element_round_trip():
         T.check(t <= a[el]['total'] < t + 1 and a[el]['total'] - t < 1, f'{el}: total {float(a[el]["total"])} for {t}')
     pre = M.prefill('mock_high', abs_cold=20000, abs_fire=15000, abs_light=25000)
     T.eq((pre['abs_cold'], pre['abs_fire'], pre['abs_light']), (20000, 15000, 25000), 'the fields round-trip')
-    T.eq(M.prefill('mock_high')['cb'], 0, 'no Crushing Blow by default')
-    P = M.plan('mock_high', 'Cb', cb=50)
-    T.check(any(c[0] == 'wasted_cb_ds' for c in M.analyze(M.model_from_plan(P), bo=True)['checks']), 'CB warned as wasted')
+    T.check(not {'cb', 'ds'} & set(M.FIELD_KEYS), 'the PvP generator has no CB or DS fields')
+    raw, P = M.generate('mock_high', 'PvP', cb=50, ds=50, ow=35)
+    T.check(not any(sid in (136, 141) for sid, _ in _lines(P)), 'the generator omits CB and DS')
+    model = M.model_from_plan(P, raw)
+    T.eq(M.totals(model)['T'].get(135), 35, 'Open Wounds is kept')
+    model['units'][0].lists[0].extend([(136, None, 50), (141, None, 50)])
+    T.check(any(c[0] == 'wasted_cb_ds' for c in M.analyze(model, bo=True)['checks']), 'CB and DS flagged on loaded items')
 
 
 @T.test
@@ -1138,6 +1164,11 @@ def rule_prayer_drain_in_the_balance():
         T.check(c[3] == M.GOOD and 'drain' in c[2], f'{key}: analyzer Prayer check')
         T.check(abs(a['values']['prayer_drain_s'] - float(b['drain_s'])) < 1, f'{key}: analyzer = plan drain')
         T.check(any('Prayer drain' in x for x in M.summary(P)), f'{key}: summary shows the drain')
+    P = M.plan('mock_high', 'Pr', life=150000, oak=0, prayer_sources=3)
+    a = M.analyze(M.model_from_plan(P), bo=True)['values']
+    T.eq((a['prayer_sources'], P['balance']['prayer_sources']), (3, 3),
+         'lower life with no Oak only creates the three requested Prayer sources')
+    T.eq(a['prayer_drain_s'], float(P['balance']['drain_s']), 'the resulting drain is included in the balance')
     try:
         M.plan('mock_high', 'Pr', cls=0, med=0, regen=0)
         T.check(False, 'drain over the regen refused')
