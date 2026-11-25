@@ -3332,6 +3332,7 @@ def run():
     mxl_profile.install()                 # (its own data folder; before mxl_gui copies paths.DATA_DIR)
     mxl_profile.install_menu()
     import mxl_gui
+    mxl_profile.patch_gui(mxl_gui)         # no game tables / folder: open anyway (Median XL not installed)
     rename_app(mxl_gui)
     import mxl_d2_theme                   # which look: dark Diablo ('d2', default) or Hero-Editor light ('he')
     dark = mxl_d2_theme.dark()

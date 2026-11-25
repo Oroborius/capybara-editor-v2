@@ -333,9 +333,222 @@ def extract(game_dir, out, progress=None, icons=True):
 
 
 # ---------------------------------------------------------------------------------------------------- install
+# ---------------------------------------------------------------------------------------------------- first launch
+def _patch_no_game():
+    """The collector's start() asks for the Median XL folder in a blocking dialog (an info box, then a folder chooser
+    that repeats until a Median folder is given) whenever none is saved: people without Median XL could not open the
+    editor. No folder now means: open without one; pages that need the tables show a hint, "Game folder..." sets it."""
+    try:
+        import mxl_gui_install as gi
+    except Exception:
+        return
+    GI = gi.GameInstall
+    if getattr(GI.start, '_capy_nogame', False):
+        return
+    o_start = GI.start
+
+    def start(self):
+        if not gi.is_game_dir(self.game_dir):
+            self.game_dir = None
+            _log('no game folder saved: opening without one (Game folder... sets it)')
+            return None
+        return o_start(self)
+    start._capy_nogame = True
+    GI.start = start
+
+
+def _candidates(kind):
+    """Likely install folders of the game, checked with detect() (only the folder's listing is read)."""
+    import glob
+    home = os.path.expanduser('~')
+    pf = [os.environ.get('ProgramFiles(x86)'), os.environ.get('ProgramFiles'), r'C:\Program Files (x86)',
+          r'C:\Program Files', r'C:\Games']
+    names = ['Median XL', 'MedianXL', 'median-xl'] if kind == 'median' else ['Diablo II', 'Diablo II LoD']
+    out = [os.environ.get('MXL_FIRSTRUN_FOLDER') or '']
+    if kind == 'folder':
+        out.append(DEFAULT_VANILLA)
+    for b in pf:
+        out += [os.path.join(b, n) for n in names if b]
+    for pat in ('Games/*/drive_c/Program Files (x86)/', 'Games/*/drive_c/games/', '.wine/drive_c/Program Files (x86)/',
+                '.wine/drive_c/games/'):
+        for b in sorted(glob.glob(os.path.join(glob.escape(home), pat))):
+            out += [os.path.join(b, n) for n in names]
+    want = 'median' if kind == 'median' else 'd2'
+    return [d for d in out if d and detect(d)['kind'] == want]
+
+
+def needs_first_launch():
+    """True when nothing says which game to open: no profile chosen, no MXL_GAME, no usable saved game folder."""
+    if os.environ.get('MXL_GAME'):
+        return False
+    s = _raw_settings()
+    if s.get('profile_chosen') or s.get('game_profile'):
+        return False
+    return not (s.get('game_dir') and detect(s.get('game_dir'))['kind'])
+
+
+def first_launch():
+    """The first-launch dialog (before the main window): Vanilla 1.14d or Median XL, a game folder (auto-detected,
+    Browse...), or Skip. The answer is remembered in settings ('profile_chosen', 'game_profile', 'game_dir' /
+    'profile_game_dir'); More > Game profile... changes it later. MXL_FIRSTRUN_CHOICE=vanilla|median|skip answers
+    it without a click (tests); the dialog is still built."""
+    if not needs_first_launch():
+        return None
+    import tkinter as tk
+    from tkinter import ttk, filedialog
+    import settings
+    from mxl_lang import T
+    auto = (os.environ.get('MXL_FIRSTRUN_CHOICE') or '').strip().lower()
+    root = tk.Tk()
+    root.withdraw()
+    w = tk.Toplevel(root)
+    w.title(T('first.title', 'Choose a game'))
+    kind = tk.StringVar(value='folder')
+    folder = tk.StringVar()
+    result = []
+    f = ttk.Frame(w, padding=10)
+    f.pack(fill='both', expand=True)
+    ttk.Label(f, text=T('first.ask', 'Which game do you want to edit characters for?')).grid(
+        row=0, column=0, columnspan=3, sticky='w')
+    ttk.Radiobutton(f, text=T('first.vanilla', 'Vanilla 1.14d (Diablo II Lord of Destruction)'), value='folder',
+                    variable=kind).grid(row=1, column=0, columnspan=3, sticky='w', pady=(6, 0))
+    ttk.Radiobutton(f, text=T('first.median', 'Median XL'), value='median', variable=kind).grid(
+        row=2, column=0, columnspan=3, sticky='w')
+    ttk.Label(f, text=T('first.folder', 'Game folder (detected automatically when possible):')).grid(
+        row=3, column=0, columnspan=3, sticky='w', pady=(8, 0))
+    ttk.Entry(f, textvariable=folder, width=52).grid(row=4, column=0, columnspan=2, sticky='we')
+    info = ttk.Label(f, text='')
+    info.grid(row=5, column=0, columnspan=3, sticky='w')
+
+    def valid():
+        d = detect(folder.get().strip())
+        if kind.get() == 'median':
+            return d['kind'] == 'median'
+        return d['kind'] == 'd2' and d['supported']
+
+    ok_btn = ttk.Button(f, text=T('profile.ok', 'OK'))
+
+    def refresh(*_):
+        d = folder.get().strip()
+        if not d:
+            msg = T('first.nofolder', 'No folder chosen yet.')
+        elif valid():
+            msg = T('profile.detected', 'Detected: {k} {v}', k=detect(d)['kind'], v=detect(d)['version'] or '')
+        else:
+            msg = T('first.notfound', 'Not a game folder of this kind.')
+        info.configure(text=msg)
+        # vanilla needs its folder (the tables come from it); Median may be set later with "Game folder..."
+        ok_btn.state(['!disabled'] if (valid() or kind.get() == 'median') else ['disabled'])
+
+    def pick(*_):
+        found = _candidates(kind.get())
+        folder.set(found[0] if found else '')
+        refresh()
+
+    def browse():
+        d = filedialog.askdirectory(parent=w, initialdir=folder.get() or None)
+        if d:
+            folder.set(d)
+    ttk.Button(f, text=T('profile.browse', 'Browse...'), command=browse).grid(row=4, column=2, padx=(4, 0))
+    folder.trace_add('write', refresh)
+    kind.trace_add('write', pick)
+
+    def finish(how):
+        s = {'profile_chosen': True}
+        if how == 'ok':
+            d = folder.get().strip()
+            s['game_profile'] = kind.get()
+            if kind.get() == 'folder':
+                s['profile_game_dir'] = d
+                s['game_dir'] = d
+            elif valid():
+                s['game_dir'] = d
+        for k, v in s.items():
+            settings.put(k, v)
+        result.append(how)
+        w.destroy()
+    ok_btn.configure(command=lambda: finish('ok'))
+    ok_btn.grid(row=6, column=1, sticky='e', pady=(8, 0))
+    ttk.Button(f, text=T('first.skip', 'Skip'), command=lambda: finish('skip')).grid(row=6, column=2, pady=(8, 0))
+    f.columnconfigure(0, weight=1)
+    w.protocol('WM_DELETE_WINDOW', lambda: finish('skip'))
+    pick()
+    _log('first launch dialog shown')
+    if auto:
+        kind.set('median' if auto == 'median' else 'folder')
+        pick()
+        w.after(300, lambda: finish('skip' if auto == 'skip' else 'ok'))
+    w.update_idletasks()
+    w.geometry('+%d+%d' % ((w.winfo_screenwidth() - w.winfo_reqwidth()) // 2,
+                           (w.winfo_screenheight() - w.winfo_reqheight()) // 3))
+    if not auto:
+        w.grab_set()
+    w.wait_window()
+    root.destroy()
+    return result[0] if result else None
+
+
+class _Empty(dict):
+    """An empty table of the tolerant Data below: iterates / indexes like an empty dict or list."""
+    def append(self, *_):
+        pass
+
+
+_EMPTY_ATTRS = ('isc csv_bits props prop_func prop_funcs prop_vals low_quality quality_mods affixes rare_prefix '
+                'rare_suffix uniques set_items runewords runeword_mods itypes itype_class itype_gfx block_factor '
+                'skill_names skill_class skill_req bases item_index gems strings anim').split()
+
+
+def patch_gui(mxl_gui):
+    """Called with the imported mxl_gui. Its App reads the game tables (data/) in the constructor and, when they are
+    missing, shows an error box and quits: nobody without Median XL (or with the folder not chosen yet) could open
+    the editor. With no tables the editor now opens on empty ones; the top bar says to choose the game folder."""
+    o = getattr(mxl_gui, 'Data', None)
+    if o is None or getattr(o, '_capy_tolerant', False):
+        return
+
+    class Data(o):
+        _capy_tolerant = True
+
+        def __init__(self, folder, *a, **k):
+            try:
+                o.__init__(self, folder, *a, **k)
+                self.empty = False
+            except FileNotFoundError as err:
+                _log(f'game tables missing ({err.filename}): opening with empty tables')
+                self.folder = folder
+                self.empty = True
+                for name in _EMPTY_ATTRS:
+                    if not hasattr(self, name):
+                        setattr(self, name, _Empty())
+                if not hasattr(self, 'monster_names'):
+                    self.monster_names = []
+    mxl_gui.Data = Data
+    try:
+        import mxl_gui_install as gi
+        o_show = gi.GameInstall.show_game
+
+        def show_game(self, *a, **k):
+            if getattr(self, 'label', None) is not None and not gi.is_game_dir(self.game_dir):
+                from mxl_lang import T
+                self.label.configure(text=T('first.hint', 'No game folder chosen: use "Game folder..." to select it'))
+                return None
+            return o_show(self, *a, **k)
+        if not getattr(gi.GameInstall.show_game, '_capy_hint', False):
+            show_game._capy_hint = True
+            gi.GameInstall.show_game = show_game
+    except Exception as err:
+        _log(f'game folder hint not installed ({err})')
+
+
 def install():
     """Before mxl_gui is imported (it copies paths.DATA_DIR at import). Median: nothing. Never raises for Median."""
     global _state
+    _patch_no_game()
+    try:
+        first_launch()
+    except Exception as err:                          # never a dead start
+        _log(f'first launch dialog failed ({type(err).__name__}: {err})')
     kind, game_dir = choose()
     if kind == 'median':
         return None
