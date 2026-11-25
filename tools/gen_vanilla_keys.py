@@ -34,4 +34,4 @@ def main(kit):
 
 
 if __name__ == '__main__':
-    main(sys.argv[1] if len(sys.argv) > 1 else '/home/ps5/Downloads/Claude2')
+    main(sys.argv[1] if len(sys.argv) > 1 else '/home/ps5/Downloads/D2-Development-Kit')
