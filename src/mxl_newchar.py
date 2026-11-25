@@ -296,6 +296,11 @@ def open_dialog(app, *, initial_version=96):
     w.title(T('nc.title', 'New character'))
     w.transient(root)
     w.resizable(False, False)
+    if getattr(data, 'empty', False):
+        ttk.Label(w, padding=12, text=T(
+            'first.hint', 'No game folder chosen: use "Game folder..." to select it')).pack()
+        ttk.Button(w, text=T('profile.cancel', 'Cancel'), command=w.destroy).pack(pady=(0, 8))
+        return w
     names = MC.class_names(data)
     name = tk.StringVar(value='ama_none' if initial_version == 95 else '')
     cls = tk.StringVar(value=names[0])

@@ -506,9 +506,17 @@ def _gui_main(g):
     """Starts the real application in this process (the Linux launcher's main()); Tk's mainloop is wrapped so
     that the tests of the file run inside it, then the window is destroyed. One application per process.
     stdout / stderr of the application go to files in the work folder (errors_since() reads them)."""
-    G.user_dir = fresh_user()
-    G.sample = 2 if g.get('SAMPLE') == 2 else 1
-    G.save_dir = fresh_saves(G.sample)
+    if g.get('EMPTY_GUI'):
+        G.user_dir = os.path.join(tmp(), 'empty-user')
+        G.save_dir = os.path.join(tmp(), 'empty-saves')
+        home = os.path.join(tmp(), 'empty-home')
+        for folder in (G.user_dir, G.save_dir, home):
+            os.makedirs(folder)
+        os.environ['HOME'] = home
+    else:
+        G.user_dir = fresh_user()
+        G.sample = 2 if g.get('SAMPLE') == 2 else 1
+        G.save_dir = fresh_saves(G.sample)
     os.environ['MXL_USER_DIR'] = G.user_dir
     os.environ['MXL_SAVE_DIR'] = G.save_dir
     os.environ['LOCALAPPDATA'] = guard(os.path.join(tmp(), 'localappdata'))
@@ -633,10 +641,10 @@ def menu_entries(m, depth=0):
     out = []
     if m is None:
         return out
-    last = m.index('end')
-    if last is None:
+    last = m.tk.call(m._w, 'index', 'end')
+    if last in ('', 'none', None):
         return out
-    for i in range(last + 1):
+    for i in range(int(last) + 1):
         t = m.type(i)
         if t in ('separator', 'tearoff'):
             continue

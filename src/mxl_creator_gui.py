@@ -407,6 +407,13 @@ class CreatorWindow:
         self.target = target              # callable(blob) -> message: writes somewhere else than the stash
         self.target_label = target_label
         self.data = app.data if data is None else data
+        if getattr(self.data, 'empty', False):
+            import mxl_tabs
+            self.top = mxl_tabs.host_window(app, 'Creator', owner=self, replace=True)
+            self.top.title(T('cr.title.creator', 'Item Creator'))
+            ttk.Label(self.top, padding=24, text=T(
+                'first.hint', 'No game folder chosen: use "Game folder..." to select it')).pack(expand=True)
+            return
         self.cr = getattr(app, '_creator', None)
         if self.data is not app.data:
             self.cr = Creator(self.data)
