@@ -648,6 +648,8 @@ ABS_LVL_LINE = 63                    # absorb by character level line value (x c
 ABS_TIME_KINDS = ('gear', 'jewel')
 # per element: (name, flat res, max res, res / lvl, absorb / lvl, absorb by time)
 ELEMENTS = (('cold', 43, 44, 230, 234, 288), ('fire', 39, 40, 231, 235, 289), ('light', 41, 42, 232, 236, 290))
+PIERCE_STATS = {'cold': 335, 'fire': 333, 'light': 334}
+ELEMENT_LABELS = {'cold': 'Cold', 'fire': 'Fire', 'light': 'Lightning'}
 
 
 def tk_ratio(tk):
@@ -703,9 +705,13 @@ def abs_time_game(raws):
     return min((t >> 2) & 1023, (t >> 12) & 1023) - 256 if raws else 0
 
 
+def element_res_total(flat, res_lvl, clvl):
+    return HELL_RES + flat + res_lvl * clvl // 8
+
+
 def element_res(flat, res_lvl, clvl, max_res=0):
     """Hell resistance of one element: -100 + flat + res / lvl x clvl / 8, capped at 75 + max resist."""
-    return min(MAX_RES + max_res, HELL_RES + flat + math.floor(Fraction(res_lvl * clvl, 8)))
+    return min(MAX_RES + max_res, element_res_total(flat, res_lvl, clvl))
 
 
 MANA_FLOOR, MANA_FLOOR_LOW = 1280000, 1210000   # the user: never below ~1.28M personally, some go to 1.21M
@@ -975,7 +981,41 @@ def smite_of(model, t):
 GOOD, WARN, BAD, INFO = 'good', 'warn', 'bad', 'info'
 
 
-def analyze(model, side=None, bo=False, energy=False):
+def defense_targets(plan):
+    """The generator's requested totals, including the automatic absorb thresholds."""
+    o = plan['o']
+    dr = o['dr_total']
+    if dr is None:
+        dr = len(plan['lists']) * max(0, min(line_max(34), int(o['dr'])))
+    targets = {'dr': dr, 'dr_pct': o['dr_pct']}
+    for name, *_ in ELEMENTS:
+        targets['pierce_' + name] = o['pierce' if name == 'cold' else 'pierce_' + name]
+        targets['res_' + name] = o['res_' + name]
+        targets['abs_' + name] = o['abs_' + name] or o['absorb'].get(name, {}).get('need', 0)
+    return targets
+
+
+def defense_checks(stats, level, absorbs, targets):
+    """Actual versus target on the selected weapon side."""
+    def row(key, label, actual, suffix='', detail='', minimum=False):
+        target = targets[key]
+        ok = actual >= target if minimum else actual == target
+        return ('target_' + key, label, f'{_num(actual)}{suffix} / {_num(target)}{suffix} target{detail}',
+                GOOD if ok else WARN)
+
+    yield row('dr', 'Flat damage reduction', stats.get(34, 0))
+    yield row('dr_pct', 'Physical resist', stats.get(36, 0), '%')
+    for name, flat, mx, rl, _, _ in ELEMENTS:
+        label = ELEMENT_LABELS[name]
+        yield row('pierce_' + name, f'{label} pierce', stats.get(PIERCE_STATS[name], 0), '%')
+        raw = element_res_total(stats.get(flat, 0), stats.get(rl, 0), level)
+        effective = element_res(stats.get(flat, 0), stats.get(rl, 0), level, stats.get(mx, 0))
+        yield row('res_' + name, f'{label} resist', raw, '%', f' ({effective}% effective in Hell)', minimum=True)
+        total = absorbs.get(name, {}).get('total', 0)
+        yield row('abs_' + name, f'{label} absorb', total, minimum=True)
+
+
+def analyze(model, side=None, bo=False, energy=False, *, targets=None):
     """Computed values and colour-coded checks of a character model: dict(values, checks=[(key, label, text,
     status)]). Covers mana band / funky, TK ratio, off-screen, regen vs roll-over, life, smite vs cap, aura
     sources and levels, Prayer heal / drain vs regen, stun vs stability, lists and file size. bo / energy: the
@@ -1044,7 +1084,7 @@ def analyze(model, side=None, bo=False, energy=False):
                                  total=lvl + tv.get(at, 0))
     ab = max([a['total'] for a in v['absorb'].values()] or [0])
     v['best_mana'] = best_mana(tk or 31, ab) if ab else None
-    C = []
+    C = list(defense_checks(T, clvl, v['absorb'], targets)) if targets is not None else []
 
     def add(key, label, text, status):
         C.append((key, label, text, status))
@@ -1320,7 +1360,7 @@ DEFAULTS = dict(cls=1, level=127, position='LPJ', life=7300000, damage=Fraction(
                 curse_res=511, target_def=381, dodge=127, ow=127, cb=0, ds=0,   # CB / DS do nothing against players
                  itd=False, cbf=False,
                 dr=63, dr_total=None, dr_pct=255, mdr=0, abs_pct=127, abs_flat=0, abs_lvl=True, abs_time=True, replenish=True,
-                res_cold=HELL_RES, res_fire=HELL_RES, res_light=HELL_RES, res_flat=0, pierce=0,
+                res_cold=HELL_RES, res_fire=HELL_RES, res_light=HELL_RES, res_flat=0, pierce=0, pierce_fire=0, pierce_light=0,
                 stun_lvl=1, holy_shield=False, just_hit=False)
 
 # item skeleton: (role, body, code, Sigon's set item id, socketed with 7 jewels)
@@ -1976,6 +2016,7 @@ def plan(preset='mock_high', name='Mock', **over):
              (142, o['abs_pct']), (144, o['abs_pct']), (148, o['abs_pct']),
              (143, o['abs_flat']), (145, o['abs_flat']), (149, o['abs_flat']), (238, o['thorns_lvl']),
              (114, int(o['dtm'])), (331, hf_mast), (335, o['pierce']),
+             (333, o['pierce_fire']), (334, o['pierce_light']),
              (329, o['aura_mast'].get(HOLY_FIRE, 0)), (330, o['aura_mast'].get(HOLY_SHOCK, 0))]
     fixed += [(sid, o['res_flat']) for sid in (39, 41, 43, 45)]
     fixed += [(sid, 1) for sid, on in ((115, o['itd']), (153, o['cbf'])) if on]
@@ -2590,6 +2631,8 @@ FIELDS = (
                 ('ow', 'Open wounds', 'int', (0, UNCAPPED)), ('cb', 'Crushing blow', 'int', (0, UNCAPPED)),
                 ('ds', 'Deadly strike', 'int', (0, UNCAPPED)), ('target_def', '-% Target def', 'int', (0, UNCAPPED)),
                 ('dtm', 'DTM %', 'int', (0, UNCAPPED)), ('pierce', 'Cold pierce', 'int', (0, UNCAPPED)),
+                ('pierce_fire', 'Fire pierce', 'int', (0, UNCAPPED)),
+                ('pierce_light', 'Lightning pierce', 'int', (0, UNCAPPED)),
                 ('itd', 'Ignore target def', 'bool', None),
                 ('weapon', 'Weapon (+20 lists)', 'bool', None),
                 ('ith_weapon', 'Ith weapon (vanishes, sources only)', 'bool', None))),
@@ -2774,7 +2817,8 @@ def edited(fields, pre):
 
 
 # field -> (stat ids written per total, split per line); lines x line_bits is what the field costs in the file
-SIZE_STATS = dict(                  res_flat=((39, 41, 43, 45), None), pierce=((335,), None), curse_res=((109,), None),
+SIZE_STATS = dict(                  res_flat=((39, 41, 43, 45), None), pierce=((335,), None), pierce_fire=((333,), None),
+                  pierce_light=((334,), None), curse_res=((109,), None),
                   target_def=((116,), None), dr_pct=((36,), None), mdr=((35,), None), dtm=((114,), None),
                   ow=((135,), None), cb=((136,), None), ds=((141,), None), thorns_lvl=((238,), None),
                   abs_pct=((142, 144, 148), None), abs_flat=((143, 145, 149), None), dr_total=((34,), None),

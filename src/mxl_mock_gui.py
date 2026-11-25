@@ -168,7 +168,7 @@ def _int(s, what):
         raise M.PlanError(T('mock.err.number', '{what}: a whole number', what=what))
 
 
-SECTION_ORDER = ('Checks', 'Caps', 'Auras', 'Defenses', 'Speeds', 'Damage', 'Life / mana', 'Skills / states',
+SECTION_ORDER = ('Defense targets', 'Checks', 'Caps', 'Auras', 'Defenses', 'Speeds', 'Damage', 'Life / mana', 'Skills / states',
                  'Clone profile')
 SIDE_LABEL = {'A': 'A (weapon I)', 'B': 'B (weapon II)'}
 
@@ -263,6 +263,7 @@ class MockPage:
     def __init__(self, app, host):
         self.app, self.host = app, host
         self.last = None
+        self.defense_targets = None
         if getattr(app, 'data', None) is not None:
             M.set_data(app.data)                    # the skills tables of the selected game (aura damage)
         try:
@@ -474,6 +475,7 @@ class MockPage:
         recomputed on every key stroke)."""
         over, raw, P, errs = M.validate(self.key(), self.form(), self.pre)
         self._show_errors(errs)
+        self.defense_targets = M.defense_targets(P) if P is not None else None
         if errs:
             return None
         self.over = over
@@ -514,6 +516,7 @@ class MockPage:
             self._show_errors({'': str(e)})
             return None
         self.last = path
+        self.defense_targets = M.defense_targets(P)
         self.status.configure(text=T('mock.written', 'Written: {file}', file=os.path.basename(path)) + '  '
                               + M.plan_line(P, raw), foreground=COLORS[M.GOOD])
         self.summary.show(M.model_from_plan(P, raw), M.PRESET_ROLE[key])
@@ -538,6 +541,8 @@ class MockPage:
         rb.bind('<<ComboboxSelected>>', lambda e: self.analyze(keep_side=True))
         self.who = ttk.Label(top, text='')
         self.who.pack(side='left', padx=4)
+        self.target_note = ttk.Label(top, text='')
+        self.target_note.pack(side='right', padx=4)
         self.ana = SummaryPanel(f, title=T('mock.sum.char', 'Loaded character'))
         self.ana.frame.grid(row=1, column=0, sticky='nsew')
         self.tree = self.ana.tree
@@ -564,11 +569,14 @@ class MockPage:
         m = M.model_from_character(ch)
         side = self.ana.side.get() if keep_side else M.sides(m)[0]
         self.who.configure(text=f'{ch.name} ({os.path.basename(path)})')
+        self.target_note.configure(
+            text=T('mock.target.generator', 'Targets from Generator') if self.defense_targets is not None else '')
 
         def checks(sd, bo):
-            a = M.analyze(m, sd, bo=bo)
+            a = M.analyze(m, sd, bo=bo, targets=self.defense_targets)
             self.report = a
-            return [('Checks', lab, txt, st) for _, lab, txt, st in a['checks']]
+            return [('Defense targets' if key.startswith('target_') else 'Checks', lab, txt, st)
+                    for key, lab, txt, st in a['checks']]
 
         self.ana.show(m, self.role.get(), extra=checks, side=side)
         return self.report

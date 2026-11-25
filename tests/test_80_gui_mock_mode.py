@@ -89,6 +89,10 @@ def toggle_tab_analyzer_generator():
     T.check(a is not None, 'analysis of the loaded character')
     rows = _rows(page.ana.tree)
     T.check(any(r[0] == 'Checks' and 'Mana' in r[1] and '1438452' in r[2] for r in rows), 'mana row of clone-90')
+    defenses = {label: value for section, label, value, _ in rows if section == 'Defense targets'}
+    T.check({'Flat damage reduction', 'Cold pierce', 'Fire resist', 'Lightning absorb'} <= defenses.keys(),
+            'analyzer shows defense totals and Generator targets')
+    T.check(all(' target' in text for text in defenses.values()), 'target shown beside each defense total')
     page.ana.bo.set(False)                              # BO not cast: the saved mana
     page.ana.render()
     T.check(any(r[1] == 'Mana' and r[2].startswith('1438452') for r in _rows(page.ana.tree)), 'BO cast off')

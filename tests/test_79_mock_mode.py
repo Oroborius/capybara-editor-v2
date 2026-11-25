@@ -955,6 +955,31 @@ def dr_total_respected_and_aura_sources():
 
 
 @T.test
+def defense_totals_compare_with_generator_targets_on_both_sides():
+    M = engine().M
+    plan = M.plan('balance_switch', 'Df', dr_total=1000, pierce=117, pierce_fire=88,
+                  res_cold=60000, abs_cold=20000, abs_fire=15000, abs_light=25000)
+    model = M.model_from_plan(plan)
+    targets = M.defense_targets(plan)
+    side_b = next(unit for unit in model['units'] if unit.side == 'B' and unit.kind == 'gear')
+    side_b.lists[0].extend([(34, None, 25), (333, None, 27)])
+
+    def rows(side):
+        return {key: (value, status) for key, _, value, status in M.analyze(model, side, targets=targets)['checks']}
+
+    a, b = rows('A'), rows('B')
+    T.eq(a['target_dr'], ('1000 / 1000 target', M.GOOD), 'DR uses the generator total')
+    T.eq(b['target_dr'], ('1025 / 1000 target', M.WARN), 'DR follows the active switch')
+    T.eq(a['target_pierce_cold'], ('117% / 117% target', M.GOOD), 'cold pierce')
+    T.eq(b['target_pierce_fire'], ('115% / 88% target', M.WARN), 'fire pierce on B')
+    T.eq(b['target_pierce_light'], ('0% / 0% target', M.GOOD), 'lightning shown even at zero')
+    T.check('/ 60000% target (75% effective in Hell)' in a['target_res_cold'][0], 'uncapped resist compared')
+    for name, target in (('cold', 20000), ('fire', 15000), ('light', 25000)):
+        text, status = a['target_abs_' + name]
+        T.check(f' / {target} target' in text and status == M.GOOD, f'{name} absorb compared: {text}')
+
+
+@T.test
 def aura_damage_targets_solved_per_formula():
     """A damage target per source picks the level + mastery with the fewest bits; Holy Fire and Holy Shock have
     different skills.bin formulas; the analyzer shows the damage per source and in total."""
