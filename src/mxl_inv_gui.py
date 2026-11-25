@@ -850,7 +850,11 @@ class MainInventory:
             raise CharError(T('inv.err.changed', 'the character file changed on disk: it has been reloaded, try again'))
 
     def _save_char(self):
+        import mxl_profile
+
         app = self.app
+        if not mxl_profile.is_median() and not MC.confirm_save_name(app.root, self.ch.name, existing=True):
+            raise CharError(T('ch.save_cancelled', 'Character save cancelled.'))
         bak = self.ch.save(backup=app.needs_backup(self.ch.path))
         app.backup_made(self.ch.path, bak)
         self.sig = _sig(self.ch.path)

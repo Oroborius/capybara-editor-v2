@@ -3,7 +3,7 @@ import tkinter as tk
 from tkinter import messagebox, simpledialog, ttk
 
 from mxl_vanilla_he import BLACK, allows, center_mouse, font, photo, picture, pixels, role
-from mxl_char import CharError, blob_item
+from mxl_char import CharError, blob_item, name_warning
 from mxl_creator import (
     FLAG_EAR, FLAG_IDENTIFIED, FLAG_RUNEWORD, FLAG_SIMPLE, NUM_SOCKETS, build_blob, decode_blob, decode_item,
 )
@@ -239,6 +239,12 @@ def apply_character_header(ch, edits):
             ch.head[offset] = value
 
 
+def staged_header_name(ch, edits):
+    start = 8 if ch.early else 20
+    name = bytes(edits.get(start + i, byte) for i, byte in enumerate(ch.head[0x14:0x24]))
+    return name.split(b'\0', 1)[0].decode('latin1')
+
+
 def character_hex(page, win):
     raw = win.ch.build()
     address, value = tk.StringVar(value='0'), tk.StringVar()
@@ -253,6 +259,8 @@ def character_hex(page, win):
     shell.pack(fill='both', expand=True)
     controls = ttk.Frame(shell, style='Peach.TFrame')
     controls.pack(side='left', fill='both', expand=True)
+    warning = ttk.Label(controls, foreground='#b00000', wraplength=280)
+    warning.pack(anchor='w')
     fields = tk.Listbox(shell, width=35, exportselection=False)
     scrollbar = ttk.Scrollbar(shell, command=fields.yview)
     fields.configure(yscrollcommand=scrollbar.set)
@@ -274,6 +282,7 @@ def character_hex(page, win):
         value.set(' '.join(f'{pending.get(pos, byte):02X}'
                            for pos, byte in enumerate(raw[start:start + 301], start)))
         cursor.set(f'Cursor Byte {start}')
+        warning.configure(text=name_warning(staged_header_name(win.ch, pending)))
 
     def navigate(step=0):
         try:
@@ -302,6 +311,7 @@ def character_hex(page, win):
             win.he_header_bytes[index] = changed
         if not win.ch.early:
             displayed.set(str(win.he_header_bytes.get(0x2B, win.ch.level)))
+        warning.configure(text=name_warning(staged_header_name(win.ch, win.he_header_bytes)))
         win.update_dirty()
         return True
 

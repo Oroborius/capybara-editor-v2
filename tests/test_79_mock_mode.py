@@ -518,7 +518,7 @@ def holy_shield_adds_smite_damage_before_the_multiplier():
         m = M.model_from_plan(P)
         a = M.smite_of(m, M.totals(m))
         T.eq((a['hs_lvl'], a['max'], a['min']), (lv, sm['max'], sm['min']), f'analyzer = plan with Holy Shield {lv}')
-    raw, P = M.generate('mock_high', 'X', smite_max=True, holy_shield_cast=20)
+    raw, P = M.generate('mock_high', 'Xs', smite_max=True, holy_shield_cast=20)
     v = M.analyze(M.model_from_plan(P, raw))['values']['smite']
     T.eq((v['hs_lvl'], v['max']), (20, M.ROLL), 'the written save scores Holy Shield 20 at the cap')
 

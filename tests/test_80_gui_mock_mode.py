@@ -1,8 +1,8 @@
 """Mock Mode in the window (vanilla profile): the character Menu’s "Mock Mode" command turns
 the Mock tab on / off and is kept in the settings; the analyzer lists colour-coded checks and the summary of the
 loaded mock per weapon switch; the generator's fields are prefilled, an edited field reaches the plan, a bad value
-is reported next to its field, the summary panel follows the switch selector; Generate writes a NEW save (no
-question) that the analyzer scores without a bad check. Copies of the mock samples only; skipped without the vanilla install / samples
+is reported next to its field, the summary panel follows the switch selector, and Generate writes a new save
+that the analyzer scores without a bad check. Invalid names require confirmation. Copies of the mock samples only; skipped without the vanilla install / samples
 (see test 75). The Median XL side (no toggle) is test 81."""
 import glob
 import os
@@ -173,8 +173,23 @@ def toggle_tab_analyzer_generator():
     T.check(a['values']['band']['funky'], 'generated funky: on the funky zero')
     page.generate()                                     # same name again: a free name, nothing overwritten
     T.eq(sorted(set(os.listdir(_S)) - before), ['GuiMock.d2s', 'GuiMocka.d2s'], 'second file, free name')
+    from mxl_char import Character
+
     page.name.set('9')
-    T.check(page.generate() is None and 'Name' in page.status.cget('text'), 'bad name: message, no file')
+    files = set(os.listdir(_S))
+    G.boxes.clear()
+    G.answers['askyesno'] = False
+    try:
+        T.check(page.generate() is None, 'declining cancels generation')
+        T.eq(set(os.listdir(_S)), files, 'declining creates no save')
+        T.check(any(kind == 'askyesno' and 'Save anyway?' in msg for kind, _, msg in G.boxes),
+                'invalid name asks for confirmation')
+        G.answers['askyesno'] = True
+        path = page.generate()
+        T.eq(os.path.basename(path), '9.d2s', 'confirmed name in filename')
+        T.eq(Character(path, G.app.data).name, '9', 'confirmed name in save header')
+    finally:
+        G.answers.pop('askyesno', None)
     G.app.select_character('clone-41', G.app.view.get())
     T.pump(10, 0.02)
     # ---- off again

@@ -783,18 +783,16 @@ def valid_name(name):
     return 2 <= len(name) <= 15 and all(ch.isascii() and ch.isalpha() or ch in '-_' for ch in name)
 
 
-def new_character(template_path, name, cls_name, data):
+def new_character(template_path, name, cls_name, data, *, allow_invalid_name=False):
     """Character (not saved) made from an existing save: name, class, the class's starting attributes / life /
     mana / stamina, no skills, no items, level 1."""
-    if not valid_name(name):
-        raise CharError(T('ch.err.name', 'name: 2 to 15 letters (- and _ allowed)'))
     cls = CLASS_INDEX.get(cls_name)
     if cls is None:
         raise CharError(T('im.err.class', 'unknown class {cls}', cls=repr(cls_name)))
     ch = Character(template_path, data)
     if ch.version == 71 and cls >= 5:
         raise CharError('Classic saves support the five original character classes.')
-    ch.head[0x14:0x24] = name.encode('latin1').ljust(16, b'\0')
+    ch.set_name(name, allow_invalid_name=allow_invalid_name)
     ch.head[0x28] = cls
     ch.head[0x2B] = 1
     ch.head[0x25] = 0
@@ -943,7 +941,7 @@ def apply_build(ch, build, data, report):
 
 
 def import_character(page_path, template_path, save_dir, name, data, cls_name=None, backup=True, level=None,
-                     quests=None):
+                     quests=None, *, allow_invalid_name=False):
     """Builds name.d2s (+ .stash, .key, .map, .ma*) in save_dir from a saved character page.
     cls_name / level: the user's choice when the page has no build data (they win over the page's).
     quests: difficulties (0 normal, 1 nightmare, 2 hell) the user ticked as completed, for pages without the
@@ -967,12 +965,12 @@ def import_character(page_path, template_path, save_dir, name, data, cls_name=No
              name, cls_name, level, len(items), 'none' if no_build else 'page' if from_page else 'export',
              'export' if quests is None else sorted(quests), template_path)
     check_game_closed()
-    MC.check_name(name)
+    MC.check_save_name(name, allow_invalid_name=allow_invalid_name)
     dst = os.path.join(save_dir, name + '.d2s')
     if os.path.exists(dst) or os.path.exists(os.path.join(save_dir, name + '.stash')):
         # an existing <name>.stash (left by a deleted character) would be overwritten without a backup
         raise CharError(T('im.exists', '{name} already exists in the save folder', name=name))
-    ch = new_character(template_path, name, cls_name, data)
+    ch = new_character(template_path, name, cls_name, data, allow_invalid_name=allow_invalid_name)
     report = []
     if no_build:
         report.append(T('im.no_build', 'the page has no build data: class and level as chosen; skills, quests and '
@@ -1220,16 +1218,22 @@ def import_dialog(app):
             return
         cls, picked_level, quests = picked
         level = picked_level if ask_class else None
+    import mxl_profile
+    median = mxl_profile.is_median()
+    ask_name = simpledialog.askstring if median else MC.ask_name
     while True:
-        name = simpledialog.askstring(
+        name = ask_name(
             T('im.title', 'Import character'),
             T('im.ask_name', '{cls} level {level}, {n} items.\n\nName of the new character:', cls=cls,
               level=level or (build or {}).get('level', '?'), n=len(items)),
             initialvalue=default, parent=root)
         if not name:
             return
-        name = name.strip()
-        if not valid_name(name):
+        name = name.strip() if median else name
+        if not median and not MC.confirm_save_name(root, name):
+            default = name
+            continue
+        if median and not valid_name(name):
             messagebox.showerror(T('im.title', 'Import character'), T('ch.err.name', 'name: 2 to 15 letters (- and _ allowed)'),
                                  parent=root)
             default = name
@@ -1243,7 +1247,8 @@ def import_dialog(app):
     root.configure(cursor='watch')
     root.update_idletasks()
     try:
-        dst, report = import_character(path, tmpl, app.save_dir, name, app.data, cls, level=level, quests=quests)
+        dst, report = import_character(path, tmpl, app.save_dir, name, app.data, cls, level=level, quests=quests,
+                                       allow_invalid_name=not median)
     except Exception as e:                                   # nothing is written when the build fails
         log.exception('import FAILED: %s as "%s"', path, name)
         root.configure(cursor='')

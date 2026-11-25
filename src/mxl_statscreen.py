@@ -180,7 +180,10 @@ class StatEditMixin:
 
     def st_parse(self, key, text):
         """The typed text as a storable value: (value, None) or (None, message)."""
-        text = str(text).strip()
+        import mxl_profile
+
+        allow_invalid = key in TEXT_KEYS and not mxl_profile.is_median()
+        text = str(text) if allow_invalid else str(text).strip()
         if key in HEADER_WORDS:
             try:
                 v = int(text.replace(' ', ''), 16)
@@ -194,7 +197,7 @@ class StatEditMixin:
             if key == 'copy_as' and not text:
                 return '', None
             try:
-                MC.check_name(text)
+                MC.check_save_name(text, allow_invalid_name=allow_invalid)
             except CharError as e:
                 return None, str(e)
             return text, None
@@ -240,6 +243,9 @@ class StatEditMixin:
                     return False
                 self.st_name = v
             self.st_changed()
+            warning = MC.name_warning(v)
+            if warning:
+                self.set_bar(warning, error=True)
             return True
         if key == 'copy_as':
             self.copy_name.set(v)
@@ -2626,6 +2632,16 @@ class StatScreen:
                      selectbackground='#4a1712', selectforeground='#ffffff',
                      highlightthickness=1, highlightbackground='#6f5a3a', highlightcolor='#c7b377',
                      justify='left' if key == 'name' else 'center')
+        import mxl_profile
+
+        if key in TEXT_KEYS and not mxl_profile.is_median():
+            value = e.name_value = tk.StringVar(e)
+            e.configure(textvariable=value)
+
+            def show(warning):
+                self.win.set_bar(warning, error=bool(warning))
+
+            MC.watch_name(value, show)
         text = '' if key == 'copy_as' and not self.win.copy_name.get() else str(self.win.st_value(key))
         e.insert(0, text)
         e.select_range(0, 'end')

@@ -448,8 +448,8 @@ def _guard(host):
 def _guard_copy(host):
     """mxl_char.copy_character writes <new name>.d2s itself: checked right after, removed when refused."""
     @functools.wraps(host)
-    def copy_character(path, new_name, data):
-        dst = host(path, new_name, data)
+    def copy_character(path, new_name, data, **kwargs):
+        dst = host(path, new_name, data, **kwargs)
         m = mode()
         if m == 'off':
             return dst

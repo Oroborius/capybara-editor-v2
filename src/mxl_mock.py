@@ -2404,8 +2404,9 @@ def barbs_plan(preset, **over):
     return safe_barbs(int(o['thorns']), lo, dr, int(o['dr_pct']), Fraction(o['es'], 100)), dr
 
 
-def generate(preset='mock_high', name='Mock', **over):
+def generate(preset='mock_high', name='Mock', *, allow_invalid_name=False, **over):
     """(bytes, plan) of a new mock character."""
+    _check_save_name(name, allow_invalid_name=allow_invalid_name)
     P = plan(preset, name, **over)
     o = P['o']
     if over.get('barbs') is None and (o['thorns'] or o['barbs']):
@@ -2952,16 +2953,26 @@ def plan_line(P, raw):
 
 # ---------------------------------------------------------------------------------- names and writing
 def valid_name(name):
-    return (isinstance(name, str) and 2 <= len(name) <= 15
-            and all(c in '-_' or (c.isascii() and c.isalpha()) for c in name)
-            and sum(c in '-_' for c in name) <= 1 and name[0] not in '-_' and name[-1] not in '-_')
+    from mxl_char import name_warning
+
+    return not name_warning(name)
 
 
-def free_name(folder, name):
+def _check_save_name(name, *, allow_invalid_name=False):
+    from mxl_char import CharError, check_save_name
+
+    try:
+        return check_save_name(name, allow_invalid_name=allow_invalid_name)
+    except CharError as error:
+        raise PlanError(str(error)) from error
+
+
+def free_name(folder, name, *, allow_invalid_name=False):
     """name, else name + a, b, ... (D2 names allow no digits) that no file in the folder uses yet."""
-    if not valid_name(name):
-        raise PlanError('name: 2 to 15 letters (A-Z), at most one - or _, not at the start or the end')
-    taken = {f.lower().split('.')[0] for f in os.listdir(folder)} if os.path.isdir(folder) else set()
+    _check_save_name(name, allow_invalid_name=allow_invalid_name)
+    files = [f.lower() for f in os.listdir(folder)] if os.path.isdir(folder) else []
+    taken = set(files)
+    taken.update(f[:i] for f in files for i, char in enumerate(f) if char == '.')
     if name.lower() not in taken:
         return name
     letters = 'abcdefghijklmnopqrstuvwxyz'
@@ -2972,26 +2983,30 @@ def free_name(folder, name):
                 suf = letters[x % 26] + suf
                 x //= 26
             n = name[:15 - k] + suf
-            if valid_name(n) and n.lower() not in taken:
-                return n
+            if n.lower() not in taken:
+                try:
+                    return _check_save_name(n, allow_invalid_name=allow_invalid_name)
+                except PlanError:
+                    continue
     raise PlanError('no free name')
 
 
-def rename_raw(raw, name):
+def rename_raw(raw, name, *, allow_invalid_name=False):
+    _check_save_name(name, allow_invalid_name=allow_invalid_name)
     b = bytearray(raw)
-    b[0x14:0x24] = name.encode('latin1')[:15].ljust(16, b'\0')
+    b[0x14:0x24] = name.encode('latin1').ljust(16, b'\0')
     struct.pack_into('<I', b, 12, checksum(b))
     return bytes(b)
 
 
-def write_new(raw, folder, name, read_only=False):
+def write_new(raw, folder, name, read_only=False, *, allow_invalid_name=False):
     """Writes a NEW <name>.d2s (the name made free first; exclusive create, never overwrites): the path.
     read_only: mark it read-only, so the game cannot save it (xp at level 127 resets it to 99)."""
     os.makedirs(folder, exist_ok=True)
-    name = free_name(folder, name)
+    name = free_name(folder, name, allow_invalid_name=allow_invalid_name)
     path = os.path.join(folder, name + '.d2s')
     with open(path, 'xb') as f:
-        f.write(rename_raw(raw, name))
+        f.write(rename_raw(raw, name, allow_invalid_name=allow_invalid_name))
     if read_only:
         import stat
         os.chmod(path, os.stat(path).st_mode & ~(stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH))

@@ -157,7 +157,7 @@ def _charstats_row(data, cls):
 
 
 def build(data, name, cls, level, hardcore=False, expansion=True, unlocked=False, median=None,
-          version=None, classic_100=False):
+          version=None, classic_100=False, *, allow_invalid_name=False):
     """(bytes, Character) of a new character. Raises NewCharError / mxl_char.CharError."""
     import mxl_char as MC
     median = _median() if median is None else median
@@ -166,7 +166,7 @@ def build(data, name, cls, level, hardcore=False, expansion=True, unlocked=False
     if version not in SAVE_VERSIONS or (version != profile_version and not _vanilla(median)):
         raise NewCharError(T('nc.err.version', 'Unsupported save version for this profile.'))
     expansion = median or (version != 71 and bool(expansion))
-    MC.check_name(name)
+    MC.check_save_name(name, allow_invalid_name=allow_invalid_name)
     if not 0 <= cls < 7 or (not expansion and cls >= 5):
         raise NewCharError(T('nc.err.class', 'Druid and Assassin need the expansion.'))
     top = top_level(data, cls, median)
@@ -176,7 +176,7 @@ def build(data, name, cls, level, hardcore=False, expansion=True, unlocked=False
     ch = MC.Character.__new__(MC.Character)
     ch.path, ch.data, ch.raw = None, data, raw
     ch.parse(raw)
-    ch.set_name(name)
+    ch.set_name(name, allow_invalid_name=allow_invalid_name)
     if version == 95:
         ch.set_stat(14, 6)
         ch.set_stat(15, 1)
@@ -246,13 +246,16 @@ def check(raw, data):
 def name_taken(folder, name):
     low = name.lower()
     try:
-        return any(f.lower().split('.')[0] == low for f in os.listdir(folder))
+        return any(f.lower().startswith(low + '.') or f.lower() == low for f in os.listdir(folder))
     except OSError:
         return False
 
 
-def write(raw, folder, name):
+def write(raw, folder, name, *, allow_invalid_name=False):
     """Writes <folder>/<name>.d2s (exclusive create; refused when any file of the folder has that name)."""
+    from mxl_char import check_save_name
+
+    check_save_name(name, allow_invalid_name=allow_invalid_name)
     os.makedirs(folder, exist_ok=True)
     if name_taken(folder, name):
         raise NewCharError(T('nc.err.exists', 'A character or file named {name} already exists.', name=name))
@@ -298,7 +301,7 @@ def create_reference_clone(app):
 
 def open_dialog(app, *, initial_version=None):
     import tkinter as tk
-    from tkinter import ttk, messagebox
+    from tkinter import ttk
     import mxl_char as MC
     root = getattr(app, 'root', None) or tk._default_root
     data = app.data
@@ -379,11 +382,16 @@ def open_dialog(app, *, initial_version=None):
     err.grid(row=row, column=0, columnspan=2, sticky='w', padx=2)
     row += 1
 
+    if not median:
+        MC.watch_name(name, lambda text: err.configure(text=text))
+
     def ok():
-        n = name.get().strip()
+        n = name.get().strip() if median else name.get()
+        if not median and not MC.confirm_save_name(w, n):
+            return
         try:
             try:
-                MC.check_name(n)
+                MC.check_save_name(n, allow_invalid_name=not median)
             except MC.CharError:
                 raise NewCharError(T('mock.err.name', 'Name: 2 to 15 letters (A-Z), at most one - or _, not at the '
                                                       'start or the end'))
@@ -399,8 +407,8 @@ def open_dialog(app, *, initial_version=None):
             raw, _ch = build(data, n, names.index(cls.get()), lv, hardcore=hc.get(), expansion=exp.get(),
                              unlocked=unl.get(), median=median,
                              version=next(v for v, label in SAVE_VERSIONS.items() if label == version.get()),
-                             classic_100=classic_100.get())
-            path = write(raw, folder, n)
+                             classic_100=classic_100.get(), allow_invalid_name=not median)
+            path = write(raw, folder, n, allow_invalid_name=not median)
         except (NewCharError, MC.CharError, OSError) as e:
             err.configure(text=str(e))
             return

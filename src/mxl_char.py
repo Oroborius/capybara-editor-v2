@@ -471,6 +471,71 @@ def check_name(name):
     return name
 
 
+def name_warning(name):
+    try:
+        check_name(name)
+    except CharError as error:
+        return str(error)
+    return ''
+
+
+def check_save_name(name, *, allow_invalid_name=False):
+    """Keep the game rule by default and enforce header and filename limits even with consent."""
+    if not allow_invalid_name:
+        check_name(name)
+    if (not isinstance(name, str) or not 1 <= len(name) <= 15 or name != name.strip()
+            or name.endswith('.') or any(not c.isprintable() or ord(c) > 255 or c in '<>:"/\\|?*' for c in name)
+            or name.split('.')[0].rstrip().upper() in {'CON', 'PRN', 'AUX', 'NUL',
+                                               *(f'{prefix}{n}' for prefix in ('COM', 'LPT') for n in '123456789¹²³')}):
+        raise CharError(T('ch.err.name_storage', 'Use a name that fits the 15-byte character header and is safe as a save filename.'))
+    return name
+
+
+def confirm_save_name(parent, name, *, existing=False):
+    from tkinter import messagebox
+
+    warning = name_warning(name)
+    if existing and not warning:
+        return True
+    title = T('ch.title', 'Character')
+    if not existing:
+        try:
+            check_save_name(name, allow_invalid_name=True)
+        except CharError as error:
+            messagebox.showerror(title, str(error), parent=parent)
+            return False
+    if not warning:
+        return True
+    return messagebox.askyesno(title, warning + '\n\n' + T(
+        'ch.name_save_anyway', 'The game may refuse this character. Save anyway?'), parent=parent, default='no')
+
+
+def watch_name(variable, show):
+    """Display the game-rule warning as the input changes."""
+    def update(*_args):
+        show(name_warning(variable.get()))
+
+    variable.trace_add('write', update)
+    update()
+
+
+def ask_name(title, prompt, *, parent, initialvalue=''):
+    import tkinter as tk
+    from tkinter import simpledialog, ttk
+
+    class NameDialog(simpledialog._QueryString):
+        def body(self, master):
+            entry = super().body(master)
+            value = self.name_value = tk.StringVar(master, value=initialvalue or '')
+            entry.configure(textvariable=value)
+            label = ttk.Label(master, foreground='#b00000', wraplength=300)
+            label.grid(row=2, sticky='w', padx=5)
+            watch_name(value, lambda text: label.configure(text=text))
+            return entry
+
+    return NameDialog(title, prompt, parent=parent, initialvalue=initialvalue).result
+
+
 def companion_files(path):
     """Files of the save folder that belong to the character besides its .d2s (.key, .map, .ma0-.ma3, .stash)."""
     folder = os.path.dirname(path)
@@ -1112,19 +1177,19 @@ class Character:
             acts += 1
         return self._acts_per_difficulty * done + acts
 
-    def set_name(self, name):
+    def set_name(self, name, *, allow_invalid_name=False):
         """Writes the name in the header only (game rule checked). The game needs the file to carry the same name:
         use rename() to save under the new name and move the companion files."""
-        check_name(name)
-        self.head[0x14:0x24] = name.encode('ascii').ljust(16, b'\0')
+        check_save_name(name, allow_invalid_name=allow_invalid_name)
+        self.head[0x14:0x24] = name.encode('latin1').ljust(16, b'\0')
 
-    def rename(self, new_name, backup=True):
+    def rename(self, new_name, backup=True, *, allow_invalid_name=False):
         """Renames the character on disk: the save is written (with any pending change) as <new_name>.d2s through
         the safe writer, the companion files (.key, .map, .ma0-3, .stash) are renamed, the old .d2s is removed
         (kept as a backup when `backup`). Returns (new path, backup or None). Nothing changes on a refusal."""
         from mxl_save import commit_file, load_character, check_game_closed, make_backup, EditError
         check_game_closed()
-        check_name(new_name)
+        check_save_name(new_name, allow_invalid_name=allow_invalid_name)
         old_path, old_name = self.path, bytes(self.head[0x14:0x24])
         folder = os.path.dirname(old_path)
         old = os.path.splitext(os.path.basename(old_path))[0]
@@ -1145,7 +1210,7 @@ class Character:
             raise CharError(T('ch.err.changed', 'the character file changed on disk since it was read (game or another '
                               'window): it has been reloaded, try again'))
         dst = os.path.join(folder, new_name + '.d2s')
-        self.set_name(new_name)
+        self.set_name(new_name, allow_invalid_name=allow_invalid_name)
         content = self.build()
 
         def verify(tmp):
@@ -1744,14 +1809,14 @@ def blob_item(blob, data):
     return _bi(blob, data)
 
 
-def copy_character(path, new_name, data):
+def copy_character(path, new_name, data, *, allow_invalid_name=False):
     """Copies a character (save, map, key and stash files) under a new name. Returns the new .d2s path.
     The game's name rule applies (check_name); nothing is written when any file of the new name exists already
     (a companion left by a deleted character would have been overwritten, and a refused copy removes every file
     of its name). The .d2s goes through the safe writer (temp file, verification), the companions are copied."""
     from mxl_save import check_game_closed, commit_file, load_character, EditError
     check_game_closed()
-    check_name(new_name)            # the game's rule (A-Z only: any other letter is refused by the game / latin1)
+    check_save_name(new_name, allow_invalid_name=allow_invalid_name)
     folder = os.path.dirname(path)
     dst = os.path.join(folder, new_name + '.d2s')
     # any file of the new name, compared without case (Windows / Wine: XBone.key is xbone.key): a leftover
@@ -1761,7 +1826,7 @@ def copy_character(path, new_name, data):
            for fn in os.listdir(folder)):
         raise CharError(T('ch.err.exists', '{name} already exists', name=new_name))
     c = Character(path, data)
-    c.head[0x14:0x24] = new_name.encode('ascii').ljust(16, b'\0')
+    c.set_name(new_name, allow_invalid_name=allow_invalid_name)
     content = c.build()
 
     def verify(tmp):

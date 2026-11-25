@@ -858,6 +858,12 @@ class CharacterWindow(StatEditMixin):
             self.set_status(T('ch.err.changed_on_disk', 'The character file changed on disk since this item was '
                               'picked: nothing written, the file has been read again - do it again.'), True)
             return False
+        import mxl_profile
+
+        if operation != 'character' and not mxl_profile.is_median():
+            if not MC.confirm_save_name(self.top, self.ch.name, existing=True):
+                self.reload()
+                return False
         try:
             backup = app.needs_backup(self.ch.path)
             if self.vanilla_he:
@@ -1440,7 +1446,19 @@ class CharacterWindow(StatEditMixin):
 
     def _build_stats_grey(self, f, note_w):
         """The Hero-Editor style page (light look, or no game art): the same values, edited through the same engine."""
-        ch, d = self.ch, self.data
+        import mxl_profile
+
+        allow_invalid = not mxl_profile.is_median()
+
+        def bind_name_warning(control):
+            def warn():
+                if control.winfo_exists():
+                    warning = MC.name_warning(control.get())
+                    self.set_bar(warning, error=bool(warning))
+
+            control.bind('<KeyRelease>', lambda _event: warn(), add='+')
+            for event in ('<<Paste>>', '<<Cut>>'):
+                control.bind(event, lambda _event: control.after_idle(warn), add='+')
 
         def frame(parent, text, **grid):
             fr = tk.LabelFrame(parent, text=' ' + text, font=HE_FONT_I, bg=SK_STONE, fg=HE_GOLD,
@@ -1469,6 +1487,8 @@ class CharacterWindow(StatEditMixin):
                 e.configure(font=V.font(), justify='center', bd=2)
                 if key == 'name':
                     V.role(e, 'name')
+            if key == 'name' and allow_invalid:
+                bind_name_warning(e)
             self.sv[key] = e
             return e
 
@@ -1486,7 +1506,10 @@ class CharacterWindow(StatEditMixin):
         e = entry(fr, 'name', 16, justify='left', row=0, column=0, columnspan=3, sticky='w')
         e.configure(font=('Times New Roman', 13, 'bold'))
         tk.Label(fr, text=T('he.copy_as', 'Copy as'), font=HE_FONT, bg=SK_STONE).grid(row=1, column=0, sticky='w', pady=(4, 0))
-        tk.Entry(fr, textvariable=self.copy_name, width=11, font=HE_FONT, relief='sunken', bd=2).grid(row=1, column=1, pady=(4, 0))
+        copy_entry = tk.Entry(fr, textvariable=self.copy_name, width=11, font=HE_FONT, relief='sunken', bd=2)
+        copy_entry.grid(row=1, column=1, pady=(4, 0))
+        if allow_invalid:
+            bind_name_warning(copy_entry)
         tk.Button(fr, text=T('he.copy', 'Copy'), font=HE_FONT, command=self.copy_char, bg=HE_BTN).grid(row=1, column=2, padx=4, pady=(4, 0))
 
         fr = frame(f, T('he.class', 'Class'), row=1, column=0)
@@ -1818,6 +1841,18 @@ class CharacterWindow(StatEditMixin):
             print('character file changed on disk: read again before SAVE, pending edits applied on top')
             ch = self.ch
         new_name = self.st_name if self.st_name and self.st_name != ch.name else None
+        if self.vanilla_he and self.he_header_bytes:
+            from mxl_vanilla_he_extras import staged_header_name
+
+            header_name = staged_header_name(ch, self.he_header_bytes)
+            if header_name != ch.name:
+                new_name = header_name
+        import mxl_profile
+
+        allow_invalid = not mxl_profile.is_median()
+        if allow_invalid and not MC.confirm_save_name(
+                self.top, ch.name if new_name is None else new_name, existing=new_name is None):
+            return
         before = ch.level
         try:
             self._extra_call('apply')         # plug-in pages write their pending edits (CharError refuses)
@@ -1848,11 +1883,7 @@ class CharacterWindow(StatEditMixin):
                     raise CharError('Character hex editing is disabled in Options.')
                 from mxl_vanilla_he_extras import apply_character_header
 
-                original_name = ch.name
                 apply_character_header(ch, self.he_header_bytes)
-                if ch.name != original_name:
-                    MC.check_name(ch.name)
-                    new_name = ch.name
             if self.vanilla_he and self.he_binary_edits:
                 from mxl_vanilla_he_extras import apply_staged_binary
 
@@ -1868,7 +1899,8 @@ class CharacterWindow(StatEditMixin):
                  'stats': (T('he.n_stat1', 'stat point'), T('he.n_stat', 'stat points')),
                  'life': (T('he.n_life', 'life'), T('he.n_life', 'life'))}
         rewards = ', '.join(f'{v:+d} {names[k][0] if abs(v) == 1 else names[k][1]}' for k, v in log.items() if v)
-        if (self._save_renamed(new_name) if new_name else self._save_undoable(ch)):
+        if (self._save_renamed(new_name, allow_invalid_name=allow_invalid)
+                if new_name is not None else self._save_undoable(ch)):
             self._init_state()
             self.refresh_progress()
             self.set_bar(T('he.saved_level', '{name} saved: level {level}', name=ch.name, level=ch.level)
@@ -1892,13 +1924,13 @@ class CharacterWindow(StatEditMixin):
             mxl_undo.record_files(self.app, before, T('undo.char_save', 'SAVE of {name}', name=ch.name))
         return ok
 
-    def _save_renamed(self, new_name):
+    def _save_renamed(self, new_name, *, allow_invalid_name=False):
         """SAVE with a new name: the character (with every pending change) is written as <new name>.d2s through
         mxl_char.Character.rename, its companion files follow, and the main window moves to the renamed files."""
         app, ch = self.app, self.ch
         old = ch.name
         try:
-            _dst, bak = ch.rename(new_name, backup=app.needs_backup(ch.path))
+            _dst, bak = ch.rename(new_name, backup=app.needs_backup(ch.path), allow_invalid_name=allow_invalid_name)
         except (CharError, EditError, OSError) as e:
             messagebox.showerror(T('ch.title', 'Character'), str(e), parent=self.top)
             self.reload()
@@ -1918,9 +1950,14 @@ class CharacterWindow(StatEditMixin):
     def copy_char(self):
         if self.statscreen is not None and not self.statscreen.commit_edit():
             return
-        name = self.copy_name.get().strip()
+        import mxl_profile
+
+        allow_invalid = not mxl_profile.is_median()
+        name = self.copy_name.get() if allow_invalid else self.copy_name.get().strip()
+        if allow_invalid and not MC.confirm_save_name(self.top, name):
+            return
         try:
-            dst = MC.copy_character(self.ch.path, name, self.data)
+            dst = MC.copy_character(self.ch.path, name, self.data, allow_invalid_name=allow_invalid)
         except (CharError, EditError, OSError) as e:
             messagebox.showerror(T('he.copy_title', 'Copy character'), str(e), parent=self.top)
             return

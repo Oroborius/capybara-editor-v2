@@ -463,7 +463,9 @@ def chrome(win, bottom, actions):
 
     def ask(caption, value, limits=None):
         if limits is None:
-            name = simpledialog.askstring(caption, 'Character name', parent=win.top)
+            from mxl_char import ask_name
+
+            name = ask_name(caption, 'Character name', parent=win.top)
             if name:
                 win.copy_name.set(name)
                 win.copy_char()
@@ -668,9 +670,9 @@ def stats(win, page, entry):
             x=x, y=y, width=w, height=18)
 
     def rename():
-        from tkinter.simpledialog import askstring
+        from mxl_char import ask_name
 
-        name = askstring('Rename Character', 'New name', initialvalue=win.st_value('name'), parent=win.top)
+        name = ask_name('Rename Character', 'New name', initialvalue=win.st_value('name'), parent=win.top)
         if name is not None:
             win.st_set('name', name)
 

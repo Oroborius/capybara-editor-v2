@@ -685,4 +685,79 @@ def vanilla_extras_quality_picker_and_quest_note_write():
         win.reload(keep=False)
 
 
+
+
+@T.test
+def character_name_warning_and_save_anyway():
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    from tkinter import messagebox
+
+    import mxl_char as MC
+    import mxl_import
+    import mxl_mock as mock
+    import mxl_newchar as newchar
+
+    for name in ('Ab', 'First-Last', 'First_Last', 'Abcdefghijklmno'):
+        T.eq(MC.check_name(name), name, 'accepted game name')
+    for name in ('A', 'A1', 'A--b', '_Ab', 'Ab-', 'Abcdefghijklmnop', 'Café'):
+        T.check(MC.name_warning(name), 'invalid game name is flagged')
+    for name in ('', '../Ab', 'A/B', 'A\\B', 'A\0B', 'Abcdefghijklmnop', '名'):
+        try:
+            MC.check_save_name(name, allow_invalid_name=True)
+        except MC.CharError:
+            continue
+        T.check(False, 'unsafe or unencodable name was accepted')
+
+    win = T.chartab()
+    original = Path(win.ch.path)
+    before = original.read_bytes()
+    invalid = 'Test--Name'
+    destination = original.with_name(invalid + '.d2s')
+    entry = win.sv['name']
+    entry.clipboard_clear()
+    entry.clipboard_append(invalid)
+    entry.select_range(0, 'end')
+    entry.event_generate('<<Paste>>')
+    win.top.update_idletasks()
+    T.check('2 to 15' in win.bar_status.cget('text'), 'name warning appears while editing')
+    T.check(win.st_set('name', invalid), 'invalid but writable name can be staged')
+    prompts = []
+    ask = messagebox.askyesno
+    try:
+        messagebox.askyesno = lambda *args, **kwargs: prompts.append(args[1]) or False
+        win.save_progress()
+        T.eq(original.read_bytes(), before, 'decline preserves original save')
+        T.check(not destination.exists(), 'decline creates no save')
+        T.eq(win.st_name, invalid, 'decline keeps the staged edit')
+        T.check('Save anyway?' in prompts[-1] and '2 to 15' in prompts[-1], 'confirmation explains the rule')
+
+        messagebox.askyesno = lambda *args, **kwargs: True
+        win.save_progress()
+        T.eq(MC.Character(destination, win.data).name, invalid, 'confirmed rename round trips')
+        T.check(not original.exists(), 'rename removes old save')
+        edits = MC.Character(destination, win.data)
+        old_gold = edits.field('gold')
+        win.st_set('gold', str(old_gold + 1))
+        messagebox.askyesno = lambda *args, **kwargs: False
+        win.save_progress()
+        T.eq(MC.Character(destination, win.data).field('gold'), old_gold, 'existing bad name also prompts')
+        messagebox.askyesno = lambda *args, **kwargs: True
+        win.save_progress()
+        T.eq(MC.Character(destination, win.data).field('gold'), old_gold + 1, 'existing bad name can be saved')
+    finally:
+        messagebox.askyesno = ask
+
+    raw, _ = newchar.build(win.data, 'Fresh1', 0, 1, median=False, allow_invalid_name=True)
+    path = newchar.write(raw, SAVES, 'Fresh1', allow_invalid_name=True)
+    T.eq(MC.Character(path, win.data).name, 'Fresh1', 'new character retains confirmed name')
+    copied = MC.copy_character(path, 'Copy2', win.data, allow_invalid_name=True)
+    T.eq(MC.Character(copied, win.data).name, 'Copy2', 'copy retains confirmed name')
+    imported = mxl_import.new_character(path, 'Café', 'Amazon', win.data, allow_invalid_name=True)
+    T.eq(imported.name, 'Café', 'import template preserves the confirmed name')
+    raw, _ = mock.generate(name='Mock3', allow_invalid_name=True)
+    path = mock.write_new(raw, SAVES, 'Mock3', allow_invalid_name=True)
+    T.eq(MC.Character(path, win.data).name, 'Mock3', 'mock retains confirmed name')
+
+
 T.main(globals())

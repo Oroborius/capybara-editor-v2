@@ -290,7 +290,7 @@ class MockPage:
         pw.add(left, weight=1)
         pw.add(right, weight=1)
         left.columnconfigure(1, weight=1)
-        left.rowconfigure(5, weight=1)
+        left.rowconfigure(6, weight=1)
         self.labels = {M.PRESETS[k]['label']: k for k in M.PRESET_ORDER}
         self.preset = tk.StringVar(value=M.PRESETS['mock_high']['label'])
         self.name = tk.StringVar(value='MockHigh')
@@ -317,9 +317,14 @@ class MockPage:
         self.note.grid(row=3, column=0, columnspan=3, sticky='w')
         self.status = ttk.Label(left, text='', wraplength=360, justify='left')
         self.status.grid(row=4, column=0, columnspan=3, sticky='w')
+        from mxl_char import watch_name
+
+        name_hint = ttk.Label(left, foreground=COLORS[M.BAD], wraplength=280)
+        name_hint.grid(row=5, column=0, columnspan=3, sticky='w')
+        watch_name(self.name, lambda text: name_hint.configure(text=text))
         # the two text lines wrap at the pane's width (800 x 600: about 280 px)
         left.bind('<Configure>', lambda e: [w.configure(wraplength=max(150, e.width - 8))
-                                            for w in (self.note, self.status)], add='+')
+                                            for w in (self.note, self.status, name_hint)], add='+')
         # the fields: one tab per group (tabs on the left side), each a scroll area
         st = ttk.Style(left)
         try:
@@ -327,7 +332,7 @@ class MockPage:
         except tk.TclError:
             pass
         gnb = self.groups = ttk.Notebook(left, style='Mock.TNotebook')
-        gnb.grid(row=5, column=0, columnspan=3, sticky='nsew', pady=(2, 0))
+        gnb.grid(row=6, column=0, columnspan=3, sticky='nsew', pady=(2, 0))
         self.ov, self.pre, self.err, self.src = {}, {}, {}, {}
         self.touched, self._filling = set(), False        # the fields the user changed (the rest stay solved)
         self.field_tab, self.dyn_choice = {}, {}
@@ -496,22 +501,22 @@ class MockPage:
         return M.edited(self.form(), self.pre)
 
     def generate(self):
-        """A NEW .d2s in the save folder (never overwrites: a free name is chosen), no question asked."""
-        name = self.name.get().strip()
-        if not M.valid_name(name):
-            self._show_errors({'': T('mock.err.name', 'Name: 2 to 15 letters (A-Z), at most one - or _, not at '
-                                                       'the start or the end')})
+        """Write a new save under an unused name."""
+        from mxl_char import confirm_save_name
+
+        name = self.name.get()
+        if not confirm_save_name(self.host, name):
             return None
         r = self.check()
         if r is None:
             return None
         key = self.key()
         try:
-            raw, P = M.generate(key, name, **self.over)
+            raw, P = M.generate(key, name, allow_invalid_name=True, **self.over)
             folder = getattr(self.app, 'save_dir', None) or os.environ.get('MXL_SAVE_DIR')
             if not folder:
                 raise M.PlanError(T('mock.err.folder', 'No save folder.'))
-            path = M.write_new(raw, folder, M.free_name(folder, name), read_only=self.read_only.get())
+            path = M.write_new(raw, folder, name, read_only=self.read_only.get(), allow_invalid_name=True)
         except (M.PlanError, OSError) as e:
             self._show_errors({'': str(e)})
             return None
