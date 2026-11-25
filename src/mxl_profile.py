@@ -2,26 +2,20 @@
 
 Median XL keeps every path of the editor as it was: install() returns at once and patches nothing.
 
-Any other folder is driven only by its own files ("game folder -> profile"):
-- detect(): medianxl-*.mpq / D2Sigma.dll = Median; otherwise the game version from Game.exe's (1.14x) or a D2 DLL's
-  (1.13c and older) version resource, plus the mod archives found next to the base ones;
-- the MPQ stack is opened in the game's own priority order (archive_order, from D2-Development-Kit, MIT);
-- its tables (.bin), strings (.tbl), animdata.d2 and item icons are extracted into a data folder of the profile's own
-  (<user dir>/profiles/<id>/data, id = kind + version + folder hash), which the collector then loads as its data/;
-- the editor's art (panels, fonts, palettes) is read from the same stack; "Use vanilla UI theme" (default off) takes
-  the theme files from the base archives (d2data / d2exp / patch_d2) only, falling back to the folder's own art.
+Folder profiles resolve a base Diablo II installation and an optional D2SE core. The selected mod's MPQs
+override the core and shared archives. Loose Excel files have the highest priority. Extracted tables, strings
+and artwork live under the selected folder's own user profile.
 
-Settings: 'game_profile' ('median' | 'folder'), 'profile_game_dir' (the other game's folder), 'vanilla_ui_theme'.
-'game_dir' stays the Median folder: in a folder profile settings.get('game_dir') answers the profile's folder and
-settings.put('game_dir', x) stores 'profile_game_dir'. MXL_GAME=vanilla (+ MXL_GAME_DIR) selects the folder profile
-for tests without touching settings.json.
+Settings: 'game_profile' ('median' | 'folder'), 'profile_game_dir', 'profile_base_dir' and 'vanilla_ui_theme'.
+The saved Median 'game_dir' stays separate. MXL_GAME=vanilla (+ MXL_GAME_DIR) selects a folder for tests.
 
-Supported in phase 1: 1.10-1.14d item format (d2s version 96). The collector's table reader works on 1.13c/1.14d bins
-as they are (record sizes come from the file); only the set / unique id width differs from Sigma (12 bits, not 15)."""
+Diablo II 1.10–1.14d saves use version 96. Older LoD saves use versions 87, 89 and 92.
+"""
 import hashlib
 import json
 import os
 import struct
+from pathlib import Path
 
 DEFAULT_VANILLA = os.path.expanduser(
     '~/Games/diablo-ii-lord-of-destruction/drive_c/Program Files (x86)/Diablo II')
@@ -35,13 +29,17 @@ EXCEL = ('armor arena armtype automagic automap belts bodylocs books charstats c
          'storepage superuniques treasureclassex uniqueappellation uniqueitems uniqueprefix uniquesuffix uniquetitle '
          'weapons itemscode skillscode skilldesccode missilescode monstatscode').split()
 STRINGS = ('string', 'expansionstring', 'patchstring')
-EXTRACT_VERSION = 2
+EXTRACT_VERSION = 4
+BASE_ARCHIVE_NAMES = frozenset(n + '.mpq' for n in (
+    'd2data', 'd2sfx', 'd2speech', 'd2delta', 'd2kfixup', 'd2exp', 'patch_d2', 'd2char', 'd2music',
+    'd2xmusic', 'd2xtalk', 'd2xvideo', 'd2video',
+))
 
 _state = None                 # the active profile (dict) once install() ran
 
 
 # ---------------------------------------------------------------------------------------------------- detection
-def archive_order(game_dir):
+def _directory_archives(game_dir):
     """Archive search order (highest priority first) the way the game builds it. Adapted from D2-Development-Kit,
     d2bt/mpq.py default_archive_order (MIT): vanilla 1.13c/1.14d open d2data, d2sfx, d2speech, d2delta,
     d2kfixup @1000, patch_d2 @5000, d2exp @3000; Median (D2Sigma) d2exp @3000, patch_d2 @5000, then every
@@ -53,9 +51,7 @@ def archive_order(game_dir):
         files = os.listdir(game_dir)
     except OSError:
         return []
-    low = {f.lower(): f for f in files}
-    known = {'d2data', 'd2sfx', 'd2speech', 'd2delta', 'd2kfixup', 'd2exp', 'patch_d2', 'd2char', 'd2music',
-             'd2xmusic', 'd2xtalk', 'd2xvideo', 'd2video', 'd2gl'}
+    low = {f.lower(): f for f in files if os.path.isfile(os.path.join(game_dir, f))}
     median = sorted((f for f in files if f.lower().startswith('medianxl-') and f.lower().endswith('.mpq')),
                     key=str.upper)
     base = ['d2data', 'd2sfx', 'd2speech', 'd2delta', 'd2kfixup']
@@ -65,7 +61,7 @@ def archive_order(game_dir):
     else:
         seq = [(n, 1000) for n in base] + [('patch_d2', 5000), ('d2exp', 3000)]
         seq += [(f[:-4], 6000) for f in sorted(files, key=str.upper)
-                if f.lower().endswith('.mpq') and f.lower()[:-4] not in known]
+                if f.lower().endswith('.mpq') and f.lower() not in BASE_ARCHIVE_NAMES | {'d2gl.mpq'}]
     seq += [('d2char', 1000), ('d2music', 1000)]
     if 'd2exp.mpq' in low:
         seq += [('d2xmusic', 3000), ('d2xtalk', 3000), ('d2xvideo', 3000)]
@@ -75,10 +71,26 @@ def archive_order(game_dir):
     return [os.path.join(game_dir, f) for _, _, f in opened]
 
 
+def archive_order(game_dir):
+    """Highest priority first, with the mod above its core and base install."""
+    info = detect(game_dir)
+    folders = (game_dir, info.get('core_dir'), info.get('base_dir'))
+    if info.get('core_dir') and os.path.abspath(game_dir) == os.path.abspath(info['base_dir']):
+        folders = (info['core_dir'], game_dir)
+    paths = {}
+    for folder in folders:
+        if folder:
+            for path in _directory_archives(folder):
+                paths.setdefault(os.path.normcase(os.path.abspath(path)), path)
+    return list(paths.values())
+
+
 def base_archives(game_dir):
-    """The base game's archives that hold UI / table data: patch_d2, d2exp, d2data (priority order)."""
-    return [p for p in archive_order(game_dir)
-            if os.path.basename(p).lower() in ('patch_d2.mpq', 'd2exp.mpq', 'd2data.mpq')]
+    """Base UI files, excluding the selected mod's override archives."""
+    info = detect(game_dir)
+    return list(dict.fromkeys(p for folder in (info.get('core_dir'), info.get('base_dir') or game_dir)
+                              if folder for p in _directory_archives(folder)
+                              if os.path.basename(p).lower() in ('patch_d2.mpq', 'd2exp.mpq', 'd2data.mpq')))
 
 
 def _pe_version(path):
@@ -89,7 +101,7 @@ def _pe_version(path):
     except OSError:
         return None
     i = b.rfind(b'\xbd\x04\xef\xfe')
-    if i < 0:
+    if i < 0 or i + 16 > len(b):
         return None
     ms, ls = struct.unpack_from('<II', b, i + 8)
     return (ms >> 16, ms & 0xFFFF, ls >> 16, ls & 0xFFFF)
@@ -99,28 +111,119 @@ VERSIONS = {(1, 14, 3): '1.14d', (1, 14, 2): '1.14c', (1, 14, 1): '1.14b', (1, 1
             (1, 0, 13): '1.13', (1, 0, 12): '1.12', (1, 0, 11): '1.11', (1, 0, 10): '1.10', (1, 0, 9): '1.09'}
 
 
-def detect(game_dir):
-    """{'kind': 'median'|'d2'|None, 'version': '1.14d'|..., 'mods': [mod archive names], 'supported': bool}."""
+def _child(folder, name):
+    """Resolve a game path case-insensitively on case-sensitive hosts."""
+    try:
+        return next((os.path.join(folder, f) for f in os.listdir(folder) if f.lower() == name.lower()), None)
+    except OSError:
+        return None
+
+
+def _base_install(folder):
+    return (folder and os.path.isfile(_child(folder, 'd2data.mpq') or '')
+            and not _child(folder, 'd2sigma.dll')
+            and not any(os.path.basename(p).lower().startswith('medianxl-') for p in _directory_archives(folder)))
+
+
+def _mod_config(folder):
+    path = _child(folder, 'D2SE_SETUP.ini')
+    if path is None:
+        return {}
+    try:
+        with open(path, encoding='latin1') as f:
+            return {key.strip().lower(): value.strip().strip('"')
+                    for line in f if not line.lstrip().startswith(('#', ';'))
+                    for key, sep, value in [line.partition('=')] if sep}
+    except OSError:
+        return {}
+
+
+def _game_version(folder):
+    if folder:
+        for name in ('game.exe', 'd2game.dll', 'd2client.dll', 'storm.dll'):
+            v = _pe_version(_child(folder, name) or '')
+            if v and v[0] == 1 and (v[1] == 14 or v[1] == 0 and 7 <= v[2] <= 13):
+                return VERSIONS.get(v[:3], f'1.{v[2]:02d}')
+    return None
+
+
+def _loose_excel(folder):
+    for part in ('data', 'global', 'excel'):
+        folder = _child(folder, part)
+        if folder is None:
+            return {}
+    try:
+        return {f.lower(): os.path.join(folder, f) for f in os.listdir(folder)
+                if f.lower().endswith(('.bin', '.txt')) and os.path.isfile(os.path.join(folder, f))}
+    except OSError:
+        return {}
+
+
+def detect(game_dir, base_dir=None):
+    """Resolve a game, its D2SE core if present, and the base supplying shared archives."""
+    empty = {'kind': None, 'version': None, 'mods': [], 'supported': False}
     if not game_dir or not os.path.isdir(game_dir):
-        return {'kind': None, 'version': None, 'mods': [], 'supported': False}
-    files = {f.lower(): f for f in os.listdir(game_dir)}
-    if any(f.startswith('medianxl-') and f.endswith('.mpq') for f in files) or 'd2sigma.dll' in files:
-        return {'kind': 'median', 'version': None, 'mods': [], 'supported': True}
-    ver = None
-    for name in ('game.exe', 'd2game.dll', 'd2client.dll', 'storm.dll'):
-        v = _pe_version(os.path.join(game_dir, files[name])) if name in files else None
-        if v:
-            ver = VERSIONS.get(v[:3]) or VERSIONS.get(v[:2] + (v[2],)) or '.'.join(map(str, v))
-            break
-    if 'd2data.mpq' not in files:
-        return {'kind': None, 'version': ver, 'mods': [], 'supported': False}
-    mods = [os.path.basename(p) for p in archive_order(game_dir)
-            if os.path.basename(p).lower()[:-4] not in ('d2data', 'd2sfx', 'd2speech', 'd2delta', 'd2kfixup',
-                                                        'd2exp', 'patch_d2', 'd2char', 'd2music', 'd2xmusic', 'd2xtalk',
-                                                        'd2xvideo', 'd2video')]
-    # 1.10-1.14d share the item format the editor reads (d2s 96); 1.09 and older (d2s 0x5C) are phase 2
-    sup = ver is not None and (ver.startswith('1.14') or ver in ('1.13', '1.12', '1.11', '1.10'))
-    return {'kind': 'd2', 'version': ver, 'mods': mods, 'supported': sup}
+        return empty
+    archives = _directory_archives(game_dir)
+    names = [os.path.basename(p) for p in archives]
+    if any(n.lower().startswith('medianxl-') for n in names) or _child(game_dir, 'd2sigma.dll'):
+        return dict(empty, kind='median', supported=True)
+    config = _mod_config(game_dir)
+    here = os.path.abspath(game_dir)
+    parents = list(Path(here).parents)
+    d2se = bool(config or (parents and parents[0].name.lower() == 'mods'))
+    local_base = _base_install(game_dir)
+    mods = [n for n in names if n.lower() not in BASE_ARCHIVE_NAMES or
+            (not local_base and n.lower() == 'patch_d2.mpq')]
+    mod = bool(mods or d2se or _loose_excel(game_dir))
+    if not local_base and not mod:
+        return empty
+
+    configured_base = next((os.path.join(here, config[k].replace('\\', os.sep))
+                            for k in ('basegamefolder', 'gamepath') if config.get(k)), None)
+    if base_dir is None and not local_base:
+        base_dir = _raw_settings().get('profile_base_dir')
+    candidates = (game_dir, configured_base, *(str(p) for p in parents), base_dir)
+    base = next((p for p in candidates if _base_install(p)), None)
+    version = config.get('d2core') or _game_version(game_dir)
+    core = None
+    if base and (d2se or (version is None and not _game_version(base))):
+        d2se_dir = _child(base, 'D2SE')
+        cores = _child(d2se_dir, 'CORES') if d2se_dir else None
+        if cores:
+            core = _child(cores, version) if version else None
+            if version is None:
+                choices = [f for f in os.listdir(cores) if _save_version(f)]
+                if len(choices) == 1:
+                    version = choices[0]
+                    core = _child(cores, version)
+    version = version or _game_version(base)
+    save_version = _save_version(version)
+    return dict(empty, kind='d2', version=version, mods=mods, base_dir=base, core_dir=core,
+                mod=mod, d2se=bool(d2se), save_version=save_version,
+                name=config.get('modname') or os.path.basename(here),
+                supported=bool(base and save_version))
+
+
+def _save_version(version):
+    import re
+    if not version or not re.fullmatch(r'1\.(0[789]|1[0-4])[a-z]?', version, re.I):
+        return None
+    return {'1.07': 87, '1.08': 89, '1.09': 92}.get(version[:4], 96)
+
+
+def _detection_label(info):
+    if info['kind'] != 'd2':
+        return 'Median XL' if info['kind'] == 'median' else 'No Diablo II game files found'
+    version = info['version'] or 'unknown version'
+    if info['mod']:
+        loader = ', D2SE' if info['d2se'] else ''
+        label = f"{info['name']} ({version} mod{loader})"
+    else:
+        label = f'Diablo II {version}'
+    status = ('supported' if info['supported'] else
+              'base Diablo II folder required' if not info['base_dir'] else 'unsupported game version')
+    return f'{label} - {status}'
 
 
 def save_dir(game_dir, home=None):
@@ -159,7 +262,11 @@ def _use_save_dir(game_dir, root=None):
     folder of the profile (root/saves) - never the Median XL saves (the collector's own default)."""
     if os.environ.get('MXL_SAVE_DIR') and not os.environ.get('MXL_SAVE_DIR_AUTO'):
         return None
-    d = save_dir(game_dir)
+    if detect(game_dir).get('mod'):
+        local = _child(game_dir, 'Save')
+        d = local if local and os.path.isdir(local) else None
+    else:
+        d = save_dir(game_dir)
     if not d and root:
         d = os.path.join(root, 'saves')
         try:
@@ -185,8 +292,8 @@ def profile_id(game_dir, info):
 
 # ---------------------------------------------------------------------------------------------------- selection
 def _raw_settings():
-    import settings
     try:
+        import settings
         return settings._read(settings.PATH) or {}
     except Exception:
         return {}
@@ -222,13 +329,17 @@ def vanilla_ui_theme():
 # ---------------------------------------------------------------------------------------------------- extraction
 def _fingerprint(game_dir):
     fp = {}
-    for p in archive_order(game_dir):
+    archives = archive_order(game_dir)
+    loose = _loose_excel(game_dir)
+    for p in [*archives, *sorted(loose.values())]:
         try:
             st = os.stat(p)
-            fp[os.path.basename(p)] = [st.st_size, int(st.st_mtime)]
+            fp[p] = [st.st_size, st.st_mtime_ns]
         except OSError:
             pass
-    return {'extract_version': EXTRACT_VERSION, 'archives': fp}
+    info = detect(game_dir)
+    return {'extract_version': EXTRACT_VERSION, 'inputs': fp, 'archive_order': archives,
+            'version': info['version']}
 
 
 def _open(paths):
@@ -270,28 +381,68 @@ def extract(game_dir, out, progress=None, icons=True):
     tmp = out + '.new'
     shutil.rmtree(tmp, ignore_errors=True)
     os.makedirs(tmp)
-    stack = _open([p for p in archive_order(game_dir) if not os.path.basename(p).lower().startswith(
-        ('d2music', 'd2xmusic', 'd2video', 'd2xvideo', 'd2speech', 'd2xtalk', 'd2sfx'))])
-    names = set(EXCEL)
-    for m in stack:                                     # a mod's own tables, when its archive lists them
+    from mxl_profile_tables import EXCEL_PATH, TEXT_LAYOUTS, apply, bin_rows, project_legacy, text_layouts
+    info = detect(game_dir)
+    local = _directory_archives(game_dir) if info.get('mod') else []
+    mod_stack = _open([p for p in local if not os.path.basename(p).lower().startswith(_NO_DATA)])
+    base_stack = _open([p for p in archive_order(game_dir)
+                        if p not in local and not os.path.basename(p).lower().startswith(_NO_DATA)])
+    stack = mod_stack + base_stack
+    loose = _loose_excel(game_dir)
+    names = set(EXCEL) | {n.rsplit('.', 1)[0] for n in loose}
+    for m in stack:
         try:
             lf = m.read('(listfile)')
         except Exception:
             lf = None
-        for line in (lf or b'').decode('latin1').split():
-            low = line.lower().replace('/', '\\')
-            if low.startswith('data\\global\\excel\\') and low.endswith('.bin'):
-                names.add(low.rsplit('\\', 1)[1][:-4])
+        for line in (lf or b'').decode('latin1').splitlines():
+            low = line.strip().lower().replace('/', '\\')
+            if low.startswith(EXCEL_PATH) and low.endswith(('.bin', '.txt')):
+                name = low[len(EXCEL_PATH):].rsplit('.', 1)[0]
+                if name and '\\' not in name and ':' not in name:
+                    names.add(name)
+
     files = {}
-    for k, n in enumerate(sorted(names)):
-        d = _read(stack, f'data\\global\\excel\\{n}.bin')
-        if d:
-            files[n + '.bin'] = d
+    preferred = {}
+    sizes = dict(TEXT_LAYOUTS)
+    if info.get('save_version') == 96:
+        sizes.update({name: size for name, (size, fields) in text_layouts().items()})
+
+    def read_text(name):
+        path = loose.get(name + '.txt')
+        return Path(path).read_bytes() if path else _read(stack, EXCEL_PATH + name + '.txt')
+
+    for k, name in enumerate(sorted(names)):
+        bin_name, txt_name = name + '.bin', name + '.txt'
+        bin_path, txt_path = loose.get(bin_name), loose.get(txt_name)
+
+        def sources():
+            if bin_path or txt_path:
+                yield (Path(bin_path).read_bytes() if bin_path else None,
+                       Path(txt_path).read_bytes() if txt_path else None, True)
+            for archive in mod_stack:
+                yield (_read((archive,), EXCEL_PATH + bin_name),
+                       _read((archive,), EXCEL_PATH + txt_name) if name in sizes else None, True)
+            # Stock archives can ship text without the generated companion records in the same MPQ.
+            # Resolve the effective compiled table over the whole base stack before falling back to text.
+            yield (_read(base_stack, EXCEL_PATH + bin_name),
+                   _read(base_stack, EXCEL_PATH + txt_name) if name in sizes else None, False)
+
+        for binary, txt, is_override in sources():
+            rows = bin_rows(binary) if name in sizes and binary else []
+            compatible = rows and len(rows[0]) == sizes[name]
+            if txt and name in sizes and (is_override or not compatible):
+                files[txt_name] = preferred[name] = txt
+                # The same or lower compiled table supplies fields absent from the TXT.
+                binary = binary or _read(stack, EXCEL_PATH + bin_name)
+            elif txt and name == 'itemstatcost':
+                files[txt_name] = txt
+            if binary:
+                files[bin_name] = binary
+            if binary or name in preferred:
+                break
         if progress:
             progress('tables', k + 1, len(names))
-    statcost = _read(stack, r'data\global\excel\itemstatcost.txt')
-    if statcost:
-        files['itemstatcost.txt'] = statcost
     for n in STRINGS:
         d = _read(stack, f'data\\local\\lng\\eng\\{n}.tbl')
         if d:
@@ -299,12 +450,18 @@ def extract(game_dir, out, progress=None, icons=True):
     d = _read(stack, 'data\\global\\animdata.d2')
     if d:
         files['animdata.d2'] = d
-    if 'itemstatcost.bin' not in files:
+    if 'itemstatcost.bin' not in files and 'itemstatcost' not in preferred:
         shutil.rmtree(tmp, ignore_errors=True)
         raise RuntimeError(f'no game tables in {game_dir}')
     for n, d in files.items():
         with open(os.path.join(tmp, n), 'wb') as f:
             f.write(d)
+    if info.get('save_version') in (87, 89, 92):
+        project_legacy(Path(tmp))
+    apply(Path(tmp), preferred, info.get('save_version'), read_text)
+    if not os.path.isfile(os.path.join(tmp, 'itemstatcost.bin')):
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise RuntimeError(f'no usable item stat table in {game_dir}')
     if icons:
         import mxl_data
         import mxl_gfx
@@ -1061,7 +1218,7 @@ def _patch_install():
 
     def is_game_dir(d, *a, **k):
         info = detect(d)
-        return info['kind'] == 'd2' or bool(o_is(d, *a, **k))
+        return (info['kind'] == 'd2' and info['supported']) or bool(o_is(d, *a, **k))
     gi.is_game_dir = is_game_dir
     GI = gi.GameInstall
 
@@ -1075,11 +1232,9 @@ def _patch_install():
         return True
     GI.check_data = check_data
 
-    def show_game(self, *a, **k):                      # top bar: "Diablo II 1.14d", not "Median XL ?"
+    def show_game(self, *a, **k):
         if getattr(self, 'label', None) is not None and _state:
-            mods = [m for m in _state.get('mods', [])]
-            self.label.configure(text=f"Diablo II {_state.get('version') or '?'}"
-                                 + (f" + {', '.join(mods)}" if mods else ''))
+            self.label.configure(text=_detection_label(_state))
     GI.show_game = show_game
 
 
@@ -1218,13 +1373,33 @@ def open_dialog(app):
         row=4, column=0, columnspan=3, sticky='w', padx=(16, 0))
 
     def show(*_):
-        d = detect(folder.get())
-        info.configure(text=(T('profile.detected', 'Detected: {k} {v}', k=d['kind'] or '?', v=d['version'] or '')
-                             + ('' if d['supported'] else ' - ' + T('profile.unsupported', 'not supported yet'))))
+        info.configure(text=_detection_label(detect(folder.get(), base.get())))
+    base = tk.StringVar(value=s.get('profile_base_dir') or '')
+
+    def browse_base():
+        d = filedialog.askdirectory(parent=w, initialdir=base.get() or None,
+                                    title='Choose the base Diablo II folder')
+        if d and _base_install(d):
+            base.set(d)
+        elif d:
+            messagebox.showerror('Game profile', 'Choose a Diablo II folder containing d2data.mpq.', parent=w)
+
+    ttk.Button(f, text='Base Diablo II folder…', command=browse_base).grid(
+        row=5, column=0, columnspan=3, sticky='w', padx=(16, 0))
     folder.trace_add('write', show)
+    base.trace_add('write', show)
     show()
 
     def ok():
+        if kind.get() == 'folder':
+            d = detect(folder.get(), base.get())
+            if d['kind'] == 'd2' and not d['base_dir']:
+                browse_base()
+                d = detect(folder.get(), base.get())
+            if not d['supported']:
+                return
+            if base.get():
+                settings.put('profile_base_dir', base.get())
         settings.put('game_profile', kind.get())
         if kind.get() == 'folder':
             settings.put('profile_game_dir', folder.get())
@@ -1233,7 +1408,7 @@ def open_dialog(app):
         messagebox.showinfo(T('profile.title', 'Game profile'),
                             T('profile.restart', 'Restart the editor to load the selected game.'), parent=root)
     b = ttk.Frame(f)
-    b.grid(row=5, column=0, columnspan=3, sticky='e', pady=(4, 0))
+    b.grid(row=6, column=0, columnspan=3, sticky='e', pady=(4, 0))
     ttk.Button(b, text=T('profile.ok', 'OK'), command=ok).pack(side='left', padx=2)
     ttk.Button(b, text=T('profile.cancel', 'Cancel'), command=w.destroy).pack(side='left', padx=2)
 

@@ -25,7 +25,7 @@ import struct
 import stat_ids as S
 from mxl_format import STAT_GROUPS, SET_UNIQUE_ID_BITS
 from mxl_format_fix import (body_kind, ILVL_BITS, MAX_ILVL, QUANTITY_BITS, MAX_QUANTITY, SOCKET_FIELD_BITS,  # noqa: F401
-                            SOCKET_FIELD_MAX, SOCKETED_COUNT_BITS, MAX_SOCKETED)   # save-format widths
+                            SOCKET_FIELD_MAX, SOCKETED_COUNT_BITS, MAX_SOCKETED, socket_field_bits)   # save-format widths
 from mxl_lang import T
 from mxl_rules import (mod_ranges, mods_stats, item_type_codes, is_innate_damage, runeword_row,
                        stat_range, unique_name, rare_name)
@@ -399,7 +399,7 @@ def encode_item(rec, data, *, preserve_stat_order=False):
     if base.stack_max is not None:
         bw.write(QUANTITY_BITS, rec.get('quantity', 1))
     if flags & FLAG_SOCKETED:
-        bw.write(getattr(data, 'socket_bits', SOCKET_FIELD_BITS), rec.get('sockets', 0))
+        bw.write(socket_field_bits(data), rec.get('sockets', 0))
     set_mask = rec.get('set_mask', 0)
     if q == 'set':
         bw.write(5, set_mask)
@@ -596,7 +596,7 @@ def decode_item(blob, data, *, offsets=None):
         r['quantity'] = br.read(QUANTITY_BITS)
     if flags & FLAG_SOCKETED:
         mark('sockets')
-        r['sockets'] = br.read(getattr(data, 'socket_bits', SOCKET_FIELD_BITS))
+        r['sockets'] = br.read(socket_field_bits(data))
     mark('set_mask')
     r['set_mask'] = br.read(5) if q == 'set' else 0
     legacy_stats = getattr(data, 'rec_read_stats', None)
@@ -867,7 +867,7 @@ class Creator:
         if not self._vanilla() or spec.get('quality') == 'runeword' or spec.get('code') not in self.data.bases:
             return n, 0
         cap = max(self.max_sockets(spec['code'], spec['ilvl']), spec.get('_sock_field') or 0)
-        f = min(n, cap)
+        f = min(n, cap, (1 << socket_field_bits(self.data)) - 1)
         return f, n - f
 
     def image_count(self, code):

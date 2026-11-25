@@ -868,7 +868,7 @@ class Character:
                     st[2] = value
                     break
             else:
-                pb, vb = _csv(self.data)[sid]
+                pb = 0 if self.old else _csv(self.data)[sid][0]
                 self.stats.append([sid, 0 if pb else None, value])
             if value == 0 and sid not in (12,):
                 self.stats = [st for st in self.stats if not (st[0] == sid and st[2] == 0)]

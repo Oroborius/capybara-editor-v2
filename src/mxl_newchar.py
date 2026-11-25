@@ -30,7 +30,14 @@ def _vanilla(median):
         return False
     import mxl_profile
     profile = mxl_profile.active()
-    return profile is not None and profile['kind'] == 'd2' and not profile['mods']
+    return profile is not None and profile['kind'] == 'd2' and not profile.get('mod', profile['mods'])
+
+
+def _profile_version(median):
+    if median:
+        return 96
+    import mxl_profile
+    return (mxl_profile.active() or {}).get('save_version') or 96
 
 
 def top_level(data, cls, median):
@@ -48,9 +55,10 @@ def _starter_items(data, row, version, original):
     for off in range(0x5C, 0xAC, 8):
         code = row[off:off + 4].decode('latin1')
         loc, count = row[off + 4:off + 6]
-        if not count:
+        fields = tables.get(code)
+        if not count or fields is None:
             continue
-        base, fields = data.base(code), tables[code]
+        base = data.base(code)
         for i in range(count):
             rec = dict(code=code, equipped=loc, location=1, x=0, y=0, panel=0,
                        simple=bool(fields['compact']), version=101 if version == 96 else 100)
@@ -106,7 +114,7 @@ def skeleton(data, cls, median, expansion=True, version=96, classic_100=False):
     seed = random.getrandbits(31) | 1
     struct.pack_into('<I', h, 0xAB, seed)
     items = []
-    if vanilla:
+    if vanilla or (not median and version == _profile_version(median)):
         row = data._rows('charstats')[cls]
         if version != 95:
             items = _starter_items(data, row, version, classic_100)
@@ -122,7 +130,7 @@ def skeleton(data, cls, median, expansion=True, version=96, classic_100=False):
                 h[0x8D], h[0x8F] = weapon, shield
     out = bytes(h)
     out += b'Woo!' + struct.pack('<IH', 6, 298) + bytes(288)
-    wp = b'\x02\x01' + bytes((int(vanilla),)) + bytes(21)
+    wp = b'\x02\x01' + bytes((int(not median),)) + bytes(21)
     out += b'WS' + struct.pack('<IH', 1, 80) + wp * 3
     out += b'\x01w' + struct.pack('<H', 52) + bytes(48)
     stats = [(12, None, 1)] if early else []
@@ -149,11 +157,13 @@ def _charstats_row(data, cls):
 
 
 def build(data, name, cls, level, hardcore=False, expansion=True, unlocked=False, median=None,
-          version=96, classic_100=False):
+          version=None, classic_100=False):
     """(bytes, Character) of a new character. Raises NewCharError / mxl_char.CharError."""
     import mxl_char as MC
     median = _median() if median is None else median
-    if version not in SAVE_VERSIONS or (version != 96 and not _vanilla(median)):
+    profile_version = _profile_version(median)
+    version = profile_version if version is None else version
+    if version not in SAVE_VERSIONS or (version != profile_version and not _vanilla(median)):
         raise NewCharError(T('nc.err.version', 'Unsupported save version for this profile.'))
     expansion = median or (version != 71 and bool(expansion))
     MC.check_name(name)
@@ -212,9 +222,10 @@ def build(data, name, cls, level, hardcore=False, expansion=True, unlocked=False
 def check(raw, data):
     """Refuses bytes the independent parser or the editor's own reader do not accept."""
     import mxl_char as MC
-    # The independent parser supports version 96. Use the editor's
-    # legacy readers for the remaining formats.
-    if raw[4] == 96:
+    # The independent validator uses the stock save profile. The editor rereads mod and legacy saves
+    # with the selected game's own tables.
+    import mxl_profile
+    if raw[4] == 96 and not (mxl_profile.active() or {}).get('mod'):
         try:
             import mxl_savecheck
             mxl_savecheck.lib()
@@ -285,13 +296,14 @@ def create_reference_clone(app):
     return write(raw, folder, ch.name)
 
 
-def open_dialog(app, *, initial_version=96):
+def open_dialog(app, *, initial_version=None):
     import tkinter as tk
     from tkinter import ttk, messagebox
     import mxl_char as MC
     root = getattr(app, 'root', None) or tk._default_root
     data = app.data
     median = _median()
+    initial_version = _profile_version(median) if initial_version is None else initial_version
     w = tk.Toplevel(root)
     w.title(T('nc.title', 'New character'))
     w.transient(root)

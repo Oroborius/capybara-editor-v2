@@ -30,6 +30,16 @@ SOCKET_FIELD_MAX = (1 << SOCKET_FIELD_BITS) - 1   # 15
 SOCKETED_COUNT_BITS = 3                         # the count of items held in the sockets
 MAX_SOCKETED = (1 << SOCKETED_COUNT_BITS) - 1   # 7
 
+def socket_field_bits(data):
+    """Socket count field in the selected game's item record."""
+    if hasattr(data, 'socket_bits'):
+        return data.socket_bits
+    import mxl_profile
+    if not mxl_profile.is_median():
+        return (data.isc.get(194) or {}).get('bits') or SOCKET_FIELD_BITS
+    return SOCKET_FIELD_BITS
+
+
 TEMPERED = 'tempered'
 WEAP, ARMO = 'weap', 'armo'
 
@@ -320,7 +330,7 @@ def _parse_item(blob, data):
     old = getattr(data, 'v109', False)
     rs = data.read_stats if old else (lambda b, _d=data: read_stats(b, _d))
     if it['has_sockets']:
-        it['sockets'] = br.read(data.isc[194]['bits'] if old else SOCKET_FIELD_BITS)
+        it['sockets'] = br.read(socket_field_bits(data))
     set_lists = br.read(5) if q == 'set' else 0
     it['stats'] = rs(br)
     for i in range(5):
