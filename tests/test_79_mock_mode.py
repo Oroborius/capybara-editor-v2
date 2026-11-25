@@ -653,8 +653,12 @@ def stat_totals_limited_by_file_size_not_made_up_caps():
     size warning (with the costliest fields) instead of a field-range error."""
     M = engine().M
     pre = M.prefill('mock_high')
-    errs = M.validate('mock_high', dict(pre, res_fire='9000'), pre)[3]
-    T.eq(errs, {}, '9000 res/lvl fits')
+    errs = M.validate('mock_high', dict(pre, res_fire='60000'), pre)[3]
+    T.eq(errs, {}, '60000 total fire resist fits')
+    o, raw, P, errs = M.validate('mock_high', dict(pre, res_fire='60000', level='99'), pre)
+    T.eq(errs, {}, '60000 total at clvl 99 fits')
+    rl = sum(v for l in P['lists'] for sid, _p, v in l.lines if sid == 231)
+    T.check(60000 <= M.element_res(0, rl, 99, 10 ** 6) < 60013, 'res/lvl sum gives the total (+ step rounding)')
     errs = M.validate('mock_high', dict(pre, res_fire='100000000'), pre)[3]
     T.check(list(errs) == [''] and 'over the 8 KB save limit' in errs[''] and 'res_fire' in errs[''], f'size warning: {errs}')
 

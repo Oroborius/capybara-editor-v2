@@ -711,6 +711,13 @@ def element_res(flat, res_lvl, clvl, max_res=0):
 MANA_FLOOR, MANA_FLOOR_LOW = 1280000, 1210000   # the user: never below ~1.28M personally, some go to 1.21M
 
 
+def res_lvl_for(total, flat, clvl):
+    """The per-level resist sum (stats 230-232) whose element_res (no cap) is the TOTAL resist: the smallest sum
+    reaching it (the steps are clvl / 8 wide); 0 lines when the flat part already gives the total."""
+    need = int(total) - HELL_RES - int(flat)
+    return 0 if need <= 0 else -(-need * 8 // int(clvl))
+
+
 def best_mana(tk, absorb, res=HELL_RES):
     """Highest mana the absorb heal cannot overflow: (8388608 / TK ratio) x 3 - 1 - floor(absorb / ((100 - res)
     / 100) x 0.36), res -100 (Hell)."""
@@ -1313,7 +1320,7 @@ DEFAULTS = dict(cls=1, level=127, position='LPJ', life=7300000, damage=Fraction(
                 curse_res=511, target_def=381, dodge=127, ow=127, cb=0, ds=0,   # CB / DS do nothing against players
                  itd=False, cbf=False,
                 dr=63, dr_total=None, dr_pct=255, mdr=0, abs_pct=127, abs_flat=0, abs_lvl=True, abs_time=True, replenish=True,
-                res_cold=0, res_fire=0, res_light=0, res_flat=0, pierce=0,
+                res_cold=HELL_RES, res_fire=HELL_RES, res_light=HELL_RES, res_flat=0, pierce=0,
                 stun_lvl=1, holy_shield=False, just_hit=False)
 
 # item skeleton: (role, body, code, Sigon's set item id, socketed with 7 jewels)
@@ -1634,6 +1641,8 @@ def plan(preset='mock_high', name='Mock', **over):
             o['aura_mast'][aid] = r['mast']
     nl_est = sum(6 + (2 * JEWELS if g[4] else 0) for g in list(GEAR) + ([WEAPON] if o['weapon'] and not o['ith_weapon'] else [])) \
         + CHARM_COUNT - o['ith_inv']
+    for el in ('cold', 'fire', 'light'):                # the typed TOTAL resist -> the per-level sum
+        o['rl_' + el] = res_lvl_for(o['res_' + el], o['res_flat'], o['level'])
     o['absorb'] = absorb_plan(o, nl_est)
     abs_max = max([a['total'] for a in o['absorb'].values()] or [0])
     if not o['exact']:
@@ -1987,7 +1996,7 @@ def plan(preset='mock_high', name='Mock', **over):
     for st in nv:
         charms[0].slots[0].add(98, 1, st)
     # ---- resist by level per element (sum of the 230 / 231 / 232 values; x clvl / 8 in game)
-    for sid, key in ((230, 'res_cold'), (231, 'res_fire'), (232, 'res_light')):
+    for sid, key in ((230, 'rl_cold'), (231, 'rl_fire'), (232, 'rl_light')):
         if int(o[key]) > 0:
             put(sid, split(int(o[key]), 63), gear_first=False)
     if o['weapon'] and o['dopplezon'] and not o['ith_weapon']:
@@ -2081,7 +2090,7 @@ def absorb_plan(o, nl):
     by_time = o['abs_time']        # Hosts too: the server sums by-time stats the same for host and joiners (1.13c
                                    # code, D2Game per-client loop); the old 'not as host' note had no code behind it
     for name, _, _, _, _, _ in ELEMENTS:
-        res = element_res(int(o['res_flat']), int(o['res_' + name]), clvl)
+        res = element_res(int(o['res_flat']), int(o['rl_' + name]), clvl)
         need = absorb_need(res)
         typed = int(o.get('abs_' + name) or 0)         # a typed TOTAL absorb for this element replaces the need
         vals = None
@@ -2543,6 +2552,10 @@ def summary_rows(model, side=None, bo=False, role=None):
 SKILL_NAMES = {SMITE: 'Smite', BATTLE_ORDERS: 'Battle Orders', TELEKINESIS: 'Telekinesis', 8: 'Inner Sight',
                273: 'Mind Blast', 235: 'Cyclone Armor'}
 STATE_NAMES = {DOPPLEZON: 'Dopplezon', NV_JUST_HIT: 'Just Hit', NV_HOLY_SHIELD: 'Holy Shield'}
+for _p in PRESETS.values():                 # the presets' resist by level -> the element's total resist
+    for _k in ('res_cold', 'res_fire', 'res_light'):
+        if _k in _p:
+            _p[_k] = HELL_RES + _p.get('res_flat', 0) + math.floor(Fraction(_p[_k] * _p.get('level', DEFAULTS['level']), 8))
 PRESET_ROLE = {k: p.get('role', 'mock') for k, p in PRESETS.items()}
 
 
@@ -2588,8 +2601,8 @@ FIELDS = (
                   ('mdr', 'Magic DR', 'int', (0, UNCAPPED)), ('abs_pct', 'Absorb %', 'int', (0, UNCAPPED)),
                   ('abs_flat', 'Absorb flat', 'int', (0, UNCAPPED)),
                   ('abs_cold', 'Absorb cold (total)', 'int', (0, UNCAPPED)), ('abs_fire', 'Absorb fire (total)', 'int', (0, UNCAPPED)),
-                  ('abs_light', 'Absorb lightning (total)', 'int', (0, UNCAPPED)), ('res_cold', 'Res/lvl cold', 'int', (0, UNCAPPED)),
-                  ('res_fire', 'Res/lvl fire', 'int', (0, UNCAPPED)), ('res_light', 'Res/lvl light', 'int', (0, UNCAPPED)),
+                  ('abs_light', 'Absorb lightning (total)', 'int', (0, UNCAPPED)), ('res_cold', 'Resist cold (total)', 'int', (-200, UNCAPPED)),
+                  ('res_fire', 'Resist fire (total)', 'int', (-200, UNCAPPED)), ('res_light', 'Resist lightning (total)', 'int', (-200, UNCAPPED)),
                   ('res_flat', 'Resist all', 'int', (-200, UNCAPPED)), ('curse_res', 'Curse res', 'int', (0, UNCAPPED)),
                   ('dodge', 'Dodge/avoid/evade', 'int', (0, UNCAPPED)), ('abs_lvl', 'Absorb / lvl', 'bool', None),
                   ('abs_time', 'Absorb by time', 'bool', None), ('cbf', 'Cannot be frozen', 'bool', None))),
@@ -2649,7 +2662,7 @@ HINTS = dict(tk='hard TK points 0-99 (default 31; 31: band 524288, 30: funky 104
              dr='flat damage reduced on every list (63 max per line)', abs_cold='TOTAL absorb of the element (by level lines + one by-time line); 0 = the need at its resist', abs_fire='total fire absorb', abs_light='total lightning absorb',
              dr_total='total flat DR: the full 63 on every list gives 11221; lower puts lines only on the lists it needs', dr_pct='damage reduced %',
              mdr='magic damage reduced', abs_pct='absorb % per element (cold, fire, lightning)',
-             abs_flat='flat absorb per element', res_cold='cold resist by level (sum of lines, x clvl / 8)',
+             abs_flat='flat absorb per element', res_cold='total cold resist (-100 Hell + flat + per-level lines x clvl / 8; the per-level lines are solved)',
              res_fire='fire resist by level', res_light='lightning resist by level',
              res_flat='flat resist, every element (-100: the "-100 res" mocks)', curse_res='curse resistance (511)',
              dodge='dodge / avoid / evade % each', abs_lvl='absorb: the need per element (8388607 x 0.17 x 0.6 x (100 - res) / 100), by character level first',
@@ -2761,8 +2774,7 @@ def edited(fields, pre):
 
 
 # field -> (stat ids written per total, split per line); lines x line_bits is what the field costs in the file
-SIZE_STATS = dict(res_cold=((230,), None), res_fire=((231,), None), res_light=((232,), None),
-                  res_flat=((39, 41, 43, 45), None), pierce=((335,), None), curse_res=((109,), None),
+SIZE_STATS = dict(                  res_flat=((39, 41, 43, 45), None), pierce=((335,), None), curse_res=((109,), None),
                   target_def=((116,), None), dr_pct=((36,), None), mdr=((35,), None), dtm=((114,), None),
                   ow=((135,), None), cb=((136,), None), ds=((141,), None), thorns_lvl=((238,), None),
                   abs_pct=((142, 144, 148), None), abs_flat=((143, 145, 149), None), dr_total=((34,), None),
@@ -2776,6 +2788,10 @@ def size_estimate(values):
     """({field: bytes}, total) the typed stat totals cost in lines (lines x bits of each stat's save field): the
     only real limit of a total is the 8 KB file. values = the form's numbers (prefill merged with the edits)."""
     cost = {}
+    for k, sid in (('res_cold', 230), ('res_fire', 231), ('res_light', 232)):
+        n = -(-res_lvl_for(values.get(k, HELL_RES), values.get('res_flat', 0), values.get('level', 127)) // line_max(sid))
+        if n:
+            cost[k] = (n * line_bits(sid) + 7) // 8
     for k, (sids, per) in SIZE_STATS.items():
         v = values.get(k)
         if not isinstance(v, (int, Fraction)) or v == 0:
