@@ -1038,6 +1038,17 @@ def defense_checks(stats, level, absorbs, targets):
         yield row('abs_' + name, f'{label} absorb', total, minimum=True)
 
 
+def open_wounds_damage_per_second(clvl, player_divisor=1):
+    """HP/s for an active bleed. Player hits divide fixed-point damage per frame by 4 (melee) or 8 (missile)."""
+    for max_level, slope, offset in ((15, 9, 31), (30, 18, -104), (45, 27, -374), (60, 36, -779)):
+        if clvl <= max_level:
+            damage_per_frame = slope * clvl + offset
+            break
+    else:
+        damage_per_frame = 45 * clvl - 1319
+    return Fraction((damage_per_frame // player_divisor) * 25, 256)
+
+
 def analyze(model, side=None, bo=False, energy=False, *, targets=None):
     """Computed values and colour-coded checks of a character model: dict(values, checks=[(key, label, text,
     status)]). Covers mana band / funky, TK ratio, off-screen, regen vs roll-over, life, smite vs cap, aura
@@ -1154,6 +1165,12 @@ def analyze(model, side=None, bo=False, energy=False, *, targets=None):
         f"shield {shield_label(sm['shield']) if sm['shield'] else '-'}{hs}); PvP after DR {float(pvp):.0f} / cap "
         f"{float(DMG_CAP_PVP):.0f}; spread {float((sm['max'] - sm['min']) * PVP):.0f} PvP before DR",
         st if sm['slvl'] else INFO)
+    ow = min(100, T.get(135, 0))
+    if ow > 0:
+        pvm_ow, melee_ow, missile_ow = (float(open_wounds_damage_per_second(clvl, d)) for d in (1, 4, 8))
+        add('ow_damage', 'Open Wounds damage/s',
+            f'{ow}% on hit; {pvm_ow:.2f} PvM, {melee_ow:.2f} melee PvP, {missile_ow:.2f} ranged PvP', INFO)
+        add('ow_formula', 'Open Wounds formula', 'community formula, unverified in game', INFO)
     for aid, kinds in sorted(t['sources'].items()):
         n = sum(kinds.values())
         lv = t['aura_lv'].get(aid, 0)
@@ -2748,7 +2765,8 @@ HINTS = dict(tk='hard TK points 0-99 (default 31; 31: band 524288, 30: funky 104
                     'cap and the hits spread down by (max - min) x the Smite multiplier: Tower Shield 1-5 ~306 PvP, '
                     'a narrower base less. The base does not change the lists or the file size',
              smite_max='on: the max smite exactly at the cap (min lower by the shield spread); off: within 0.1% of the cap for the fewest bits',
-             ow='chance of open wounds % (the bleed scales with character level)', target_def='-% target defense (clones 254-1016)',
+             ow='Open Wounds chance on hit %; the Analyzer estimates bleed damage from character level',
+             target_def='-% target defense (clones 254-1016)',
              dtm='damage taken goes to mana %: solved as the position\'s (Host 500 / HPJ 420 / LPJ 330) or the ES refill '
                  '(ES% / TK), whichever is higher, never over the LPJ ceiling (mana, DR, Prayer drain, TK)',
              itd="ignore target's defense", pierce='-% enemy cold resist (clone-05: 255 on every list)', weapon='a socketed weapon (198 lists)',

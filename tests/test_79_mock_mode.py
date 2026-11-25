@@ -320,6 +320,23 @@ def _check_generated(key, raw, P, path):
 
 
 @T.test
+def open_wounds_damage_uses_level_bands_and_player_divisors():
+    M = engine().M
+    for level, damage in ((15, (166, 41, 20)), (30, (436, 109, 54)), (99, (3136, 784, 392))):
+        for divisor, per_frame in zip((1, 4, 8), damage):
+            T.eq(M.open_wounds_damage_per_second(level, divisor), Fraction(per_frame * 25, 256),
+                 f'level {level}, divisor {divisor}')
+
+    raw, _ = M.generate('mock_high', 'Mocky', level=99, ow=127)
+    path = M.write_new(raw, _gen_dir(), 'Mocky')
+    analysis, _, _ = _analyze(path)
+    rows = {key: (label, value) for key, label, value, _ in analysis['checks']}
+    T.eq(rows['ow_damage'], ('Open Wounds damage/s', '100% on hit; 306.25 PvM, 76.56 melee PvP, 38.28 ranged PvP'),
+         'Analyzer reports the generated bleed')
+    T.eq(rows['ow_formula'][1], 'community formula, unverified in game', 'Analyzer labels the estimate')
+
+
+@T.test
 def every_preset_generates_a_save_that_hits_its_targets():
     E = engine()
     M = E.M
