@@ -513,6 +513,13 @@ def _side_of_body(body):
     return 'A' if body in (4, 5) else 'B' if body in (11, 12) else None
 
 
+def _is_ith(it):
+    """Nondescript runeword (Ith): the runeword flag with an EMPTY runeword stat list. A real runeword
+    (Grief, Infinity...) has its runeword stats and keeps every stat."""
+    rw = it.get('stats_runeword')
+    return rw is not None and not rw
+
+
 def model_from_character(ch, size=None):
     """Neutral model of a mxl_char.Character (any class): header values, character stats, skills, units."""
     head = bytes(ch.head)
@@ -542,7 +549,7 @@ def model_from_character(ch, size=None):
             side = _side_of_body(it.get('equipped'))
             nm = f"{code.strip()}@{it.get('equipped')}"
             is_wpn = it.get('equipped') in (4, 5, 11, 12) and not is_shield(code)
-            ith = is_wpn and it.get('stats_runeword') is not None   # nondescript runeword: vanishes, sources stay
+            ith = is_wpn and _is_ith(it)          # nondescript runeword: vanishes, sources stay (a real runeword counts)
             units.append(Unit('gear', nm, lists_of(it), side, ith))
             if it.get('quality') in (5, 'set'):
                 set_ids[side].add(it.get('set_unique_id'))
@@ -559,7 +566,7 @@ def model_from_character(ch, size=None):
             for j, s in enumerate(kids[:cap]):          # the game drops children beyond the socket count
                 units.append(Unit('jewel', f'{nm}/{j}', lists_of(s), side, ith))
         elif it.get('location') == 0 and it.get('panel') in (1, 5) and code in CHARMS:
-            ith = it.get('stats_runeword') is not None           # Ith charm: a source in the INVENTORY only
+            ith = _is_ith(it)                                    # Ith charm: a source in the INVENTORY only
             if it.get('panel') == 5 and ith:
                 stash_ith += 1                                   # stash: no effect, the user moves it in by hand
             elif it.get('panel') == 1:
