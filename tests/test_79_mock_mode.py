@@ -1395,7 +1395,7 @@ def set_bonus_lists_and_owner_bonuses_follow_weapon_side():
 
     head = bytearray(64)
     head[0x10] = 1
-    ch = SimpleNamespace(head=head, stats=[], skills=b'if', items=[
+    ch = SimpleNamespace(head=head, stats=[], skill_levels=lambda: {}, items=[
         item(0, 'lrg ', 5, [(0, 10), (1, 20)]),
         item(0, 'lrg ', 12, [(0, 10), (1, 20)]),
         item(1, 'amu ', 2, [(1, 40)]),
@@ -1412,6 +1412,46 @@ def set_bonus_lists_and_owner_bonuses_follow_weapon_side():
     T.eq((a['T'][0], a['T'][41], b['T'].get(0), b['T'].get(41)), (15, 25, None, None),
          'only the complete side gets the full-set strength and lightning resistance')
     T.eq((a['complete_sets'], b['complete_sets']), ({0}, set()), 'the active switch defaults to B')
+
+
+@T.test
+def analyzer_handles_empty_classic_and_legacy_characters():
+    E = engine()
+    import mxl_newchar
+
+    for version in (71, 92, 96):
+        _, ch = mxl_newchar.build(E.data, 'Empty', 1, 1, expansion=False, median=False, version=version)
+        ch.items.clear()
+        ch.parse(ch.build())
+        model = E.M.model_from_character(ch)
+        T.check(not ch.flags()['expansion'] and not ch.has_jf and not model['units'],
+                'empty non-expansion character has no active item or mercenary list')
+        T.eq(E.M.analyze(model)['values']['tk'], 0, 'no hard points')
+
+    # Simulate a selected mod's class-skill ordering in the same reader used by Character.
+    skills = E.data._capy_class_skills
+    stock = skills[1]
+    try:
+        skills[1] = (E.M.TELEKINESIS, *[sid for sid in stock if sid != E.M.TELEKINESIS])
+        ch.set_skill_levels({E.M.TELEKINESIS: 7})
+        ch.parse(ch.build())
+        T.eq(E.M.analyze(E.M.model_from_character(ch))['values']['tk'], 7,
+             'the Analyzer uses the selected table ordering')
+    finally:
+        skills[1] = stock
+
+    from mxl_creator import Creator, decode_item, encode_item
+
+    creator = Creator(E.data)
+    item, _ = creator.build(creator.new_spec('normal', 'hp1 '))
+    record, _ = decode_item(item, E.data)
+    record['code'] = 'zxq '
+    unknown = encode_item(record, E.data)
+    ch.items = [E.MC.Entry(record, unknown)]
+    ch.parse(ch.build())
+    T.eq(ch.items[0].it['code'], 'zxq ', 'an unavailable mod item code is kept')
+    T.eq(E.M.analyze(E.M.model_from_character(ch))['values']['units'], 0,
+         'an unknown item in storage contributes no combat modifiers')
 
 
 T.main(globals())

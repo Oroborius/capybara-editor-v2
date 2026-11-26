@@ -609,9 +609,7 @@ def model_from_character(ch, size=None):
     head = bytes(ch.head)
     st = {sid: v for sid, p, v in ch.stats}
     cls = head[0x28]
-    skills = bytes(ch.skills[2:])
-    first = CLASS_FIRST_SKILL[cls] if cls < 7 else 0
-    sk = {first + i: lv for i, lv in enumerate(skills) if lv}
+    sk = {sid: level for sid, level in ch.skill_levels().items() if level}
     units = []
 
     def lists_of(it):
@@ -652,7 +650,7 @@ def model_from_character(ch, size=None):
                 field = 0                            # the game clamps the field to the base's sockets (none here)
             elif code in SOCKET_FIELD:
                 field = min(field, SOCKET_FIELD[code])
-            cap = field + sum(s['value'] for s in it.get('stats', []) if s['id'] == 194)
+            cap = max(0, field + sum(s['value'] for s in it.get('stats', []) if s['id'] == 194))
             excess += max(0, len(kids) - cap)
             for j, s in enumerate(kids[:cap]):          # the game drops children beyond the socket count
                 units.append(Unit('jewel', f'{nm}/{j}', lists_of(s), side, ith))

@@ -74,7 +74,11 @@ def hirelings(data):
         desc = data._rows('hiredescext')
     except Exception:
         desc = []
-    rows = data._rows('hireling')
+    try:
+        rows = data._rows('hireling')
+    except (FileNotFoundError, struct.error, ZeroDivisionError):
+        rows = []
+    rows = [r for r in rows if len(r) >= 0xD3]
     vanilla = False
     try:
         import mxl_profile
@@ -108,7 +112,7 @@ def hirelings(data):
             names = [_clean(data.strings[i][1]) if i in data.strings else f'#{i - first}' for i in range(first, last + 1)]
         variant = ''
         hd = r[0xD2]
-        if hd < len(desc):
+        if hd < len(desc) and len(desc[hd]) >= 2:
             variant = _clean(data.strings.get(struct.unpack_from('<H', desc[hd], 0)[0], ('', ''))[1])
         cls_name = ''
         try:

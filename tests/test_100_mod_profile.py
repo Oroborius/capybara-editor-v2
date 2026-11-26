@@ -165,5 +165,44 @@ def cached_legacy_installs_resolve_archives_for_mod_profiles():
         T.eq(info['save_version'], 96, 'the mod core determines the save version')
 
 
+@T.test
+def broken_core_paths_and_manifests_are_ignored():
+    import mxl_profile as P
+
+    base = Path(T.tmp()) / 'CorePaths'
+    cores = base / 'D2SE' / 'CORES'
+    cores.parent.mkdir(parents=True)
+    (base / 'd2data.mpq').touch()
+    cores.touch()
+    T.check(not P.detect(str(base))['supported'], 'a file named CORES is not a core directory')
+    cores.unlink()
+    cores.mkdir()
+    (cores / '1.09d').touch()
+    T.check(not P.detect(str(base))['supported'], 'a file named like a version is not a core')
+    (cores / '1.10f').mkdir()
+    T.eq(P.detect(str(base))['version'], '1.10f', 'the only core directory determines the version')
+
+    output = base / 'profile'
+    output.mkdir()
+    (output / 'install.json').write_text('[]')
+    T.check(not P.data_ok(str(base), str(output)), 'a non-object manifest triggers extraction')
+
+
+@T.test
+def optional_mercenary_tables_do_not_break_the_character_editor():
+    from mxl_data import Data
+    from mxl_merc import hirelings
+
+    folder = Path(T.tmp()) / 'OptionalMercenary'
+    folder.mkdir()
+    for raw in (None, b'', b'\0' * 4, struct.pack('<I', 1) + b'\0' * 12):
+        path = folder / 'hireling.bin'
+        if raw is not None:
+            path.write_bytes(raw)
+        data = Data.__new__(Data)
+        data.folder = str(folder)
+        T.eq(hirelings(data), {}, 'unavailable definitions leave the mercenary types empty')
+
+
 sys.path.insert(0, T.APP)
 T.main(globals())

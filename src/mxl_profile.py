@@ -194,10 +194,14 @@ def detect(game_dir, base_dir=None):
     if base and (d2se or (version is None and not _game_version(base))):
         d2se_dir = _child(base, 'D2SE')
         cores = _child(d2se_dir, 'CORES') if d2se_dir else None
-        if cores:
+        if cores and os.path.isdir(cores):
             core = _child(cores, version) if version else None
             if version is None:
-                choices = [f for f in os.listdir(cores) if _save_version(f)]
+                try:
+                    choices = [entry.name for entry in Path(cores).iterdir()
+                               if _save_version(entry.name) and entry.is_dir()]
+                except OSError:
+                    choices = []
                 if len(choices) == 1:
                     version = choices[0]
                     core = _child(cores, version)
@@ -386,7 +390,8 @@ def data_ok(game_dir, out, info=None):
             man = json.load(f)
     except (OSError, ValueError):
         return False
-    return man.get('fingerprint') == _fingerprint(game_dir, info) and os.path.exists(os.path.join(out, 'itemstatcost.bin'))
+    return (isinstance(man, dict) and man.get('fingerprint') == _fingerprint(game_dir, info)
+            and os.path.isfile(os.path.join(out, 'itemstatcost.bin')))
 
 
 def extract(game_dir, out, progress=None, icons=True):

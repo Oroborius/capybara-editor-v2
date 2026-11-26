@@ -760,4 +760,31 @@ def character_name_warning_and_save_anyway():
     T.eq(MC.Character(path, win.data).name, 'Mock3', 'mock retains confirmed name')
 
 
+@T.test
+def report_counts_children_even_when_the_socket_field_is_zero():
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    from mxl_char import Entry
+    from mxl_creator import decode_blob, encode_item
+    from mxl_vanilla_he_items import character_report
+
+    win = T.chartab()
+    original = win.ch.items
+    parent = next(entry for entry in original if entry.it.get('socketed'))
+    record, children = decode_blob(parent.blob, win.data, exact=True)
+    record['sockets'] = 0
+    record['stats'] = [stat for stat in record.get('stats', []) if stat['id'] != 194]
+    count = len(children)
+    try:
+        for bonus in (0, count):
+            if bonus:
+                record['stats'].append(dict(id=194, param=None, value=bonus))
+            blob = encode_item(record, win.data) + b''.join(encode_item(child, win.data) for child in children)
+            win.ch.items = [Entry(parent.it, blob)]
+            T.check(f'Sockets = {count}/{bonus}' in character_report(win),
+                    'report shows the filled sockets and the effective capacity')
+    finally:
+        win.ch.items = original
+
+
 T.main(globals())

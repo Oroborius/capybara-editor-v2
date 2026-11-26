@@ -375,9 +375,10 @@ def character_report(win):
                 durability = part['durability'] - data.isc[S.DURABILITY]['add']
                 maximum = part['max_durability'] - data.isc[S.MAX_DURABILITY]['add']
                 lines.append(f'  Durability = {durability}/{maximum}')
-            if part.get('sockets'):
-                total = socket_total(part) if 'flags' in part else part['sockets']
-                lines.append(f'  Sockets = {len(children) if index == 0 else 0}/{total}')
+            total = socket_total(part) if 'flags' in part else part.get('sockets', 0)
+            filled = len(children) if index == 0 else 0
+            if total or filled:
+                lines.append(f'  Sockets = {filled}/{total}')
             for key, label in magic_lists.items():
                 if key in part:
                     lines.append(f'{indent}{label}')
