@@ -402,9 +402,9 @@ def archives_open_only_up_to_the_match():
     asked = []
     orig = A._archive
 
-    def spy(path):
+    def spy(path, reader=None):
         asked.append(path)
-        return orig(path)
+        return orig(path, reader)
     A._archive = spy
     try:
         got = a.read(member)
