@@ -45,8 +45,7 @@ def load():
 
 
 def game_tag():
-    """The game an entry belongs to: 'median', or 'd2-<version>' (+ '+mod' names) for a folder profile.
-    Not the profile id: that one holds a hash of the folder path, which changes when the game is moved."""
+    """Stock games share a version tag. Mods use the profile id because their tables can differ by folder."""
     try:
         import mxl_profile
         st = mxl_profile.active()
@@ -54,9 +53,9 @@ def game_tag():
         st = None
     if not st:
         return 'median'
-    tag = f"{st.get('kind') or 'd2'}-{st.get('version') or 'unknown'}"
-    mods = st.get('mods') or []
-    return tag + ''.join('+' + str(m).lower() for m in mods)
+    if st.get('mod'):
+        return st['id']
+    return f"{st.get('kind') or 'd2'}-{st.get('version') or 'unknown'}"
 
 
 def entry_game(entry):

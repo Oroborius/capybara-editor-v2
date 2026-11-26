@@ -138,7 +138,7 @@ def _child(folder, name):
 
 
 def _base_install(folder):
-    return (folder and os.path.isfile(_child(folder, 'd2data.mpq') or '')
+    return (isinstance(folder, (str, os.PathLike)) and folder and os.path.isfile(_child(folder, 'd2data.mpq') or '')
             and not _child(folder, 'd2sigma.dll')
             and not any(os.path.basename(p).lower().startswith('medianxl-') for p in _directory_archives(folder)))
 
@@ -186,7 +186,7 @@ def _loose_excel(folder):
 def detect(game_dir, base_dir=None):
     """Resolve a game, its D2SE core if present, and the base supplying shared archives."""
     empty = {'kind': None, 'version': None, 'mods': [], 'supported': False}
-    if not game_dir or not os.path.isdir(_filesystem_path(game_dir)):
+    if not isinstance(game_dir, (str, os.PathLike)) or not game_dir or not os.path.isdir(_filesystem_path(game_dir)):
         return empty
     archives = _directory_archives(game_dir)
     names = [os.path.basename(p) for p in archives]
@@ -206,7 +206,11 @@ def detect(game_dir, base_dir=None):
     configured_base = next((os.path.normpath(os.path.join(here, os.path.expandvars(config[k]).replace('\\', os.sep)))
                             for k in ('basegamefolder', 'gamepath') if config.get(k)), None)
     if base_dir is None and not local_base:
-        base_dir = _raw_settings().get('profile_base_dir')
+        active_dir = (_state or {}).get('game_dir')
+        if active_dir and os.path.normcase(os.path.abspath(active_dir)) == os.path.normcase(here):
+            base_dir = _state.get('base_dir')
+        else:
+            base_dir = _raw_settings().get('profile_base_dir')
     candidates = (game_dir, configured_base, *(str(p) for p in parents), base_dir)
     base = next((p for p in candidates if _base_install(p)), None)
     version = config.get('d2core') or _game_version(game_dir)
@@ -343,9 +347,14 @@ def profile_id(game_dir, info):
 def _raw_settings():
     try:
         import settings
-        return settings._read(settings.PATH) or {}
-    except Exception:
+    except ImportError:
         return {}
+    for path in (settings.PATH, settings.PATH + '.bak'):
+        try:
+            return settings._read(path)
+        except (OSError, ValueError):
+            pass
+    return {}
 
 
 def choose():
@@ -355,11 +364,19 @@ def choose():
     s = _raw_settings()
     if env in ('median', 'mxl'):
         return 'median', None
+    saved = s.get('profile_game_dir')
+    folder = saved if isinstance(saved, str) and saved else None
     if env in ('vanilla', 'folder', 'd2'):
-        return 'folder', os.environ.get('MXL_GAME_DIR') or s.get('profile_game_dir') or DEFAULT_VANILLA
-    if s.get('game_profile') == 'folder':
-        return 'folder', s.get('profile_game_dir') or DEFAULT_VANILLA
-    return 'median', None
+        return 'folder', os.environ.get('MXL_GAME_DIR') or folder or DEFAULT_VANILLA
+    selected = s.get('game_profile')
+    if selected == 'folder' and folder:
+        return 'folder', folder
+    if selected == 'folder' or (not selected and not s.get('profile_chosen')):
+        legacy = s.get('game_dir')
+        info = detect(legacy)
+        if info['kind'] == 'd2':
+            return 'folder', legacy
+    return ('folder', DEFAULT_VANILLA) if selected == 'folder' else ('median', None)
 
 
 def active():
@@ -372,7 +389,7 @@ def is_median():
 
 
 def vanilla_ui_theme():
-    return bool(_raw_settings().get('vanilla_ui_theme', False))
+    return bool((_state if _state is not None else _raw_settings()).get('vanilla_ui_theme', False))
 
 
 # ---------------------------------------------------------------------------------------------------- extraction
@@ -651,7 +668,7 @@ def _candidates(kind):
         for b in sorted(glob.glob(os.path.join(glob.escape(home), pat))):
             out += [os.path.join(b, n) for n in names]
     want = 'median' if kind == 'median' else 'd2'
-    return [d for d in out if d and detect(d)['kind'] == want]
+    return [d for d in out if d and (info := detect(d))['kind'] == want and info['supported']]
 
 
 def needs_first_launch():
@@ -731,17 +748,19 @@ def first_launch():
     kind.trace_add('write', pick)
 
     def finish(how):
-        s = {'profile_chosen': True}
+        if how == 'ok' and kind.get() == 'folder' and not valid():
+            if not auto:
+                refresh()
+                return
+            how = 'skip'
         if how == 'ok':
             d = folder.get().strip()
-            s['game_profile'] = kind.get()
             if kind.get() == 'folder':
-                s['profile_game_dir'] = d
-                s['game_dir'] = d
+                settings.put('profile_game_dir', d)
             elif valid():
-                s['game_dir'] = d
-        for k, v in s.items():
-            settings.put(k, v)
+                settings.put('game_dir', d)
+            settings.put('game_profile', kind.get())
+        settings.put('profile_chosen', True)
         result.append(how)
         w.destroy()
     ok_btn.configure(command=lambda: finish('ok'))
@@ -797,7 +816,7 @@ def patch_gui(mxl_gui):
                 o.__init__(self, folder, *a, **k)
                 self.empty = False
             except FileNotFoundError as err:
-                if _state is not None:
+                if _state and _state['supported']:
                     raise
                 _log(f'game tables missing ({err.filename}): opening with empty tables')
                 self.folder = folder
@@ -847,25 +866,27 @@ def install():
     started = perf_counter()
     info = detect(game_dir)
     phase('detect game profile', started)
-    if info['kind'] == 'median':                      # a Median folder chosen as "other folder": today's path
-        return None
-    if info['kind'] != 'd2' or not info['supported']:
-        raise RuntimeError(f'Could not open game profile {game_dir}: {_detection_label(info)}.')
+    available = info['kind'] == 'd2' and info['supported']
+    if not available:
+        _log(f'game profile unavailable: {game_dir} ({_detection_label(info)})')
+        info = dict(info, supported=False, kind=None)
     pid = profile_id(game_dir, info)
     root = _filesystem_path(os.path.join(paths.USER_DIR, 'profiles', pid))
     data_dir = os.path.join(root, 'data')
+    if available:
+        started = perf_counter()
+        cached = data_ok(game_dir, data_dir, info)
+        phase('check game data cache', started)
+        if not cached:
+            _log(f'game profile {pid}: extracting tables and icons from {game_dir}')
+            extract_profile(game_dir, data_dir)
+    _state = dict(info, game_dir=game_dir, id=pid, root=root, data_dir=data_dir,
+                  vanilla_ui_theme=vanilla_ui_theme())
     started = perf_counter()
-    cached = data_ok(game_dir, data_dir, info)
-    phase('check game data cache', started)
-    if not cached:
-        _log(f'game profile {pid}: extracting tables and icons from {game_dir}')
-        extract_profile(game_dir, data_dir)
-    _state = dict(info, game_dir=game_dir, id=pid, root=root, data_dir=data_dir)
-    started = perf_counter()
-    _state['save_dir'] = _use_save_dir(game_dir, root, info)
+    _state['save_dir'] = _use_save_dir(game_dir if available else None, root, info if available else None)
     phase('select character save directory', started)
     _set_data_dir(data_dir)
-    _patch_settings(game_dir)
+    _patch_settings()
     _patch_format()
     _patch_gfx()
     _patch_install()
@@ -886,21 +907,30 @@ def _log(msg):
         pass
 
 
-def _patch_settings(game_dir):
-    """'game_dir' reads as the profile's folder; writing it stores 'profile_game_dir' (Median's stays)."""
+def _patch_settings():
+    """Expose the folder profile's game directory and its own last character and stash selection."""
     import settings
     o_load, o_put = settings.load, settings.put
+    selection = ('last_character', 'last_stash', 'last_view', 'last_page')
+
+    def profile_key(key):
+        return f"profile_{_state['id']}_{key}"
 
     def load():
         s = dict(o_load())
-        s['game_dir'] = _state['game_dir'] if _state else game_dir
+        s['game_dir'] = _state['game_dir']
+        for key in selection:
+            s.pop(key, None)
+            scoped_key = profile_key(key)
+            if scoped_key in s:
+                s[key] = s[scoped_key]
         return s
 
     def put(key, value):
         if key == 'game_dir':
             key = 'profile_game_dir'
-            if _state is not None:
-                _state['game_dir'] = value
+        elif key in selection:
+            key = profile_key(key)
         settings.load = o_load                         # the collector's put() reads load(): the file's own values
         try:
             return o_put(key, value)
@@ -1348,16 +1378,21 @@ def _patch_install():
     """The collector's Median install checks (medianxl-version.mpq, its manifest) do not apply: the profile's
     data folder is checked / extracted by install(); a folder change re-extracts."""
     import mxl_gui_install as gi
-    o_is = gi.is_game_dir
 
     def is_game_dir(d, *a, **k):
         info = detect(d)
-        return (info['kind'] == 'd2' and info['supported']) or bool(o_is(d, *a, **k))
+        return info['kind'] == 'd2' and info['supported']
     gi.is_game_dir = is_game_dir
     GI = gi.GameInstall
 
+    def ask_game_dir(self, first=False):
+        # A restart also replaces the character list, art and format readers.
+        open_dialog(self)
+
+    GI.ask_game_dir = ask_game_dir
+
     def check_data(self, startup=False, *a, **k):
-        if not detect(self.game_dir)['supported']:
+        if not is_game_dir(self.game_dir):
             return False
         moved = _rebind(self)
         from mxl_boot import extract_profile
@@ -1493,13 +1528,18 @@ def open_dialog(app):
     from tkinter import ttk, filedialog, messagebox
     import settings
     from mxl_lang import T
-    s = _raw_settings()
     root = getattr(app, 'root', None) or tk._default_root
-    w = tk.Toplevel(root)
+    existing = root.children.get('capy_game_profile')
+    if existing is not None:
+        existing.lift()
+        return
+    s = _raw_settings()
+    w = tk.Toplevel(root, name='capy_game_profile')
     w.title(T('profile.title', 'Game profile'))
     w.transient(root)
-    kind = tk.StringVar(value='folder' if s.get('game_profile') == 'folder' else 'median')
-    folder = tk.StringVar(value=s.get('profile_game_dir') or DEFAULT_VANILLA)
+    selected, current = choose()
+    kind = tk.StringVar(value=selected)
+    folder = tk.StringVar(value=current or s.get('profile_game_dir') or DEFAULT_VANILLA)
     vui = tk.BooleanVar(value=bool(s.get('vanilla_ui_theme', False)))
     f = ttk.Frame(w, padding=6)
     f.pack(fill='both', expand=True)
@@ -1507,20 +1547,35 @@ def open_dialog(app):
         row=0, column=0, columnspan=3, sticky='w')
     ttk.Radiobutton(f, text=T('profile.folder', 'Other game folder (Diablo II LoD 1.14d, ...)'), value='folder',
                     variable=kind).grid(row=1, column=0, columnspan=3, sticky='w')
-    ttk.Entry(f, textvariable=folder, width=48).grid(row=2, column=0, columnspan=2, sticky='we', padx=(16, 2))
+    entry = ttk.Entry(f, textvariable=folder, width=48)
+    entry.grid(row=2, column=0, columnspan=2, sticky='we', padx=(16, 2))
 
     def browse():
         d = filedialog.askdirectory(parent=w, initialdir=folder.get() or None)
         if d:
             folder.set(d)
-    ttk.Button(f, text=T('profile.browse', 'Browse...'), command=browse).grid(row=2, column=2, sticky='e')
+    browse_btn = ttk.Button(f, text=T('profile.browse', 'Browse...'), command=browse)
+    browse_btn.grid(row=2, column=2, sticky='e')
     info = ttk.Label(f, text='')
     info.grid(row=3, column=0, columnspan=3, sticky='w', padx=(16, 0))
-    ttk.Checkbutton(f, text=T('profile.vanilla_ui', 'Use vanilla UI theme'), variable=vui).grid(
-        row=4, column=0, columnspan=3, sticky='w', padx=(16, 0))
+    theme_btn = ttk.Checkbutton(f, text=T('profile.vanilla_ui', 'Use vanilla UI theme'), variable=vui)
+    theme_btn.grid(row=4, column=0, columnspan=3, sticky='w', padx=(16, 0))
 
     def show(*_):
-        info.configure(text=_detection_label(detect(folder.get(), base.get())))
+        choosing_folder = kind.get() == 'folder'
+        for widget in (entry, browse_btn, base_btn, theme_btn):
+            widget.state(['!disabled'] if choosing_folder else ['disabled'])
+        if choosing_folder:
+            detected = detect(folder.get().strip(), base.get())
+            text = _detection_label(detected)
+            if detected['kind'] == 'median':
+                text = T('first.notfound', 'Not a game folder of this kind.')
+        else:
+            saved_median = s.get('game_dir')
+            text = saved_median if detect(saved_median, '')['kind'] == 'median' else T(
+                'first.nofolder', 'No folder chosen yet.')
+        info.configure(text=text)
+
     base = tk.StringVar(value=s.get('profile_base_dir') or '')
 
     def browse_base():
@@ -1531,26 +1586,29 @@ def open_dialog(app):
         elif d:
             messagebox.showerror('Game profile', 'Choose a Diablo II folder containing d2data.mpq.', parent=w)
 
-    ttk.Button(f, text='Base Diablo II folder…', command=browse_base).grid(
-        row=5, column=0, columnspan=3, sticky='w', padx=(16, 0))
+    base_btn = ttk.Button(f, text='Base Diablo II folder…', command=browse_base)
+    base_btn.grid(row=5, column=0, columnspan=3, sticky='w', padx=(16, 0))
+    kind.trace_add('write', show)
     folder.trace_add('write', show)
     base.trace_add('write', show)
     show()
 
     def ok():
         if kind.get() == 'folder':
-            d = detect(folder.get(), base.get())
+            selected_folder = folder.get().strip()
+            d = detect(selected_folder, base.get())
             if d['kind'] == 'd2' and not d['base_dir']:
                 browse_base()
-                d = detect(folder.get(), base.get())
-            if not d['supported']:
+                d = detect(selected_folder, base.get())
+            if d['kind'] != 'd2' or not d['supported']:
+                show()
                 return
             if base.get():
                 settings.put('profile_base_dir', base.get())
+            settings.put('profile_game_dir', selected_folder)
+            settings.put('vanilla_ui_theme', bool(vui.get()))
         settings.put('game_profile', kind.get())
-        if kind.get() == 'folder':
-            settings.put('profile_game_dir', folder.get())
-        settings.put('vanilla_ui_theme', bool(vui.get()))
+        settings.put('profile_chosen', True)
         w.destroy()
         messagebox.showinfo(T('profile.title', 'Game profile'),
                             T('profile.restart', 'Restart the editor to load the selected game.'), parent=root)
@@ -1558,6 +1616,14 @@ def open_dialog(app):
     b.grid(row=6, column=0, columnspan=3, sticky='e', pady=(4, 0))
     ttk.Button(b, text=T('profile.ok', 'OK'), command=ok).pack(side='left', padx=2)
     ttk.Button(b, text=T('profile.cancel', 'Cancel'), command=w.destroy).pack(side='left', padx=2)
+    w.protocol('WM_DELETE_WINDOW', w.destroy)
+    w.bind('<Escape>', lambda _: w.destroy())
+
+    def mapped(event):
+        if event.widget is w:
+            w.grab_set()
+            w.focus_set()
+    w.bind('<Map>', mapped)
 
 
 def install_menu():

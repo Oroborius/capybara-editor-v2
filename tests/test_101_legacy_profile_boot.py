@@ -212,5 +212,231 @@ def sharing_violation_retries_after_worker_cleanup():
     T.check(all(not work.exists() for work in calls), 'all temporary work directories removed')
 
 
+
+def _switch_probe():
+    """Drive the real More menu in a fresh launcher process."""
+    import json
+    import tkinter as tk
+    from tkinter import filedialog, messagebox, ttk
+    from unittest.mock import patch
+
+    from capybara_editor import main
+    import mxl_boot
+
+    step, stock, mod, median = sys.argv[2:]
+    sys.argv[:] = [str(Path(T.APP) / 'capybara_editor.py')]
+    result = {}
+
+    def drive(root):
+        from mxl_tabs import _state
+        import mxl_itemlib as L
+        import mxl_mock_gui as Mock
+        import mxl_profile as P
+        import paths
+        import settings
+
+        app = _state['app']
+        profile = P.active()
+        data = app.data
+        median_stash = str(Path(median) / 'Median selection.d2x')
+        if step in ('median', 'back'):
+            assert P.is_median() and not Mock.enabled()
+            assert str(data.folder) == str(Path(paths.USER_DIR) / 'data')
+            assert settings.get('game_dir') == median
+            assert not data.empty
+            if step == 'median':
+                settings.put('last_stash', median_stash)
+            assert settings.get('last_stash') == median_stash
+        elif step == 'missing':
+            assert profile and not profile['supported'] and data.empty and not Mock.enabled()
+            assert not app.character_file()
+            assert Path(profile['save_dir']).parent == Path(profile['root'])
+        else:
+            assert profile and profile['supported']
+            assert profile['game_dir'] == (mod if step == 'mod' else stock)
+            assert str(data.folder) == profile['data_dir']
+            assert Path(profile['save_dir']).parent == Path(profile['root'])
+            assert bool(profile['mod']) == (step == 'mod')
+            assert Mock.enabled()
+            if step == 'mod':
+                assert data.isc[0]['bits'] == 13
+
+        if profile:
+            assert P._raw_settings()['last_stash'] == median_stash
+            assert settings.get('last_stash') != median_stash
+            own_stash = str(Path(profile['save_dir']) / 'Folder selection.d2x')
+            if step == 'vanilla-back':
+                assert settings.get('last_stash') == own_stash
+            settings.put('last_stash', own_stash)
+            assert settings.get('last_stash') == own_stash
+        def profile_settings():
+            keys = ('game_profile', 'profile_chosen', 'game_dir', 'profile_game_dir',
+                    'profile_base_dir', 'vanilla_ui_theme')
+            current = P._raw_settings()
+            return {key: current.get(key) for key in keys}
+
+        before = profile_settings()
+        result.update(tag=L.game_tag(), data=str(data.folder))
+        if step in ('back', 'vanilla-back'):
+            return
+
+        menu = tk.Menu(root, tearoff=False)
+        app.toolbar.populate_menu(menu)
+
+        def command(caption):
+            return next(index for index in range(menu.index('end') + 1)
+                        if menu.type(index) == 'command' and caption in menu.entrycget(index, 'label'))
+
+        cmd = command('Game profile')
+
+        def open_profile(index):
+            menu.invoke(index)
+            root.update()
+            dialog = root.children['capy_game_profile']
+            assert dialog.winfo_viewable() and root.grab_current() == dialog
+            menu.invoke(cmd)
+            assert root.children['capy_game_profile'] is dialog
+            return dialog
+
+        def children(parent):
+            for child in parent.winfo_children():
+                yield child
+                yield from children(child)
+
+        def control(dialog, cls, caption=None):
+            return next(w for w in children(dialog) if isinstance(w, cls)
+                        and (caption is None or w.cget('text').startswith(caption)))
+
+        dlg = open_profile(command('Game folder') if step == 'missing' else cmd)
+        if step == 'median':
+            control(dlg, ttk.Radiobutton, 'Other game').invoke()
+            entry = control(dlg, ttk.Entry)
+            old_text = entry.get()
+            with patch.object(filedialog, 'askdirectory', return_value='') as cancelled:
+                control(dlg, ttk.Button, 'Browse').invoke()
+            cancelled.assert_called_once()
+            assert cancelled.call_args.kwargs['parent'] is dlg and entry.get() == old_text
+            control(dlg, ttk.Button, 'Cancel').invoke()
+            assert root.grab_current() is None, 'cancel releases the grab'
+            assert profile_settings() == before, 'cancel preserves the profile settings'
+            dlg = open_profile(cmd)
+
+        if step == 'missing':
+            control(dlg, ttk.Radiobutton, 'Median XL').invoke()
+        else:
+            control(dlg, ttk.Radiobutton, 'Other game').invoke()
+            entry = control(dlg, ttk.Entry)
+            target = mod if step == 'vanilla' else stock
+            entry.delete(0, 'end')
+            entry.insert(0, median)
+            control(dlg, ttk.Button, 'OK').invoke()
+            assert dlg.winfo_exists() and profile_settings() == before
+            entry.delete(0, 'end')
+            entry.insert(0, target)
+            control(dlg, ttk.Checkbutton, 'Use vanilla UI theme').invoke()
+
+        if step == 'vanilla':
+            with patch.object(filedialog, 'askdirectory', return_value='') as no_base:
+                control(dlg, ttk.Button, 'OK').invoke()
+            no_base.assert_called_once()
+            assert no_base.call_args.kwargs['parent'] is dlg
+            assert dlg.winfo_viewable() and root.grab_current() == dlg and profile_settings() == before
+
+        with patch.object(messagebox, 'showinfo') as restart, patch.object(
+                filedialog, 'askdirectory', return_value=stock):
+            control(dlg, ttk.Button, 'OK').invoke()
+        assert restart.call_count == 1 and restart.call_args.kwargs['parent'] is root
+        assert root.grab_current() is None
+        assert P.active() is profile and app.data is data
+        if profile and profile['supported']:
+            assert P.vanilla_ui_theme() == bool(before.get('vanilla_ui_theme'))
+        saved = P._raw_settings()
+        assert saved['game_dir'] == median and saved['profile_chosen']
+
+    def loop(widget, _=0):
+        root = widget.winfo_toplevel()
+        root.update()
+        try:
+            drive(root)
+        finally:
+            root.destroy()
+
+    # Use the cached Median tables. Only the collector's archive
+    # rebuild path needs an installation in this probe.
+    def raise_startup_error(error):
+        raise error
+
+    with patch.object(tk.Misc, 'mainloop', loop), patch.object(mxl_boot, 'report_error', raise_startup_error):
+        if step in ('median', 'back'):
+            from mxl_gui_install import GameInstall
+            with patch.object(GameInstall, 'check_data', return_value=False):
+                main()
+        else:
+            main()
+    print('PROFILE_PROBE ' + json.dumps(result), flush=True)
+
+
+@T.test
+def switch_profiles_and_recover_deleted_folder():
+    import json
+
+    game = os.environ.get('MXL_TEST_VANILLA_GAME')
+    if not game:
+        T.skip('cached vanilla archives required')
+    T.guard(game, 'vanilla archive fixture')
+    if not (Path(game) / 'd2data.mpq').is_file():
+        T.skip('cached vanilla archives required')
+    root = Path(T.tmp()) / 'profile-switch'
+    root.mkdir()
+    stock = root / 'Stock install'
+    stock.mkdir()
+    for file in Path(game).iterdir():
+        if file.suffix.lower() in ('.mpq', '.dll', '.exe') and Path(T.guard(str(file))).is_file():
+            (stock / file.name).symlink_to(file.resolve())
+    mod = root / 'Standalone mod'
+    excel = mod / 'Data' / 'Global' / 'Excel'
+    excel.mkdir(parents=True)
+    (mod / 'D2SE_SETUP.ini').write_text('D2Core=1.14d\n')
+    (excel / 'itemstatcost.txt').write_bytes(_stat_width(13))
+    median = root / 'Median'
+    median.mkdir()
+    (median / 'D2Sigma.dll').touch()
+    (median / 'medianxl-test.mpq').touch()
+
+    if not T.user_ok():
+        T.skip('cached Median XL tables required')
+    user = Path(T.fresh_user())
+    # An older build kept only the Median game directory. Use the cached
+    # Median tables and bypass live rebuild detection in this fixture.
+    games = root / 'saves'
+    games.mkdir()
+    path = user / 'settings.json'
+    path.write_text('{', encoding='utf-8')
+    path.with_suffix('.json.bak').write_text(json.dumps({'game_dir': str(median), 'language': 'en'}), encoding='utf-8')
+    env = _environment(stock, user)
+    for name in ('MXL_GAME', 'MXL_GAME_DIR', 'MXL_EXIT_AFTER', 'MXL_FIRSTRUN_CHOICE', 'MXL_FIRSTRUN_FOLDER'):
+        env.pop(name, None)
+    records = {}
+    for step in ('median', 'vanilla', 'mod', 'vanilla-back', 'missing', 'back'):
+        if step == 'missing':
+            stock.rename(root / 'Removed install')
+        # This is the launcher's automatic fallback, which folder profiles
+        # replace with their own saves. It also isolates the Median windows.
+        active_env = dict(env, MXL_SAVE_DIR=str(games), MXL_SAVE_DIR_AUTO='1')
+        command = [sys.executable, __file__, '--switch-probe', step, str(stock), str(mod), str(median)]
+        result = subprocess.run(command, env=active_env, capture_output=True, text=True, timeout=30)
+        if result.returncode:
+            raise T.Failed(f'{step} launch exited {result.returncode}\n' + result.stdout[-1800:] + result.stderr[-3000:])
+        output = next(line for line in result.stdout.splitlines() if line.startswith('PROFILE_PROBE '))
+        records[step] = json.loads(output.split(' ', 1)[1])
+    T.eq(records['vanilla-back'], records['vanilla'], 'returning from a mod reopens stock tables')
+    T.eq(records['back'], records['median'], 'returning to Median restores its data and library tag')
+    T.eq(len({row['data'] for row in records.values()}), 4, 'each profile and recovery has its own data path')
+    T.eq(len({row['tag'] for row in records.values()}), 4, 'library tags keep profiles apart')
+
+
 sys.path.insert(0, T.APP)
-T.main(globals())
+if sys.argv[1:2] == ['--switch-probe']:
+    _switch_probe()
+else:
+    T.main(globals())

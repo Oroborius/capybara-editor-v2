@@ -49,6 +49,8 @@ def vanilla_choice_opens_vanilla():
         T.skip('no MXL_TEST_VANILLA_GAME')
     log, st = _run('vanilla', GAME)
     T.eq(st.get('game_profile'), 'folder', 'profile saved')
+    T.eq(st.get('profile_game_dir'), GAME, 'vanilla path saved separately')
+    T.check('game_dir' not in st, 'vanilla selection must not populate the Median path')
     T.check('game profile vanilla' in log or 'game profile d2-' in log, 'vanilla profile not loaded: ' + log[-400:])
 
 

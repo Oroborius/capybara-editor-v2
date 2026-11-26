@@ -42,10 +42,10 @@ def _put(value):
 
 
 def enabled():
-    """True when the profile is not Median XL (the only place the toggle exists)."""
+    """Show Mock Mode for a loaded Diablo II folder profile."""
     try:
         import mxl_profile
-        return not mxl_profile.is_median()
+        return bool((mxl_profile.active() or {}).get('supported'))
     except Exception:
         return False
 
