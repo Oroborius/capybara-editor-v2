@@ -958,6 +958,37 @@ def save_without_edits_is_byte_identical():
     c.after('SAVE without edits', {})
 
 
+def replace_inventory_item_without_edits(menu_for):
+    import mxl_tabs
+
+    cw = start('inventory')
+    c = Ctx()
+    entry = next(entry for entry in cw.ch.inventory() if entry is not cw.ch.items[-1])
+    menu = menu_for(('inv', entry.it['x'], entry.it['y']))
+    T.invoke(menu, 'Edit item')
+    editor = mxl_tabs.built_owner('Creator')
+    T.eq(editor.edit_item['code'], entry.it['code'], 'the selected item opened')
+    editor.btn_ok.invoke()
+    T.pump()
+    no_boxes('Replace item without edits')
+    T.check(mxl_tabs.built_owner('Creator') is None, 'Replace item completed')
+    c.same_file('Replace item without edits')
+
+
+@T.test
+def replace_inventory_item_from_character_without_edits_preserves_save_bytes():
+    replace_inventory_item_without_edits(T.chartab_menu)
+
+
+@T.test
+def replace_inventory_item_from_stash_panel_without_edits_preserves_save_bytes():
+    def menu_for(where):
+        T.select_tab('Stash')
+        return T.panel_menu(where)
+
+    replace_inventory_item_without_edits(menu_for)
+
+
 @T.test
 def save_of_every_page_at_once():
     """One edit on each of the eight pages, one SAVE: one consistent file with all of them."""

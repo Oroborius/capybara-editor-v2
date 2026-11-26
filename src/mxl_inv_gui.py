@@ -943,7 +943,7 @@ class MainInventory:
     def edit(self):
         """Edit the selected item of the character / mercenary / inventory where it is (the main window's Edit
         item button and the panel's right-click menu): the Item Editor writes the result back through the
-        character editor's remove -> place -> save flow, like the Character window's own Edit."""
+        character editor's replace-in-place flow, like the Character window's own Edit."""
         from mxl_creator_gui import CreatorWindow
         e, merc = self.selected, self.sel_merc
         if e is None or self.ch is None:
@@ -964,29 +964,27 @@ class MainInventory:
             if cur is None or bytes(cur.blob) != old:
                 raise CharError(T('inv.err.item_gone', 'the item is no longer where it was: select it again'))
             try:
-                if self.ch.version == 71:
+                try:
                     self.ch.place(blob, where, merc, replace=cur)
-                else:
-                    self.ch.remove(cur, merc)
-                    try:
-                        self.ch.place(blob, where, merc)
-                    except CharError:
-                        new = MC.blob_item(blob, self.ch.data)
-                        if where[0] == 'slot':
-                            if new['code'] != e.it['code']:
-                                raise
-                            # same base in the slot the game itself put it in (Sigma mercenaries wear amulets,
-                            # rings... that the slot rules here do not know): it goes back there as it was
-                            ent = MC.Entry(new, blob)
-                            ent.blob = ent.moved(self.ch.data, location=MC.LOC_EQUIPPED, equipped=where[1], x=where[1],
-                                                 y=0, panel=0)
-                            ent.it = MC.blob_item(ent.blob, self.ch.data)
-                            self.ch.entries(merc).append(ent)
-                        else:
-                            spot = self.ch.free_inventory_spot(new)
-                            if spot is None:                  # grew (other base): no room where it was nor elsewhere
-                                raise
-                            self.ch.place(blob, ('inv',) + spot, merc)
+                except CharError:
+                    if self.ch.version == 71:
+                        raise
+                    new = MC.blob_item(blob, self.ch.data)
+                    if where[0] == 'slot':
+                        if new['code'] != cur.it['code']:
+                            raise
+                        # Keep the same base in the slot the game assigned, including Sigma mercenary gear.
+                        ent = MC.Entry(new, blob)
+                        ent.blob = ent.moved(self.ch.data, location=MC.LOC_EQUIPPED, equipped=where[1], x=where[1],
+                                             y=0, panel=0)
+                        ent.it = MC.blob_item(ent.blob, self.ch.data)
+                        entries = self.ch.entries(merc)
+                        entries[entries.index(cur)] = ent
+                    else:
+                        spot = self.ch.free_inventory_spot(new, ignore=cur)
+                        if spot is None:
+                            raise
+                        self.ch.place(blob, ('inv',) + spot, merc, replace=cur)
                 bak = self._save_char()
             except Exception:
                 self.reload()                             # nothing written: the character as it is on disk

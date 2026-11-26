@@ -1002,22 +1002,15 @@ class CharacterWindow(StatEditMixin):
             cur = self.current_entry(e, merc)
             if cur is None:
                 raise CharError(T('inv.err.item_gone', 'the item is no longer where it was: select it again'))
-            if self.ch.version == 71:
+            try:
                 self.ch.place(blob, where, merc, replace=cur)
-            else:
-                self.ch.remove(cur, merc)
-                try:
-                    self.ch.place(blob, where, merc)
-                except CharError:
-                    if where[0] in ('inv', 'store'):
-                        spot = self.ch.free_inventory_spot(MC.blob_item(blob, self.data))
-                        if spot is None:
-                            self.reload()
-                            raise
-                        self.ch.place(blob, ('inv',) + spot, merc)
-                    else:
-                        self.reload()
-                        raise
+            except CharError:
+                if self.ch.version == 71 or where[0] not in ('inv', 'store'):
+                    raise
+                spot = self.ch.free_inventory_spot(MC.blob_item(blob, self.data), ignore=cur)
+                if spot is None:
+                    raise
+                self.ch.place(blob, ('inv',) + spot, merc, replace=cur)
             if not self.save(T('ch.replaced', '{item} replaced', item=clean(e.it['name']))):
                 raise CharError(T('ch.err.not_saved', 'character not saved'))
             return T('ch.item_replaced', '{name}: item replaced', name=self.ch.name)

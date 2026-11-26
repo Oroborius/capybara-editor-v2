@@ -1464,11 +1464,11 @@ class Character:
                 return T('ch.err.overlaps', 'overlaps {item}', item=e.it['name'])
         return None
 
-    def free_inventory_spot(self, it):
+    def free_inventory_spot(self, it, *, ignore=None):
         w, h = self.data.base(it['code']).size
         for x in range(INV_W - w + 1):
             for y in range(INV_H - h + 1):
-                if self.inventory_error(it, x, y) is None:
+                if self.inventory_error(it, x, y, ignore=ignore) is None:
                     return x, y
         return None
 
