@@ -166,8 +166,11 @@ class _Bits:
     def __init__(self, b):
         self.v = int.from_bytes(b, 'little')
         self.pos = 0
+        self.end = len(b) * 8
 
     def read(self, n):
+        if self.pos + n > self.end:
+            raise FormatError(T('ch.err.truncated_stats', 'The character stats are truncated.'))
         r = (self.v >> self.pos) & ((1 << n) - 1)
         self.pos += n
         return r
@@ -588,6 +591,12 @@ class Entry:
         return encode_item(rec, data, preserve_stat_order=getattr(data, 'beta_items', False)) + self.blob[n:]
 
 
+def _item_list_count(raw, offset):
+    if offset < 0 or offset + 4 > len(raw) or raw[offset:offset + 2] != b'JM':
+        raise FormatError(T('ch.err.truncated_item_list', "An item list ('JM') is missing or truncated."))
+    return struct.unpack_from('<H', raw, offset + 2)[0]
+
+
 class Character:
     def __init__(self, path, data):
         self.path = path
@@ -598,7 +607,7 @@ class Character:
 
     # ------------------------------------------------------------------ parse / build
     def parse(self, b):
-        if struct.unpack_from('<I', b, 0)[0] != MAGIC:
+        if len(b) < 8 or struct.unpack_from('<I', b, 0)[0] != MAGIC:
             raise FormatError(T('ch.err.not_char', 'not a character file'))
         self.version = struct.unpack_from('<I', b, 4)[0]
         # The vanilla profile can also read the four legacy versions.
@@ -659,18 +668,18 @@ class Character:
             jm = b.find(b'JM', p)
         self.skills = b[p:jm]
         self.offsets = (gf, p, jm)                     # 'gf', 'if', 'JM' of the item list (collector's reader fix)
-        count = struct.unpack_from('<H', b, jm + 2)[0]
+        count = _item_list_count(b, jm)
         items, q = read_item_list(b, jm + 4, count, d)
         self.items = [Entry(it, b[it['_offset']:it['_offset'] + self._full_size(it)]) for it in items]
         if b[q:q + 2] != b'JM':
             raise FormatError(T('ch.err.no_corpse', 'corpse list not found'))
-        cc = struct.unpack_from('<H', b, q + 2)[0]
+        cc = _item_list_count(b, q)
         r = q + 4
         for _ in range(cc):
             r += 12
             if b[r:r + 2] != b'JM':
                 raise FormatError(T('ch.err.no_corpse_items', 'corpse items not found'))
-            n = struct.unpack_from('<H', b, r + 2)[0]
+            n = _item_list_count(b, r)
             _, r = read_item_list(b, r + 4, n, d)
         self.corpse = b[q:r]
         self.has_jf = b[r:r + 2] == b'jf'
@@ -678,7 +687,7 @@ class Character:
         if self.has_jf:
             r += 2
             if b[r:r + 2] == b'JM':
-                n = struct.unpack_from('<H', b, r + 2)[0]
+                n = _item_list_count(b, r)
                 mitems, r2 = read_item_list(b, r + 4, n, d)
                 self.merc_items = [Entry(it, b[it['_offset']:it['_offset'] + self._full_size(it)]) for it in mitems]
                 r = r2
@@ -704,7 +713,7 @@ class Character:
         self.skills = b[p:jm]
         self.offsets = (gf, p, jm)
         d9 = mxl_early_save.ClassicData(d) if self.version == 71 else mxl_v109.Data109(d, self.version)
-        count = struct.unpack_from('<H', b, jm + 2)[0]
+        count = _item_list_count(b, jm)
         items, q = read_item_list(b, jm + 4, count, d9)
         if self.version == 71:
             previous_layout = getattr(self, '_classic_original', None)
@@ -713,13 +722,13 @@ class Character:
         self.items = [self._entry_old(it, b) for it in items]
         if b[q:q + 2] != b'JM':
             raise FormatError(T('ch.err.no_corpse', 'corpse list not found'))
-        cc = struct.unpack_from('<H', b, q + 2)[0]
+        cc = _item_list_count(b, q)
         r = q + 4
         for _ in range(cc):
             r += 12
             if b[r:r + 2] != b'JM':
                 raise FormatError(T('ch.err.no_corpse_items', 'corpse items not found'))
-            n = struct.unpack_from('<H', b, r + 2)[0]
+            n = _item_list_count(b, r)
             corpse_items, r = read_item_list(b, r + 4, n, d9)
             if self.version == 71 and self._classic_original is None and corpse_items:
                 self._classic_original = mxl_early_save.is_original(corpse_items[0]._raw)
@@ -732,7 +741,7 @@ class Character:
         if self.has_jf:
             r += 2
             if b[r:r + 2] == b'JM':
-                n = struct.unpack_from('<H', b, r + 2)[0]
+                n = _item_list_count(b, r)
                 mitems, r = read_item_list(b, r + 4, n, d9)
                 self.merc_items = [self._entry_old(it, b) for it in mitems]
         self.tail = b[r:]

@@ -337,4 +337,32 @@ def gold_stays_within_the_games_limit():
         c.set_field_raw(k, cap + 1)                 # raw editing: the file's limits only
 
 
+@T.test
+def median_character_rejects_truncated_stats_and_item_lists():
+    E = T.engine()
+    saved = E.MC.Character(fresh('sample1'), E.data)
+    raw = bytes(saved.raw)
+    gf, skills, items = saved.offsets
+
+    for label, truncated in (
+        ('header', raw[:7]),
+        ('stat list', raw[:gf + 2] + bytes(8)),
+        ('missing item marker', raw[:skills + 2]),
+        ('item count', raw[:items + 3]),
+        ('corpse count', raw[:items] + b'JM\0\0JM'),
+        ('corpse item count', raw[:items] + b'JM\0\0JM\1\0' + bytes(12) + b'JM'),
+        ('mercenary count', raw[:items] + b'JM\0\0JM\0\0jfJM'),
+    ):
+        try:
+            character = E.MC.Character.__new__(E.MC.Character)
+            character.data = E.data
+            character.parse(truncated)
+        except E.MC.FormatError:
+            pass
+        else:
+            raise AssertionError(f'{label}: expected the normal character format error')
+
+    T.eq(saved.build(), raw, 'the intact Median save still rebuilds byte for byte')
+
+
 T.main(globals())
