@@ -205,4 +205,81 @@ def optional_mercenary_tables_do_not_break_the_character_editor():
 
 
 sys.path.insert(0, T.APP)
-T.main(globals())
+
+
+@T.test
+def windows_saved_games_redirect_and_extended_paths():
+    import ntpath
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    import mxl_profile as P
+
+    user = r'C:\Users\Zoë Test'
+    redirected = r'E:\OneDrive - Example\Saved Games'
+    local = ntpath.join(user, 'Saved Games', 'Diablo II')
+    cloud = ntpath.join(redirected, 'Diablo II')
+    game = r'D:\Program Files\Diablo II'
+    game_save = ntpath.join(game, 'Save')
+    existing = {local, cloud, game_save}
+    path = SimpleNamespace(**vars(ntpath))
+    path.abspath = ntpath.normpath
+    path.isdir = existing.__contains__
+    path.exists = path.isdir
+    windows = SimpleNamespace(name='nt', sep='\\', path=path, environ={'USERPROFILE': user})
+    with patch.object(P, 'os', windows), patch.object(P, '_windows_saved_games', return_value=redirected) as known:
+        T.eq(P.save_dir(game), cloud, 'Windows resolves redirected Saved Games on another drive')
+        known.return_value = None
+        T.eq(P.save_dir(game), local, 'USERPROFILE is the Windows fallback')
+        existing.remove(local)
+        T.eq(P.save_dir(game), game_save, 'game-local Save is the final fallback')
+        long = game + '\\' + 'é' * 230
+        T.eq(P._filesystem_path(long), '\\\\?\\' + long, 'extended local path')
+        unc = '\\\\server\\games\\' + 'é' * 230
+        T.eq(P._filesystem_path(unc), '\\\\?\\UNC\\' + unc[2:], 'extended UNC path')
+        T.eq(P._filesystem_path(P._filesystem_path(long)), P._filesystem_path(long), 'prefix is idempotent')
+
+
+@T.test
+def d2se_unicode_relative_base_and_per_profile_save_fallback():
+    from unittest.mock import patch
+
+    import mxl_profile as P
+
+    temp = Path(T.tmp())
+    base = temp / 'Program Files' / 'Jeux Édition'
+    base.mkdir(parents=True)
+    (base / 'd2data.mpq').touch()
+    mod = temp / 'Mods Collection' / 'Sample Mod'
+    mod.mkdir(parents=True)
+    (mod / 'D2SE_SETUP.ini').write_text(
+        'BaseGameFolder="..\\..\\Program Files\\Jeux Édition"\nD2Core=1.13c\n', encoding='utf-8-sig')
+    info = P.detect(str(mod), '')
+    T.check(info['supported'], 'UTF-8 D2SE config resolves a relative base')
+    T.eq(info['base_dir'], str(base), 'base path is independent of the process working directory')
+    root = temp / 'user data' / 'profile'
+    with patch.dict(os.environ, {'MXL_SAVE_DIR': 'old guess', 'MXL_SAVE_DIR_AUTO': '1'}):
+        T.eq(P._use_save_dir(str(mod), str(root), info), str(root / 'saves'), 'missing Save uses user data')
+    T.eq(list(mod.iterdir()), [mod / 'D2SE_SETUP.ini'], 'game folder needs no writes')
+
+
+@T.test
+def removed_game_folder_skips_live_extraction():
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    import mxl_gui_install as GI
+    import mxl_profile as P
+
+    folder = Path(T.tmp()) / 'disappearing game'
+    folder.mkdir()
+    folder.rmdir()
+    install = SimpleNamespace(game_dir=str(folder))
+    P._patch_install()
+    with patch('mxl_boot.extract_profile') as extract:
+        T.eq(GI.GameInstall.check_data(install), False, 'no rebuild for a deleted folder')
+        extract.assert_not_called()
+
+
+if __name__ == '__main__':
+    T.main(globals())

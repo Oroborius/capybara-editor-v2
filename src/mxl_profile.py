@@ -39,6 +39,18 @@ _state = None                 # the active profile (dict) once install() ran
 
 
 # ---------------------------------------------------------------------------------------------------- detection
+def _filesystem_path(path):
+    """Use the Windows extended namespace for paths near MAX_PATH."""
+    if os.name != 'nt' or not path:
+        return path
+    path = os.path.abspath(path)
+    if len(path.encode('utf-16-le', 'surrogatepass')) < 480 or path.startswith(('\\\\?\\', '\\\\.\\')):
+        return path
+    if path.startswith('\\\\'):
+        return '\\\\?\\UNC\\' + path[2:]
+    return '\\\\?\\' + path
+
+
 def _directory_archives(game_dir):
     """Archive search order (highest priority first) the way the game builds it. Adapted from D2-Development-Kit,
     d2bt/mpq.py default_archive_order (MIT): vanilla 1.13c/1.14d open d2data, d2sfx, d2speech, d2delta,
@@ -47,11 +59,13 @@ def _directory_archives(game_dir):
     equal priorities the archive opened last is searched first. Names match case-insensitively; d2gl.mpq (a
     renderer's) is not game data. Other *.mpq files of a mod folder come first (@6000, the way mod loaders add
     theirs)."""
+    game_dir = _filesystem_path(game_dir)
     try:
         files = os.listdir(game_dir)
     except OSError:
         return []
-    low = {f.lower(): f for f in files if os.path.isfile(os.path.join(game_dir, f))}
+    paths = ((f.lower(), _filesystem_path(os.path.join(game_dir, f))) for f in files)
+    low = {name: path for name, path in paths if os.path.isfile(path)}
     median = sorted((f for f in files if f.lower().startswith('medianxl-') and f.lower().endswith('.mpq')),
                     key=str.upper)
     base = ['d2data', 'd2sfx', 'd2speech', 'd2delta', 'd2kfixup']
@@ -68,7 +82,7 @@ def _directory_archives(game_dir):
     seq.append(('d2video', 1000))
     opened = [(prio, i, low[(n + '.mpq').lower()]) for i, (n, prio) in enumerate(seq) if (n + '.mpq').lower() in low]
     opened.sort(key=lambda t: (-t[0], -t[1]))
-    return [os.path.join(game_dir, f) for _, _, f in opened]
+    return [path for _, _, path in opened]
 
 
 def archive_order(game_dir, info=None):
@@ -113,11 +127,11 @@ VERSIONS = {(1, 14, 3): '1.14d', (1, 14, 2): '1.14c', (1, 14, 1): '1.14b', (1, 1
 
 def _child(folder, name):
     """Resolve a game path case-insensitively on case-sensitive hosts."""
-    exact = os.path.join(folder, name)
+    exact = _filesystem_path(os.path.join(folder, name))
     if os.path.exists(exact):
         return exact
     try:
-        with os.scandir(folder) as entries:
+        with os.scandir(_filesystem_path(folder)) as entries:
             return next((entry.path for entry in entries if entry.name.lower() == name.lower()), None)
     except OSError:
         return None
@@ -134,12 +148,17 @@ def _mod_config(folder):
     if path is None:
         return {}
     try:
-        with open(path, encoding='latin1') as f:
-            return {key.strip().lower(): value.strip().strip('"')
-                    for line in f if not line.lstrip().startswith(('#', ';'))
-                    for key, sep, value in [line.partition('=')] if sep}
+        raw = Path(path).read_bytes()
     except OSError:
         return {}
+    encoding = 'utf-16' if raw.startswith((b'\xff\xfe', b'\xfe\xff')) else 'utf-8-sig'
+    try:
+        config = raw.decode(encoding)
+    except UnicodeError:
+        config = raw.decode('mbcs' if os.name == 'nt' else 'latin1', errors='replace')
+    return {key.strip().lower(): value.strip().strip('"')
+            for line in config.splitlines() if not line.lstrip().startswith(('#', ';'))
+            for key, sep, value in [line.partition('=')] if sep}
 
 
 def _game_version(folder):
@@ -157,8 +176,9 @@ def _loose_excel(folder):
         if folder is None:
             return {}
     try:
-        return {f.lower(): os.path.join(folder, f) for f in os.listdir(folder)
-                if f.lower().endswith(('.bin', '.txt')) and os.path.isfile(os.path.join(folder, f))}
+        paths = ((f.lower(), _filesystem_path(os.path.join(folder, f))) for f in os.listdir(folder)
+                 if f.lower().endswith(('.bin', '.txt')))
+        return {name: path for name, path in paths if os.path.isfile(path)}
     except OSError:
         return {}
 
@@ -166,7 +186,7 @@ def _loose_excel(folder):
 def detect(game_dir, base_dir=None):
     """Resolve a game, its D2SE core if present, and the base supplying shared archives."""
     empty = {'kind': None, 'version': None, 'mods': [], 'supported': False}
-    if not game_dir or not os.path.isdir(game_dir):
+    if not game_dir or not os.path.isdir(_filesystem_path(game_dir)):
         return empty
     archives = _directory_archives(game_dir)
     names = [os.path.basename(p) for p in archives]
@@ -183,7 +203,7 @@ def detect(game_dir, base_dir=None):
     if not local_base and not mod:
         return empty
 
-    configured_base = next((os.path.join(here, config[k].replace('\\', os.sep))
+    configured_base = next((os.path.normpath(os.path.join(here, os.path.expandvars(config[k]).replace('\\', os.sep)))
                             for k in ('basegamefolder', 'gamepath') if config.get(k)), None)
     if base_dir is None and not local_base:
         base_dir = _raw_settings().get('profile_base_dir')
@@ -195,7 +215,9 @@ def detect(game_dir, base_dir=None):
         d2se_dir = _child(base, 'D2SE')
         cores = _child(d2se_dir, 'CORES') if d2se_dir else None
         if cores and os.path.isdir(cores):
-            core = _child(cores, version) if version else None
+            core = _child(cores, version) if _save_version(version) else None
+            if core and not os.path.isdir(core):
+                core = None
             if version is None:
                 try:
                     choices = [entry.name for entry in Path(cores).iterdir()
@@ -234,6 +256,26 @@ def _detection_label(info):
     return f'{label} - {status}'
 
 
+def _windows_saved_games():
+    from ctypes import byref, c_long, c_void_p, create_string_buffer, windll, wstring_at
+
+    # FOLDERID_SavedGames in the GUID structure's byte order.
+    folder_id = create_string_buffer(bytes.fromhex('ff325c4c9dbbb043b5b42d72e54eaaa4'), 16)
+    path = c_void_p()
+    ole = windll.ole32
+    initialize = ole.CoInitializeEx
+    initialize.restype = c_long
+    initialized = initialize(None, 2) >= 0
+    try:
+        if windll.shell32.SHGetKnownFolderPath(byref(folder_id), 0x4000, None, byref(path)) == 0 and path.value:
+            return wstring_at(path)
+    finally:
+        if path.value:
+            ole.CoTaskMemFree(path)
+        if initialized:
+            ole.CoUninitialize()
+
+
 def save_dir(game_dir, home=None):
     """Where the game in game_dir keeps its characters (only detected - nothing is read here): a Wine prefix's
     drive_c/users/<user>/Saved Games/Diablo II (1.14x; 'Public' last), the Windows user's Saved Games\\Diablo II,
@@ -251,17 +293,14 @@ def save_dir(game_dir, home=None):
         if found:
             return found[0]
     if os.name == 'nt':
-        p = os.path.join(home or os.path.expanduser('~'), 'Saved Games', 'Diablo II')
+        saved_games = (None if home is not None else _windows_saved_games())
+        saved_games = saved_games or os.path.join(
+            home or os.environ.get('USERPROFILE') or os.path.expanduser('~'), 'Saved Games')
+        p = _filesystem_path(os.path.join(saved_games, 'Diablo II'))
         if os.path.isdir(p):
             return p
-    p = os.path.join(game_dir, 'Save')
-    if os.path.isdir(p):
-        return p
-    try:
-        q = next((os.path.join(game_dir, f) for f in os.listdir(game_dir) if f.lower() == 'save'), None)
-    except OSError:
-        q = None
-    return q if q and os.path.isdir(q) else None
+    local = _child(game_dir, 'Save')
+    return local if local and os.path.isdir(local) else None
 
 
 def _use_save_dir(game_dir, root=None, info=None):
@@ -270,7 +309,9 @@ def _use_save_dir(game_dir, root=None, info=None):
     folder of the profile (root/saves) - never the Median XL saves (the collector's own default)."""
     if os.environ.get('MXL_SAVE_DIR') and not os.environ.get('MXL_SAVE_DIR_AUTO'):
         return None
-    if (info or detect(game_dir)).get('mod'):
+    info = info or detect(game_dir)
+    version = info.get('version') or ''
+    if info.get('mod') or (version and not version.startswith('1.14')):
         local = _child(game_dir, 'Save')
         d = local if local and os.path.isdir(local) else None
     else:
@@ -811,7 +852,7 @@ def install():
     if info['kind'] != 'd2' or not info['supported']:
         raise RuntimeError(f'Could not open game profile {game_dir}: {_detection_label(info)}.')
     pid = profile_id(game_dir, info)
-    root = os.path.join(paths.USER_DIR, 'profiles', pid)
+    root = _filesystem_path(os.path.join(paths.USER_DIR, 'profiles', pid))
     data_dir = os.path.join(root, 'data')
     started = perf_counter()
     cached = data_ok(game_dir, data_dir, info)
@@ -1316,6 +1357,8 @@ def _patch_install():
     GI = gi.GameInstall
 
     def check_data(self, startup=False, *a, **k):
+        if not detect(self.game_dir)['supported']:
+            return False
         moved = _rebind(self)
         from mxl_boot import extract_profile
 
@@ -1346,7 +1389,7 @@ def rebind(game_dir):
     pid = profile_id(game_dir, info)
     if pid == _state.get('id') and os.path.normcase(game_dir) == os.path.normcase(_state.get('game_dir') or ''):
         return None
-    root = os.path.join(paths.USER_DIR, 'profiles', pid)
+    root = _filesystem_path(os.path.join(paths.USER_DIR, 'profiles', pid))
     data_dir = os.path.join(root, 'data')
     _state.update(info, game_dir=game_dir, id=pid, root=root, data_dir=data_dir)
     _set_data_dir(data_dir)

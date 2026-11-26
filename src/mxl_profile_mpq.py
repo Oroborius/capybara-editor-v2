@@ -15,8 +15,9 @@ def _open_archive(path, flags):
 
     import _winapi
     import msvcrt
+    from mxl_profile import _filesystem_path
 
-    handle = _winapi.CreateFile(os.fsdecode(path), 0x80000000, 7, 0, 3, 0x80, 0)
+    handle = _winapi.CreateFile(_filesystem_path(os.fsdecode(path)), 0x80000000, 7, 0, 3, 0x80, 0)
     # GENERIC_READ, share read/write/delete, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL.
     try:
         return msvcrt.open_osfhandle(handle, flags)
