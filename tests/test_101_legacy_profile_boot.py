@@ -163,5 +163,54 @@ main()
         T.check(not list((user / 'profiles').glob('*/data/install.json')), 'failed extraction did not publish data')
 
 
+@T.test
+def sharing_violation_retries_after_worker_cleanup():
+    from tkinter import messagebox
+    from unittest.mock import patch
+
+    from mxl_boot import ProfileArchiveLocked, extract_profile
+    import mxl_profile
+
+    root = Path(T.tmp())
+    archive = root / 'patch_d2.mpq'
+    out = root / 'data'
+    out.mkdir()
+    manifest = out / 'install.json'
+    manifest.write_text('previous cache')
+
+    error = PermissionError('sharing violation')
+    error.winerror = 32
+    with patch('mxl_profile_mpq.ProfileMPQ', side_effect=error):
+        try:
+            mxl_profile._open([str(archive)], extracting=True)
+        except ProfileArchiveLocked as locked:
+            T.eq(locked.__cause__, error, 'preserve the Windows sharing error')
+        else:
+            raise AssertionError('the locked archive was silently skipped')
+
+    calls = []
+
+    def run(command, **kwargs):
+        work_data = Path(command[-2])
+        work_data.mkdir()
+        calls.append(work_data.parent)
+        status = 2 if len(calls) == 1 else 0
+        (work_data / 'install.json').write_text('partial' if status else 'replacement')
+        return subprocess.CompletedProcess(command, status)
+
+    def retry(title, message):
+        T.eq(message, 'Close Diablo II and press Retry.', 'actionable retry instructions')
+        T.eq(manifest.read_text(), 'previous cache', 'old cache survives failed extraction')
+        T.check(not calls[0].exists(), 'failed work directory removed before Retry')
+        return True
+
+    with patch('subprocess.run', side_effect=run), patch.object(
+            messagebox, 'askretrycancel', side_effect=retry) as dialog:
+        extract_profile(str(root), str(out))
+    T.eq(dialog.call_count, 1, 'one retry dialog')
+    T.eq(manifest.read_text(), 'replacement', 'replacement published after successful retry')
+    T.check(all(not work.exists() for work in calls), 'all temporary work directories removed')
+
+
 sys.path.insert(0, T.APP)
 T.main(globals())

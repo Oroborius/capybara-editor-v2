@@ -29,7 +29,7 @@ EXCEL = ('armor arena armtype automagic automap belts bodylocs books charstats c
          'storepage superuniques treasureclassex uniqueappellation uniqueitems uniqueprefix uniquesuffix uniquetitle '
          'weapons itemscode skillscode skilldesccode missilescode monstatscode').split()
 STRINGS = ('string', 'expansionstring', 'patchstring')
-EXTRACT_VERSION = 4
+EXTRACT_VERSION = 5
 BASE_ARCHIVE_NAMES = frozenset(n + '.mpq' for n in (
     'd2data', 'd2sfx', 'd2speech', 'd2delta', 'd2kfixup', 'd2exp', 'patch_d2', 'd2char', 'd2music',
     'd2xmusic', 'd2xtalk', 'd2xvideo', 'd2video',
@@ -346,7 +346,7 @@ def _fingerprint(game_dir, info=None):
             'version': info['version']}
 
 
-def _open(paths):
+def _open(paths, *, extracting=False):
     from time import perf_counter
 
     from mxl_boot import phase
@@ -362,6 +362,9 @@ def _open(paths):
             out.append(archive)
             phase(f'open archive {p}', started)
         except Exception as err:
+            if extracting and getattr(err, 'winerror', None) in (32, 33):
+                from mxl_boot import ProfileArchiveLocked
+                raise ProfileArchiveLocked(p) from err
             _log(f'could not open archive {p}: {err}')
     return out
 
@@ -404,9 +407,9 @@ def extract(game_dir, out, progress=None, icons=True):
     phase('detect extraction profile', started)
     started = perf_counter()
     local = _directory_archives(game_dir) if info.get('mod') else []
-    mod_stack = _open([p for p in local if not os.path.basename(p).lower().startswith(_NO_DATA)])
+    mod_stack = _open([p for p in local if not os.path.basename(p).lower().startswith(_NO_DATA)], extracting=True)
     base_stack = _open([p for p in fingerprint['archive_order']
-                        if p not in local and not os.path.basename(p).lower().startswith(_NO_DATA)])
+                        if p not in local and not os.path.basename(p).lower().startswith(_NO_DATA)], extracting=True)
     stack = mod_stack + base_stack
     phase('open archive stack', started)
     started = perf_counter()

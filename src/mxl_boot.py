@@ -23,6 +23,11 @@ def report_error(error):
 
 _PROFILE_WORKER = '--capy-extract-profile'
 PROFILE_TIMEOUT = 12
+_ARCHIVE_LOCK_EXIT = 2
+
+
+class ProfileArchiveLocked(RuntimeError):
+    pass
 
 
 def _extract_worker(game_dir, output, transcript):
@@ -44,6 +49,9 @@ def _extract_worker(game_dir, output, transcript):
             install()
             _install_decrypt()
             extract(game_dir, output)
+        except ProfileArchiveLocked:
+            log.exception('game archive locked')
+            return _ARCHIVE_LOCK_EXIT
         except (Exception, SystemExit):
             log.exception('profile extraction failed')
             return 1
@@ -54,6 +62,21 @@ def _extract_worker(game_dir, output, transcript):
 
 
 def extract_profile(game_dir, out):
+    from tkinter import messagebox
+
+    from mxl_splash import close
+
+    while True:
+        try:
+            return _extract_profile_once(game_dir, out)
+        except ProfileArchiveLocked:
+            close()
+            if not messagebox.askretrycancel(
+                    'Game data extraction', 'Close Diablo II and press Retry.'):
+                raise
+
+
+def _extract_profile_once(game_dir, out):
     """Run MPQ decompression in a process the editor can terminate and diagnose."""
     import subprocess
     from tempfile import TemporaryDirectory
@@ -84,6 +107,8 @@ def extract_profile(game_dir, out):
                 with open(transcript, encoding='utf-8', errors='replace') as trace:
                     for line in trace:
                         log.info('extraction: %s', line.rstrip())
+        if result.returncode == _ARCHIVE_LOCK_EXIT:
+            raise ProfileArchiveLocked(f'A game archive is locked in {game_dir}.')
         if result.returncode or not os.path.isfile(os.path.join(data, 'install.json')):
             raise RuntimeError(f'Game data extraction failed for {game_dir} (worker exit {result.returncode}).')
         _publish_data(data, out)
