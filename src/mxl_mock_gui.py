@@ -307,7 +307,7 @@ class MockPage:
         # read-only: the game cannot save the clone (gaining xp at level 127 resets it to 99); the editor keeps
         # the flag when it saves
         bar = ttk.Frame(left)
-        bar.grid(row=2, column=0, columnspan=3, sticky='ew')
+        bar.grid(row=2, column=0, columnspan=2, sticky='ew')
         self.read_only = tk.BooleanVar(value=True)
         ttk.Checkbutton(bar, text=T('mock.readonly', 'Read-only'), variable=self.read_only).pack(side='left')
         _Tip(bar.winfo_children()[0], T('mock.h.readonly', 'keeps level 127: the game cannot save the clone'))

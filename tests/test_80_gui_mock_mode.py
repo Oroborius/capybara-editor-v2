@@ -151,6 +151,12 @@ def toggle_tab_analyzer_generator():
     T.check(next(r[2] for r in ra if r[1] == 'Mana') != next(r[2] for r in rb if r[1] == 'Mana'), 'side B mana')
     import mxl_tabs
     mxl_tabs._state['nb'].select(page.host)
+    page.nb.select(page.nb.tabs()[0])
+    T.pump()
+    calc = page.calc_btn
+    x = calc.winfo_rootx() + calc.winfo_width() // 2
+    y = calc.winfo_rooty() + calc.winfo_height() // 2
+    T.eq(G.root.winfo_containing(x, y), calc, 'Calc all is reachable by mouse')
     _shot('v80-800x600.png', '800x600+0+0')
     _shot('v80-1280x800.png', '1280x800+0+0')
     G.root.geometry('1180x680+0+0')
