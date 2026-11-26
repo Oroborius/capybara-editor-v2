@@ -487,11 +487,12 @@ def decode_blob(blob, isc, base):
 
 # ============================================================================================ analyzer
 class Unit:
-    """One aura 'source' holder: a top-level item (its own + set lists), a socketed jewel or a charm."""
-    __slots__ = ('kind', 'name', 'lists', 'side', 'ith')
+    """An item, socket filler, charm or character-level set bonus that can contribute stats."""
+    __slots__ = ('kind', 'name', 'lists', 'side', 'ith', 'set_id', 'set_lists')
 
-    def __init__(self, kind, name, lists, side=None, ith=False):
+    def __init__(self, kind, name, lists, side=None, ith=False, *, set_id=None, set_lists=()):
         self.kind, self.name, self.lists, self.side, self.ith = kind, name, lists, side, ith
+        self.set_id, self.set_lists = set_id, set_lists
 
     def lines(self):
         """The stat lines that ADD (an Ith unit vanishes: no levels / stats; its aura sources still count)."""
@@ -520,6 +521,89 @@ def _is_ith(it):
     return rw is not None and not rw
 
 
+def _set_tables(data):
+    """Read the selected 1.10+ tables and assign member slots in the game's load order."""
+    from mxl_profile_tables import bin_rows
+
+    if data is None or not getattr(data, 'folder', None):
+        return {}, {}, ()
+    try:
+        rows = []
+        for name in ('setitems', 'sets'):
+            with open(os.path.join(data.folder, name + '.bin'), 'rb') as f:
+                rows.append(bin_rows(f.read()))
+        items, sets = rows
+    except OSError:
+        return {}, {}, ()
+    if not items or len(items[0]) != 440 or not sets or len(sets[0]) != 296:
+        return {}, {}, ()
+
+    members, counts = {}, {}
+    for item_id, row in enumerate(items):
+        group = struct.unpack_from('<h', row, 0x2C)[0]
+        slot = counts.get(group, 0)
+        if 0 <= group < len(sets) and slot < 6:
+            members[item_id] = group, slot, row[0x87]
+            counts[group] = slot + 1
+    return members, counts, sets
+
+
+def _set_effects(model, side):
+    """Active member masks and the owner-level set effects for one weapon side."""
+    members, counts, sets = model.get('set_tables', ({}, {}, ()))
+    if not members:
+        return members, {}, [], set()
+    masks = {}
+    for item_id in model['set_ids'][None] | model['set_ids'][side]:
+        if item_id in members:
+            group, slot, _ = members[item_id]
+            masks[group] = masks.get(group, 0) | (1 << slot)
+
+    if not masks:
+        return members, masks, [], set()
+
+    from mxl_rules import mods_stats
+
+    bonuses = []
+    complete = set()
+    for group, mask in masks.items():
+        count = mask.bit_count()
+        partial_count = min(count, counts[group] - 1)
+        row = sets[group]
+        partial_end = 0x10 + 32 * max(0, partial_count - 1)
+        mods = [struct.unpack_from('<4i', row, offset) for offset in range(0x10, partial_end, 16)]
+        if count == counts[group]:
+            complete.add(group)
+            for offset in range(0x90, 0x110, 16):
+                mod = struct.unpack_from('<4i', row, offset)
+                if mod[0] < 0:
+                    break
+                mods.append(mod)
+        data = model['set_data']
+        valid = [mod for mod in mods if 0 <= mod[0] < len(data.props)]
+        lines = _stat_lines(mods_stats(valid, data, 'min'))
+        if lines:
+            bonuses.append(Unit('set', f'Set {group}', [lines], side))
+    return members, masks, bonuses, complete
+
+
+def _stat_lines(rows):
+    return [(stat['id'], stat.get('param'), stat['value']) for stat in rows]
+
+
+def _active_set_lists(unit, members, masks):
+    if unit.set_id not in members:
+        return []
+    group, slot, add_func = members[unit.set_id]
+    mask = masks.get(group, 0)
+    if add_func == 1:
+        other_slots = [i for i in range(6) if i != slot]
+        return [lines for i, lines in zip(other_slots, unit.set_lists) if lines is not None and mask & (1 << i)]
+    if add_func == 2:
+        return [lines for lines in unit.set_lists[:max(0, mask.bit_count() - 1)] if lines is not None]
+    return []
+
+
 def model_from_character(ch, size=None):
     """Neutral model of a mxl_char.Character (any class): header values, character stats, skills, units."""
     head = bytes(ch.head)
@@ -531,14 +615,13 @@ def model_from_character(ch, size=None):
     units = []
 
     def lists_of(it):
-        L = [[(s['id'], s.get('param'), s['value']) for s in it.get('stats', [])]]
-        for i in range(5):
-            if it.get(f'set_stats_{i}') is not None:
-                L.append([(s['id'], s.get('param'), s['value']) for s in it[f'set_stats_{i}']])
+        lists = [_stat_lines(it.get('stats', []))]
         if it.get('stats_runeword') is not None:
-            L.append([(s['id'], s.get('param'), s['value']) for s in it['stats_runeword']])
-        return L
+            lists.append(_stat_lines(it['stats_runeword']))
+        return lists
 
+    data = getattr(ch, 'data', None)
+    set_tables = _set_tables(data)
     set_ids = {'A': set(), 'B': set(), None: set()}
     shields = {}
     excess = stash_ith = 0
@@ -550,9 +633,17 @@ def model_from_character(ch, size=None):
             nm = f"{code.strip()}@{it.get('equipped')}"
             is_wpn = it.get('equipped') in (4, 5, 11, 12) and not is_shield(code)
             ith = is_wpn and _is_ith(it)          # nondescript runeword: vanishes, sources stay (a real runeword counts)
-            units.append(Unit('gear', nm, lists_of(it), side, ith))
+            item_id = None
+            set_lists = ()
             if it.get('quality') in (5, 'set'):
-                set_ids[side].add(it.get('set_unique_id'))
+                raw = getattr(it, '_raw', None)
+                flags = struct.unpack_from('<I', raw, 2)[0] if raw and len(raw) >= 6 else it.get('flags', 0)
+                if not flags & (0x100 | 0x4000):     # broken or disabled items cannot complete a set
+                    item_id = it.get('set_unique_id')
+                    set_ids[side].add(item_id)
+                    set_lists = tuple(_stat_lines(stats) if stats is not None else None
+                                      for stats in (it.get(f'set_stats_{i}') for i in range(5)))
+            units.append(Unit('gear', nm, lists_of(it), side, ith, set_id=item_id, set_lists=set_lists))
             if it.get('equipped') in (4, 5, 11, 12) and is_shield(code):
                 shields[side] = code
             kids = it.get('socketed') or []
@@ -575,7 +666,7 @@ def model_from_character(ch, size=None):
     return dict(name=ch.name, cls=cls, level=st.get(12, 0), active_weapon=struct.unpack_from('<I', head, 0x10)[0],
                 base_str=st.get(0, 0), base_ene=st.get(1, 0), base_vit=st.get(3, 0),
                 base_mana_raw=st.get(9, 0), base_life_raw=st.get(7, 0), stat_points=st.get(4, 0), skills=sk,
-                units=units, set_ids=set_ids,
+                units=units, set_ids=set_ids, set_data=data, set_tables=set_tables,
                 shields=shields, size=size if size is not None else len(ch.raw), excess_jewels=excess,
                 stash_ith=stash_ith)
 
@@ -652,7 +743,7 @@ ABS_LVL_LINE = 63                    # absorb by character level line value (x c
 # soaks nothing (host and joiner). The game does not add the lines: it sums the RAW 22-bit fields of every item
 # (1.13c D2Common: the stat getter sums child lists, then op 6 decodes once), so 10 + 10 soaked all (one 10 did
 # not) - several lines give one garbled field, not the sum. So: one by-time line per element, on gear / a jewel.
-ABS_TIME_KINDS = ('gear', 'jewel')
+ABS_TIME_KINDS = ('gear', 'jewel', 'set')
 # per element: (name, flat res, max res, res / lvl, absorb / lvl, absorb by time)
 ELEMENTS = (('cold', 43, 44, 230, 234, 288), ('fire', 39, 40, 231, 235, 289), ('light', 41, 42, 232, 236, 290))
 PIERCE_STATS = {'cold': 335, 'fire': 333, 'light': 334}
@@ -886,9 +977,16 @@ def totals(model, side=None):
     T, N = {}, {}
     aura_lv, sources, ctc, nonclass, names = {}, {}, [], {}, {}
     nlists, longest = 0, 0
+    members, masks, bonuses, complete = _set_effects(model, side)
+    active = []
     for u in units:
-        nlists += len(u.lists)
-        longest = max([longest] + [len(L) for L in u.lists])
+        partial = _active_set_lists(u, members, masks)
+        active.append(Unit(u.kind, u.name, u.lists + partial, u.side, u.ith) if partial else u)
+    active.extend(bonuses)
+    for u in active:
+        if u.kind != 'set':
+            nlists += len(u.lists)
+            longest = max([longest] + [len(L) for L in u.lists])
         for sid, p, v in u.lines():
             T[sid] = T.get(sid, 0) + v
             N[sid] = N.get(sid, 0) + 1
@@ -903,7 +1001,7 @@ def totals(model, side=None):
             sources.setdefault(s, {}).setdefault(u.kind, 0)
             sources[s][u.kind] += 1
             names.setdefault(s, []).append(u.name)
-    return dict(units=units, side=side, T=T, N=N, aura_lv=aura_lv, sources=sources, ctc=ctc, nonclass=nonclass,
+    return dict(units=active, side=side, T=T, N=N, complete_sets=complete, aura_lv=aura_lv, sources=sources, ctc=ctc, nonclass=nonclass,
                 lists=nlists, longest=longest, source_units=names)
 
 
@@ -926,15 +1024,21 @@ def pct_fp(v, pct):
 
 
 def mana_of(model, t, bo=False, energy=False):
-    full = all(i in (model['set_ids'][None] | model['set_ids'][t['side']]) for i in SIGON_SET_IDS)
+    complete = len(t.get('complete_sets', ()))
+    fallback = 0
+    if not model.get('set_tables', (None, None, ()))[2]:
+        ids = model['set_ids'][None] | model['set_ids'][t['side']]
+        if all(i in ids for i in SIGON_SET_IDS):
+            complete = 1
+            fallback = SET_BONUS
     v = model['base_mana_raw']
     if energy and model['cls'] < 7:
         v += int(model.get('stat_points', 0) * Fraction(MANA_PER_ENERGY[model['cls']]) * 256)
-    v += 256 * (t['T'].get(9, 0) + (SET_BONUS if full else 0))
+    v += 256 * (t['T'].get(9, 0) + fallback)
     v = pct_fp(v, t['T'].get(77, 0) + (bo_pct(model, t) if bo else 0))
     if model['cls'] < 7:          # item Energy (stat 1) adds after the % boost (in game: 1000 base, +50%, +90 Energy
         v += int(t['T'].get(1, 0) * Fraction(MANA_PER_ENERGY[model['cls']]) * 256)   # sorceress -> 1680)
-    return Fraction(v, 256), full
+    return Fraction(v, 256), bool(complete)
 
 
 def life_of(model, t, bo=False):
@@ -1145,7 +1249,7 @@ def analyze(model, side=None, bo=False, energy=False, *, targets=None):
     add('tk', 'Telekinesis', f"TK {tk} -> q {b['q']}, ratio {float(b['ratio']):.4g}, band width {b['width']}"
         + ('' if model['cls'] == 1 else ' (TK / ES need a Sorceress)'), INFO if model['cls'] == 1 else WARN)
     add('offscreen', 'Off-screen mana', _num(b['offscreen']), GOOD if b['offscreen'] > 0 or b['funky'] else BAD)
-    add('setbonus', 'Sigon full set (+20 mana)', 'yes' if full else 'no', INFO)
+    add('setbonus', 'Complete sets', str(len(t['complete_sets']) or int(full)), INFO)
     bp, pts = bo_pct(model, t), model.get('stat_points', 0)
     v.update(bo_pct=bp, stat_points=pts, mana_nobo=mana_of(model, t)[0])
     if (bp and not bo) or (pts and not energy):
@@ -2473,6 +2577,7 @@ def model_from_plan(P, raw=None):
     """The analyzer model of a plan without writing a file (the same keys as model_from_character): the summary
     panel of the generator; analyze(model_from_plan(P)) == analyze(model_from_character(the written file))."""
     o = P['o']
+    set_tables = _set_tables(_DATA)
     units, set_ids, shields = [], {'A': set(), 'B': set(), None: set()}, {}
     stash_ith = 0
     for u in P['units']:
@@ -2496,12 +2601,16 @@ def model_from_plan(P, raw=None):
         if u.name.startswith('ithstash'):
             stash_ith += 1                                 # stash Ith charms count for nothing
             continue
-        units.append(Unit(u.kind, nm, L, u.side, u.ith))
+        if u.kind == 'gear' and set_tables[0]:
+            main = L[:1] + L[6:]
+            units.append(Unit(u.kind, nm, main, u.side, u.ith, set_id=u.set_id, set_lists=L[1:6]))
+        else:
+            units.append(Unit(u.kind, nm, L, u.side, u.ith))
     sk = _skills(P)[2:]
     first = CLASS_FIRST_SKILL[o['cls']] if o['cls'] < 7 else 0
     return dict(name=P['name'], cls=o['cls'], level=o['level'], active_weapon=0, base_str=1023, base_ene=0,
                 base_vit=0, base_mana_raw=P['mana']['base_raw'], base_life_raw=P['life'].get('base_raw', (1 << 21) - 1), stat_points=0,
-                skills={first + i: lv for i, lv in enumerate(sk) if lv}, units=units, set_ids=set_ids,
+                skills={first + i: lv for i, lv in enumerate(sk) if lv}, units=units, set_ids=set_ids, set_data=_DATA, set_tables=set_tables,
                 shields=shields, size=len(raw) if raw is not None else len(build(P)), excess_jewels=0, es=o['es'],
                 target_tk=o['tk'],
                 stash_ith=stash_ith)

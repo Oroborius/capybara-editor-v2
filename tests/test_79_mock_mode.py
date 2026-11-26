@@ -11,6 +11,7 @@ import os
 import shutil
 import sys
 from fractions import Fraction
+from types import SimpleNamespace
 
 import capytest as T
 
@@ -89,7 +90,7 @@ REFERENCE = [
     ('clones/clone-73.d2s', None, 72, '1572581.37', 'good'),
     ('clones/clone-76.d2s', None, 31, '1572194.27', 'good'),
     ('clones/clone-28.d2s', None, 30, '3145727.16', 'good'),
-    ('clone-51.d2s', None, 39, '971798.82', 'bad'),
+    ('clone-51.d2s', None, 39, Fraction(229759679, 256), 'bad'),
     ('clones/clone-20.d2s', None, 53, '1572005.77', 'good'),
 ]
 
@@ -893,8 +894,11 @@ def rule_absorb_need_filled_by_level_then_by_time():
             T.eq(sum(M.abs_time_value(x[3]) for x in bt), sum(a['time']), f'{key} {name}: by time')
             if a['res'] <= M.HELL_RES:
                 T.eq(a['time'], [], f'{key} {name}: no by time (no resist)')
-        short = any(a['res'] > M.HELL_RES and a['total'] < int(a['need']) for a in A.values())
-        T.eq(st.get('absorb'), M.WARN if short else M.GOOD, f'{key}: absorb check')
+        # Sigon's full set supplies 12 fire resistance on top of the written lines.
+        effective = {name: min(M.MAX_RES, a['res'] + (12 if name == 'fire' else 0)) for name, a in A.items()}
+        short = any(res > M.HELL_RES and A[name]['total'] < int(M.absorb_need(res))
+                    for name, res in effective.items())
+        T.eq(st.get('absorb'), M.WARN if short else M.GOOD, f'{key}: absorb check with worn set bonuses')
         T.check('abs_time' not in st, f'{key}: no by-time warning on a generated file')
     P = M.plan('mock_high', 'Abs')
     T.eq((P['o']['absorb']['cold']['lvl'], P['o']['absorb']['cold']['time']), (178, [767]), 'mock_high cold')
@@ -997,8 +1001,8 @@ def defense_totals_compare_with_generator_targets_on_both_sides():
         return {key: (value, status) for key, _, value, status in M.analyze(model, side, targets=targets)['checks']}
 
     a, b = rows('A'), rows('B')
-    T.eq(a['target_dr'], ('1000 / 1000 target', M.GOOD), 'DR uses the generator total')
-    T.eq(b['target_dr'], ('1025 / 1000 target', M.WARN), 'DR follows the active switch')
+    T.eq(a['target_dr'], ('1007 / 1000 target', M.WARN), 'full-set DR is added to the written total')
+    T.eq(b['target_dr'], ('1032 / 1000 target', M.WARN), 'DR follows the active switch')
     T.eq(a['target_pierce_cold'], ('117% / 117% target', M.GOOD), 'cold pierce')
     T.eq(b['target_pierce_fire'], ('115% / 88% target', M.WARN), 'fire pierce on B')
     T.eq(b['target_pierce_light'], ('0% / 0% target', M.GOOD), 'lightning shown even at zero')
@@ -1042,7 +1046,7 @@ def thorns_damage_target_uses_reflection_and_active_defenses():
         report = M.analyze(model)
         level = plan['o']['thorns']
         damage, maximum, sources = report['values']['aura_damage']['Thorns']
-        T.eq((damage, maximum, sources), (M.thorns_return(level, 0, dr, 255, Fraction(es, 100)),
+        T.eq((damage, maximum, sources), (M.thorns_return(level, 0, dr + 7, 255, Fraction(es, 100)),
                                         damage, 1), 'one source returns Thorns only')
         T.check(target * .99 <= damage <= target, f'closest safe hit to {target}: {damage}')
         T.eq(plan['o']['barbs'], 0, 'the safe Thorns hit needs no Barbs')
@@ -1053,7 +1057,7 @@ def thorns_damage_target_uses_reflection_and_active_defenses():
     model['units'].append(M.Unit('charm', 'extra', [[(151, M.THORNS, 1)]]))
     a = M.analyze(model)['values']
     T.eq(a['sources']['Thorns'].get('charm'), 1, 'the added source is counted')
-    returned = M.thorns_return(level + 1, 0, dr, 255, Fraction(es, 100))
+    returned = M.thorns_return(level + 1, 0, dr + 7, 255, Fraction(es, 100))
     T.eq(a['aura_damage']['Thorns'], (returned, returned, 1), 'both item sources form one aura')
     T.eq(M.solve_aura_dmg(M.THORNS, 1, max_lines=1), None, 'an unreachable target does not select an unsafe level')
 
@@ -1375,6 +1379,39 @@ def auto_meditation_lands_at_the_cap_and_rollover_is_bad():
         T.check(False, 'over-cap Meditation refused')
     except M.PlanError:
         pass
+
+
+@T.test
+def set_bonus_lists_and_owner_bonuses_follow_weapon_side():
+    """Civerb's shield uses member slots, its amulet uses a count, and its scepter has add_func 0."""
+    E = engine()
+    M = E.M
+
+    def item(row, code, body, lists=(), *, flags=0, location=1):
+        record = dict(quality='set', set_unique_id=row, code=code, equipped=body, location=location, flags=flags)
+        for index, value in lists:
+            record[f'set_stats_{index}'] = [dict(id=9, value=value)]
+        return T.NS(it=record)
+
+    head = bytearray(64)
+    head[0x10] = 1
+    ch = SimpleNamespace(head=head, stats=[], skills=b'if', items=[
+        item(0, 'lrg ', 5, [(0, 10), (1, 20)]),
+        item(0, 'lrg ', 12, [(0, 10), (1, 20)]),
+        item(1, 'amu ', 2, [(1, 40)]),
+        item(1, 'amu ', 6),  # a duplicate leaves the set member count unchanged
+        item(2, 'gsc ', 4, [(0, 80)]),
+        item(2, 'gsc ', 11, flags=0x100),
+        item(2, 'gsc ', 0, location=0),
+    ], raw=b'', name='Sets', data=E.data)
+
+    model = M.model_from_character(ch)
+    a, b = M.totals(model, 'A'), M.totals(model)
+    T.eq((a['T'][9], b['T'][9]), (70, 10), 'pair-specific, count-based and sparse saved lists')
+    T.eq((a['T'][39], b['T'][39]), (15, 15), 'two-item fire resistance applies once per side')
+    T.eq((a['T'][0], a['T'][41], b['T'].get(0), b['T'].get(41)), (15, 25, None, None),
+         'only the complete side gets the full-set strength and lightning resistance')
+    T.eq((a['complete_sets'], b['complete_sets']), ({0}, set()), 'the active switch defaults to B')
 
 
 T.main(globals())
