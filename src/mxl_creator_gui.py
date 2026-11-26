@@ -3333,6 +3333,9 @@ def run():
     import mxl_speed                  # free place search in one pass over the stash (same answer, ~300x faster)
     mxl_speed.install()
     import mxl_profile                    # game profile: Median XL (nothing changes) or another D2 game folder
+    if mxl_profile.needs_first_launch():  # the splash is topmost: close it so the game choice is not hidden
+        import mxl_splash
+        mxl_splash.close()
     mxl_profile.install()                 # (its own data folder; before mxl_gui copies paths.DATA_DIR)
     mxl_profile.install_menu()
     import mxl_gui
