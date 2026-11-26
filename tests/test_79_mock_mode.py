@@ -1453,5 +1453,13 @@ def analyzer_handles_empty_classic_and_legacy_characters():
     T.eq(E.M.analyze(E.M.model_from_character(ch))['values']['units'], 0,
          'an unknown item in storage contributes no combat modifiers')
 
+    # A signed socket stat in a mod can lower the capacity below zero.
+    for stats in ([], [dict(id=194, value=-1)]):
+        ch.items = [T.NS(it=dict(code='zxq ', location=1, equipped=4, sockets=0, stats=stats,
+                                 socketed=[dict(stats=[dict(id=9, value=20)])] * 2))]
+        model = E.M.model_from_character(ch)
+        T.eq(model['excess_jewels'], 2, 'both children exceed the effective capacity')
+        T.eq([unit.kind for unit in model['units']], ['gear'], 'out-of-range children are inactive')
+
 
 T.main(globals())
