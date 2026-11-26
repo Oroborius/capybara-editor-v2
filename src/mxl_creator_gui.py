@@ -3318,15 +3318,12 @@ def rename_app(mxl_gui):
 
 
 def run():
-    import mxl_userdir                    # own settings folder; the launcher did it already (splash process too)
-    mxl_userdir.setup()
-    import mxl_splash                    # the loading screen: its own process (the exe again with --capy-splash)
-    if mxl_splash.FLAG_ARG in sys.argv:
-        mxl_splash.main()
-        sys.exit(0)
-    mxl_splash.start()
-    import mxl_log                        # capybara.log in the settings folder: saves, backups, imports, errors
-    mxl_log.install()
+    import mxl_splash
+    import mxl_log
+    from time import perf_counter
+    from mxl_boot import phase
+
+    started = perf_counter()
     import mxl_explode                    # faster implode decoder for the collector's MPQ reader (game art, tables)
     mxl_explode.install()
     import mxl_free                      # no "the game must be closed" checks: editing works while the game is open
@@ -3401,10 +3398,28 @@ def run():
     mxl_log.wrap_saves()                  # writers bound by name in the modules imported since install()
     import mxl_savecheck                  # every file is read by the independent mxlsave before it is written
     mxl_savecheck.install()               # (after every module that wraps or binds the writers)
-    try:
-        mxl_gui.main()
-    finally:
-        mxl_splash.close()
+    if not mxl_profile.is_median():
+        original_init = mxl_gui.App.__init__
+        original_characters = mxl_gui.App.characters
+
+        def timed_characters(self):
+            if getattr(self, '_capy_save_scan_logged', False):
+                return original_characters(self)
+            scanning = perf_counter()
+            characters = original_characters(self)
+            phase(f'scan character saves ({len(characters)} found)', scanning)
+            self._capy_save_scan_logged = True
+            return characters
+
+        def timed_init(self, *args, **kwargs):
+            building = perf_counter()
+            original_init(self, *args, **kwargs)
+            phase('build editor window', building)
+            phase('editor ready', started)
+
+        mxl_gui.App.characters = timed_characters
+        mxl_gui.App.__init__ = timed_init
+    mxl_gui.main()
 
 
 # ------------------------------------------------------------------------------- action log (support zips)

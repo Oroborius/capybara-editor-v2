@@ -9,7 +9,7 @@ What is written:
 - errors: uncaught exceptions (also in Tk callbacks and threads), every error box shown to the user, and the
   print() warnings of the modules (D2 look disabled...), which the windowed exe had nowhere to show.
 
-install() is called first in mxl_creator_gui.run(); wrap_saves() again once every module is imported, so that the
+install() is called first in mxl_boot.launch(); wrap_saves() again once every module is imported, so that the
 names bound with "from mxl_save import edit_stash" use the logging versions too. Nothing here may stop the program:
 every failure of the log itself is swallowed."""
 import functools

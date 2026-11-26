@@ -129,7 +129,7 @@ def _write_atomic(path, data):
             raise
 
 
-def _archive(path):
+def _archive(path, reader=None):
     """One opened game archive per file and size / mtime, shared by every Art (each theme, the base-game reads):
     opening one decrypts its hash and block tables in pure Python (~0.1-0.3 s each). The reader keeps the file
     as a read-only mmap and slices it, so the background warm-up and the main thread can share it. None when
@@ -138,13 +138,13 @@ def _archive(path):
         st = os.stat(path)
     except OSError:
         return None
-    key = (os.path.abspath(path), st.st_size, st.st_mtime_ns)
+    key = (os.path.abspath(path), st.st_size, st.st_mtime_ns, reader)
     with _ARCHIVES_LOCK:
         if key in _ARCHIVES:
             return _ARCHIVES[key]
         try:
             from mpq import MPQ
-            m = MPQ(path)
+            m = (reader or MPQ)(path)
         except Exception:
             m = None
             _BROKEN.add(key[0])
@@ -157,13 +157,14 @@ class _Archives:
     first archive that has it, so a file of one of the first Sigma archives no longer opens (and decrypts the
     tables of) all ~60 of them. Same answer as opening them all first: same order, same first match."""
 
-    def __init__(self, names):
+    def __init__(self, names, reader=None):
         self.names = list(names)
+        self._reader = reader
         self._opened = {}
 
     def _get(self, i):
         if i not in self._opened:
-            self._opened[i] = _archive(self.names[i])
+            self._opened[i] = _archive(self.names[i], self._reader)
         return self._opened[i]
 
     def __iter__(self):

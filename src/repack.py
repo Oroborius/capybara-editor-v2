@@ -87,8 +87,7 @@ if __name__ == '__main__':
         extra['mxl_gui'] = marshal.loads(zlib.decompress(script['data']))  # original GUI, now importable
     # else: in.exe is an already repacked editor exe (its entry script is the launcher, the GUI is in the PYZ)
     pyz = build_pyz(z['data'], extra)
-    launcher = compile("import sys\nimport mxl_userdir\nmxl_userdir.setup()\nimport mxl_splash\nif mxl_splash.FLAG_ARG in sys.argv:\n    mxl_splash.main()\nelse:\n"
-                       "    mxl_splash.start()\n    import mxl_creator_gui\n    mxl_creator_gui.run()\n", 'mxl_gui.py', 'exec')
+    launcher = compile("import mxl_boot\nmxl_boot.launch()\n", 'mxl_gui.py', 'exec')
     ld = marshal.dumps(launcher)
     replace = {'PYZ.pyz': (pyz, len(pyz), 0), 'mxl_gui': (zlib.compress(ld, 9), len(ld), 1)}
     out = build_exe(d, start, ents, info, replace)

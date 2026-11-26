@@ -177,21 +177,18 @@ def fit_to_screen():
     tkinter.Misc.mainloop = mainloop
 
 
-def main():
+def prepare():
     setup_env()
     setup_xft()
     setup_scaling()
-    import mxl_userdir
-    mxl_userdir.setup()
-    import mxl_splash
-    if mxl_splash.FLAG_ARG in sys.argv:
-        mxl_splash.main()
-        return
-    mxl_splash.start()
-    patch_game_check()
-    fit_to_screen()
-    import mxl_creator_gui
-    mxl_creator_gui.run()
+    if '--capy-splash' not in sys.argv:
+        patch_game_check()
+        fit_to_screen()
+
+
+def main():
+    from mxl_boot import launch
+    launch(prepare)
 
 
 if __name__ == '__main__':

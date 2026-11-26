@@ -71,9 +71,9 @@ def _directory_archives(game_dir):
     return [os.path.join(game_dir, f) for _, _, f in opened]
 
 
-def archive_order(game_dir):
+def archive_order(game_dir, info=None):
     """Highest priority first, with the mod above its core and base install."""
-    info = detect(game_dir)
+    info = info or detect(game_dir)
     folders = (game_dir, info.get('core_dir'), info.get('base_dir'))
     if info.get('core_dir') and os.path.abspath(game_dir) == os.path.abspath(info['base_dir']):
         folders = (info['core_dir'], game_dir)
@@ -97,7 +97,7 @@ def _pe_version(path):
     """FileVersion (a, b, c, d) of a PE file's VS_FIXEDFILEINFO, or None."""
     try:
         with open(path, 'rb') as f:
-            b = f.read()
+            b = f.read(32 * 1024 * 1024)
     except OSError:
         return None
     i = b.rfind(b'\xbd\x04\xef\xfe')
@@ -113,8 +113,12 @@ VERSIONS = {(1, 14, 3): '1.14d', (1, 14, 2): '1.14c', (1, 14, 1): '1.14b', (1, 1
 
 def _child(folder, name):
     """Resolve a game path case-insensitively on case-sensitive hosts."""
+    exact = os.path.join(folder, name)
+    if os.path.exists(exact):
+        return exact
     try:
-        return next((os.path.join(folder, f) for f in os.listdir(folder) if f.lower() == name.lower()), None)
+        with os.scandir(folder) as entries:
+            return next((entry.path for entry in entries if entry.name.lower() == name.lower()), None)
     except OSError:
         return None
 
@@ -256,13 +260,13 @@ def save_dir(game_dir, home=None):
     return q if q and os.path.isdir(q) else None
 
 
-def _use_save_dir(game_dir, root=None):
+def _use_save_dir(game_dir, root=None, info=None):
     """MXL_SAVE_DIR set by the user wins; the Linux launcher's own guess (the Median XL save folder,
     MXL_SAVE_DIR_AUTO=1) or none is replaced by the profile game's save folder. When that game has none, an empty
     folder of the profile (root/saves) - never the Median XL saves (the collector's own default)."""
     if os.environ.get('MXL_SAVE_DIR') and not os.environ.get('MXL_SAVE_DIR_AUTO'):
         return None
-    if detect(game_dir).get('mod'):
+    if (info or detect(game_dir)).get('mod'):
         local = _child(game_dir, 'Save')
         d = local if local and os.path.isdir(local) else None
     else:
@@ -327,9 +331,10 @@ def vanilla_ui_theme():
 
 
 # ---------------------------------------------------------------------------------------------------- extraction
-def _fingerprint(game_dir):
+def _fingerprint(game_dir, info=None):
     fp = {}
-    archives = archive_order(game_dir)
+    info = info or detect(game_dir)
+    archives = archive_order(game_dir, info)
     loose = _loose_excel(game_dir)
     for p in [*archives, *sorted(loose.values())]:
         try:
@@ -337,64 +342,79 @@ def _fingerprint(game_dir):
             fp[p] = [st.st_size, st.st_mtime_ns]
         except OSError:
             pass
-    info = detect(game_dir)
     return {'extract_version': EXTRACT_VERSION, 'inputs': fp, 'archive_order': archives,
             'version': info['version']}
 
 
 def _open(paths):
-    import mpq
+    from time import perf_counter
+
+    from mxl_boot import phase
+    from mxl_profile_mpq import ProfileMPQ
+
     out = []
     for p in paths:
+        started = perf_counter()
+        _log(f'opening archive {p}')
         try:
-            out.append(mpq.MPQ(p))
-        except Exception:
-            pass
+            archive = ProfileMPQ(p)
+            archive.profile_path = p
+            out.append(archive)
+            phase(f'open archive {p}', started)
+        except Exception as err:
+            _log(f'could not open archive {p}: {err}')
     return out
 
 
 def _read(archives, name):
     for m in archives:
         try:
-            if m.find(name) is not None:
-                data = m.read(name)
-                if data:
-                    return data
-        except Exception:
-            continue
+            data = m.read(name)
+            if data:
+                return data
+        except Exception as err:
+            _log(f'could not read {name} from {getattr(m, "profile_path", "archive")}: {err}')
     return None
 
 
-def data_ok(game_dir, out):
+def data_ok(game_dir, out, info=None):
     try:
         with open(os.path.join(out, 'install.json'), encoding='utf-8') as f:
             man = json.load(f)
     except (OSError, ValueError):
         return False
-    return man.get('fingerprint') == _fingerprint(game_dir) and os.path.exists(os.path.join(out, 'itemstatcost.bin'))
+    return man.get('fingerprint') == _fingerprint(game_dir, info) and os.path.exists(os.path.join(out, 'itemstatcost.bin'))
 
 
 def extract(game_dir, out, progress=None, icons=True):
     """Tables, strings, animdata.d2 and item icons of the folder's MPQ stack -> out/ (written to out.new, then
     swapped in: an interrupted extraction never leaves a half folder)."""
     import shutil
+    from time import perf_counter
+
+    from mxl_boot import phase
+
+    started = perf_counter()
     tmp = out + '.new'
     shutil.rmtree(tmp, ignore_errors=True)
     os.makedirs(tmp)
-    from mxl_profile_tables import EXCEL_PATH, TEXT_LAYOUTS, apply, bin_rows, project_legacy, text_layouts
+    from mxl_profile_tables import EXCEL_PATH, TEXT_LAYOUTS, apply, project_legacy, text_layouts
     info = detect(game_dir)
+    fingerprint = _fingerprint(game_dir, info)
+    phase('detect extraction profile', started)
+    started = perf_counter()
     local = _directory_archives(game_dir) if info.get('mod') else []
     mod_stack = _open([p for p in local if not os.path.basename(p).lower().startswith(_NO_DATA)])
-    base_stack = _open([p for p in archive_order(game_dir)
+    base_stack = _open([p for p in fingerprint['archive_order']
                         if p not in local and not os.path.basename(p).lower().startswith(_NO_DATA)])
     stack = mod_stack + base_stack
+    phase('open archive stack', started)
+    started = perf_counter()
     loose = _loose_excel(game_dir)
     names = set(EXCEL) | {n.rsplit('.', 1)[0] for n in loose}
     for m in stack:
-        try:
-            lf = m.read('(listfile)')
-        except Exception:
-            lf = None
+        _log(f'reading (listfile) from {m.profile_path}')
+        lf = _read((m,), '(listfile)')
         for line in (lf or b'').decode('latin1').splitlines():
             low = line.strip().lower().replace('/', '\\')
             if low.startswith(EXCEL_PATH) and low.endswith(('.bin', '.txt')):
@@ -410,16 +430,17 @@ def extract(game_dir, out, progress=None, icons=True):
 
     def read_text(name):
         path = loose.get(name + '.txt')
-        return Path(path).read_bytes() if path else _read(stack, EXCEL_PATH + name + '.txt')
+        return _read_loose(path) if path else _read(stack, EXCEL_PATH + name + '.txt')
 
     for k, name in enumerate(sorted(names)):
+        _log(f'reading Excel table {name}')
         bin_name, txt_name = name + '.bin', name + '.txt'
         bin_path, txt_path = loose.get(bin_name), loose.get(txt_name)
 
         def sources():
             if bin_path or txt_path:
-                yield (Path(bin_path).read_bytes() if bin_path else None,
-                       Path(txt_path).read_bytes() if txt_path else None, True)
+                yield (_read_loose(bin_path) if bin_path else None,
+                       _read_loose(txt_path) if txt_path else None, True)
             for archive in mod_stack:
                 yield (_read((archive,), EXCEL_PATH + bin_name),
                        _read((archive,), EXCEL_PATH + txt_name) if name in sizes else None, True)
@@ -429,8 +450,8 @@ def extract(game_dir, out, progress=None, icons=True):
                    _read(base_stack, EXCEL_PATH + txt_name) if name in sizes else None, False)
 
         for binary, txt, is_override in sources():
-            rows = bin_rows(binary) if name in sizes and binary else []
-            compatible = rows and len(rows[0]) == sizes[name]
+            compatible = (name in sizes and binary and len(binary) > 4
+                          and len(binary) - 4 == struct.unpack_from('<I', binary)[0] * sizes[name])
             if txt and name in sizes and (is_override or not compatible):
                 files[txt_name] = preferred[name] = txt
                 # The same or lower compiled table supplies fields absent from the TXT.
@@ -444,9 +465,11 @@ def extract(game_dir, out, progress=None, icons=True):
         if progress:
             progress('tables', k + 1, len(names))
     for n in STRINGS:
+        _log(f'reading string table {n}')
         d = _read(stack, f'data\\local\\lng\\eng\\{n}.tbl')
         if d:
             files[n + '.tbl'] = d
+    _log('reading animdata.d2')
     d = _read(stack, 'data\\global\\animdata.d2')
     if d:
         files['animdata.d2'] = d
@@ -456,37 +479,85 @@ def extract(game_dir, out, progress=None, icons=True):
     for n, d in files.items():
         with open(os.path.join(tmp, n), 'wb') as f:
             f.write(d)
+    phase('read game tables and strings', started)
+    started = perf_counter()
     if info.get('save_version') in (87, 89, 92):
         project_legacy(Path(tmp))
     apply(Path(tmp), preferred, info.get('save_version'), read_text)
     if not os.path.isfile(os.path.join(tmp, 'itemstatcost.bin')):
         shutil.rmtree(tmp, ignore_errors=True)
         raise RuntimeError(f'no usable item stat table in {game_dir}')
+    phase('project game table layouts', started)
     if icons:
+        started = perf_counter()
         import mxl_data
         import mxl_gfx
         items = os.path.join(tmp, 'items')
         os.makedirs(items, exist_ok=True)
-        o_open = mxl_gfx.open_archives
-        mxl_gfx.open_archives = _open_stack                # the folder's own stack, only for this extraction
+        o_open, o_read, o_decode = mxl_gfx.open_archives, mxl_gfx.read_file, mxl_gfx.decode_dc6
+        mxl_gfx.open_archives = lambda _: stack
+
+        def read_icon(archives, name):
+            _log(f'reading artwork {name}')
+            return _read(archives, name)
+
+        def decode_icon(raw, palette):
+            offset = struct.unpack_from('<I', raw, 24)[0]
+            width, height = struct.unpack_from('<II', raw, offset + 4)
+            if not 0 < width <= 2048 or not 0 < height <= 2048:
+                raise ValueError(f'invalid item icon dimensions {width}x{height}')
+            return o_decode(raw, palette)
+
+        mxl_gfx.read_file = read_icon
+        mxl_gfx.decode_dc6 = decode_icon
+
+        def icon_progress(done, total):
+            if done == 1 or done == total or done % 50 == 0:
+                _log(f'decoding item icons: {done}/{total}')
+            if progress:
+                progress('icons', done, total)
         try:
-            mxl_gfx.extract_icons(game_dir, mxl_data.Data(tmp), items, progress=progress)
+            mxl_gfx.extract_icons(game_dir, mxl_data.Data(tmp), items, progress=icon_progress)
             try:
                 mxl_gfx.extract_ui(game_dir, items)
-            except Exception:
-                pass
+            except Exception as err:
+                _log(f'could not extract socket artwork: {err}')
         finally:
-            mxl_gfx.open_archives = o_open
+            mxl_gfx.open_archives, mxl_gfx.read_file, mxl_gfx.decode_dc6 = o_open, o_read, o_decode
+        phase('decode item and socket icons', started)
+    if _fingerprint(game_dir) != fingerprint:
+        raise RuntimeError(f'Game files changed during extraction for {game_dir}. Try opening the editor again.')
     with open(os.path.join(tmp, 'install.json'), 'w', encoding='utf-8') as f:
-        json.dump({'game_dir': game_dir, 'fingerprint': _fingerprint(game_dir),
+        json.dump({'game_dir': game_dir, 'fingerprint': fingerprint,
                    'files': sorted(files)}, f, indent=1)
+    _publish_data(tmp, out)
+    return out
+
+
+def _read_loose(path):
+    with open(path, 'rb') as file:
+        data = file.read(32 * 1024 * 1024 + 1)
+    if len(data) > 32 * 1024 * 1024:
+        raise ValueError(f'oversized Excel file {path}')
+    return data
+
+
+def _publish_data(source, out):
+    import shutil
+
     old = out + '.old'
+    if os.path.exists(old) and not os.path.exists(out):
+        os.replace(old, out)
     shutil.rmtree(old, ignore_errors=True)
     if os.path.exists(out):
         os.replace(out, old)
-    os.replace(tmp, out)
+    try:
+        os.replace(source, out)
+    except OSError:
+        if os.path.exists(old):
+            os.replace(old, out)
+        raise
     shutil.rmtree(old, ignore_errors=True)
-    return out
 
 
 # ---------------------------------------------------------------------------------------------------- install
@@ -660,6 +731,10 @@ def patch_gui(mxl_gui):
     """Called with the imported mxl_gui. Its App reads the game tables (data/) in the constructor and, when they are
     missing, shows an error box and quits: nobody without Median XL (or with the folder not chosen yet) could open
     the editor. With no tables the editor now opens on empty ones; the top bar says to choose the game folder."""
+    from time import perf_counter
+
+    from mxl_boot import phase
+
     o = getattr(mxl_gui, 'Data', None)
     if o is None or getattr(o, '_capy_tolerant', False):
         return
@@ -668,10 +743,13 @@ def patch_gui(mxl_gui):
         _capy_tolerant = True
 
         def __init__(self, folder, *a, **k):
+            started = perf_counter()
             try:
                 o.__init__(self, folder, *a, **k)
                 self.empty = False
             except FileNotFoundError as err:
+                if _state is not None:
+                    raise
                 _log(f'game tables missing ({err.filename}): opening with empty tables')
                 self.folder = folder
                 self.empty = True
@@ -680,6 +758,9 @@ def patch_gui(mxl_gui):
                         setattr(self, name, _Empty())
                 if not hasattr(self, 'monster_names'):
                     self.monster_names = []
+            finally:
+                if _state is not None:
+                    phase('load editor data', started)
     mxl_gui.Data = Data
     try:
         import mxl_gui_install as gi
@@ -710,27 +791,31 @@ def install():
     if kind == 'median':
         return None
     import paths
+    from time import perf_counter
+
+    from mxl_boot import phase, extract_profile
+
+    started = perf_counter()
     info = detect(game_dir)
+    phase('detect game profile', started)
     if info['kind'] == 'median':                      # a Median folder chosen as "other folder": today's path
         return None
     if info['kind'] != 'd2' or not info['supported']:
-        # never a dead start: the editor opens as Median XL, the Game profile dialog can choose another folder
-        _log(f'game profile: {game_dir} is not a supported game folder ({info}): Median XL mode')
-        return None
+        raise RuntimeError(f'Could not open game profile {game_dir}: {_detection_label(info)}.')
     pid = profile_id(game_dir, info)
     root = os.path.join(paths.USER_DIR, 'profiles', pid)
     data_dir = os.path.join(root, 'data')
-    try:
-        if not data_ok(game_dir, data_dir):
-            _log(f'game profile {pid}: extracting tables and icons from {game_dir}')
-            extract(game_dir, data_dir)
-    except Exception as err:
-        _log(f'game profile {pid}: extraction failed ({type(err).__name__}: {err}): Median XL mode')
-        return None
+    started = perf_counter()
+    cached = data_ok(game_dir, data_dir, info)
+    phase('check game data cache', started)
+    if not cached:
+        _log(f'game profile {pid}: extracting tables and icons from {game_dir}')
+        extract_profile(game_dir, data_dir)
     _state = dict(info, game_dir=game_dir, id=pid, root=root, data_dir=data_dir)
-    _state['save_dir'] = _use_save_dir(game_dir, root)
-    paths.DATA_DIR = data_dir
-    paths.ICONS_DIR = os.path.join(data_dir, 'items')
+    started = perf_counter()
+    _state['save_dir'] = _use_save_dir(game_dir, root, info)
+    phase('select character save directory', started)
+    _set_data_dir(data_dir)
     _patch_settings(game_dir)
     _patch_format()
     _patch_gfx()
@@ -1224,8 +1309,10 @@ def _patch_install():
 
     def check_data(self, startup=False, *a, **k):
         moved = _rebind(self)
+        from mxl_boot import extract_profile
+
         if not data_ok(self.game_dir, self.data_dir):
-            extract(self.game_dir, self.data_dir)
+            extract_profile(self.game_dir, self.data_dir)
             moved = True
         if moved and not startup and self.on_rebuilt:
             self.on_rebuilt()
@@ -1242,7 +1329,6 @@ def rebind(game_dir):
     """The active profile follows a new game folder ("Game folder..." button): its id, root and data folder are
     the new folder's (kind + version + folder hash), so the tables are extracted next to - never over - the old
     folder's. Returns the new data folder, or None when the folder is not a supported D2 folder or did not change."""
-    import sys
     import paths
     if _state is None or not game_dir:
         return None
@@ -1255,6 +1341,15 @@ def rebind(game_dir):
     root = os.path.join(paths.USER_DIR, 'profiles', pid)
     data_dir = os.path.join(root, 'data')
     _state.update(info, game_dir=game_dir, id=pid, root=root, data_dir=data_dir)
+    _set_data_dir(data_dir)
+    _log(f'game profile {pid}: game folder {game_dir}, data {data_dir}')
+    return data_dir
+
+
+def _set_data_dir(data_dir):
+    import sys
+    import paths
+
     paths.DATA_DIR = data_dir
     paths.ICONS_DIR = os.path.join(data_dir, 'items')
     for name in ('mxl_gui', 'mxl_inv_gui'):
@@ -1262,8 +1357,6 @@ def rebind(game_dir):
         for attr, val in (('DATA_DIR', data_dir), ('ICONS_DIR', paths.ICONS_DIR)):
             if mod is not None and hasattr(mod, attr):
                 setattr(mod, attr, val)
-    _log(f'game profile {pid}: game folder {game_dir}, data {data_dir}')
-    return data_dir
 
 
 def _rebind(gi):
@@ -1282,6 +1375,8 @@ def _patch_art():
         import mxl_d2look_art as A
     except Exception:
         return
+    from mxl_profile_mpq import ProfileMPQ
+
     o_init = A.Art.__init__
 
     def __init__(self, game_dir, theme, cache_root):
@@ -1317,13 +1412,14 @@ def _patch_art():
     def mpqs(self):
         if self._mpqs is None:
             self._mpqs = A._Archives([p for p in archive_order(self.game_dir)
-                                      if not os.path.basename(p).lower().startswith(_NO_DATA)])
+                                      if not os.path.basename(p).lower().startswith(_NO_DATA)], ProfileMPQ)
         return self._mpqs
     A.Art.mpqs = mpqs
 
     def base_mpqs(self):
         if self._base_mpqs is None:
-            self._base_mpqs = [m for m in map(A._archive, base_archives(self.game_dir)) if m is not None]
+            self._base_mpqs = [m for p in base_archives(self.game_dir)
+                               if (m := A._archive(p, ProfileMPQ)) is not None]
         return self._base_mpqs
     A.Art.base_mpqs = base_mpqs
     o_read = A.Art.read
