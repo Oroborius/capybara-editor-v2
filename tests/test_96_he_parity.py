@@ -1031,4 +1031,72 @@ def report_counts_children_even_when_the_socket_field_is_zero():
         win.ch.items = original
 
 
+@T.test
+def picked_up_item_is_editable_and_stays_out_of_the_character():
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    import tkinter as tk
+    from mxl_vanilla_he_extras import open_extras, put_picked_up
+    from mxl_vanilla_he_items import PICKED, picked_entry, replace_item
+
+    win = T.chartab()
+    entry = next(e for e in win.ch.entries() if e.it.get('quality') in ('set', 5))
+    put_picked_up(win, bytes(entry.blob))
+    before_char = bytes(win.ch.build())
+    T.G.menu = None
+    win.he_pickup.event_generate('<Button-3>', x=10, y=10)
+    T.pump(3)
+    T.check(T.G.menu is not None and 'General Edit of Item (in Extras Window)' in menu_labels(T.G.menu),
+         'Picked Up right-click offers General Edit')
+    top = open_extras(win, PICKED)
+    T.pump(3)
+
+    def boxes(widget):
+        found = [widget] if isinstance(widget, tk.Listbox) else []
+        for child in widget.winfo_children():
+            found += boxes(child)
+        return found
+
+    lists = [box.get(0, 'end') for box in boxes(top)]
+    T.check(any(row.split(': ', 1)[0].endswith('Picked Up') for rows in lists for row in rows),
+         'Extras lists the Picked Up item')
+    top.destroy()
+    picked = picked_entry(win)
+    blob = bytearray(picked.blob)
+    replace_item(win, picked, bytes(picked.blob), bytes(blob), 'Modified item saved.', PICKED)
+    T.eq(len(win.app._capy_clip[0]), len(blob), 'edit goes back into Picked Up')
+    T.eq(picked_entry(win).it['code'], picked.it['code'], 'same item after the round trip')
+    T.eq(bytes(win.ch.build()), before_char, 'character untouched')
+
+
+@T.test
+def library_add_refreshes_and_shows_sockets():
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    import mxl_itemlib
+    import mxl_tabs
+
+    win = T.chartab()
+    entry = next(e for e in win.ch.entries() if e.it.get('socketed'))
+    T.select_tab('Library')
+    lib = mxl_tabs.built_owner('Library')
+    if lib is None:
+        import mxl_itemlib as L
+        lib = L.open_library(win.app)
+    T.pump(3)
+    count = len(lib.rows)
+    added = mxl_itemlib.add(bytes(entry.blob), 'Socket probe', win.data)
+    try:
+        T.pump(3)
+        T.eq(len(lib.rows), count + 1, 'list refreshed without a manual refresh')
+        iid = next(i for i, e in lib.rows.items() if e['file'] == added['file'])
+        lib.tree.selection_set(iid)
+        T.pump(3)
+        text = lib.detail.get('1.0', 'end')
+        T.check('Socket' in text, 'tooltip shows the sockets')
+        T.check(lib._icon(added) is not None, 'icon drawn')
+    finally:
+        mxl_itemlib.delete(added)
+
+
 T.main(globals())

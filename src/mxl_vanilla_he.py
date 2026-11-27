@@ -1165,6 +1165,16 @@ def bind_pickup(win):
                 paste_at(win, canvas, point, clip)
                 return
 
+    def menu(event):
+        from mxl_vanilla_he_items import PICKED, edit_item
+
+        if not getattr(win.app, '_capy_clip', None):
+            return
+        pop = tk.Menu(paper, tearoff=False)
+        pop.add_command(label='General Edit of Item (in Extras Window)', command=lambda: edit_item(win, PICKED))
+        popup(pop, event)
+
+    paper.bind('<Button-3>', menu)
     paper.bind('<ButtonPress-1>', start)
     paper.bind('<B1-Motion>', motion)
     paper.bind('<ButtonRelease-1>', drop)
