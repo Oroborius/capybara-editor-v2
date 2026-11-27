@@ -1166,9 +1166,12 @@ class Creator:
             out.append(dict(id=sid, param=par if self.data.isc[sid]['param'] else None,
                             value=val if val is not None and lo <= val <= hi else hi))
         merged = merge_stats(out)
-        # a stat the save cannot hold at its summed value (ignore target defense x3 of Last Wish: 1 bit) is left
-        # out, as the validator checks only the stats an item has (reported to the dev kit)
-        return [x for x in merged if x['value'] <= (1 << self.data.isc[x['id']]['bits']) - 1 - self.data.isc[x['id']]['add']]
+        # the game writes a stat masked to its save bits: ((value + add) & (2^bits - 1)) - add (ignore target defense
+        # x3 of Last Wish, 1 bit: saved as 1 - dev kit, item write path; the validator accepts it)
+        for x in merged:
+            c = self.data.isc[x['id']]
+            x['value'] = ((x['value'] + c['add']) & ((1 << c['bits']) - 1)) - c['add']
+        return merged
 
     def mods_text(self, mods, code=None):
         """Tooltip lines of mods [(prop, param, min, max)] as the game writes them, ranges merged:

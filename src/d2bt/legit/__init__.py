@@ -254,6 +254,15 @@ class Validator:
                     continue
                 lo, hi = sorted((interval.lo, interval.hi))
                 valid = charges_in_bounds(value, lo, hi) if sid == 204 else lo <= value <= hi
+                if not valid and sid != 204:
+                    # Items.cpp write path masks the value to Save Bits (after Save Add): e.g. Last
+                    # Wish's three Jah copies of a 1-bit stat sum to 3 but are saved as 1.
+                    bits = to_int(self.item_tables.s(sid, 'save bits'))
+                    add = to_int(self.item_tables.s(sid, 'save add'))
+                    if 0 < bits < 31 and (hi + add > (1 << bits) - 1 or lo + add < 0):
+                        mask = (1 << bits) - 1
+                        valid = hi - lo >= mask or value in {
+                            ((x + add) & mask) - add for x in range(lo, hi + 1)}
                 if not valid:
                     failures.append(Finding(label, 'stat', f'{stat} {value} outside {lo}..{hi}'))
             if best is None or len(failures) < len(best):
