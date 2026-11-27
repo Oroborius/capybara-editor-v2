@@ -2334,6 +2334,40 @@ class Creator:
                 spec['rolls'][m.source] = (random.randint(m.min, m.max) if how == 'random' else
                                            m.max if how == 'max' else m.min if how == 'min' else (m.min + m.max) // 2)
 
+    def _set_bonus_lists(self, spec):
+        """Vanilla: the item's own partial set bonus lists (setitems aprop1a..aprop5b, e.g. Trang-Oul's Claws
+        +25% Poison Skill Damage with 3 items), at max, laid out as the game and the server's validator read them:
+        list i = props (i+1)a / (i+1)b, or with 'add func' 2 the single prop (i//2+1)(a|b). None when unknown."""
+        try:
+            import mxl_legit
+            from d2bt.tooltip.item import Stats, apply_property
+            v = mxl_legit._validator()
+            row = v.set_items[spec['row']]
+        except Exception:
+            return None
+        d = self.data
+        lists = []
+        for i in range(5):
+            if row.get('add func') == '2':
+                pairs = [f'{i // 2 + 1}{"ab"[i % 2]}']
+            else:
+                pairs = [f'{i + 1}a', f'{i + 1}b']
+            st = Stats()
+            for pr in pairs:
+                code = (row.get(f'aprop{pr}') or '').strip()
+                if code:
+                    apply_property(v.item_tables, st, code, row.get(f'apar{pr}', ''), row.get(f'amin{pr}', ''),
+                                   row.get(f'amax{pr}', ''), spec.get('ilvl') or 99)
+            out = []
+            for (sid, layer), val in st.vals.items():
+                if sid >= len(d.isc) or not d.isc[sid]['bits']:
+                    continue
+                c = d.isc[sid]
+                value = ((val.hi + c['add']) & ((1 << c['bits']) - 1)) - c['add']
+                out.append(dict(id=sid, param=layer if c['param'] else None, value=value))
+            lists.append(merge_stats(out))
+        return lists
+
     def defense_range(self, spec):
         """(lo, hi) of the base defense, or (v, v) when fixed (Enhanced Defense: max + 1), before ethereal."""
         t = self.t.item.get(spec['code'], {})
@@ -2556,6 +2590,13 @@ class Creator:
             if n194 and d.isc[194]['bits']:
                 own.append(dict(id=NUM_SOCKETS, param=None, value=n194, sockets=True))   # kept by build_blob
         rec['stats'] = own
+        if q == 'set' and self._vanilla() and not spec.get('_from_item'):
+            lists = self._set_bonus_lists(spec)
+            if lists is not None:
+                rec['set_mask'] = sum(1 << i for i, lst in enumerate(lists) if lst)
+                for i, lst in enumerate(lists):
+                    if lst:
+                        rec[f'set_stats_{i}'] = lst
         if q == 'runeword':
             rw += [dict(x) for x in spec.get('extra_rw') or []]
             rec['stats_runeword'] = [s for s in merge_stats(rw) if d.isc[s['id']]['bits']]

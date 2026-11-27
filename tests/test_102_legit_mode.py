@@ -1014,4 +1014,34 @@ def convert_remaps_retired_affix_rows_and_rare_name_fragments():
                 f'fragment replaced: {r2.changes}')
 
 
+
+@T.test
+def set_items_carry_their_partial_set_bonuses():
+    """Tester: Trang-Oul's Claws lacked "+25% to Poison Skill Damage" - a partial set bonus (setitems aprop3a,
+    3 items) the item stores in its own set lists. Every set item is built with them and passes the validator."""
+    need()
+    import mxl_creator as C
+    import mxl_legit
+    from mxl_rc_menu import _creator_for
+    win = T.chartab()
+    cr = _creator_for(win)
+    if not mxl_legit.prepare():
+        T.skip('stock tables unavailable')
+    row = next(k for k, label, _r in cr.set_items() if 'Trang' in label and 'Claws' in label)
+    spec = cr.new_spec('set', None, row)
+    blob, _rec = cr.build(spec)
+    it = C.decode_item(bytes(blob), win.data)[0]
+    bonus = [s for k in range(5) for s in (it.get(f'set_stats_{k}') or [])]
+    T.check(any(s['value'] == 25 for s in bonus), f'the 3-item bonus is there: {bonus} (mask {it.get("set_mask")})')
+    T.eq(mxl_legit.impossible(mxl_legit.check_item(blob)), [], 'the server accepts it')
+    bad = []
+    for key, label, _r in cr.set_items():
+        try:
+            b2, _ = cr.build(cr.new_spec('set', None, key))
+        except Exception as e:
+            bad.append(f'{label}: {type(e).__name__}')
+            continue
+        bad += [f'{label}: {f.rule} {f.detail}' for f in mxl_legit.impossible(mxl_legit.check_item(b2))]
+    T.eq(bad, [], 'every set item with its bonuses passes')
+
 T.main(globals())

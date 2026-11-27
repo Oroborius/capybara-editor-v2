@@ -990,7 +990,7 @@ class CreatorWindow:
             spec = cr.new_spec('rare', key)                # Angelic items are rares on the Angelic bases
         else:
             spec = cr.new_spec(q, key)
-        spec['ilvl'] = max(spec['ilvl'], min(99, cr.max_ilvl(spec)))
+        spec['ilvl'] = max(spec['ilvl'], min(99, cr.max_ilvl(spec)), cr.min_ilvl(spec))   # Torch / Anni: 110
         spec['max_sockets'] = q in ('unique', 'set', 'crafted', 'tempered')   # as the game gives them (Sacred gear)
         if q == 'tempered':                    # the cube recipe's output: a blank item, a rare-style name, the
             spec['extra'] = []                 # maximum sockets and the recipe's own stats (in its stat list)
