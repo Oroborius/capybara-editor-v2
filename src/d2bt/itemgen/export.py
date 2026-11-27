@@ -4,7 +4,7 @@ from collections import defaultdict
 
 from . import (
     affix_candidates, affix_level, allowed, allowed_qualities, class_compatible,
-    craft_recipes, identity_candidates, number, properties, quest_sockets,
+    craft_recipes, ethereal_allowed, identity_candidates, number, properties, quest_sockets,
     runeword_runes, saved_socket_limit, socket_affix_allowed, socket_limit, superior_candidates, unique_upgrade,
 )
 
@@ -78,6 +78,8 @@ def build_export(data, *, ladder=True):
                 penalty = unique_upgrade(source, code, data.bases[source][1])
                 if penalty:
                     upgrades.append([index, penalty, number(row.get('lvl'))])
+        from .api import staffmod_options, staffmod_tiers
+        staff = staffmod_options(data, code)
         buckets = []
         by_alvl = {}
         for ilvl in range(1, 111):
@@ -134,6 +136,8 @@ def build_export(data, *, ladder=True):
                 'socket_max': {q: saved_socket_limit(maximum, q, socket_bonuses.get(q, 0))
                                for q in qualities},
                 'sets': eligible_sets, 'uniques': eligible_uniques,
+                'ethereal': {q: ethereal_allowed(kind, base, q) for q in qualities},
+                **({'staffmod_tiers': {q: staffmod_tiers(ilvl, q) for q in qualities}} if staff else {}),
                 'unique_upgrades': [[i, penalty] for i, penalty, lvl in upgrades if lvl <= ilvl],
                 'runewords': [i for i, count in recipes if count <= maximum and {2, 3}.intersection(qualities)],
             }
@@ -141,6 +145,7 @@ def build_export(data, *, ladder=True):
                 buckets[-1]['max_ilvl'] = ilvl
             else:
                 buckets.append({'min_ilvl': ilvl, 'max_ilvl': ilvl, 'rules': snapshot})
-        bases[code] = {'qlvl': qlvl, 'magic_level': magic_level, 'superior_rows': superior, 'buckets': buckets}
+        bases[code] = {'qlvl': qlvl, 'magic_level': magic_level, 'superior_rows': superior, 'class': item_type.get('class') or None,
+                       'staffmods': staff, 'buckets': buckets}
     return {'version': '1.14d', 'schema': 1, 'ladder_uniques': ladder,
             'affixes': affix_catalog, 'runewords': runewords, **identities, 'bases': bases}

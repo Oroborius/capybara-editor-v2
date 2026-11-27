@@ -631,5 +631,6 @@ def vocab(game_dir=None, *, tables=None):
 
 
 from .api import (  # noqa: E402,F401
-    MAX_ITEM_LEVEL, RequiredStats, ilvl_range, legal_affixes, required_stats, runeword_stats,
+    MAX_ITEM_LEVEL, RequiredStats, ilvl_range, legal_affixes, possible, required_stats, runeword_stats,
+    staffmod_options, staffmod_tiers,
 )

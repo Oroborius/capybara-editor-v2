@@ -1,7 +1,10 @@
 """Editor-facing queries over a legit Validator: legal affixes and runeword stats."""
 from . import (
-    affix_level, affix_level_matches, allowed, class_compatible, number, properties,
+    affix_level, affix_level_matches, allowed, allowed_qualities, class_compatible,
+    ethereal_allowed, number, properties, quest_sockets, saved_socket_limit,
+    socket_affix_allowed, socket_limit, superior_candidates,
 )
+from .stats import staffmod_count, staffmod_tier
 
 _KIND = {'magicprefix': 'prefix', 'magicsuffix': 'suffix', 'automagic': 'automagic'}
 _MOD = 'mod{}code mod{}param mod{}min mod{}max'
@@ -253,3 +256,74 @@ def _set_optional(validator, row, ilvl, weapon):
                                   lambda m: f'{origin[id(m)]}:{m[0]}', weapon)
             out[bit] = list(_finish(validator, merged))
     return out
+
+
+def staffmod_options(validator, code):
+    """Class-skill (staff mod) candidates of base `code`, or None without StaffMods.
+
+    Items.cpp:2771 ITEMS_AssignStaffModsForFormat: the ItemTypes StaffMods column on any
+    type in the parent chain names the skill class. Returns {'class', 'first_skill',
+    'skills': {tier: [skill ids]}}; tier t holds first_skill + 5*(t-1) + 0..4 whose
+    skills.txt itypea1 (and etypea1) admit the item, six tiers of five."""
+    _, _, types, _ = _base_context(validator, code)
+    cls = next((validator.item_types[t].get('staffmods', '').strip()
+                for t in sorted(types) if validator.item_types.get(t, {}).get('staffmods', '').strip()), '')
+    if not cls:
+        return None
+    rows = {number(r.get('id')): r for r in validator.rows('skills') if r.get('charclass', '').strip() == cls}
+    if not rows:
+        return None
+    first = min(rows)
+
+    def compatible(skill):
+        row = rows.get(skill)
+        if row is None:
+            return False
+        need, ban = row.get('itypea1', '').strip(), row.get('etypea1', '').strip()
+        return (not need or need in types) and not (ban and ban in types)
+
+    skills = {tier: [first + 5 * (tier - 1) + i for i in range(5) if compatible(first + 5 * (tier - 1) + i)]
+              for tier in range(1, 7)}
+    return {'class': cls, 'first_skill': first, 'skills': skills}
+
+
+def staffmod_tiers(ilvl, quality):
+    """Tiers ITEMS_AssignModernStaffMods can pick at ilvl (all 0..99 chance rolls)."""
+    return sorted({staffmod_tier(ilvl, chance, quality) for chance in range(100)})
+
+
+def possible(validator, code, quality, ilvl):
+    """Everything that can spawn on base `code` at `quality` and `ilvl` (vanilla LoD 1.14d).
+
+    Returns {code, quality, ilvl, class, affixes (legal_affixes), staffmods (None or
+    {class, tiers, skills {tier: [ids]}, counts, values}), sockets {base_max, drop_max, quest,
+    max, socket_affix}, ethereal_allowed, superior [qualityitems rows], qualities}."""
+    kind, base, types, item_type = _base_context(validator, code)
+    maximum = socket_limit(base, item_type, ilvl)
+    affixes = legal_affixes(validator, code, ilvl, quality)
+    authored = max((number(high or param) for row in affixes['prefix']
+                    for prop, param, _, high in row['mods'] if prop == 'sock'), default=0)
+    staff = None
+    options = staffmod_options(validator, code)
+    if options:
+        tiers = staffmod_tiers(ilvl, quality)
+        staff = {'class': options['class'], 'first_skill': options['first_skill'], 'tiers': tiers,
+                 'skills': {t: options['skills'][t] for t in tiers},
+                 'counts': sorted({staffmod_count(c) for c in range(100)}),
+                 'values': [1] if quality == 1 else [1, 2, 3]}
+    superior = superior_candidates(validator.superior or [], types, base.get('type'),
+                                   no_durability=base.get('nodurability') == '1',
+                                   throwable=item_type.get('throwable') == '1')
+    return {
+        'code': code, 'quality': quality, 'ilvl': ilvl,
+        'class': item_type.get('class') or None,
+        'affixes': affixes, 'staffmods': staff,
+        'sockets': {'base_max': maximum, 'drop_max': min(maximum, 6) if quality in (2, 3) else 0,
+                    'quest': list(quest_sockets(maximum, quality)),
+                    'max': saved_socket_limit(maximum, quality, authored),
+                    'socket_affix': socket_affix_allowed(base, maximum)},
+        'ethereal_allowed': ethereal_allowed(kind, base, quality),
+        'superior': superior,
+        'qualities': allowed_qualities(base, item_type, equipment=kind != 'misc', superior=superior,
+                                       crafted=True, sets=True, uniques=True),
+    }
