@@ -494,6 +494,8 @@ def _char_menu(win, cv, ev):
         _fill_sockets_entry(win, menu, None, win=win, e=e)
         _socket_cascade(win, menu, win=win, e=e)
         _add_hero_editor_menu(win, menu, win=win, e=e)
+        from mxl_legit_convert import add_menu_entry
+        add_menu_entry(win, menu, e)
         menu.add_command(label=rc('to_stash', 'To stash'), command=win.to_stash)
         menu.add_command(label=rc('delete_short', 'Delete'), command=win.delete)
         menu.add_command(label=rc('export', 'Export item...'), command=lambda: _export_char(win, e))
@@ -627,6 +629,9 @@ def _vanilla_char_commands(win, menu, entry, clip, *, paste=None, delete=None, e
     menu.add_command(label='Help', accelerator='F1', command=lambda: set_tab(win, 'info'))
     if not extensions:
         return
+    if entry is not None:
+        from mxl_legit_convert import add_menu_entry
+        add_menu_entry(win, menu, entry)
     menu.add_separator()
     more = submenu(menu, 'More Item Tools')
     buffered = getattr(win.app, '_capy_he_buffer', ())

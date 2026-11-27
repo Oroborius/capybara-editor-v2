@@ -145,6 +145,109 @@ def hacked_item_refused_only_in_legit_mode():
 
 
 
+def _illegit_charm(cr):
+    """A small charm (cm1) carrying a medium-charm life suffix, its life value far above any small charm's."""
+    import mxl_legit
+    from d2bt.legit import allowed
+    v = mxl_legit._validator()
+    types = v.save_tables.ancestors(v.bases['cm1'][1].get('type'))
+    hp = [i for (t, i), (_t, r) in v.affixes.items()
+          if t == 'magicsuffix' and r.get('name') and r.get('mod1code') == 'hp' and r.get('spawnable') == '1'
+          and not allowed(types, r) and to_int(r.get('level')) <= 30]
+    T.check(hp, 'a life suffix that small charms cannot take')
+    spec = cr.new_spec('magic', 'cm1 ')
+    spec['ilvl'] = 60
+    spec['suffix'] = next(i for i, _l, a in cr.affix_choices('magicsuffix', 'cm1 ', 60)
+                          if v.affixes[('magicsuffix', i)][1].get('mod1code') == 'hp')
+    spec['prefix'] = None
+    blob, rec = cr.build(spec)
+    from mxl_creator import decode_blob, build_blob
+    rec, kids = decode_blob(blob, T.G.app.data)
+    rec['suffix'] = hp[0]
+    for st in rec['stats']:
+        if st['id'] == 7:                               # maximum life
+            st['value'] = 400
+    return build_blob(rec, kids, T.G.app.data, preserve_stat_order=True)
+
+
+def to_int(x):
+    from d2bt.tooltip.data import to_int as f
+    return f(x)
+
+
+@T.test
+def convert_to_strict_legit_charm_and_sockets():
+    need()
+    import mxl_legit
+    import mxl_legit_convert as C
+    import mxl_mock_gui as G
+    from mxl_creator import Creator, decode_blob, build_blob, FLAG_SOCKETED
+    T.chartab()
+    cr = Creator(T.G.app.data)
+    G.set_legit(False)
+    blob = _illegit_charm(cr)
+    G.set_legit(True)
+    bad = mxl_legit.impossible(mxl_legit.check_item(blob))
+    T.check({f.rule for f in bad} >= {'affix-type'}, f'the charm is not legit: {[f.rule for f in bad]}')
+    T.check(C.needs_conversion(blob), 'conversion is offered')
+    res = C.convert(blob, T.G.app.data)
+    T.check(res.blob is not None, f'converted: {C.report(res)} ;; {res.changes} ;; {[(f.rule, f.detail) for f in bad]}')
+    T.eq(mxl_legit.impossible(mxl_legit.check_item(res.blob)), [], 'the converted charm is legit')
+    kinds = lambda b: sorted({s['id'] for s in decode_blob(b, T.G.app.data)[0]['stats']})
+    T.eq(kinds(res.blob), kinds(blob), 'same stat kinds kept')
+    T.check(any('->' in c for c in res.changes), f'changes listed: {res.changes}')
+    T.check(not C.needs_conversion(res.blob), 'nothing left to convert')
+    # (b) too many sockets: a small charm cannot be socketed at all; use a body armor with 7
+    G.set_legit(False)
+    spec = None
+    for code in ('plt ', 'ltp ', 'qui '):
+        if code in T.G.app.data.bases:
+            spec = cr.new_spec('normal', code)
+            break
+    spec['sockets'] = 3
+    sblob, rec = cr.build(spec)
+    rec, kids = decode_blob(sblob, T.G.app.data)
+    rec['sockets'] = 7
+    sblob = build_blob(rec, kids, T.G.app.data, preserve_stat_order=True)
+    G.set_legit(True)
+    T.check(any(f.rule == 'sockets' for f in mxl_legit.impossible(mxl_legit.check_item(sblob))),
+            f'too many sockets: {[(f.rule, f.detail) for f in mxl_legit.check_item(sblob)]}')
+    res = C.convert(sblob, T.G.app.data)
+    T.check(res.blob is not None, f'sockets converted: {C.report(res)}')
+    T.eq(mxl_legit.impossible(mxl_legit.check_item(res.blob)), [], 'legit after reducing sockets')
+    rec, _k = decode_blob(res.blob, T.G.app.data)
+    T.check(0 < rec.get('sockets', 0) <= 4, f"sockets reduced to the legal max: {rec.get('sockets')}")
+    G.set_legit(False)
+
+
+@T.test
+def convert_menu_entry_only_for_illegit_items_in_legit_mode():
+    need()
+    import tkinter as tk
+    import mxl_legit_convert as C
+    import mxl_mock_gui as G
+    from mxl_creator import Creator
+    win = T.chartab()
+    cr = Creator(T.G.app.data)
+    G.set_legit(False)
+    blob = _illegit_charm(cr)
+
+    class E:
+        pass
+    e = E()
+    e.blob = blob
+    menu = tk.Menu(win.top, tearoff=False)
+    T.check(not C.add_menu_entry(win, menu, e), 'hidden with Legit mode off')
+    G.set_legit(True)
+    T.check(C.add_menu_entry(win, menu, e), 'shown for an illegit item in Legit mode')
+    T.eq(menu.entrycget(0, 'label'), C.LABEL, 'label')
+    res = C.convert(blob, T.G.app.data)
+    e.blob = res.blob
+    menu2 = tk.Menu(win.top, tearoff=False)
+    T.check(not C.add_menu_entry(win, menu2, e), 'hidden once the item passes')
+    G.set_legit(False)
+
+
 # impossible findings per private reference save (sorted order), as the dev kit's checker at the vendored commit
 # reports them (None: unreadable = hacked). The saves are private (.cache/samples, never committed): skipped without.
 REF_EXPECTED = {
