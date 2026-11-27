@@ -493,7 +493,15 @@ def report_open_issues(win):
             try:
                 decode_blob(entry.blob, win.data)
             except ITEM_ERRORS as error:
-                issues.append(f'{entry.it.get("code", "?").strip()} — {error}')
+                code = entry.it.get('code', '?')
+                try:
+                    name = win.data.base(code).name
+                except Exception:
+                    name = code.strip()
+                why = (f'unknown stat {error.args[0]}' if isinstance(error, KeyError) and error.args
+                       else str(error) or type(error).__name__)
+                issues.append(f'{name} ({code.strip()}) could not be read ({why}), probably made by another '
+                              f'editor. It is kept exactly as it is when you save.')
     if issues:
         win.set_status(f'Open found {len(issues)} issues.', True)
         if response == 'inspect':
