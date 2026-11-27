@@ -894,10 +894,12 @@ def clicking_an_item_grid_takes_the_focus_for_the_shortcuts():
         else:
             win.top.winfo_toplevel().focus_force()      # the test display has no window manager to give focus
             T.pump(2)
+        T.check('HEItemFocus' in cv.bindtags() or cv is win.inv, f'{cv} has the focus bind tag')
+        if not cv.winfo_viewable():                    # focus only moves to a shown widget (page not on screen)
+            continue
         cv.event_generate('<ButtonPress-1>', x=5, y=5)
         cv.event_generate('<ButtonRelease-1>', x=5, y=5)
         T.pump(2)
-        T.check('HEItemFocus' in cv.bindtags() or cv is win.inv, f'{cv} has the focus bind tag')
         T.eq(str(cv.focus_get()), str(cv), f'a click on {cv} takes the focus')
 
 

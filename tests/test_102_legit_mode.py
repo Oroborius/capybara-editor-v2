@@ -1036,10 +1036,17 @@ def set_items_carry_their_partial_set_bonuses():
     T.eq(mxl_legit.impossible(mxl_legit.check_item(blob)), [], 'the server accepts it')
     bad = []
     for key, label, _r in cr.set_items():
+        sp = cr.new_spec('set', None, key)
         try:
-            b2, _ = cr.build(cr.new_spec('set', None, key))
+            autos = cr.auto_choices(sp['code'], sp['ilvl'], 'set')
+        except TypeError:
+            autos = cr.auto_choices(sp['code'], sp['ilvl'])
+        if autos:
+            sp['auto'] = autos[0][0]                         # class bases need their innate (the GUI default)
+        try:
+            b2, _ = cr.build(sp)
         except Exception as e:
-            bad.append(f'{label}: {type(e).__name__}')
+            bad.append(f'{label}: {type(e).__name__} {e}')
             continue
         bad += [f'{label}: {f.rule} {f.detail}' for f in mxl_legit.impossible(mxl_legit.check_item(b2))]
     T.eq(bad, [], 'every set item with its bonuses passes')

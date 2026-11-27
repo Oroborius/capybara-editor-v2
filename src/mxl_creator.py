@@ -2337,7 +2337,7 @@ class Creator:
     def _set_bonus_lists(self, spec):
         """Vanilla: the item's own partial set bonus lists (setitems aprop1a..aprop5b, e.g. Trang-Oul's Claws
         +25% Poison Skill Damage with 3 items), at max, laid out as the game and the server's validator read them:
-        list i = props (i+1)a / (i+1)b, or with 'add func' 2 the single prop (i//2+1)(a|b). None when unknown."""
+        list i = props (i+1)a / (i+1)b (d2bt.legit.set_item_properties). None when unknown."""
         try:
             import mxl_legit
             from d2bt.tooltip.item import Stats, apply_property
@@ -2348,10 +2348,7 @@ class Creator:
         d = self.data
         lists = []
         for i in range(5):
-            if row.get('add func') == '2':
-                pairs = [f'{i // 2 + 1}{"ab"[i % 2]}']
-            else:
-                pairs = [f'{i + 1}a', f'{i + 1}b']
+            pairs = [f'{i + 1}a', f'{i + 1}b']        # mask bit i: aprop(i+1)a / b (d2bt set_item_properties)
             st = Stats()
             for pr in pairs:
                 code = (row.get(f'aprop{pr}') or '').strip()
