@@ -77,7 +77,7 @@ def ilvl_range(validator, code, quality, row=None):
     """
     lo = 1
     if row is not None and quality in (5, 7):
-        lo = max(lo, int(row.get('lvl') or 0))
+        lo = max(lo, min(99, int(row.get('lvl') or 0)))   # lvl-110 rows survive multiplayer only at 99
     return (lo, MAX_ITEM_LEVEL) if lo <= MAX_ITEM_LEVEL else None
 
 

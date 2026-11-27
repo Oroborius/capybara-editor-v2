@@ -1111,4 +1111,21 @@ def convert_adds_missing_required_stats():
     fhr = [x['value'] for x in C.decode_blob(res.blob, win.data)[0]['stats_runeword'] if x['id'] == 99]
     T.eq(fhr, [55], 'FHR 55 back')
 
+
+@T.test
+def disabled_unique_rows_are_not_offered():
+    """uniqueitems rows with enabled = 0 never drop (dev kit fact-check: Azurewrath, Constricting Ring were listed);
+    the real uber charms and Gheed's stay."""
+    need()
+    from mxl_rc_menu import _creator_for
+    win = T.chartab()
+    import mxl_legit
+    offered = _creator_for(win).uniques()
+    labels = [label for _k, label, _r in offered]
+    v = mxl_legit._validator()
+    disabled = [k for k, _l, _r in offered if v.uniques[k].get('enabled') != '1']
+    T.eq(disabled, [], 'no disabled row offered (Azurewrath row 29: the old one; row 301 is the real one)')
+    for name in ('Hellfire Torch', 'Annihilus', "Gheed's Fortune"):
+        T.check(any(name in x for x in labels), f'{name} still offered')
+
 T.main(globals())

@@ -140,6 +140,9 @@ def why_lines(findings, page=1, selector=''):
     return lines + [chat_line(footer)]
 
 
+MULTIPLAYER_ILVL_CAP = 99   # 1.14d multiplayer stores ilvl > 99 back as 99
+
+
 class Validator:
     check_required = True  # the 'missing-stat' rule; synthetic partial items turn it off
 
@@ -351,7 +354,9 @@ class Validator:
                             if q == 7 and expected in self.bases else 0)
                 if expected != item.code and not upgraded:
                     report('identity', f'wrong base {item.code} (expected {expected})')
-                if item.ilvl < to_int(row.get('lvl')):
+                # Rows above 99 (Hellfire Torch, Annihilus: lvl 110) come back at ilvl 99 after a 1.14d
+                # multiplayer join/leave (observed live), so 99 is the legit floor for them.
+                if item.ilvl < min(MULTIPLAYER_ILVL_CAP, to_int(row.get('lvl'))):
                     report('identity-level', f'{label} requires item level {row["lvl"]}')
                 if q == 7 and row.get('enabled') != '1':
                     report('identity', 'disabled unique row')

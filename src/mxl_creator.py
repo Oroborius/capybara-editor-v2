@@ -864,6 +864,8 @@ class Creator:
             if u['code'].strip() and u['code'] in self.data.bases and u['name'] in self.data._bykey:
                 if u['code'] == RELIC_CODE and not u['mods']:
                     continue
+                if self._vanilla() and not self._server_unique_enabled(i):
+                    continue          # vanilla: enabled = 0 never drops (Azurewrath, Constricting Ring; the server rule)
                 if not u['mods'] and not self.unique_enabled(i):
                     continue                # an empty row the game never makes (2.14.6: the second "Windforce")
                 out.append((i, self.data.key(u['name']).replace('\n', ' '), u))
@@ -3239,6 +3241,14 @@ class Creator:
             if out:
                 return out
         return []
+
+    def _server_unique_enabled(self, row):
+        """The uniqueitems 'enabled' column as the server's validator reads it (its 'disabled unique row' rule)."""
+        try:
+            import mxl_legit
+            return mxl_legit._validator().uniques[row].get('enabled') == '1'
+        except Exception:
+            return self.unique_enabled(row)
 
     def unique_enabled(self, row):
         """The 'enabled' bit of a uniqueitems row (u32 flags at 0x2C of the record, bit 0, as in the vanilla
