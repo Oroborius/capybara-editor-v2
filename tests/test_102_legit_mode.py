@@ -1051,4 +1051,31 @@ def set_items_carry_their_partial_set_bonuses():
         bad += [f'{label}: {f.rule} {f.detail}' for f in mxl_legit.impossible(mxl_legit.check_item(b2))]
     T.eq(bad, [], 'every set item with its bonuses passes')
 
+
+@T.test
+def convert_fixes_ethereal_base_defense_and_renews_the_id():
+    """Old editors stored an ethereal item's base defense without its x1.5 (server: "base defense outside range",
+    suspicious). Convert puts it in range and gives the item a fresh id (copies with one id: "duplicate")."""
+    need()
+    import mxl_creator as C
+    import mxl_legit
+    import mxl_legit_convert as LC
+    from mxl_rc_menu import _creator_for
+    win = T.chartab()
+    cr = _creator_for(win)
+    if not mxl_legit.prepare():
+        T.skip('stock tables unavailable')
+    spec = cr.new_spec('normal', 'uui ')
+    spec['ilvl'] = 99
+    spec['ethereal'] = True
+    blob, _rec = cr.build(spec)
+    rec, kids = C.decode_blob(bytes(blob), win.data)
+    rec['defense'] = rec['defense'] * 2 // 3                # stored without the ethereal x1.5
+    bad = C.build_blob(rec, kids, win.data, preserve_stat_order=True)
+    T.check(any(f.rule == 'defense' for f in mxl_legit.check_item(bad)), 'the old value is out of range')
+    res = LC.convert(bad, win.data)
+    T.check(res.blob is not None, 'converted')
+    T.eq([f.rule for f in mxl_legit.check_item(res.blob) if f.rule == 'defense'], [], 'defense in range')
+    T.check(C.decode_blob(res.blob, win.data)[0]['id'] != rec['id'], 'a fresh item id')
+
 T.main(globals())

@@ -52,9 +52,15 @@ def needs_conversion(blob):
     if not mxl_legit.enabled():
         return False
     try:
-        return bool(mxl_legit.impossible(findings_of(blob)))
+        return bool(_fixable(findings_of(blob)))
     except Exception:
         return False
+
+
+def _fixable(found):
+    """Findings Convert works on: every impossible one, and the base defense outside its range (suspicious: an
+    ethereal item stored without its x1.5 - old editors)."""
+    return [f for f in found if f.severity == mxl_legit.IMPOSSIBLE or f.rule == 'defense']
 
 
 def _where(v, row):
@@ -242,7 +248,7 @@ def convert(blob, data):
         return Result(None, [], [], 0, 0)
     before = mxl_legit.impossible(found)
     base = v.bases.get(rec['code'].strip(), (None, None))[1]
-    if base is None or not before:
+    if base is None or not _fixable(found):
         return Result(None, [], before, len(before), len(before))
     changes = []
     rules = {f.rule for f in before}
@@ -293,11 +299,18 @@ def convert(blob, data):
         if m and rec.get('defense') is not None:
             lo, hi = int(m.group(1)), int(m.group(2))
             cur = rec['defense']
-            rec['defense'] = min(max(cur, lo), hi)
+            fixed = cur
+            if rec['flags'] & FLAG_ETHEREAL and cur < lo and lo <= cur * 3 // 2:
+                fixed = cur * 3 // 2                     # ethereal stored without its x1.5 (old editors)
+            rec['defense'] = min(max(fixed, lo), hi)
             changes.append(f"defense {cur} -> {rec['defense']}")
     new = rebuild()
-    after = mxl_legit.impossible(findings_of(new))
-    if len(after) >= len(before) or new == blob:
+    from mxl_creator import renew_item_ids
+    new = bytes(renew_item_ids(new, data))               # a fresh item id: no copy of another item's id
+    found_after = findings_of(new)
+    after = mxl_legit.impossible(found_after)
+    better = len(after) < len(before) or len(_fixable(found_after)) < len(_fixable(found))
+    if len(after) > len(before) or not better or new == blob:
         return Result(None, [], after if len(after) < len(before) else before, len(before), len(after))
     return Result(new, changes, after, len(before), len(after))
 
