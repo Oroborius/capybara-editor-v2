@@ -298,11 +298,14 @@ def creator_offers_only_what_the_server_accepts():
     examples = []
     for code in reps.values():
         for ilvl in (30, 99):
+            ilvl = max(ilvl, cr.min_ilvl(cr.new_spec('magic', code)))
             for kind, key in (('magicprefix', 'prefix'), ('magicsuffix', 'suffix')):
                 for idx, label, _a in cr.affix_choices(kind, code, ilvl):
                     spec = cr.new_spec('magic', code)
                     spec['ilvl'] = ilvl
                     spec[key] = idx
+                    autos = cr.auto_choices(code, ilvl, 'magic')
+                    spec['auto'] = autos[-1][0] if autos else None
                     for m in cr.mods(spec):
                         if m.variable:
                             spec['rolls'][m.source] = m.max
@@ -310,6 +313,8 @@ def creator_offers_only_what_the_server_accepts():
                         blob, _rec = cr.build(spec)
                     except Exception as e:
                         bad[('build', type(e).__name__)] += 1
+                        if len(examples) < 3:
+                            examples.append(f'{code} ilvl {ilvl} {label}: {e}')
                         continue
                     built += 1
                     for f in mxl_legit.impossible(mxl_legit.check_item(blob)):
@@ -318,5 +323,366 @@ def creator_offers_only_what_the_server_accepts():
                             examples.append(f'{code.strip()} ilvl {ilvl} {label}: {f.rule} {f.detail}')
     T.check(built > 1000, f'{built} items built over {len(reps)} item types in {time.time() - t0:.0f} s')
     T.eq(dict(bad), {}, 'creator offers the server rejects; e.g. ' + ' | '.join(examples))
+
+
+
+class _Defaults:
+    """The creator window's default logic (prepare_defaults, fill_new_rolls) without a window."""
+
+    def __init__(self, cr):
+        self.cr, self.data = cr, cr.data
+
+    def make(self, spec, how='max', ilvl=99):
+        import mxl_creator_gui as CG
+        spec['ilvl'] = max(spec['ilvl'], ilvl)
+        CG.CreatorWindow.prepare_defaults(self, spec)
+        self.add_affixes(spec)
+        self.cr.roll(spec, how)
+        return spec
+
+    def add_affixes(self, spec):
+        """What a user adds to the empty magic / rare / crafted item the creator starts with."""
+        cr, code, ilvl, q = self.cr, spec['code'], spec['ilvl'], spec['quality']
+        if q == 'magic' and not (spec.get('prefix') or spec.get('suffix')):
+            ch = cr.affix_choices('magicprefix', code, ilvl) or cr.affix_choices('magicsuffix', code, ilvl)
+            spec['prefix' if cr.affix_choices('magicprefix', code, ilvl) else 'suffix'] = ch[-1][0]
+        elif q == 'rare' and not (spec['rare_prefixes'] or spec['rare_suffixes']):
+            for kind, key in (('magicprefix', 'rare_prefixes'), ('magicsuffix', 'rare_suffixes')):
+                groups = set()
+                for i, _l, a in reversed(cr.affix_choices(kind, code, ilvl, rare=True)):
+                    if len(spec[key]) >= 2:
+                        break
+                    if a['group'] not in groups:
+                        spec[key].append(i)
+                        groups.add(a['group'])
+        elif q == 'crafted' and not (spec['rare_prefixes'] or spec['rare_suffixes']):
+            cr.reroll_crafted(spec)
+
+
+def _example(examples, key, text):
+    """examples: list of texts, one per (tag, rule) key."""
+    seen = examples.__dict__.setdefault('k', set()) if hasattr(examples, '__dict__') else None
+    if seen is not None and key not in seen:
+        seen.add(key)
+        examples.append(text)
+
+
+class _Ex(list):
+    pass
+
+
+def _problems(cr, spec, tag, bad, examples, v=None):
+    import mxl_legit
+    try:
+        blob, _rec = cr.build(spec)
+    except Exception as e:
+        bad[(tag, 'build')] += 1
+        _example(examples, (tag, 'build'), f'{tag} {spec["code"].strip()}: {type(e).__name__} {str(e)[:100]}')
+        return None
+    for f in mxl_legit.impossible(mxl_legit.check_item(blob)):
+        bad[(tag, f.rule)] += 1
+        _example(examples, (tag, f.rule), f'{tag} {spec["code"].strip()} {f.item}: {f.rule} {f.detail}')
+    return blob
+
+
+@T.test
+def creator_default_items_are_legit():
+    """Everything the creator builds by default in vanilla passes the server's checker: rare / crafted names and
+    affixes, innate (automagic) affixes, every set and unique row, superior and low quality, the defense at its max,
+    the creator's socket maximum, ethereal where offered."""
+    import collections
+    import time
+    import mxl_legit
+    from mxl_rc_menu import _creator_for
+    if not mxl_legit.prepare():
+        T.skip('stock tables unavailable')
+    win = T.chartab()
+    cr = _creator_for(win)
+    d = win.data
+    v = mxl_legit._validator()
+    dflt = _Defaults(cr)
+    bad, examples, built, t0 = collections.Counter(), _Ex(), collections.Counter(), time.time()
+
+    def go(spec, tag, how='max', ilvl=99):
+        try:
+            dflt.make(spec, how, ilvl)
+        except Exception as e:
+            bad[(tag, 'defaults')] += 1
+            _example(examples, (tag, 'defaults'), f'{tag} {spec["code"]}: defaults {type(e).__name__} {e}')
+            return
+        if spec['code'] in d.bases and d.base(spec['code']).kind == 'armor':
+            spec['defense'] = cr.defense_range(spec)[1]
+        n = cr.creator_socket_limit(spec)
+        spec['sockets'] = max(n, cr.innate_sockets(spec))
+        if cr.ethereal_ok(spec):
+            spec['ethereal'] = True
+        if _problems(cr, spec, tag, bad, examples, v) is not None:
+            built[tag] += 1
+
+    reps = {}
+    for code, (kind, row) in v.bases.items():
+        c = code.ljust(4)
+        if row.get('spawnable') == '1' and c in d.bases:
+            reps.setdefault(row.get('type'), []).append(c)
+    one = {t: cs[0] for t, cs in reps.items()}
+    for t, c in sorted(one.items()):
+        for ilvl in (30, 99):
+            for q in ('normal', 'superior', 'low', 'magic', 'rare', 'crafted'):
+                if c == 'gld ' or not (cr.can_have_quality(c, q if q != 'low' else 'normal') and
+                                       (q not in ('magic', 'rare') or cr.can_roll_affixes(c, q))):
+                    continue
+                if q == 'crafted' and not cr.craft_rows(c):
+                    continue
+                spec = cr.new_spec(q, c)
+                spec['ilvl'] = max(ilvl, cr.min_ilvl(spec))
+                go(spec, q, ilvl=ilvl)
+    for t, c in sorted(one.items()):
+        if cr.can_have_quality(c, 'superior') and d.base(c).kind in ('weapons', 'armor'):
+            for sup in cr.superior_choices(c):
+                spec = cr.new_spec('superior', c)
+                spec['superior'] = sup
+                go(spec, 'superior-variant')
+    # a rare / crafted item with each single rare-eligible affix, and every innate affix
+    for t, c in sorted(one.items()):
+        if not (cr.can_have_quality(c, 'rare') and cr.can_roll_affixes(c, 'rare')):
+            continue
+        for kind, key in (('magicprefix', 'rare_prefixes'), ('magicsuffix', 'rare_suffixes')):
+            for i, _l, _a in cr.affix_choices(kind, c, 99, rare=True):
+                spec = cr.new_spec('rare', c)
+                spec[key] = [i]
+                go(spec, 'rare-affix')
+    for c in sorted({x for cs in reps.values() for x in cs} - {'gld '}):
+        for i, _l, _a in cr.auto_choices(c, 99):
+            spec = cr.new_spec('normal', c)
+            spec['ilvl'], spec['auto'] = 99, i
+            go(spec, 'auto')
+    for kind, rows, q in (('uniqueitems', d.uniques, 'unique'), ('setitems', d.set_items, 'set')):
+        for row in range(len(rows)):
+            if q == 'unique' and not cr.unique_enabled(row):
+                continue
+            if not rows[row].get('code') or rows[row]['code'] not in d.bases:
+                continue
+            go(cr.new_spec(q, None, row), q)
+    for k, n in sorted(bad.items()):
+        print('BAD', k, n)
+    T.check(sum(built.values()) > 1000, f'{dict(built)} items built in {time.time() - t0:.0f} s')
+    bad = +bad
+    T.eq(dict(bad), {}, 'default creator items the server rejects: ' + ' | '.join(examples[:25]))
+
+
+
+@T.test
+def creator_starts_new_affix_items_empty():
+    """Vanilla: a new magic / rare / crafted item has no affixes (the user adds them); the rare name keeps its
+    default fragments."""
+    import mxl_legit
+    import mxl_creator_gui as CG
+    from mxl_rc_menu import _creator_for
+    if not mxl_legit.prepare():
+        T.skip('stock tables unavailable')
+    win = T.chartab()
+    cr = _creator_for(win)
+    dflt = _Defaults(cr)
+    seen = set()
+    for code in ('hax ', 'rin ', 'cap '):
+        for q in ('magic', 'rare', 'crafted'):
+            if not cr.can_have_quality(code, q) or (q == 'crafted' and not cr.craft_rows(code)):
+                continue
+            spec = cr.new_spec(q, code)
+            spec['ilvl'] = 99
+            CG.CreatorWindow.prepare_defaults(dflt, spec)
+            T.check(not (spec.get('prefix') or spec.get('suffix') or spec['rare_prefixes'] or spec['rare_suffixes']),
+                    f'{q} {code}: starts without affixes: {spec}')
+            if q != 'magic':
+                T.check(spec['rare_names'] is not None, f'{q} {code}: has a default name')
+            seen.add(q)
+    T.check({'magic', 'rare'} <= seen, f'qualities checked: {seen}')
+
+
+def _open_creator(win, **kw):
+    import mxl_creator_gui as CG
+    w = CG.CreatorWindow(win.app, data=win.data, **kw)
+    T.pump(10)
+    return w
+
+
+def _walk(widget):
+    for c in widget.winfo_children():
+        yield c
+        yield from _walk(c)
+
+
+@T.test
+def creator_rare_names_are_dropdowns():
+    """Both parts of a rare / crafted name are read-only dropdowns (ttk.Combobox) with the full lists."""
+    from tkinter import ttk
+    import mxl_creator_gui as CG
+    need()
+    win = T.chartab()
+    w = _open_creator(win, target=lambda blob: 'ok', target_label='x')
+    cr = w.cr
+    code = next(c for c in ('hax ', 'rin ', 'cap ') if cr.can_have_quality(c, 'rare'))
+    for q in ('rare', 'crafted'):
+        if q == 'crafted' and not cr.craft_rows(code):
+            continue
+        spec = cr.new_spec(q, code)
+        spec['ilvl'] = 99
+        w.spec = spec
+        w.load_spec(spec)
+        T.pump(5)
+        names = cr.rare_name_choices(code)
+        combos = [c for c in _walk(w.opts) if isinstance(c, ttk.Combobox)]
+        for kind in ('rareprefix', 'raresuffix'):
+            want = [CG.clean(t) for _, t in names[kind]]
+            T.check(want, f'{kind}: a list')
+            hit = [c for c in combos if list(c.cget('values')) == want]
+            T.check(hit and str(hit[0].cget('state')) == 'readonly', f'{q} {kind}: a readonly dropdown holds the list')
+    w.top.destroy()
+
+
+@T.test
+def creator_in_the_hero_editor_layout_creates_into_the_item_buffer():
+    need()
+    win = T.chartab()
+    win.app._capy_clip = None
+    w = _open_creator(win)
+    spec = w.cr.new_spec('normal', 'hax ')
+    w.spec = spec
+    w.load_spec(spec)
+    w.commit()
+    T.pump(5)
+    clip = getattr(win.app, '_capy_clip', None)
+    T.check(clip is not None, 'the item is in the item buffer')
+    T.check('item buffer' in str(win.app.status.cget('text')), f'status: {win.app.status.cget("text")!r}')
+    from mxl_creator import decode_blob
+    T.eq(decode_blob(bytes(clip[0]), win.data)[0]['code'].strip(), 'hax', 'the buffered item is the one made')
+    w.top.destroy()
+    win.app._capy_clip = None
+
+
+@T.test
+def creator_vanilla_has_no_shared_stash_target():
+    """1.14d has no shared stash: the creator's button creates into the item buffer, nothing offers a stash file."""
+    need()
+    win = T.chartab()
+    w = _open_creator(win)
+    T.check('stash' not in str(w.btn_ok.cget('text')).lower(), f'button: {w.btn_ok.cget("text")!r}')
+    T.check('shared' not in str(w.dest.cget('text')).lower() and 'stash' not in str(w.dest.cget('text')).lower(),
+            f'destination: {w.dest.cget("text")!r}')
+    w.top.destroy()
+
+
+@T.test
+def creator_diadem_and_hand_axe_offers():
+    """A diadem (ci3) is offered the skill-tab prefixes and the class-skill affixes the server accepts (magic and
+    rare, ilvl 99), each passing at max roll; a hand axe gets no Sorceress / Barbarian-only tab prefixes of the
+    caster kind (their item types do not include axes)."""
+    import mxl_legit
+    from mxl_rc_menu import _creator_for
+    if not mxl_legit.prepare():
+        T.skip('stock tables unavailable')
+    win = T.chartab()
+    cr = _creator_for(win)
+    v = mxl_legit._validator()
+    from d2bt.legit import allowed
+    types = v.save_tables.ancestors('circ') | v.save_tables.ancestors(v.bases['ci3'][1].get('type2'))
+    tab, cls = 0, 0
+    for kind, key, rkey in (('magicprefix', 'prefix', 'rare_prefixes'), ('magicsuffix', 'suffix', 'rare_suffixes')):
+        for rare in (False, True):
+            offered = {i for i, _l, _a in cr.affix_choices(kind, 'ci3 ', 99, rare=rare)}
+            for (t, i), (_t, row) in v.affixes.items():
+                if t != kind or not allowed(v.save_tables.ancestors(v.bases['ci3'][1]['type']), row):
+                    continue
+                if row.get('mod1code') not in ('skilltab', 'ama', 'sor', 'nec', 'pal', 'bar', 'dru', 'ass'):
+                    continue
+                ok = row.get('spawnable') == '1' and int(row.get('frequency') or 0) > 0 and (not rare or row.get('rare') == '1')
+                lvl = int(row.get('level') or 0)
+                if ok and lvl <= cr.affix_level('ci3 ', 99) and (not row.get('maxlevel') or lvl <= 99):
+                    T.check(i in offered, f'diadem {kind} {i} {row["name"]} ({row["mod1code"]}) offered (rare={rare})')
+                    if row['mod1code'] == 'skilltab':
+                        tab += 1
+                    else:
+                        cls += 1
+            for i in offered:
+                spec = cr.new_spec('rare' if rare else 'magic', 'ci3 ')
+                spec['ilvl'] = 99
+                autos = cr.auto_choices('ci3 ', 99, spec['quality'])
+                spec['auto'] = autos[-1][0] if autos else None
+                if rare:
+                    names = cr.rare_name_choices('ci3 ')
+                    spec['rare_names'] = (names['rareprefix'][0][0], names['raresuffix'][0][0])
+                    spec[rkey] = [i]
+                else:
+                    spec[key] = i
+                for m in cr.mods(spec):
+                    if m.variable:
+                        spec['rolls'][m.source] = m.max
+                if v.affixes[(kind, i)][1].get('mod1code') in ('skilltab', 'ama', 'sor', 'nec', 'pal', 'bar', 'dru', 'ass'):
+                    blob, _r = cr.build(spec)
+                    T.eq(mxl_legit.impossible(mxl_legit.check_item(blob)), [], f'diadem {kind} {i} built')
+    T.check(tab > 0 and cls > 0, f'diadem tab {tab} / class {cls} affixes checked')
+    caster = {'sor', 'amul'}
+    for kind in ('magicprefix', 'magicsuffix'):
+        for i, _l, a in cr.affix_choices(kind, 'hax ', 99):
+            row = v.affixes[(kind, i)][1]
+            T.check(not (row.get('mod1code') == 'skilltab' and row.get('classspecific') == 'sor'),
+                    f'hand axe is offered a Sorceress tab affix: {row["name"]}')
+
+
+@T.test
+def creator_rare_name_round_trip():
+    """The chosen rare name fragments are what the item shows and what Edit item reads back."""
+    import mxl_creator_gui as CG
+    from mxl_creator import decode_blob
+    from mxl_save import blob_item
+    need()
+    win = T.chartab()
+    cr = _Defaults(win and __import__('mxl_rc_menu')._creator_for(win)).cr
+    names = cr.rare_name_choices('hax ')
+    pre, suf = names['rareprefix'][3], names['raresuffix'][5]
+    spec = cr.new_spec('rare', 'hax ')
+    spec['ilvl'] = 99
+    spec['rare_names'] = (pre[0], suf[0])
+    spec['rare_prefixes'], spec['rare_suffixes'] = [cr.affix_choices('magicprefix', 'hax ', 99, rare=True)[0][0]], \
+        [cr.affix_choices('magicsuffix', 'hax ', 99, rare=True)[0][0]]
+    cr.roll(spec, 'max')
+    blob, _rec = cr.build(spec)
+    back = cr.spec_from_item(blob_item(blob, win.data))
+    T.eq(tuple(back['rare_names']), (pre[0], suf[0]), 'Edit item reads the same name rows')
+
+
+@T.test
+def creator_hellfire_torch_every_class_and_grand_charm_tabs():
+    """Random class skills (property function 36): the sheet's 0..6 is the class, the stat's value is the property's
+    own 3 - built for each class the torch passes the checker. A grand charm is offered the skill-tab prefixes of
+    all seven classes."""
+    import mxl_legit
+    from mxl_rc_menu import _creator_for
+    if not mxl_legit.prepare():
+        T.skip('stock tables unavailable')
+    win = T.chartab()
+    cr = _creator_for(win)
+    v = mxl_legit._validator()
+    d = win.data
+    row = next(i for i, r in enumerate(v.uniques) if r['index'] == 'Hellfire Torch')
+    for cls in range(7):
+        spec = cr.new_spec('unique', None, row)
+        spec['ilvl'] = 99
+        cr.roll(spec, 'max')
+        for m in cr.mods(spec):
+            if m.raw[0] == next(p for p in range(len(d.prop_func)) if d.prop_func[p] == 36):
+                spec['rolls'][m.source] = cls
+        blob, rec = cr.build(spec)
+        T.eq(mxl_legit.impossible(mxl_legit.check_item(blob)), [], f'torch class {cls}')
+        st = [x for x in rec['stats'] if x['id'] == 83]
+        T.eq([(x['param'], x['value']) for x in st], [(cls, 3)], f'torch class {cls}: +3 to that class')
+    classes = set()
+    for kind in ('magicprefix', 'magicsuffix'):
+        for i, _l, _a in cr.affix_choices(kind, 'cm3 ', 99):
+            r = v.affixes[(kind, i)][1]
+            if r.get('mod1code') == 'skilltab':
+                classes.add(int(r['mod1param']) // 3)
+    T.eq(classes, set(range(7)), 'grand charm skill-tab prefixes of all 7 classes')
+
 
 T.main(globals())

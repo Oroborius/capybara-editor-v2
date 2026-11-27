@@ -914,7 +914,7 @@ def _quality_to(rec, cr, data, code, q, pick=None, pick2=None):
     elif q == 'magic':
         rec['prefix'] = rec['suffix'] = 0
     elif q in ('rare', 'crafted', 'tempered'):
-        rec['rare_names'] = (pick + len(data.rare_suffix), pick2)
+        rec['rare_names'] = cr.rare_names_stored((pick, pick2))
         rec['rare_affixes'] = [None] * 6
     elif q in ('set', 'unique'):
         rec['set_unique_id'] = pick

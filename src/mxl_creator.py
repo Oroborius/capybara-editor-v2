@@ -234,7 +234,7 @@ class Tables:
                                    maxsock=(r[0x1A], r[0x1B], r[0x1C]), gfx=r[0x23]))
         self.affix_extra = {}     # kind -> [dict(rare, cls, freq)]
         for kind in ('magicprefix', 'magicsuffix', 'automagic'):
-            self.affix_extra[kind] = [dict(rare=r[0x64], cls=r[0x67], freq=r[0x82]) for r in _rows(data, kind)]
+            self.affix_extra[kind] = [dict(rare=r[0x64], cls=r[0x66], cls_item=r[0x67], freq=r[0x82]) for r in _rows(data, kind)]
         self.rare_names = {}
         for kind in ('rareprefix', 'raresuffix'):
             self.rare_names[kind] = [dict(itypes={t for t in struct.unpack_from('<7h', r, 16) if t > 0},
@@ -664,15 +664,43 @@ class Mod:
         self.value = self.max if self.variable else None
 
     def stats(self, data):
+        out = self._stats(data)
+        if Creator._vanilla():
+            lo, hi = self.raw[2], self.raw[3]
+            if data.prop_func[self.prop] == 36:
+                # random class skills: the sheet's range is the CLASS (the stat's param), the bonus is the
+                # property's own value (the server's rule: Hellfire Torch rolls +3 to one class)
+                for s in out:
+                    if s['id'] == 83:
+                        s['param'], s['value'] = s['value'], data.prop_vals[self.prop][0]
+            for s in out:
+                if s['id'] == 107 and lo < hi and s.get('param') in (42, 50, 60) and lo <= s['param'] <= hi:
+                    # a random skill of lo..hi (skill-rand): the game never picks skills 42, 50 and 60
+                    s['param'] = next(x for x in (s['param'] - 1, s['param'] + 1, s['param'] - 2, s['param'] + 2)
+                                      if lo <= x <= hi and x not in (42, 50, 60))
+        if data.prop_func[self.prop] == 10 and Creator._vanilla():
+            # Properties.txt function 10 (skill tab): the sheet's param is class * 3 + tab, the stat's layer
+            # (class << 3) | tab - the server's legit rule (d2bt.tooltip.item.apply_property)
+            for s in out:
+                if s['param'] is not None:
+                    s['param'] = ((s['param'] // 3) << 3) | (s['param'] % 3)
+        return out
+
+    def _stats(self, data):
         prop, param, lo, hi = self.raw
         funcs = data.prop_funcs[prop]
+        if data.prop_func[prop] in (11, 19) and (lo < 0 or hi < 0) and Creator._vanilla():
+            # charged skill with negative sheet values (stock 1.14d: charges -min, level -max): the stat holds
+            # the positive numbers (a negative one cannot be stored; the server accepts 1..255 / 1..63)
+            lo, hi = abs(lo), abs(hi)
         if any(f in (15, 16, 17) for f in funcs):
             # min / max / param given as such to each stat (no min-max swap: e.g. cold length + affix count)
             out = {}
+            vanilla = Creator._vanilla()     # a blank param (the sheet's) is the property's own min - the server's rule
             for sid, f in zip(data.props[prop], funcs):
                 if sid < 0:
                     continue
-                v = lo if f == 15 else hi if f == 16 else param if f == 17 else lo
+                v = lo if f == 15 else hi if f == 16 else (param or lo if vanilla else param) if f == 17 else lo
                 out[sid] = v
             for one, others in ((S.MIN_DAMAGE, (S.MIN_DAMAGE_2, S.THROW_MIN_DAMAGE)),
                                 (S.MAX_DAMAGE, (S.MAX_DAMAGE_2, S.THROW_MAX_DAMAGE))):
@@ -814,7 +842,7 @@ class Creator:
             if b.kind == 'misc':
                 continue
             anc = self.types_of(b.code)
-            if anc & set(ok) and not anc & set(ex) and self.max_sockets(b.code, MAX_ILVL) >= len(runes):
+            if anc & set(ok) and not anc & set(ex) and self.max_sockets(b.code, self.max_ilvl()) >= len(runes):
                 out.append(b)
         return out
 
@@ -870,6 +898,8 @@ class Creator:
             return self.socket_limit(code, ilvl)
         if spec.get('quality') in ('rare', 'crafted', 'tempered', 'set', 'unique'):
             return 0
+        if spec.get('quality') == 'magic':
+            return min(self.max_sockets(code, ilvl), 2)      # the server's legit rule: a magic item has up to 2
         return self.max_sockets(code, ilvl)
 
     def socket_split(self, spec):
@@ -906,8 +936,8 @@ class Creator:
         key = (code, q)
         if key not in cache:
             rare = q == 'rare'
-            pre = self.affix_choices('magicprefix', code, MAX_ILVL, rare=rare)
-            suf = self.affix_choices('magicsuffix', code, MAX_ILVL, rare=rare)
+            pre = self.affix_choices('magicprefix', code, self.max_ilvl(), rare=rare)
+            suf = self.affix_choices('magicsuffix', code, self.max_ilvl(), rare=rare)
             if rare:
                 gp = {a['group'] for _, _, a in pre}
                 gs = {a['group'] for _, _, a in suf}
@@ -915,6 +945,45 @@ class Creator:
             else:
                 cache[key] = bool(pre or suf)
         return cache[key]
+
+    def _unique_props(self, spec):
+        """Property codes of the unique row of spec (vanilla): from the stock sheet the legit checker reads."""
+        try:
+            import mxl_legit
+            row = mxl_legit._validator().uniques[spec['row']]
+            return {row.get(f'prop{i}') for i in range(1, 13)} - {None, ''}
+        except Exception:
+            return set()
+
+    def ethereal_forced(self, spec):
+        """Vanilla: a unique with the 'ethereal' property is always ethereal (the server requires the flag)."""
+        return (self._vanilla() and spec.get('quality') == 'unique' and not spec.get('_from_item')
+                and 'ethereal' in self._unique_props(spec))
+
+    def max_ilvl(self):
+        """Highest item level the creator offers: the save's field holds 127 (Median); vanilla's game stops at 99."""
+        return min(99, MAX_ILVL) if self._vanilla() else MAX_ILVL
+
+    def crafted_counts(self, ilvl):
+        """(fewest, most) random affixes of a crafted item. Median: always 4. Vanilla: the item level sets the
+        fewest (1 below 31, 2 from 31, 3 from 51, 4 from 71 - the server's legit rule), 4 at most."""
+        if not self._vanilla():
+            return CRAFTED_AFFIXES, CRAFTED_AFFIXES
+        return (4 if ilvl >= 71 else 3 if ilvl >= 51 else 2 if ilvl >= 31 else 1), CRAFTED_AFFIXES
+
+    def ethereal_ok(self, spec):
+        """Whether the item can be ethereal. Vanilla: only gear with a durability that is not a set item (the
+        server's legit rule: misc items, indestructible bases and set items are never ethereal; neither is a
+        unique with 'indestruct' and without 'ethereal'). Median: any item."""
+        code = spec.get('code')
+        if not self._vanilla() or code not in self.data.bases or spec.get('_from_item'):
+            return True
+        if self.data.base(code).kind == 'misc' or self.t.item.get(code, {}).get('nodur') or spec.get('quality') == 'set':
+            return False
+        if spec.get('quality') == 'unique':
+            props = self._unique_props(spec)
+            return 'ethereal' in props or 'indestruct' not in props
+        return True
 
     def affix_level(self, code, ilvl):
         """The level the game picks affixes at. Vanilla: the item level clamped to 99 and raised to the base's
@@ -929,6 +998,21 @@ class Creator:
             return min(99, level + magic)
         half = qlvl // 2
         return level - half if level < 99 - half else 2 * level - 99
+
+    def _server_allows(self, kind, idx, code):
+        """Vanilla: the server's own item-type rule for affix row idx (1-based) on this base (d2bt.legit.allowed),
+        so what the creator offers is what the server accepts. True when it cannot be asked."""
+        try:
+            import mxl_legit
+            from d2bt.legit import allowed
+            v = mxl_legit._validator()
+            cache = self.__dict__.setdefault('_srv_types', {})
+            if code not in cache:
+                b = v.bases[code.strip()][1]
+                cache[code] = v.save_tables.ancestors(b.get('type')) | v.save_tables.ancestors(b.get('type2'))
+            return allowed(cache[code], v.affixes[(kind, idx)][1])
+        except Exception:
+            return True
 
     def _affix_ok(self, a, extra, anc, ilvl, rare=False):
         if not a['spawnable'] or a['level'] > ilvl or (a['maxlevel'] and ilvl > a['maxlevel']):
@@ -945,7 +1029,8 @@ class Creator:
         out = []
         ilvl = self.affix_level(code, ilvl)
         for i, a in enumerate(self.data.affixes[kind]):
-            if self._affix_ok(a, self.t.affix_extra[kind][i], anc, ilvl, rare):
+            if self._affix_ok(a, self.t.affix_extra[kind][i], anc, ilvl, rare) and \
+                    (not self._vanilla() or self._server_allows(kind, i + 1, code)):
                 out.append((i + 1, self.affix_label(kind, i + 1), a))
         return out
 
@@ -1006,15 +1091,17 @@ class Creator:
             cache[(kind, save_id)] = f"{'; '.join(lines) or T('cr.hidden', '(hidden)')}   [L{a['level']}, #{save_id}]"
         return cache[(kind, save_id)]
 
-    def auto_choices(self, code, ilvl):
+    def auto_choices(self, code, ilvl, quality=None):
         b = self.data.base(code)
         if not b.auto_group:
             return []
         anc = self.types_of(code)
         out = []
         ilvl = self.affix_level(code, ilvl)                 # like magic affixes (the server's legit rule)
+        rare = quality in ('rare', 'crafted') and self._vanilla()      # vanilla: the rare flag counts on rares too
         for i, a in enumerate(self.data.affixes['automagic']):
-            if a['group'] == b.auto_group and self._affix_ok(a, self.t.affix_extra['automagic'][i], anc, ilvl):
+            if a['group'] == b.auto_group and self._affix_ok(a, self.t.affix_extra['automagic'][i], anc, ilvl, rare) and \
+                    (not self._vanilla() or self._server_allows('automagic', i + 1, code)):
                 out.append((i + 1, self.affix_label('automagic', i + 1), a))
         return out
 
@@ -1022,15 +1109,29 @@ class Creator:
         k = self.data.base(code).kind
         return [i for i, r in enumerate(self.t.superior) if (k == 'weapons' and r['weapon']) or (k == 'armor' and r['armor'])]
 
+    def rare_names_stored(self, names):
+        """The save's two 8-bit name fields of (prefix row, suffix row). Median: row + number of suffixes, row.
+        Vanilla: the game numbers the rare names from 1 (suffixes first, then the prefixes; 0 = no name), so both
+        fields are one higher (the server's legit rule)."""
+        a, c = names
+        one = 1 if self._vanilla() else 0
+        return a + len(self.data.rare_suffix) + one, c + one
+
+    def rare_names_from_stored(self, stored):
+        a, b = stored
+        one = 1 if self._vanilla() else 0
+        return a - len(self.data.rare_suffix) - one, max(0, b - one)
+
     def rare_name_choices(self, code):
         anc = self.types_of(code)
         res = {}
         for kind in ('rareprefix', 'raresuffix'):
             # the item stores a rare prefix as (its index + number of rare suffixes) in 8 bits: Sigma's last
             # rare prefixes (index + 183 > 255) cannot be saved, so the game cannot give them
-            lim = 255 - (len(self.data.rare_suffix) if kind == 'rareprefix' else 0)
+            lim = 255 - (len(self.data.rare_suffix) if kind == 'rareprefix' else 0) - (1 if self._vanilla() else 0)
             res[kind] = [(i, self.data.key(n['key'])) for i, n in enumerate(self.t.rare_names[kind])
-                         if i <= lim and (not n['itypes'] or n['itypes'] & anc) and not (n['etypes'] & anc)]
+                         if i <= lim and (n['itypes'] & anc if self._vanilla() else (not n['itypes'] or n['itypes'] & anc))
+                         and not (n['etypes'] & anc)]
         return res
 
     # ---- crafted items (Median XL Sigma: rare / crafted gear + shrine vessel (+ oil), amulets + alchemy oils...)
@@ -1959,7 +2060,7 @@ class Creator:
             lv = max(lv, self.data.uniques[spec['row']]['level'])
         elif spec['quality'] == 'set':
             lv = max(lv, self.data.set_items[spec['row']]['level'])
-        return min(lv, MAX_ILVL)
+        return min(lv, self.max_ilvl())
 
     def mods(self, spec):
         """[Mod] of the spec, in display order; rolled values taken from spec['rolls'] (key -> value)."""
@@ -2120,17 +2221,21 @@ class Creator:
             raise CreateError(T('cr.err.base', 'choose a base item'))
         b = d.base(code)
         ilvl = spec['ilvl']
-        if not self.min_ilvl(spec) <= ilvl <= MAX_ILVL:
-            raise CreateError(T('cr.err.ilvl', 'item level must be {lo} to {hi}', lo=self.min_ilvl(spec), hi=MAX_ILVL))
+        if not self.min_ilvl(spec) <= ilvl <= self.max_ilvl():
+            raise CreateError(T('cr.err.ilvl', 'item level must be {lo} to {hi}', lo=self.min_ilvl(spec), hi=self.max_ilvl()))
         qq = 'normal' if q == 'runeword' else q
         if qq in ('normal', 'superior', 'magic', 'rare') and not self.can_have_quality(code, qq):
             raise CreateError(T('cr.err.quality', '{base} cannot be {quality}', base=b.name, quality=T(f'cr.quality.{qq}', qq)))
+        if spec.get('ethereal') and not self.ethereal_ok(spec):
+            raise CreateError(T('cr.err.ethereal', '{base} cannot be ethereal', base=b.name))
+        if self.ethereal_forced(spec) and not spec.get('ethereal'):
+            raise CreateError(T('cr.err.ethereal_forced', '{base} is always ethereal', base=b.name))
         ms = self.socket_limit(code, ilvl) if q != 'runeword' else self.max_sockets(code, ilvl)
         if spec['sockets'] > ms:
             raise CreateError(T('cr.err.max_sockets', '{base} can have at most {n} socket(s) at item level {ilvl}', base=b.name, n=ms, ilvl=ilvl))
         if len(spec['socketed']) + len(spec.get('_added') or ()) > spec['sockets']:
             raise CreateError(T('cr.err.too_many_socketed', 'more socketed items than sockets'))
-        autos = [a for a, _, _ in self.auto_choices(code, ilvl)]
+        autos = [a for a, _, _ in self.auto_choices(code, ilvl, q)]
         # Median XL Sigma: uniques and set items get their base's innate (automagic) affix too, like the game's
         # own (e.g. Azurewrath's Innate Cold Damage on its Crystal Sword)
         if autos and spec.get('auto') not in autos and not (spec.get('extra') and not spec.get('auto')):
@@ -2138,7 +2243,7 @@ class Creator:
         if q == 'superior' and spec.get('superior') not in self.superior_choices(code):
             raise CreateError(T('cr.err.superior', 'choose the Superior bonus'))
         if q == 'magic':
-            if not spec.get('prefix') and not spec.get('suffix'):
+            if not spec.get('prefix') and not spec.get('suffix') and not self._vanilla():   # vanilla: Legit mode checks
                 raise CreateError(T('cr.err.magic', 'a magic item needs a prefix or a suffix'))
             for kind, key in (('magicprefix', 'prefix'), ('magicsuffix', 'suffix')):
                 if spec.get(key) and spec[key] not in {i for i, _, _ in self.affix_choices(kind, code, ilvl)}:
@@ -2146,7 +2251,8 @@ class Creator:
                                         affix=T(f'cr.{key}', key.capitalize()), ilvl=ilvl))
         if q == 'rare':
             pre, suf = spec.get('rare_prefixes') or [], spec.get('rare_suffixes') or []
-            if not 1 <= len(pre) <= 3 or not 1 <= len(suf) <= 3 or len(pre) + len(suf) < 3:
+            if (len(pre) > 3 or len(suf) > 3) if self._vanilla() else (
+                    not 1 <= len(pre) <= 3 or not 1 <= len(suf) <= 3 or len(pre) + len(suf) < 3):
                 raise CreateError(T('cr.err.rare_count', 'a rare item has 1-3 prefixes and 1-3 suffixes (3 to 6 affixes)'))
             groups = set()
             for kind, lst in (('magicprefix', pre), ('magicsuffix', suf)):
@@ -2170,7 +2276,8 @@ class Creator:
                 # an edited item whose affixes could not all be found: the rest of its stats are kept as they are
                 if len(pre) > 3 or len(suf) > 3 or len(pre) + len(suf) > CRAFTED_AFFIXES:
                     raise CreateError(T('cr.err.crafted_max', 'a crafted item has at most {n} affixes (3 prefixes, 3 suffixes)', n=CRAFTED_AFFIXES))
-            elif not 1 <= len(pre) <= 3 or not 1 <= len(suf) <= 3 or len(pre) + len(suf) != CRAFTED_AFFIXES:
+            elif (len(pre) > 3 or len(suf) > 3 or len(pre) + len(suf) > self.crafted_counts(ilvl)[1]) if self._vanilla() else (
+                    not 1 <= len(pre) <= 3 or not 1 <= len(suf) <= 3 or len(pre) + len(suf) != CRAFTED_AFFIXES):
                 raise CreateError(T('cr.err.crafted_count', 'a crafted item has {n} affixes: 1-3 prefixes and 1-3 suffixes', n=CRAFTED_AFFIXES))
             self._check_rare_affixes(code, ilvl, pre, suf)
             names = self.rare_name_choices(code)
@@ -2260,11 +2367,9 @@ class Creator:
         elif q in ('set', 'unique'):
             rec['set_unique_id'] = spec['row']
         elif q == 'tempered':
-            a, c = spec['rare_names']
-            rec['rare_names'] = (a + len(d.rare_suffix), c)
+            rec['rare_names'] = self.rare_names_stored(spec['rare_names'])
         elif q in ('rare', 'crafted'):
-            a, c = spec['rare_names']
-            rec['rare_names'] = (a + len(d.rare_suffix), c)
+            rec['rare_names'] = self.rare_names_stored(spec['rare_names'])
             pre, suf = list(spec['rare_prefixes']), list(spec['rare_suffixes'])
             slots = []
             for k in range(3):
@@ -2651,19 +2756,16 @@ class Creator:
             if q == 'magic':
                 spec['prefix'], spec['suffix'] = it.get('prefix') or None, it.get('suffix') or None
             if q == 'rare':
-                a, b = it['rare_names']
-                spec['rare_names'] = (a - len(d.rare_suffix), b)
+                spec['rare_names'] = self.rare_names_from_stored(it['rare_names'])
                 ra = it.get('rare_affixes') or []
                 spec['rare_prefixes'] = [x for x in ra[0::2] if x]
                 spec['rare_suffixes'] = [x for x in ra[1::2] if x]
         elif q == 'tempered':                 # Sigma quality 9: name only, every stat kept as it is
             spec = self.new_spec('tempered', it['code'])
-            a, b = it.get('rare_names') or (len(d.rare_suffix), 0)
-            spec['rare_names'] = (a - len(d.rare_suffix), b)
+            spec['rare_names'] = self.rare_names_from_stored(it.get('rare_names') or (len(d.rare_suffix), 0))
         elif q == 'crafted':
             spec = self.new_spec('crafted', it['code'])
-            a, b = it.get('rare_names') or (len(d.rare_suffix), 0)
-            spec['rare_names'] = (a - len(d.rare_suffix), b)
+            spec['rare_names'] = self.rare_names_from_stored(it.get('rare_names') or (len(d.rare_suffix), 0))
             ra = it.get('rare_affixes') or []
             spec['rare_prefixes'] = [x for x in ra[0::2] if x]
             spec['rare_suffixes'] = [x for x in ra[1::2] if x]

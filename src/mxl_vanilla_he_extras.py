@@ -1150,10 +1150,9 @@ class ItemEdit:
         code = self.record['code']
         if field == 'rare_names':
             names = creator.rare_name_choices(code)
-            offset = len(self.win.data.rare_suffix)
             choices = (
-                [(key + offset, name) for key, name in names['rareprefix']],
-                names['raresuffix'],
+                [(creator.rare_names_stored((key, 0))[0], name) for key, name in names['rareprefix']],
+                [(creator.rare_names_stored((0, key))[1], name) for key, name in names['raresuffix']],
             )
         else:
             choices = tuple(
