@@ -370,6 +370,9 @@ class Validator:
                 report('affix-type', f'{name} cannot spawn on {item.code}')
             if row.get('spawnable') != '1' or (q in (6, 8) and row.get('rare') != '1'):
                 report('affix-quality', f'{name} cannot spawn at this quality')
+            elif to_int(row.get('frequency')) <= 0:
+                # D2Game ItemsMagic.cpp affix picker: `rAffix.wFrequency == 0  // No chance to drop this affix`
+                report('affix-quality', f'{name} has frequency 0 and never rolls')
             high = to_int(row.get('maxlevel'))
             if alvl < to_int(row.get('level')) or (high and alvl > high):
                 report('affix-level', f'{name} unavailable at affix level {alvl}')

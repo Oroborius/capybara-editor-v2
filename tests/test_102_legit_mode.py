@@ -251,9 +251,9 @@ def convert_menu_entry_only_for_illegit_items_in_legit_mode():
 # impossible findings per private reference save (sorted order), as the dev kit's checker at the vendored commit
 # reports them (None: unreadable = hacked). The saves are private (.cache/samples, never committed): skipped without.
 REF_EXPECTED = {
-    'legit-ref': [0, 57, 81, 112, 147, 81, 90, 85, 28, 28, 33, 12, 87, 94, 111, 111, 123, None, 46, 25, 77, 13, 82,
-                  0, 79, 78, 69, 78, 14, 111, 108, 12, 57, 40, 33, 61],
-    'lld-ref': [163, 163, 165, 164, 128, 165, 40],
+    'legit-ref': [0, 59, 81, 124, 150, 81, 90, 85, 28, 28, 45, 12, 87, 94, 123, 123, 127, None, 48, 26, 77, 15, 82,
+                  0, 79, 78, 79, 78, 14, 111, 116, 12, 59, 52, 45, 77],
+    'lld-ref': [163, 163, 166, 166, 128, 166, 40],
 }
 
 
@@ -273,5 +273,27 @@ def legit_verdicts_match_the_dev_kit_on_the_references():
             got.append(None if any(x.rule in ('unreadable', 'stat') and x.item == 'character' for x in fs)
                        else len(mxl_legit.impossible(fs)))
         T.eq(got, want, f'{d}: impossible findings per save, as the dev kit')
+
+
+@T.test
+def mpq_reads_work_without_os_pread():
+    """Windows has no os.pread (tester: Legit mode "module 'os' has no attribute 'pread'"): the stand-in reads the
+    game's archives the same way."""
+    import os
+    import mxl_legit
+    from d2bt.mpq import MPQArchive
+    mpq = next((p for p in GAME.glob('*.mpq') if p.name.lower() == 'patch_d2.mpq'), None)
+    if mpq is None:
+        T.skip('no patch_d2.mpq')
+    name = r'data\global\excel\magicprefix.txt'
+    want = MPQArchive(str(mpq)).read(name)
+    real = os.pread
+    try:
+        del os.pread
+        mxl_legit._windows_pread()
+        T.check(os.pread is not real, 'stand-in installed')
+        T.eq(MPQArchive(str(mpq)).read(name), want, 'same bytes through the stand-in')
+    finally:
+        os.pread = real
 
 T.main(globals())
