@@ -163,6 +163,43 @@ def _trailing(blob, it, br):
     return it, br
 
 
+def _realmless_child(blob, it, br):
+    """A socketed item (mode 6) whose read does not end where the next item ('JM') or the list's end starts: mock
+    tools wrote socketed jewels without the realm bit before the stats (dev kit, D2MOO
+    ITEMS_DecodeItemBitstreamComplete), so its first stat bit was taken for the realm flag."""
+    try:
+        if it.get('location') != 6:
+            return False
+        return 2 + (br.pos + 7) // 8 != _next_item(blob)
+    except Exception:
+        return False
+
+
+def _next_item(blob):
+    """Where the next item ('JM') or the bytes end: a socketed item read right ends exactly there (a misread one
+    can run on to a later 'JM')."""
+    head = bytes(blob[:8192])                       # the host passes a memoryview (no .find)
+    nxt = head.find(b'JM', 2)
+    return len(blob) if nxt < 0 else nxt
+
+
+def _realmless(blob, data, it, br):
+    """The same item read again without the realm bit; kept when that read ends cleanly (it.realmless = True,
+    its bytes stay as they are). Otherwise the first read is returned."""
+    try:
+        it2, br2 = _parse_item(blob, data, no_realm=True)
+        if it2.get('location') == 6:
+            if 2 + (br2.pos + 7) // 8 == _next_item(blob):
+                try:
+                    it2.realmless = True
+                except AttributeError:
+                    pass
+                return it2, br2
+    except Exception:
+        pass
+    return it, br
+
+
 def parse_item(blob, data):
     if getattr(blob, 'beta_item', False) and not getattr(data, 'beta_items', False):
         raise mxl_format.FormatError('This item uses the 1.10s beta layout. Open a beta character to use it.')
@@ -171,8 +208,13 @@ def parse_item(blob, data):
         return legacy(blob)
     try:
         it, br = _parse_item(blob, data)
+        if _realmless_child(blob, it, br):
+            it, br = _realmless(blob, data, it, br)
         return _trailing(blob, it, br) if LENIENT else (it, br)
     except mxl_format.FormatError:
+        fixed = _realmless(blob, data, None, None)
+        if fixed[0] is not None:
+            return fixed
         if not LENIENT:
             raise
     br = BitReader(blob[2:])
@@ -218,7 +260,7 @@ def _vanilla_charm(code):
     return _charm_affix_field(code, 'normal', 0x10)
 
 
-def _parse_item(blob, data):
+def _parse_item(blob, data, no_realm=False):
     expect(blob, 0, b'JM')
     br = BitReader(blob[2:])
     it = Item()
@@ -320,7 +362,7 @@ def _parse_item(blob, data):
     else:
         if code in ('tbk ', 'ibk '):
             br.read(5)
-        realm_bit = br.read(1)
+        realm_bit = 0 if no_realm else br.read(1)
         stamp_bits = getattr(data, 'realm_stamp_bits', 0)
         if realm_bit and stamp_bits:
             br.read(stamp_bits)

@@ -210,14 +210,15 @@ def vanilla_item_codec_round_trips_every_sample_item():
             try:
                 recs = E.M.decode_blob(e.blob, isc, base)
             except Exception:
-                skipped.append((os.path.basename(rel), bool(e.it.get('ethereal')), len(e.it.get('stats') or [])))
+                skipped.append((os.path.basename(rel), bool(e.it.get('ethereal'))))   # (the editor now reads
+                # these charms' stats: the 1.14d normal-charm field, mxl_format_fix)
                 continue
             n += 1
             if b''.join(E.M.encode_item(r, isc, base) for r in recs) != e.blob:
                 bad.append(f"{rel}: {e.it.get('code')}")
     T.eq(bad, [], 'items not given back byte for byte')
-    T.eq(sorted(skipped), sorted([('clone-68.d2s', True, 0)] + [('clone-20.d2s', True, 0)] * 6
-         + [('clone-100.d2s', True, 0)] * 14), 'items the codec cannot read (all opaque to the editor too)')
+    T.eq(sorted(skipped), sorted([('clone-68.d2s', True)] + [('clone-20.d2s', True)] * 6
+         + [('clone-100.d2s', True)] * 14), 'items the mock codec cannot read')
     T.check(n > 1500, f'{n} items checked')
 
 

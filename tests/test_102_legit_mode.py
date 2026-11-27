@@ -1383,4 +1383,25 @@ def nv_states_use_the_dev_kit_names():
     lines = [str(vanilla_stat_value(win.data, x['id'], x.get('param'), x['value'])) for x in rec['stats'] if x['id'] == 98]
     T.check(any('Just Hit' in l for l in lines) and any('Revive' in l for l in lines), f'the charm shows them: {lines}')
 
+
+@T.test
+def socketed_jewel_without_realm_bit_reads():
+    """A tester's character did not open ("corpse items not found"): mock tools wrote socketed jewels without the
+    realm bit before their stats, so the reader ran into the next item. Both readers retry a socketed item without
+    the bit when only that read ends where the next item starts (dev kit, D2MOO)."""
+    need()
+    import mxl_format_fix as FF
+    from mxl_creator import decode_item
+    win = T.chartab()
+    jewel = bytes.fromhex('4a4d10008000641800a0567607023c2b1a89310100005c1af399d44deaff')
+    nxt = bytes.fromhex('4a4d10008000641800a0567607023c2b1a89310100005c1af30f511051baa0fe03')
+    blob = jewel + nxt
+    rec, n = decode_item(blob, win.data)
+    T.eq(n, len(jewel), 'creator reader: the jewel ends where the next starts')
+    T.eq([x['id'] for x in rec['stats']], [151, 76, 77], 'its stats')
+    it, br = FF.parse_item(memoryview(blob), win.data)          # the host passes a memoryview
+    T.eq(2 + (br.pos + 7) // 8, len(jewel), 'host reader too')
+    rec2, n2 = decode_item(nxt, win.data)
+    T.eq((n2, [x['id'] for x in rec2['stats']]), (len(nxt), [151, 135, 136, 93]), 'the last one in a list')
+
 T.main(globals())

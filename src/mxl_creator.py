@@ -485,7 +485,31 @@ def _charm_affix_field(rec_or_code, quality, flags):
 
 
 def decode_item(blob, data, *, offsets=None):
-    """Read one item and its byte length. Optionally record the field offsets from the start of JM."""
+    """Read one item and its byte length. Optionally record the field offsets from the start of JM. A socketed
+    item (mode 6) that mock tools wrote without the realm bit before its stats is read again without it when that
+    read, and only that read, ends where the next item starts (dev kit, D2MOO ITEMS_DecodeItemBitstreamComplete)."""
+    try:
+        rec, n = _decode_item(blob, data, offsets=offsets)
+        err = None
+    except (CreateError, KeyError, IndexError, ValueError) as e:
+        rec, n, err = None, None, e
+    if (rec is None or rec.get('location') == 6) and bytes(blob[:2]) == b'JM':
+        head = bytes(blob[:8192])
+        nxt = head.find(b'JM', 2)
+        nxt = len(blob) if nxt < 0 else nxt
+        if n != nxt:
+            try:
+                rec2, n2 = _decode_item(blob, data, offsets=offsets, no_realm=True)
+                if rec2.get('location') == 6 and n2 == nxt:
+                    return rec2, n2
+            except (CreateError, KeyError, IndexError, ValueError):
+                pass
+    if err is not None:
+        raise err
+    return rec, n
+
+
+def _decode_item(blob, data, *, offsets=None, no_realm=False):
     if getattr(blob, 'beta_item', False) and not getattr(data, 'beta_items', False):
         raise CreateError('This item uses the 1.10s beta layout. Open a beta character to use it.')
     if blob[:2] != b'JM':
@@ -595,7 +619,7 @@ def decode_item(blob, data, *, offsets=None):
         mark('tome_bits')
         r['tome_bits'] = br.read(5)
     mark('realm_bit')
-    r['realm_bit'] = br.read(1)
+    r['realm_bit'] = 0 if no_realm else br.read(1)
     stamp_bits = getattr(data, 'realm_stamp_bits', 0)
     if r['realm_bit'] and stamp_bits:
         mark('realm_stamp')
