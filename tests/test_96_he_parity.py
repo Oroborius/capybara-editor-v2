@@ -771,6 +771,29 @@ def unique_picture_larger_than_its_base_is_drawn_whole():
     T.eq(win.data.base(it['code']).size, (1, 1), 'the item itself stays 1x1')
 
 
+@T.test
+def item_creator_offers_only_the_sockets_the_game_generates():
+    """Tester: a new Andariel's Visage came with 7 sockets. The creator offers what the game generates (none on a
+    unique; the base's own on a normal item); 7 stays a hand edit (Specific item edit > Socketing)."""
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    from mxl_rc_menu import _creator_for
+
+    win = T.chartab()
+    cr = _creator_for(win)
+    row = next((key for key, label, _r in cr.uniques() if "Andariel" in label), None)
+    if row is None:
+        T.skip("no Andariel's Visage row")
+    spec = cr.new_spec('unique', row=row)
+    spec['ilvl'] = 99
+    T.eq(cr.creator_socket_limit(spec), 0, 'a new unique: no sockets')
+    normal = cr.new_spec('normal', code=spec['code'])
+    normal['ilvl'] = 99
+    T.eq(cr.creator_socket_limit(normal), cr.max_sockets(spec['code'], 99), "a normal helm: the base's own")
+    T.check(cr.creator_socket_limit(normal) < 7, 'not the 7 of a hand edit')
+    T.eq(cr.socket_limit(spec['code'], 99), 7, 'Specific item edit > Socketing still allows 7')
+
+
 
 @T.test
 def character_name_warning_and_save_anyway():

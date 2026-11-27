@@ -1063,7 +1063,7 @@ class CreatorWindow:
                         if a['group'] not in groups:
                             spec[key].append(i)
                             groups.add(a['group'])
-        ms = cr.socket_limit(code, ilvl)
+        ms = cr.creator_socket_limit(spec)
         if q != 'runeword':
             spec['sockets'] = ms if spec.get('max_sockets') else min(spec.get('sockets') or 0, ms)
             spec['sockets'] = max(spec['sockets'], cr.innate_sockets(spec))   # the innate's sockets (Angelic...)
@@ -1187,7 +1187,7 @@ class CreatorWindow:
         rr = row(T('cr.ethereal', 'Ethereal'))          # any item can be ethereal (charms, jewels, rings ... too)
         ev = tk.BooleanVar(value=spec['ethereal'])
         ttk.Checkbutton(f, variable=ev, command=lambda ev=ev: self.set_field('ethereal', ev.get())).grid(row=rr, column=1, sticky='w')
-        ms = cr.socket_limit(code, spec['ilvl'])
+        ms = cr.creator_socket_limit(spec)
         if q == 'runeword':
             rr = row(T('cr.sockets', 'Sockets'))
             ttk.Label(f, text=T('cr.rw_sockets', '{n} (runes socketed automatically)', n=spec['sockets'])).grid(row=rr, column=1, sticky='w')
@@ -2809,7 +2809,7 @@ class CreatorWindow:
     def set_sockets(self, n):
         if self.spec is None:
             return
-        ms = self.cr.socket_limit(self.spec['code'], self.spec['ilvl'])
+        ms = self.cr.creator_socket_limit(self.spec)
         self.spec['max_sockets'] = bool(ms) and n == ms
         self.set_field('sockets', n)
 
@@ -2818,7 +2818,7 @@ class CreatorWindow:
             return
         self.spec['max_sockets'] = bool(on)
         if on:
-            self.spec['sockets'] = self.cr.socket_limit(self.spec['code'], self.spec['ilvl'])
+            self.spec['sockets'] = self.cr.creator_socket_limit(self.spec)
         self.prepare_defaults(self.spec)
         self.fill_new_rolls()
         self.render_options()

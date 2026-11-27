@@ -860,6 +860,18 @@ class Creator:
             ok = False
         return max(ms, self.VANILLA_MAX_SOCKETS) if ok else ms
 
+    def creator_socket_limit(self, spec):
+        """Most sockets the item creator offers for a NEW item. Vanilla: what the game generates - the base's
+        sockets at the item level (itemtypes MaxSock) on low / normal / superior / magic items, none on rare,
+        crafted, set and unique items (only a quest adds sockets to those). More (up to 7) is a hand edit:
+        Specific item edit > Socketing. Median and an item opened with Edit item: socket_limit."""
+        code, ilvl = spec['code'], spec['ilvl']
+        if not self._vanilla() or spec.get('_from_item') or code not in self.data.bases:
+            return self.socket_limit(code, ilvl)
+        if spec.get('quality') in ('rare', 'crafted', 'tempered', 'set', 'unique'):
+            return 0
+        return self.max_sockets(code, ilvl)
+
     def socket_split(self, spec):
         """(save field, item_numsockets 194) for spec['sockets'] in all: the field up to the base's sockets (or the
         edited item's own field), the rest as stat 194. Median: (sockets, 0)."""
