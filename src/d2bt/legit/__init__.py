@@ -7,6 +7,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, replace
 from functools import lru_cache
 from pathlib import Path
+import re
 import unicodedata
 
 from ..binfmt import bin2txt
@@ -17,7 +18,10 @@ from ..itemgen import (
     craft_properties, craft_recipes, ethereal_allowed, properties, runeword_matches, saved_socket_limit,
     socket_limit, superior_candidates, unique_upgrade,
 )
-from ..itemgen.stats import charges_in_bounds, random_skill_options, staffmod_class_matches
+from ..itemgen.stats import (
+    charged_level_capacity, charges_in_bounds, random_skill_options, skill_layer,
+    staffmod_class_matches,
+)
 from ..lint.savescan import SaveTables, parse_d2s
 from ..tooltip.data import Table, to_int
 from ..tooltip.item import ItemTables, Stats, V, apply_property
@@ -161,6 +165,13 @@ class Validator:
                 raw_headers, raw_rows = read_txt(path)
                 headers = [cell.decode('latin-1') for cell in raw_headers]
                 rows = [[cell.decode('latin-1').strip('"') for cell in row] for row in raw_rows]
+                # The compiled .bin the game loads stores each type code as four
+                # bytes, so 'staff' in itype/etype loads as 'staf'.
+                for column, header in enumerate(headers):
+                    if re.fullmatch(r'[ie]type\d', header.strip().lower()):
+                        for row in rows:
+                            if column < len(row):
+                                row[column] = row[column][:4]
             else:
                 data = (self.directory / f'{name}.bin').read_bytes()
                 headers, rows = bin2txt.convert(data, name, '114d', self.context)
@@ -182,7 +193,7 @@ class Validator:
     def parse(self, path):
         return parse_d2s(path, self.save_tables)
 
-    def _bounds(self, mods):
+    def _bounds(self, mods, ilvl=0):
         bounds = Stats()
         random = {}
         for code, param, low, high in mods:
@@ -193,18 +204,15 @@ class Validator:
             elif code == 'skill-rand':
                 random.update({(107, skill): V(to_int(param))
                                for skill in random_skill_options(to_int(low), to_int(high))})
-            elif code == 'charged' and min(to_int(low), to_int(high)) < 0:
-                # Negative charge parameters are scaling controls. Retain the
-                # skill and fixed fields and use the packed widths for scaled fields.
+            elif code == 'charged' and self.item_tables.skill_index(param) >= 0:
+                # ItemMods.cpp:3851 PropertyFunc19 fixes the level and capacity from ilvl.
                 skill = self.item_tables.skill_index(param)
-                if skill >= 0:
-                    level = to_int(high)
-                    levels = range(1, 64) if level < 0 else (level,)
-                    capacity = to_int(low)
-                    lo_capacity, hi_capacity = (1, 255) if capacity < 0 else (capacity, capacity)
-                    for level in levels:
-                        bounds.add(204, (skill << 6) | level,
-                                   V(lo_capacity << 8, (hi_capacity << 8) | hi_capacity))
+                skills = self.item_tables.skills
+                if skill < len(skills):
+                    level, capacity = charged_level_capacity(
+                        ilvl, to_int(skills.get(skill, 'reqlevel')), to_int(skills.get(skill, 'maxlvl')),
+                        to_int(low), to_int(high))
+                    bounds.add(204, skill_layer(skill, level), V(capacity << 8, (capacity << 8) | capacity))
             elif code == 'ignore-ac':
                 bounds.add(115, 0, V(to_int(low), to_int(high)))
             elif code == 'indestruct':
@@ -219,12 +227,12 @@ class Validator:
             bounds.add(sid, layer, value)
         return bounds.vals
 
-    def _stat_findings(self, label, values, candidates, types=()):
+    def _stat_findings(self, label, values, candidates, types=(), ilvl=0):
         if not values:
             return []
         best = None
         for mods in candidates:
-            limits = self._bounds(mods)
+            limits = self._bounds(mods, ilvl)
             failures = []
             for code, sid in (('randclassskill', 83), ('skill-rand', 107)):
                 if any(prop[0] == code for prop in mods) and sum(s == sid for s, _, _ in values) > 1:
@@ -343,7 +351,7 @@ class Validator:
                             if pieces == self.set_sizes[set_name]:
                                 full = list(properties(set_row, 'fcode{} fparam{} fmin{} fmax{}', range(1, 9)))
                                 candidates += [full, extra + full, partial + full, extra + partial + full]
-                        findings.extend(self._stat_findings(label, stats, candidates))
+                        findings.extend(self._stat_findings(label, stats, candidates, ilvl=item.ilvl))
 
         if item.rare_name:
             suffix_count = len(self.rare_suffixes)
@@ -370,6 +378,9 @@ class Validator:
                 report('craft-affix-count', f'{len(active)} crafted affixes, expected {minimum}..4')
         if q == 4 and not active:
             report('affix-count', 'magic item has no affix')
+        if q == 6 and not active:
+            # ItemsMagic.cpp:539 returns 0 when no prefix or suffix was assigned.
+            report('affix-count', 'rare item has no affix')
         groups = set()
         for table, index in active + ([('automagic', item.automagic)] if item.automagic else []):
             found = self.affixes.get((table, index))
@@ -385,7 +396,7 @@ class Validator:
                 report('affix-quality', f'{name} cannot spawn at this quality')
             elif to_int(row.get('frequency')) <= 0:
                 # D2Game ItemsMagic.cpp affix picker: `rAffix.wFrequency == 0  // No chance to drop this affix`
-                report('affix-quality', f'{name} has frequency 0 and never rolls')
+                report('affix-quality', f'{name} uses a retired affix row that never drops (editor-made)')
             if not affix_level_matches(row, alvl):
                 report('affix-level', f'{name} unavailable at affix level {alvl}')
             group = to_int(row.get('group'))
@@ -443,7 +454,7 @@ class Validator:
                 pattern = ' '.join(f'{slot}mod{{}}{field}' for field in ('code', 'param', 'min', 'max'))
                 rune_mods = [mod for rune in runes
                              for mod in properties(self.gems.get(rune, {}), pattern, range(1, 4))]
-                findings.extend(self._stat_findings(label, item.runeword_stats, [rwmods, rwmods + rune_mods]))
+                findings.extend(self._stat_findings(label, item.runeword_stats, [rwmods, rwmods + rune_mods], ilvl=item.ilvl))
 
         ethereal = bool(item.flags & (1 << 22))
         authored_ethereal = any(mod[0] == 'ethereal' for mod in mods)
@@ -467,7 +478,7 @@ class Validator:
             if not lo <= item.defense <= hi:
                 report('defense', f'base defense {item.defense} outside {lo}..{hi}', 'suspicious')
         if q != 3 or self.superior is not None:
-            findings.extend(self._stat_findings(label, item.stats, variants, types))
+            findings.extend(self._stat_findings(label, item.stats, variants, types, item.ilvl))
         return findings
 
     def _character_findings(self, char):

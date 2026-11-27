@@ -14,20 +14,26 @@ def skill_layer(skill, level):
     return (skill << 6) | (level & 63)
 
 
-def charged_skill(skill, ilvl, required, max_skill, minimum, maximum, roll):
-    """ItemMods.cpp:3851 ITEMMODS_PropertyFunc19.
-    Skills: reqlevel, maxlvl. Charged property: param (skill), min, max.
-    Return layer and packed capacity/current charges at creation.
+def charged_level_capacity(ilvl, required, max_skill, minimum, maximum):
+    """ItemMods.cpp:3851 ITEMMODS_PropertyFunc19 (level at :3873-:3912, capacity at :3914-:3947).
+    Skills: reqlevel, maxlvl. Charged property: min (charges), max (level).
+    Only the roll of the current charges is random; level and capacity are fixed by ilvl.
     """
     if maximum > 0:
         level = maximum
     elif maximum == 0:
-        level = min(max(1, (ilvl - required) // 4 + 1), max_skill or 20)
+        level = min(max(1, (ilvl - required) // 4 + 1), max_skill if max_skill > 0 else 20)
     else:
         divisor = max(1, max(1, 99 - required) // -maximum)
         level = max(1, (ilvl - required) // divisor)
     capacity = minimum if minimum >= 0 else level * -minimum // 8 - minimum
     capacity = min(255, max(1, capacity)) if minimum else 5
+    return level, capacity
+
+
+def charged_skill(skill, ilvl, required, max_skill, minimum, maximum, roll):
+    """ItemMods.cpp:3851 ITEMMODS_PropertyFunc19. Return layer and packed charges at creation."""
+    level, capacity = charged_level_capacity(ilvl, required, max_skill, minimum, maximum)
     floor = capacity // 8
     current = floor + 1 + roll(capacity - floor)
     return skill_layer(skill, level), (capacity << 8) | current

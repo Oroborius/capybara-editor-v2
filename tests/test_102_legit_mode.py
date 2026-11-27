@@ -251,8 +251,8 @@ def convert_menu_entry_only_for_illegit_items_in_legit_mode():
 # impossible findings per private reference save (sorted order), as the dev kit's checker at the vendored commit
 # reports them (None: unreadable = hacked). The saves are private (.cache/samples, never committed): skipped without.
 REF_EXPECTED = {
-    'legit-ref': [0, 65, 102, 133, 156, 93, 99, 96, 45, 45, 54, 22, 94, 102, 131, 131, 137, None, 57, 36, 93, 22, 100,
-                  0, 92, 90, 88, 91, 29, 123, 127, 26, 65, 63, 54, 93],
+    'legit-ref': [0, 68, 102, 133, 159, 93, 100, 96, 45, 45, 54, 22, 94, 103, 131, 131, 137, None, 59, 36, 93, 22, 100,
+                  0, 92, 90, 88, 91, 29, 123, 127, 26, 68, 63, 54, 93],
     'lld-ref': [163, 164, 168, 168, 129, 168, 41],
 }
 

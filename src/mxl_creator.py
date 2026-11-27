@@ -688,6 +688,21 @@ def merge_stats(stats):
     return [dict(id=k[0], param=k[1], value=v) for k, v in sorted(acc.items(), key=lambda kv: (kv[0][0], kv[0][1] or 0))]
 
 
+def _skill_req(skill):
+    """(reqlevel, maxlvl) of a skill id from the stock tables of the legit validator (vanilla); (1, 20) unknown."""
+    try:
+        import mxl_legit
+        row = mxl_legit._validator().rows('skills')[int(skill)]
+        return int(row.get('reqlevel') or 1), int(row.get('maxlvl') or 20)
+    except Exception:
+        return 1, 20
+
+
+def _charged(ilvl, req, top, lo, hi):
+    from d2bt.itemgen.stats import charged_level_capacity
+    return charged_level_capacity(ilvl, req, top, lo, hi)
+
+
 class Mod:
     """One mod (property, param, min, max) of an item and its rolled value."""
 
@@ -728,10 +743,13 @@ class Mod:
     def _stats(self, data):
         prop, param, lo, hi = self.raw
         funcs = data.prop_funcs[prop]
-        if data.prop_func[prop] in (11, 19) and (lo < 0 or hi < 0) and Creator._vanilla():
-            # charged skill with negative sheet values (stock 1.14d: charges -min, level -max): the stat holds
-            # the positive numbers (a negative one cannot be stored; the server accepts 1..255 / 1..63)
-            lo, hi = abs(lo), abs(hi)
+        if data.prop_func[prop] in (11, 19) and Creator._vanilla():
+            # charged skill: the game's level and charges for the item level (ITEMMODS_PropertyFunc19, the dev
+            # kit's d2bt.itemgen.stats.charged_level_capacity): min = charges (negative: level x |min| / 8 + |min|),
+            # max = level (0 / negative: from the item level and the skill's reqlevel / maxlvl)
+            req, top = _skill_req(param)
+            level, capacity = _charged(getattr(self, 'ilvl', 99), req, top, lo, hi)
+            lo, hi = capacity, level
         if any(f in (15, 16, 17) for f in funcs):
             # min / max / param given as such to each stat (no min-max swap: e.g. cold length + affix count)
             out = {}
@@ -2147,6 +2165,8 @@ class Creator:
         if spec.get('unrestricted'):                          # free mode: every mod's value is taken as set
             for m in out:
                 m.free = True
+        for m in out:
+            m.ilvl = spec.get('ilvl') or 99      # charged skills: level and charges follow the item level (vanilla)
         return out
 
     def _fit_storage(self, mods):

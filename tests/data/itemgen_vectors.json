@@ -859,5 +859,228 @@
       "sockets": 3
     },
     "rules": []
+  },
+  {
+    "name": "sorceress skill-tab prefix is legal on staves (bin staf)",
+    "item": {
+      "code": "sst",
+      "ilvl": 40,
+      "affixes": [
+        [
+          "magicprefix",
+          445
+        ]
+      ],
+      "quality": 4
+    },
+    "rules": []
+  },
+  {
+    "name": "charged skill level and capacity follow ilvl",
+    "item": {
+      "code": "sst",
+      "ilvl": 40,
+      "affixes": [
+        [
+          "magicsuffix",
+          522
+        ]
+      ],
+      "stats": [
+        [
+          204,
+          3138,
+          9492
+        ]
+      ],
+      "quality": 4
+    },
+    "rules": []
+  },
+  {
+    "name": "charged skill level beyond the ilvl formula",
+    "item": {
+      "code": "sst",
+      "ilvl": 40,
+      "affixes": [
+        [
+          "magicsuffix",
+          522
+        ]
+      ],
+      "stats": [
+        [
+          204,
+          3139,
+          9492
+        ]
+      ],
+      "quality": 4
+    },
+    "rules": [
+      "stat"
+    ]
+  },
+  {
+    "name": "charged capacity beyond the scaled formula",
+    "item": {
+      "code": "sst",
+      "ilvl": 40,
+      "affixes": [
+        [
+          "magicsuffix",
+          522
+        ]
+      ],
+      "stats": [
+        [
+          204,
+          3138,
+          9748
+        ]
+      ],
+      "quality": 4
+    },
+    "rules": [
+      "stat"
+    ]
+  },
+  {
+    "name": "rare with no affix is impossible",
+    "item": {
+      "code": "rin",
+      "ilvl": 90,
+      "quality": 6,
+      "rare_name": [
+        156,
+        94
+      ]
+    },
+    "rules": [
+      "affix-count"
+    ]
+  },
+  {
+    "name": "barbarian affix on an amazon spear",
+    "item": {
+      "code": "am3",
+      "ilvl": 99,
+      "affixes": [
+        [
+          "magicprefix",
+          481
+        ]
+      ],
+      "quality": 4
+    },
+    "rules": [
+      "affix-type"
+    ]
+  },
+  {
+    "name": "barbarian affix on a barbarian helm",
+    "item": {
+      "code": "ba1",
+      "ilvl": 99,
+      "affixes": [
+        [
+          "magicprefix",
+          481
+        ]
+      ],
+      "quality": 4
+    },
+    "rules": []
+  },
+  {
+    "name": "barbarian affix on a classless axe",
+    "item": {
+      "code": "hax",
+      "ilvl": 99,
+      "affixes": [
+        [
+          "magicprefix",
+          481
+        ]
+      ],
+      "quality": 4
+    },
+    "rules": []
+  },
+  {
+    "name": "Larzuk allows two sockets on a magic mace",
+    "item": {
+      "code": "fla",
+      "ilvl": 50,
+      "sockets": 2,
+      "affixes": [
+        [
+          "magicsuffix",
+          166
+        ]
+      ],
+      "quality": 4
+    },
+    "rules": []
+  },
+  {
+    "name": "magic mace cannot hold three sockets",
+    "item": {
+      "code": "fla",
+      "ilvl": 50,
+      "sockets": 3,
+      "affixes": [
+        [
+          "magicsuffix",
+          166
+        ]
+      ],
+      "quality": 4
+    },
+    "rules": [
+      "sockets"
+    ]
+  },
+  {
+    "name": "Larzuk allows one socket on a rare mace",
+    "item": {
+      "code": "fla",
+      "ilvl": 50,
+      "quality": 6,
+      "sockets": 1,
+      "affixes": [
+        [
+          "magicsuffix",
+          166
+        ]
+      ],
+      "rare_name": [
+        156,
+        11
+      ]
+    },
+    "rules": []
+  },
+  {
+    "name": "rare mace cannot hold two sockets",
+    "item": {
+      "code": "fla",
+      "ilvl": 50,
+      "quality": 6,
+      "sockets": 2,
+      "affixes": [
+        [
+          "magicsuffix",
+          166
+        ]
+      ],
+      "rare_name": [
+        156,
+        11
+      ]
+    },
+    "rules": [
+      "sockets"
+    ]
   }
 ]
