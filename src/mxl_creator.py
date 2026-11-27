@@ -732,6 +732,10 @@ class Mod:
 
     def stats(self, data):
         out = self._stats(data)
+        if Creator._vanilla() and data.prop_func[self.prop] == 20 and not any(s['id'] == 152 for s in out):
+            # Properties.txt function 20 (indestruct) has no stat column: the game sets item_indesctructible (152)
+            # to 1 (the server's missing-stat rule requires it)
+            out = out + [dict(id=152, param=None, value=1)]
         if Creator._vanilla():
             lo, hi = self.raw[2], self.raw[3]
             if data.prop_func[self.prop] == 36:
@@ -1159,6 +1163,8 @@ class Creator:
         have = {(x['id'], x.get('param')): x['value'] for x in rolled}
         out = []
         for sid, par, lo, hi, src in api:
+            if src != 'runeword':
+                continue          # a rune's own mods come from the socketed rune itself, not the runeword list
             if sid >= len(self.data.isc) or not self.data.isc[sid]['bits']:
                 continue
             val = have.get((sid, par if self.data.isc[sid]['param'] else None)) if src == 'runeword' else None

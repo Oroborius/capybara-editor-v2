@@ -251,9 +251,9 @@ def convert_menu_entry_only_for_illegit_items_in_legit_mode():
 # impossible findings per private reference save (sorted order), as the dev kit's checker at the vendored commit
 # reports them (None: unreadable = hacked). The saves are private (.cache/samples, never committed): skipped without.
 REF_EXPECTED = {
-    'legit-ref': [0, 68, 102, 133, 159, 93, 100, 96, 45, 45, 54, 22, 94, 103, 131, 131, 137, None, 59, 36, 93, 22, 100,
-                  0, 92, 90, 88, 91, 29, 123, 127, 26, 68, 63, 54, 93],
-    'lld-ref': [163, 164, 168, 168, 129, 168, 41],
+    'legit-ref': [0, 69, 102, 135, 163, 93, 100, 96, 48, 48, 54, 27, 94, 106, 131, 131, 155, None, 66, 41, 93, 32, 100,
+                  0, 93, 90, 91, 91, 29, 125, 133, 26, 69, 63, 54, 98],
+    'lld-ref': [166, 167, 171, 171, 129, 171, 41],
 }
 
 
@@ -346,10 +346,14 @@ def dev_kit_item_vectors_give_their_expected_verdicts():
         return ParsedItem(**fields)
     vectors = json.loads((Path(T.REPO) / 'tests' / 'data' / 'itemgen_vectors.json').read_text())
     bad = []
+    required = getattr(v, 'check_required', None)
+    v.check_required = False                     # the vectors carry partial stat lists (as in the dev kit's test)
     for vector in vectors:
         got = collections.Counter(f.rule for f in v.validate_item(parsed_item(vector['item'])))
         if got != collections.Counter(vector['rules']):
             bad.append(f"{vector['name']}: {sorted(got.elements())} != {sorted(vector['rules'])}")
+    if required is not None:
+        v.check_required = required
     T.check(len(vectors) >= 40, f'{len(vectors)} vectors')
     T.eq(bad, [], 'vectors with other findings than expected')
 def creator_offers_only_what_the_server_accepts():

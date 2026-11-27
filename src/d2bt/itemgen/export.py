@@ -13,6 +13,15 @@ def _mods(row, pattern, count):
     return list(properties(row, pattern, range(1, count + 1)))
 
 
+REQUIRED_ILVL = 99   # only charged-skill levels depend on the item level
+
+
+def _required(data, quality, key, code):
+    """JSON rows [stat, param, min, max, source, display] the game always saves (see api.required_stats)."""
+    from .api import required_stats
+    return [list(entry) for entry in required_stats(data, quality, key, code, REQUIRED_ILVL)]
+
+
 def build_export(data, *, ladder=True):
     """Export candidate IDs with a shared catalog of authored property ranges."""
     affix_rows = defaultdict(list)
@@ -28,12 +37,15 @@ def build_export(data, *, ladder=True):
     for key, rows in (('sets', data.set_items), ('uniques', data.uniques)):
         identities[key] = {
             index: {'name': row['index'], 'level': number(row.get('lvl')),
-                    'mods': _mods(row, 'prop{} par{} min{} max{}', 12)}
+                    'mods': _mods(row, 'prop{} par{} min{} max{}', 12),
+                    'required': _required(data, 5 if key == 'sets' else 7, index,
+                                          row.get('item' if key == 'sets' else 'code'))}
             for index, row in enumerate(rows) if row.get('item' if key == 'sets' else 'code')
         }
     runewords = {
         index: {'name': row['rune name'], 'runes': runeword_runes(row),
-                'mods': _mods(row, 't1code{} t1param{} t1min{} t1max{}', 7)}
+                'mods': _mods(row, 't1code{} t1param{} t1min{} t1max{}', 7),
+                'required': _required(data, 'runeword', index, next(iter(data.bases)))}
         for index, row in data.runewords.items()
     }
     bases = {}

@@ -20,7 +20,22 @@ def main():
     vsource = vocab.add_mutually_exclusive_group()
     vsource.add_argument('--game', help='LoD 1.14d install directory (or set D2BT_LEGIT_GAME)')
     vsource.add_argument('--tables', type=Path, help='directory of extracted stock tables')
+    hier = commands.add_parser('hierarchy', help='export the stat hierarchy (layers, tables, properties, stats)')
+    hier.add_argument('out', type=Path)
+    hsource = hier.add_mutually_exclusive_group()
+    hsource.add_argument('--game', help='LoD 1.14d install directory (or set D2BT_LEGIT_GAME)')
+    hsource.add_argument('--tables', type=Path, help='directory of extracted stock tables')
     args = parser.parse_args()
+    if args.command == 'hierarchy':
+        from .hierarchy import build as build_hier
+        try:
+            result = build_hier(args.game, tables=args.tables)
+            with args.out.open('w', encoding='utf-8') as output:
+                json.dump(result, output, ensure_ascii=False, separators=(',', ':'))
+                output.write('\n')
+        except (OSError, ValueError) as exc:
+            parser.exit(1, f'{exc}\n')
+        return
     if args.command == 'vocab':
         from . import vocab as build_vocab
         try:

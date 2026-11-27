@@ -18,6 +18,7 @@ from ..itemgen import (
     craft_properties, craft_recipes, ethereal_allowed, properties, runeword_matches, saved_socket_limit,
     socket_limit, superior_candidates, unique_upgrade,
 )
+from ..itemgen.api import required_stats
 from ..itemgen.stats import (
     charged_level_capacity, charges_in_bounds, random_skill_options, skill_layer,
     staffmod_class_matches,
@@ -73,9 +74,12 @@ def stock_validator(game=None):
 
 def report_lines(findings, *, verdict=False):
     """Keep the full-info summary and the standalone verdict concise."""
-    count = len(findings)
+    count = sum(1 for f in findings if getattr(f, 'severity', 'impossible') == 'impossible')
     if verdict:
-        return [f'Not legit ({count} {"reason" if count == 1 else "reasons"})' if count else 'Legit']
+        if count:
+            return [f'Not legit ({count} {"reason" if count == 1 else "reasons"})']
+        notes = len(findings)
+        return [f'Legit ({notes} suspicious {"note" if notes == 1 else "notes"})' if notes else 'Legit']
     return ['Legit: ok' if not count else f'Legit: {count} {"issue" if count == 1 else "issues"}']
 
 
@@ -111,6 +115,19 @@ def chat_line(text):
 def why_lines(findings, page=1, selector=''):
     if not findings:
         return ['Legit']
+    # Impossible reasons first, then suspicious notes; identical lines collapse into one with a count.
+    grouped = {}
+    for f in sorted(findings, key=lambda f: getattr(f, 'severity', 'impossible') != 'impossible'):
+        detail = f.detail
+        if detail.startswith('saved item ID repeats on '):
+            owners = list(dict.fromkeys(o.strip() for o in detail[len('saved item ID repeats on '):].split(',')))
+            detail = 'saved item ID repeats on ' + ', '.join(owners)
+        if getattr(f, 'severity', 'impossible') != 'impossible':
+            detail = '(suspicious) ' + detail
+        key = (f.location, f.item, detail)
+        grouped[key] = grouped.get(key, 0) + 1
+    findings = [type('F', (), dict(location=loc, item=item, detail=d + (f' (x{n})' if n > 1 else '')))
+                for (loc, item, d), n in grouped.items()]
     pages = (len(findings) + _WHY_PAGE_SIZE - 1) // _WHY_PAGE_SIZE
     page = max(1, min(page, pages))
     start = (page - 1) * _WHY_PAGE_SIZE
@@ -124,6 +141,8 @@ def why_lines(findings, page=1, selector=''):
 
 
 class Validator:
+    check_required = True  # the 'missing-stat' rule; synthetic partial items turn it off
+
     def __init__(self, directory):
         self.directory = Path(directory)
         self.save_tables = SaveTables(directory, median=False)
@@ -288,6 +307,7 @@ class Validator:
         mods = []
         superior_mods = [[]]
         legacy_mods = None
+        required = None
 
         def report(rule, detail, severity='impossible'):
             findings.append(Finding(label, rule, detail, severity))
@@ -336,6 +356,8 @@ class Validator:
                 if q == 7 and row.get('enabled') != '1':
                     report('identity', 'disabled unique row')
                 mods.extend(properties(row, 'prop{} par{} min{} max{}', range(1, 13)))
+                if expected == item.code or upgraded:
+                    required = (q, index, item.stats)
                 if upgraded:
                     mods.append(('levelreq', '', str(upgraded), str(upgraded)))
                 if label == 'Hellfire Torch':
@@ -458,6 +480,7 @@ class Validator:
                 report('runeword', 'ID, ordered runes, quality, base or socket count mismatches recipe')
             else:
                 label = row['rune name']
+                required = ('runeword', item.runeword, item.stats + item.runeword_stats)
                 rwmods = list(properties(row, 't1code{} t1param{} t1min{} t1max{}', range(1, 8)))
                 slot = 'weapon' if kind == 'weapons' else 'shield' if 'shld' in types else 'helm'
                 pattern = ' '.join(f'{slot}mod{{}}{field}' for field in ('code', 'param', 'min', 'max'))
@@ -488,6 +511,14 @@ class Validator:
                 report('defense', f'base defense {item.defense} outside {lo}..{hi}', 'suspicious')
         if q != 3 or self.superior is not None:
             findings.extend(self._stat_findings(label, item.stats, variants, types, item.ilvl))
+        if required is not None and self.check_required:
+            present = {(sid, layer) for sid, layer, _ in required[2]}
+            sids = {sid for sid, _ in present}
+            for sid, layer, lo, hi, source, text in required_stats(self, required[0], required[1], item.code, item.ilvl):
+                if (sid in sids) if layer is None else ((sid, layer) in present):
+                    continue
+                stat = self.item_tables.s(sid, 'stat') or f'stat {sid}'
+                findings.append(Finding(label, 'missing-stat', f'missing required {stat} [{layer}] from {source}'))
         return findings
 
     def _character_findings(self, char):
