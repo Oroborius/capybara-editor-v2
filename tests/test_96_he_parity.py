@@ -829,6 +829,10 @@ def delete_key_keeps_working_after_the_focus_was_in_a_field():
     T.pump(3)
     original = bytes(win.ch.raw)
     cv = win.inv
+    import mxl_vanilla_he as V
+    V.set_tab(win, 'inventory')
+    win.top.update()
+    T.pump(5)
     try:
         items = [e for e in win.ch.inventory()]
         if len(items) < 2:
@@ -879,9 +883,16 @@ def clicking_an_item_grid_takes_the_focus_for_the_shortcuts():
     page = win.extra.get('containers')
     if page is not None and 'belt' in page.canvases:
         grids.append(page.canvases['belt'])
+    import mxl_vanilla_he as V
     for cv in grids:
+        V.set_tab(win, 'inventory' if cv is win.inv else 'containers')
+        win.top.update()
+        T.pump(3)
         if field is not None:
             field.focus_force()
+            T.pump(2)
+        else:
+            win.top.winfo_toplevel().focus_force()      # the test display has no window manager to give focus
             T.pump(2)
         cv.event_generate('<ButtonPress-1>', x=5, y=5)
         cv.event_generate('<ButtonRelease-1>', x=5, y=5)
