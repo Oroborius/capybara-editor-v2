@@ -1315,7 +1315,7 @@ class CreatorWindow:
                     combo(f'{lab} {k + 1}', vals, cur, lambda i, key=key, k=k, ch=ch:
                           self.set_rare_affix(key, k, None if i == 0 else ch[i - 1][0]))
         self.staffmod_widgets = []
-        sm_choices = cr.staffmod_choices(spec)
+        sm_choices = cr.staffmod_choices(spec, any_level=not spec.get('_from_item'))   # every skill; level follows
         if sm_choices:
             cls = cr.staffmod_class_name(code)
             head = row(T('cr.staffmods', 'Staff mods ({cls} only)', cls=cls))
@@ -2818,7 +2818,23 @@ class CreatorWindow:
         if level is not None and k < len(lst):
             lst[k] = (lst[k][0], level)
         spec['staffmods'] = lst
+        note = None
+        if lst and not spec.get('_from_item'):
+            # the item level moves into the range where every chosen skill can roll (Bone Armor on a wand: up to 24)
+            rng = self.cr.staffmod_level_range(spec, [x[0] for x in lst])
+            if rng is None:
+                lst.pop(k) if k < len(lst) else None
+                spec['staffmods'] = lst
+                note = (T('cr.staffmod_conflict', 'That skill cannot roll together with the others at any '
+                                                            'item level.'))
+            elif not rng[0] <= spec['ilvl'] <= rng[1]:
+                lo = max(rng[0], self.cr.min_ilvl(spec))
+                spec['ilvl'] = min(rng[1], lo) if lo <= rng[1] else rng[1]
+                note = (T('cr.staffmod_ilvl', 'Item level set to {n}: the game rolls that skill at item '
+                                                       'level {lo}-{hi}.', n=spec['ilvl'], lo=rng[0], hi=min(rng[1], 99)))
         self.render_options()
+        if note:
+            self.set_status(note)
 
     def set_rare_affix(self, key, k, sid):
         spec = self.spec

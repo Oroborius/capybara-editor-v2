@@ -1236,4 +1236,32 @@ def chance_to_cast_level_follows_the_item_level():
         T.check(procs and all((x.get('param') or 0) & 63 for x in procs), f'{name}: proc levels {procs}')
         T.eq(mxl_legit.impossible(mxl_legit.check_item(blob)), [], f'{name} passes the server')
 
+
+@T.test
+def every_staffmod_skill_is_offered_and_the_item_level_follows():
+    """User: Bone Armor was missing from wands. It is a tier-1 Necromancer skill the game rolls up to item level 24;
+    the creator offers every class skill and moves the item level so the chosen skills can roll."""
+    need()
+    import mxl_legit
+    win = T.chartab()
+    w = _open_creator(win)
+    spec = w.cr.new_spec('magic', 'bwn ')
+    spec['ilvl'] = 99
+    w.spec = spec
+    w.load_spec(spec)
+    names = {n: i for i, n, _m in w.cr.staffmod_choices(w.spec, any_level=True)}
+    bone = next((i for n, i in names.items() if 'Bone Armor' in n), None)
+    T.check(bone is not None, f'Bone Armor offered: {sorted(names)[:8]}')
+    w.set_staffmod(0, sid=bone)
+    T.pump(3)
+    T.check(w.spec['ilvl'] <= 24, f"item level moved to {w.spec['ilvl']}")
+    T.eq([x[0] for x in w.spec['staffmods']], [bone], 'Bone Armor kept')
+    pre = w.cr.affix_choices('magicprefix', 'bwn ', w.spec['ilvl'])
+    if pre:
+        w.spec['prefix'] = pre[0][0]
+    blob, _rec = w.cr.build(w.spec)
+    if mxl_legit.prepare():
+        T.eq(mxl_legit.impossible(mxl_legit.check_item(blob)), [], 'the server accepts it')
+    w.top.destroy()
+
 T.main(globals())

@@ -1146,9 +1146,40 @@ class Creator:
                      dru='Druid', ass='Assassin')
         return names.get(cls, cls)
 
-    def staffmod_choices(self, spec):
+    @staticmethod
+    def staffmod_ilvl_range(tier, low=False):
+        """(lo, hi) item levels at which a staff-mod skill of this tier can roll: tier in base-2..base+1, base 1..5 by
+        ilvl > 11/18/24/36 (D2MOO ITEMS_AssignModernStaffMods; low quality: tier at most 4). None when it cannot."""
+        if low and tier > 4:
+            return None
+        bands = ((1, 11), (12, 18), (19, 24), (25, 36), (37, 110))
+        ok = [band for base, band in enumerate(bands, 1) if max(1, base - 2) <= tier <= base + 1]
+        return (ok[0][0], ok[-1][1]) if ok else None
+
+    def staffmod_tier(self, spec, sid):
+        """Tier (1..) of a staff-mod skill of the spec's base class, or None."""
+        all_ = self.staffmod_choices(spec, any_level=True)
+        ids = sorted(i for i, _n, _m in all_)
+        if sid not in ids:
+            return None
+        first = self.__dict__.get('_staff_first', {}).get(self.staffmod_class(spec.get('code')))
+        return (sid - first) // 5 + 1 if first is not None else None
+
+    def staffmod_level_range(self, spec, skills):
+        """(lo, hi) item levels where every one of the chosen staff-mod skills can roll, or None."""
+        lo, hi = 1, 110
+        for sid in skills:
+            t = self.staffmod_tier(spec, sid)
+            r = self.staffmod_ilvl_range(t, spec.get('quality') == 'low') if t else None
+            if r is None:
+                return None
+            lo, hi = max(lo, r[0]), min(hi, r[1])
+        return (lo, hi) if lo <= hi else None
+
+    def staffmod_choices(self, spec, any_level=False):
         """[(skill id, name, highest level)] of the staff mods the game can roll on the spec's base at its item
-        level and quality; [] when the base or quality has none."""
+        level and quality (any_level: at some item level - the creator then moves the item level to fit); [] when the
+        base or quality has none."""
         code = spec.get('code')
         if spec.get('quality') not in self.STAFFMOD_QUALITIES or not code:
             return []
@@ -1164,6 +1195,7 @@ class Creator:
             if not ids:
                 return []
             first = min(ids)
+            self.__dict__.setdefault('_staff_first', {})[cls] = first
             base = v.bases[code.strip()][1]
             anc = v.save_tables.ancestors(base.get('type')) | v.save_tables.ancestors(base.get('type2'))
             # tiers base-2 .. base+1 for the item's level (base 1..5 by ilvl > 11/18/24/36), at least 1, at most 4
@@ -1171,6 +1203,8 @@ class Creator:
             qid = 1 if spec.get('quality') == 'low' else 2
             ilvl = spec.get('ilvl') or 1
             lo_tier, hi_tier = staffmod_tier(ilvl, 0, qid), staffmod_tier(ilvl, 100, qid)
+            if any_level:
+                lo_tier, hi_tier = 1, (4 if qid == 1 else 6)
             top = 1 if qid == 1 else self.STAFFMOD_MAX                      # low quality: always +1
             out = []
             for sid in ids:
