@@ -687,6 +687,35 @@ def vanilla_extras_quality_picker_and_quest_note_write():
 
 
 @T.test
+def any_socketable_base_can_become_a_runeword_by_name():
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    import mxl_legit
+    import mxl_rc_menu as RC
+    from mxl_creator import FLAG_ETHEREAL, FLAG_RUNEWORD, decode_blob
+
+    win = T.chartab()
+    cr = RC._creator_for(win)
+    code = 'crs '
+    if code not in win.data.bases:
+        T.skip('no Crystal Sword in these tables')
+    rows = dict((name, row) for row, name in RC._runeword_rows(cr, code))
+    T.check('Spirit' in rows, f'Spirit offered for a Crystal Sword: {sorted(rows)[:8]}')
+    T.check(not RC._runeword_rows(cr, 'rin '), 'a ring carries no runeword')
+    T.check('Insight' not in rows, 'Insight is for polearms and staves, not swords')
+    for name in ('Spirit',):
+        T.check(name in rows, f'{name} offered')
+        rec = {'flags': FLAG_ETHEREAL, 'ilvl': 40}
+        blob = RC._runeword_blob(cr, rec, code, rows[name])
+        made = decode_blob(blob, win.data)[0]
+        T.check(made['flags'] & FLAG_RUNEWORD, f'{name}: runeword flag')
+        T.eq(made['code'], code, f'{name}: same base')
+        T.check(cr.data.key(cr.data.runewords[rows[name]][0]) == name, f'{name}: name')
+        T.eq(made['runeword_id'], cr.rw_string_id(rows[name]), f'{name}: runeword id')
+        T.eq(mxl_legit.impossible(mxl_legit.check_item(blob)), [], f'{name}: legit')
+
+
+@T.test
 def any_base_can_become_any_set_item_by_name():
     """Tester: an elite Breast Plate could not be made a set item (the picker was stuck on a number). Like Hero
     Editor 1.04 the picker lists every set item by name, whatever the base."""

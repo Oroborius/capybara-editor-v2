@@ -862,9 +862,10 @@ def _mutate_stash(app, it, fn, msg):
         rec, size = decode_item(blob, app.data)
         if rec['flags'] & FLAG_SIMPLE:
             raise EditError(rc('err.compact', 'this item is saved in the compact form: nothing to change here'))
-        if fn(rec, _creator(app), app.data) is False:
+        done = fn(rec, _creator(app), app.data)
+        if done is False:
             return
-        new = encode_item(rec, app.data) + bytes(blob[size:])
+        new = bytes(done) if isinstance(done, (bytes, bytearray)) else encode_item(rec, app.data) + bytes(blob[size:])
         bak = edit_stash(app.path, app.data, remove=[it['_offset']],
                          insert=[(it['page'], it['x'], it['y'], new)], backup=app.needs_backup(app.path))
     except (EditError, FormatError, OSError, CreateError, ValueError) as e:
@@ -889,9 +890,10 @@ def _mutate_char(win, e, fn, msg):
         rec, size = decode_item(blob, win.data)
         if rec['flags'] & FLAG_SIMPLE:
             raise CharError(rc('err.compact', 'this item is saved in the compact form: nothing to change here'))
-        if fn(rec, _creator(win.app), win.data) is False:
+        done = fn(rec, _creator(win.app), win.data)
+        if done is False:
             return
-        new = encode_item(rec, win.data) + bytes(blob[size:])
+        new = bytes(done) if isinstance(done, (bytes, bytearray)) else encode_item(rec, win.data) + bytes(blob[size:])
         _char_replace(win, e, new, where, merc)
     except (CharError, FormatError, OSError, CreateError, ValueError) as err:
         win.reload()
@@ -942,6 +944,55 @@ def _quality_ok(cr, code, q):
         rows = cr.set_items() if q == 'set' else cr.uniques()
         return any(u[2]['code'] == code for u in rows)
     return False
+
+
+def _runeword_rows(cr, code, rec=None):
+    """[(row, name)] of the runewords the base can carry: the creator's own rules (type, excluded types and
+    enough sockets), by name."""
+    out = []
+    try:
+        anc = cr.types_of(code)
+        room = cr.max_sockets(code, cr.max_ilvl())
+    except (KeyError, AttributeError, CreateError):
+        return out
+    for row, name, runes in cr.runewords():
+        n, rn, ok, ex = cr.data.runewords[row]
+        if anc & set(ok) and not anc & set(ex) and room >= len(rn):
+            out.append((row, name))
+    return out
+
+
+def _runeword_blob(cr, rec, code, row):
+    """The item as the creator builds this runeword in the same base (ethereal flag and item level kept
+    where the creator allows them); raises CreateError when it cannot be made."""
+    spec = cr.new_spec('runeword', code, row)
+    spec['sockets'] = len(cr.data.runewords[row][1])
+    spec['ilvl'] = min(max(rec.get('ilvl') or 0, cr.min_ilvl(spec)), cr.max_ilvl(spec))
+    spec['ethereal'] = bool(rec['flags'] & FLAG_ETHEREAL) and cr.ethereal_ok(spec)
+    if cr.ethereal_forced(spec):
+        spec['ethereal'] = True
+    blob, _rec = cr.build(spec)
+    return bytes(blob)
+
+
+def _apply_runeword(holder, menu, it, win):
+    code = it['code'] if win is None else win.selected.it['code']
+    cr = _creator_for(holder)
+    rows = _runeword_rows(cr, code)
+    _ask_pick(menu, rc('rw.pick', 'Which runeword?'), rows,
+              lambda row: _apply_runeword_picked(holder, it, win, code, row, dict(rows)[row]))
+
+
+def _apply_runeword_picked(holder, it, win, code, row, name):
+    msg = rc('rw.set', '{name}: now the runeword {rw}',
+             name=_item_name(holder, it, win.selected if win is not None else None), rw=name)
+
+    def fn(rec, cr, data):
+        return _runeword_blob(cr, rec, code, row)
+    if win is None:
+        _mutate_stash(holder, it, fn, msg)
+    else:
+        _mutate_char(win, win.selected, fn, msg)
 
 
 def _owner(menu):
@@ -1051,7 +1102,7 @@ def _apply_quality_picked(holder, it, win, q, pick=None, pick2=None):
         _mutate_char(win, win.selected, fn, msg)
 
 
-def _quality_cascade(holder, menu, code, cur, win=None, it=None):
+def _quality_cascade(holder, menu, code, cur, win=None, it=None, rec=None):
     """'Change item quality (now X)' with one entry per quality the base can carry, the Hero-Editor way."""
     cr = _creator_for(holder)
     qm = tk.Menu(menu, tearoff=0)
@@ -1067,6 +1118,9 @@ def _quality_cascade(holder, menu, code, cur, win=None, it=None):
             or q == 'superior' and len(cr.superior_choices(code)) > 1
         qm.add_command(label=rc('q.' + q, q) + (rc('pick.dots', '...') if multi else ''),
                        command=lambda q=q: _apply_quality(holder, menu, it, win, q))
+    qm.add_command(label=rc('q.runeword', 'Runeword') + rc('pick.dots', '...'),
+                   command=lambda: _apply_runeword(holder, menu, it, win),
+                   state='normal' if _runeword_rows(cr, code) else 'disabled')
     menu.add_cascade(label=rc('quality.title', 'Change item quality (now {q})', q=rc('q.' + cur, cur)), menu=qm)
 
 
@@ -1377,7 +1431,7 @@ def _add_hero_editor_menu(holder, menu, it=None, win=None, e=None):
         return
     if rec['flags'] & FLAG_SIMPLE:
         return
-    _quality_cascade(holder, menu, code, rec['quality'], win=win, it=it)
+    _quality_cascade(holder, menu, code, rec['quality'], win=win, it=it, rec=rec)
     _specific_cascade(holder, menu, code, rec, win=win, it=it, e=e)
     # the magic-attributes buffer (Hero Editor's mnuAddAllMagicAttributesToBuffer & friends)
     app = getattr(holder, 'app', holder)
