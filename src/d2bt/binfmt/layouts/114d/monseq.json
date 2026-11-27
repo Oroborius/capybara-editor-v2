@@ -1,0 +1,57 @@
+{
+ "table": "monseq",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 6,
+ "fields": [
+  {
+   "name": "sequence",
+   "ftype": 17,
+   "offset": 0,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16",
+   "key": true
+  },
+  {
+   "name": "mode",
+   "ftype": 13,
+   "offset": 2,
+   "size": 1,
+   "bit": null,
+   "link": "monmode.code",
+   "type": "u8"
+  },
+  {
+   "name": "frame",
+   "ftype": 4,
+   "offset": 3,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dir",
+   "ftype": 4,
+   "offset": 4,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "event",
+   "ftype": 4,
+   "offset": 5,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  }
+ ],
+ "bin_record_size": 6
+}

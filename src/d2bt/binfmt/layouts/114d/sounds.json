@@ -1,0 +1,21 @@
+{
+ "table": "sounds",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 2,
+ "fields": [
+  {
+   "name": "Sound",
+   "ftype": 17,
+   "offset": 0,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16",
+   "key": true
+  }
+ ],
+ "bin_record_size": 2
+}

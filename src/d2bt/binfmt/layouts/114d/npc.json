@@ -1,0 +1,182 @@
+{
+ "table": "npc",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 76,
+ "fields": [
+  {
+   "name": "npc",
+   "ftype": 19,
+   "offset": 0,
+   "size": 4,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "i32"
+  },
+  {
+   "name": "sell mult",
+   "ftype": 2,
+   "offset": 4,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "buy mult",
+   "ftype": 2,
+   "offset": 8,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "rep mult",
+   "ftype": 2,
+   "offset": 12,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "questflag A",
+   "ftype": 2,
+   "offset": 16,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "questflag B",
+   "ftype": 2,
+   "offset": 20,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "questflag C",
+   "ftype": 2,
+   "offset": 24,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "questsellmult A",
+   "ftype": 2,
+   "offset": 28,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "questsellmult B",
+   "ftype": 2,
+   "offset": 32,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "questsellmult C",
+   "ftype": 2,
+   "offset": 36,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "questbuymult A",
+   "ftype": 2,
+   "offset": 40,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "questbuymult B",
+   "ftype": 2,
+   "offset": 44,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "questbuymult C",
+   "ftype": 2,
+   "offset": 48,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "questrepmult A",
+   "ftype": 2,
+   "offset": 52,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "questrepmult B",
+   "ftype": 2,
+   "offset": 56,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "questrepmult C",
+   "ftype": 2,
+   "offset": 60,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "max buy",
+   "ftype": 2,
+   "offset": 64,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "max buy (N)",
+   "ftype": 2,
+   "offset": 68,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "max buy (H)",
+   "ftype": 2,
+   "offset": 72,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  }
+ ],
+ "bin_record_size": 76
+}

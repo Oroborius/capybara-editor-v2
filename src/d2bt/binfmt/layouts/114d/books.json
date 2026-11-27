@@ -1,0 +1,93 @@
+{
+ "table": "books",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 32,
+ "fields": [
+  {
+   "name": "name",
+   "ftype": 22,
+   "offset": 0,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "scrollspellcode",
+   "ftype": 9,
+   "offset": 24,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  },
+  {
+   "name": "bookspellcode",
+   "ftype": 9,
+   "offset": 28,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  },
+  {
+   "name": "pSpell",
+   "ftype": 2,
+   "offset": 4,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "scrollskill",
+   "ftype": 19,
+   "offset": 8,
+   "size": 4,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "i32"
+  },
+  {
+   "name": "bookskill",
+   "ftype": 19,
+   "offset": 12,
+   "size": 4,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "i32"
+  },
+  {
+   "name": "spellicon",
+   "ftype": 4,
+   "offset": 2,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8",
+   "signed": true
+  },
+  {
+   "name": "basecost",
+   "ftype": 2,
+   "offset": 16,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "costpercharge",
+   "ftype": 2,
+   "offset": 20,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  }
+ ],
+ "bin_record_size": 32
+}

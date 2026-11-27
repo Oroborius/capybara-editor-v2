@@ -1,0 +1,147 @@
+{
+ "table": "monumod",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 32,
+ "fields": [
+  {
+   "name": "uniquemod",
+   "ftype": 17,
+   "offset": 0,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16",
+   "key": true
+  },
+  {
+   "name": "version",
+   "ftype": 3,
+   "offset": 4,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "enabled",
+   "ftype": 4,
+   "offset": 6,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "xfer",
+   "ftype": 4,
+   "offset": 7,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "champion",
+   "ftype": 4,
+   "offset": 8,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "fpick",
+   "ftype": 4,
+   "offset": 9,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "exclude1",
+   "ftype": 20,
+   "offset": 10,
+   "size": 2,
+   "bit": null,
+   "link": "montype.type",
+   "type": "u16"
+  },
+  {
+   "name": "exclude2",
+   "ftype": 20,
+   "offset": 12,
+   "size": 2,
+   "bit": null,
+   "link": "montype.type",
+   "type": "u16"
+  },
+  {
+   "name": "cpick",
+   "ftype": 3,
+   "offset": 14,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "cpick (N)",
+   "ftype": 3,
+   "offset": 16,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "cpick (H)",
+   "ftype": 3,
+   "offset": 18,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "upick",
+   "ftype": 3,
+   "offset": 20,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "upick (N)",
+   "ftype": 3,
+   "offset": 22,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "upick (H)",
+   "ftype": 3,
+   "offset": 24,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "constants",
+   "ftype": 2,
+   "offset": 28,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  }
+ ],
+ "bin_record_size": 32
+}

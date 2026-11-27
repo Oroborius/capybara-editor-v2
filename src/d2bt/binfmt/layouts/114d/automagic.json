@@ -1,0 +1,371 @@
+{
+ "table": "automagic",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 144,
+ "fields": [
+  {
+   "name": "name",
+   "ftype": 1,
+   "offset": 0,
+   "size": 31,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "spawnable",
+   "ftype": 4,
+   "offset": 84,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "level",
+   "ftype": 2,
+   "offset": 88,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "group",
+   "ftype": 2,
+   "offset": 92,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "version",
+   "ftype": 3,
+   "offset": 34,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "divide",
+   "ftype": 2,
+   "offset": 132,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "multiply",
+   "ftype": 2,
+   "offset": 136,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "add",
+   "ftype": 2,
+   "offset": 140,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "rare",
+   "ftype": 4,
+   "offset": 100,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "maxlevel",
+   "ftype": 2,
+   "offset": 96,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "levelreq",
+   "ftype": 4,
+   "offset": 101,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "classspecific",
+   "ftype": 13,
+   "offset": 102,
+   "size": 1,
+   "bit": null,
+   "link": "playerclass.code",
+   "type": "u8"
+  },
+  {
+   "name": "class",
+   "ftype": 13,
+   "offset": 103,
+   "size": 1,
+   "bit": null,
+   "link": "playerclass.code",
+   "type": "u8"
+  },
+  {
+   "name": "classlevelreq",
+   "ftype": 4,
+   "offset": 104,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "itype1",
+   "ftype": 15,
+   "offset": 106,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "itype2",
+   "ftype": 15,
+   "offset": 108,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "itype3",
+   "ftype": 15,
+   "offset": 110,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "itype4",
+   "ftype": 15,
+   "offset": 112,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "itype5",
+   "ftype": 15,
+   "offset": 114,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "itype6",
+   "ftype": 15,
+   "offset": 116,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "itype7",
+   "ftype": 15,
+   "offset": 118,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "etype1",
+   "ftype": 15,
+   "offset": 120,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "etype2",
+   "ftype": 15,
+   "offset": 122,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "etype3",
+   "ftype": 15,
+   "offset": 124,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "etype4",
+   "ftype": 15,
+   "offset": 126,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "etype5",
+   "ftype": 15,
+   "offset": 128,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "transformcolor",
+   "ftype": 13,
+   "offset": 86,
+   "size": 1,
+   "bit": null,
+   "link": "colors.code",
+   "type": "u8"
+  },
+  {
+   "name": "frequency",
+   "ftype": 4,
+   "offset": 130,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "mod1code",
+   "ftype": 19,
+   "offset": 36,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "mod1param",
+   "ftype": 25,
+   "offset": 40,
+   "size": 4,
+   "bit": null,
+   "link": "param",
+   "type": "u32"
+  },
+  {
+   "name": "mod1min",
+   "ftype": 2,
+   "offset": 44,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "mod1max",
+   "ftype": 2,
+   "offset": 48,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "mod2code",
+   "ftype": 19,
+   "offset": 52,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "mod2param",
+   "ftype": 25,
+   "offset": 56,
+   "size": 4,
+   "bit": null,
+   "link": "param",
+   "type": "u32"
+  },
+  {
+   "name": "mod2min",
+   "ftype": 2,
+   "offset": 60,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "mod2max",
+   "ftype": 2,
+   "offset": 64,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "mod3code",
+   "ftype": 19,
+   "offset": 68,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "mod3param",
+   "ftype": 25,
+   "offset": 72,
+   "size": 4,
+   "bit": null,
+   "link": "param",
+   "type": "u32"
+  },
+  {
+   "name": "mod3min",
+   "ftype": 2,
+   "offset": 76,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "mod3max",
+   "ftype": 2,
+   "offset": 80,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  }
+ ],
+ "bin_record_size": 144
+}

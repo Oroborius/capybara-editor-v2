@@ -1,0 +1,182 @@
+{
+ "table": "itemratio",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 68,
+ "fields": [
+  {
+   "name": "Version",
+   "ftype": 3,
+   "offset": 64,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "Uber",
+   "ftype": 4,
+   "offset": 66,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Class Specific",
+   "ftype": 4,
+   "offset": 67,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Unique",
+   "ftype": 2,
+   "offset": 0,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "UniqueDivisor",
+   "ftype": 2,
+   "offset": 4,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "UniqueMin",
+   "ftype": 2,
+   "offset": 8,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Rare",
+   "ftype": 2,
+   "offset": 12,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "RareDivisor",
+   "ftype": 2,
+   "offset": 16,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "RareMin",
+   "ftype": 2,
+   "offset": 20,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Set",
+   "ftype": 2,
+   "offset": 24,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "SetDivisor",
+   "ftype": 2,
+   "offset": 28,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "SetMin",
+   "ftype": 2,
+   "offset": 32,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Magic",
+   "ftype": 2,
+   "offset": 36,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MagicDivisor",
+   "ftype": 2,
+   "offset": 40,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MagicMin",
+   "ftype": 2,
+   "offset": 44,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "HiQuality",
+   "ftype": 2,
+   "offset": 48,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "HiQualityDivisor",
+   "ftype": 2,
+   "offset": 52,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Normal",
+   "ftype": 2,
+   "offset": 56,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "NormalDivisor",
+   "ftype": 2,
+   "offset": 60,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  }
+ ],
+ "bin_record_size": 68
+}

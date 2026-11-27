@@ -1,0 +1,281 @@
+{
+ "table": "monlvl",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 120,
+ "fields": [
+  {
+   "name": "AC",
+   "ftype": 2,
+   "offset": 0,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "AC(N)",
+   "ftype": 2,
+   "offset": 4,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "AC(H)",
+   "ftype": 2,
+   "offset": 8,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "TH",
+   "ftype": 2,
+   "offset": 24,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "TH(N)",
+   "ftype": 2,
+   "offset": 28,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "TH(H)",
+   "ftype": 2,
+   "offset": 32,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "HP",
+   "ftype": 2,
+   "offset": 48,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "HP(N)",
+   "ftype": 2,
+   "offset": 52,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "HP(H)",
+   "ftype": 2,
+   "offset": 56,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "DM",
+   "ftype": 2,
+   "offset": 72,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "DM(N)",
+   "ftype": 2,
+   "offset": 76,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "DM(H)",
+   "ftype": 2,
+   "offset": 80,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "XP",
+   "ftype": 2,
+   "offset": 96,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "XP(N)",
+   "ftype": 2,
+   "offset": 100,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "XP(H)",
+   "ftype": 2,
+   "offset": 104,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "L-AC",
+   "ftype": 2,
+   "offset": 12,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "L-AC(N)",
+   "ftype": 2,
+   "offset": 16,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "L-AC(H)",
+   "ftype": 2,
+   "offset": 20,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "L-TH",
+   "ftype": 2,
+   "offset": 36,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "L-TH(N)",
+   "ftype": 2,
+   "offset": 40,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "L-TH(H)",
+   "ftype": 2,
+   "offset": 44,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "L-HP",
+   "ftype": 2,
+   "offset": 60,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "L-HP(N)",
+   "ftype": 2,
+   "offset": 64,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "L-HP(H)",
+   "ftype": 2,
+   "offset": 68,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "L-DM",
+   "ftype": 2,
+   "offset": 84,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "L-DM(N)",
+   "ftype": 2,
+   "offset": 88,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "L-DM(H)",
+   "ftype": 2,
+   "offset": 92,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "L-XP",
+   "ftype": 2,
+   "offset": 108,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "L-XP(N)",
+   "ftype": 2,
+   "offset": 112,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "L-XP(H)",
+   "ftype": 2,
+   "offset": 116,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  }
+ ],
+ "bin_record_size": 120
+}

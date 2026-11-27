@@ -1,4 +1,4 @@
-"""Stock LoD 1.14d character and item checks (from the D2-Development-Kit, MIT, see LICENSE).
+"""Stock LoD 1.14d character and item checks.
 
 A finding describes a rule violation or a fingerprint collision in the current
 snapshot. An empty result establishes only that these checks passed.
@@ -6,12 +6,19 @@ snapshot. An empty result establishes only that these checks passed.
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from functools import lru_cache
-import os
+from pathlib import Path
 
-from .items import ItemTables, Stats, V, apply_property, to_int
-from .savescan import SaveTables, parse_d2s
-from .table import Table
-from .tables import read_tables
+from ..binfmt import bin2txt
+from ..binfmt.txt2bin import read_txt
+from ..lint.savescan import SaveTables, parse_d2s
+from ..tooltip.data import Table, to_int
+from ..tooltip.item import ItemTables, Stats, V, apply_property
+from .data import game_tables, runeword_strings
+
+
+# One-time rewards per difficulty. The scroll from Anya grants resistance.
+STAT_REWARDS = {17: 5}  # Lam Esen's Tome
+SKILL_REWARDS = {1: 1, 9: 1, 25: 2}  # Den of Evil, Radament, Izual
 
 
 @dataclass(frozen=True)
@@ -42,6 +49,12 @@ def properties(row, pattern, ids):
             yield tuple(row.get(key, '') for key in keys)
 
 
+def set_item_properties(row, slot):
+    """Yield the item-local properties stored under one set mask bit."""
+    pairs = (f'{slot + 1}a', f'{slot + 1}b')
+    yield from properties(row, 'aprop{} apar{} amin{} amax{}', pairs)
+
+
 def allowed(types, row):
     included = {v for k, v in row.items() if k.startswith('itype') and v}
     excluded = {v for k, v in row.items() if k.startswith('etype') and v}
@@ -54,42 +67,54 @@ def flatten(items):
         yield from flatten(item.children)
 
 
-_CACHE = {}
+def stock_dir():
+    for root in Path(__file__).resolve().parents:
+        stock = root / 'ref' / 'patches' / 'patch114d_bins'
+        if (stock / 'magicprefix.txt').is_file():
+            return stock
+    raise FileNotFoundError('stock LoD tables (ref/patches/patch114d_bins) are unavailable')
 
 
-def stock_validator(game):
-    """One Validator per game folder and archive timestamps (raises tables.MissingTables)."""
-    game = os.path.abspath(game)
-    stamp = tuple((n, os.stat(os.path.join(game, n)).st_mtime_ns) for n in sorted(os.listdir(game))
-                  if n.lower() in ('patch_d2.mpq', 'd2exp.mpq', 'd2data.mpq'))
-    key = (game, stamp)
-    if key not in _CACHE:
-        _CACHE.clear()
-        _CACHE[key] = Validator(read_tables(game))
-    return _CACHE[key]
+@lru_cache(maxsize=8)
+def _validator(directory):
+    return Validator(directory)
+
+
+def stock_validator(game=None):
+    return _validator(game_tables(game) if game else stock_dir())
+
+
+def report_lines(findings, *, verdict=False):
+    """Keep the full-info summary and the standalone verdict concise."""
+    count = len(findings)
+    if verdict:
+        return [f'Not legit ({count} {"reason" if count == 1 else "reasons"})' if count else 'Legit']
+    return ['Legit: ok' if not count else f'Legit: {count} {"issue" if count == 1 else "issues"}']
 
 
 class Validator:
-    def __init__(self, tables):
-        self.tables = tables
-        self.save_tables = SaveTables(self, median=False)
+    def __init__(self, directory):
+        self.directory = Path(directory)
+        self.save_tables = SaveTables(directory, median=False)
+        self.context = bin2txt.Context(bin_dir=str(directory), version='114d')
+        self.tables = {}
         self.bases = {}
         for name in ('weapons', 'armor', 'misc'):
             for row in self.rows(name):
                 if row.get('code'):
                     self.bases[row['code']] = (name, row)
         self.item_types = {r['code']: r for r in self.rows('itemtypes') if r.get('code')}
-        # Saved affix IDs are 1-based rows of their own table (checked against a real 1.14d save: Emerald + of
-        # Strength). The dev kit numbers suffix, prefix and automagic rows in one run, which rejects real
-        # magic items; keyed by (table, id) here.
+        # The save uses one-based IDs within each compiled affix table.
+        # The TXT loader drops Expansion separators and retains blank rows.
         self.affixes = {}
         for name in ('magicsuffix', 'magicprefix', 'automagic'):
-            self.affixes.update({(name, i + 1): (name, row) for i, row in enumerate(self.rows(name))})
+            self.affixes.update({(name, 1 + i): (name, row) for i, row in enumerate(self.rows(name))})
         self.rare_suffixes = self.rows('raresuffix')
         self.rare_prefixes = self.rows('rareprefix')
         self.uniques = self.rows('uniqueitems')
         self.set_items = self.rows('setitems')
-        self.sets = {r['index'] for r in self.rows('sets')}
+        self.sets = {r['index']: r for r in self.rows('sets')}
+        self.set_sizes = Counter(r['set'] for r in self.set_items if r.get('set'))
         self.superior = self._optional_rows('qualityitems')
         self.low = self._optional_rows('lowqualityitems')
         self.item_tables = ItemTables(self)
@@ -97,36 +122,38 @@ class Validator:
         self.experience = {r['level']: r for r in self.rows('experience')}
         self.crafts = [r for r in self.rows('cubemain') if r.get('enabled') == '1'
                        and ',crf' in r.get('output', '')]
-        self.runewords = {}
-        # The low 12 bits of the 1.14d save token use recipe order with
-        # a 27-row bias. Delirium uses a separate legacy token.
-        for index, row in enumerate(self.rows('runes'), start=27):
-            if row.get('complete') == '1':
-                self.runewords[2718 if row.get('rune name') == 'Delirium' else index] = row
+        strings = runeword_strings(self.directory)
+        self.runewords = {strings[row['name']]: row for row in self.rows('runes')
+                          if row.get('complete') == '1' and row['name'] in strings}
+        self.gems = {row['code']: row for row in self.rows('gems') if row.get('code')}
 
     def table(self, name):
-        return self.tables.get(name) or Table([], [])
-
-    def text(self, key):
-        return ''
-
-    def text_id(self, idx):
-        return ''
+        if name not in self.tables:
+            path = self.directory / f'{name}.txt'
+            if path.exists():
+                raw_headers, raw_rows = read_txt(path)
+                headers = [cell.decode('latin-1') for cell in raw_headers]
+                rows = [[cell.decode('latin-1').strip('"') for cell in row] for row in raw_rows]
+            else:
+                data = (self.directory / f'{name}.bin').read_bytes()
+                headers, rows = bin2txt.convert(data, name, '114d', self.context)
+            self.tables[name] = Table(headers, rows)
+        return self.tables[name]
 
     def rows(self, name):
         table = self.table(name)
         return [{k.lower(): v.strip() for k, v in table.row(i).items()}
-                for i in range(len(table))
-                if table.get(i, table.hdr[0]).strip().lower() != 'expansion']
+                for i in range(len(table))]
 
     def _optional_rows(self, name):
         # The stock reference dump has the patch archive alone. These two
         # tables are inherited from d2exp.mpq in a complete installation.
-        return self.rows(name) if name in self.tables else None
+        if any((self.directory / f'{name}.{ext}').is_file() for ext in ('txt', 'bin')):
+            return self.rows(name)
+        return None
 
-    def parse(self, data):
-        """Parse the bytes of a v96 .d2s."""
-        return parse_d2s(data, self.save_tables)
+    def parse(self, path):
+        return parse_d2s(path, self.save_tables)
 
     def _bounds(self, mods):
         bounds = Stats()
@@ -152,10 +179,10 @@ class Validator:
                     for level in levels:
                         bounds.add(204, (skill << 6) | level,
                                    V(lo_capacity << 8, (hi_capacity << 8) | hi_capacity))
+            elif code == 'ignore-ac':
+                bounds.add(115, 0, V(to_int(low), to_int(high)))
             elif code == 'indestruct':
                 bounds.add(152, 0, V(1))
-            elif code == 'dur%':
-                bounds.add(75, 0, V(to_int(low), to_int(high)))
             elif code == 'sock' and not low and not high:
                 bounds.add(194, 0, V(to_int(param)))
             else:
@@ -226,6 +253,8 @@ class Validator:
         q = item.quality
         findings = []
         mods = []
+        superior_mods = [[]]
+        legacy_mods = None
 
         def report(rule, detail, severity='impossible'):
             findings.append(Finding(label, rule, detail, severity))
@@ -244,15 +273,19 @@ class Validator:
             elif item.quality_id is None or not 0 <= item.quality_id < len(self.superior):
                 report('quality', 'unknown superior variant')
             else:
-                quality = self.superior[item.quality_id]
-                match = {'shld': 'shield', 'throw': 'thrown', 'scep': 'scepter',
-                         'wand': 'wand', 'staf': 'staff', 'bow': 'bow',
-                         'boot': 'boots', 'glov': 'gloves', 'belt': 'belt'}
-                column = next((col for type_, col in match.items() if type_ in types),
+                categories = {'shld': 'shield', 'thro': 'thrown', 'scep': 'scepter',
+                              'wand': 'wand', 'staf': 'staff', 'bow': 'bow',
+                              'boot': 'boots', 'glov': 'gloves', 'belt': 'belt'}
+                column = next((col for type_, col in categories.items() if type_ in types),
                               {'armor': 'armor', 'weapons': 'weapon'}.get(kind))
-                if quality.get(column) != '1':
+                # Validate saved bonuses against one complete superior roll.
+                rolls = [list(properties(row, 'mod{}code mod{}param mod{}min mod{}max',
+                                         range(1, 3)))
+                         for row in self.superior if row.get(column) == '1']
+                if rolls:
+                    superior_mods = rolls
+                else:
                     report('quality', 'superior variant cannot spawn on this base')
-                mods.extend(properties(quality, 'mod{}code mod{}param mod{}min mod{}max', range(1, 3)))
 
         if q in (5, 7):
             rows = self.set_items if q == 5 else self.uniques
@@ -271,21 +304,43 @@ class Validator:
                 if q == 7 and row.get('enabled') != '1':
                     report('identity', 'disabled unique row')
                 mods.extend(properties(row, 'prop{} par{} min{} max{}', range(1, 13)))
+                if upgraded:
+                    tier = self.bases[expected][1]
+                    penalty = 5 if item.code == tier.get('ubercode') else 7
+                    if item.code == tier.get('ultracode') and expected == tier.get('normcode'):
+                        penalty += 5
+                    mods.append(('levelreq', '', str(penalty), str(penalty)))
+                if label == 'Hellfire Torch':
+                    # Torches generated before 1.13 retain their original 25% proc.
+                    legacy_mods = [('hit-skill', param, '25', high)
+                                   if code == 'hit-skill' and low == '5'
+                                   else (code, param, low, high)
+                                   for code, param, low, high in mods]
                 if q == 5:
-                    if row.get('set') not in self.sets:
+                    set_name = row.get('set')
+                    set_row = self.sets.get(set_name)
+                    if set_row is None:
                         report('identity', 'set item references an unknown set')
-                    for tier, stats in item.set_stats.items():
-                        pairs = [f'{tier + 1}{side}' for side in 'ab']
-                        if row.get('add func') == '2':
-                            pairs = [f'{tier // 2 + 1}{"ab"[tier % 2]}']
-                        extra = list(properties(row, 'aprop{} apar{} amin{} amax{}', pairs))
-                        findings.extend(self._stat_findings(label, stats, [extra]))
+                    for slot, stats in item.set_stats.items():
+                        extra = list(set_item_properties(row, slot))
+                        candidates = [extra]
+                        pieces = slot + 2
+                        if set_row and pieces <= self.set_sizes[set_name]:
+                            partial = list(properties(set_row, 'pcode{} pparam{} pmin{} pmax{}',
+                                                      (f'{pieces}a', f'{pieces}b')))
+                            candidates += [partial, extra + partial]
+                            if pieces == self.set_sizes[set_name]:
+                                full = list(properties(set_row, 'fcode{} fparam{} fmin{} fmax{}', range(1, 9)))
+                                candidates += [full, extra + full, partial + full, extra + partial + full]
+                        findings.extend(self._stat_findings(label, stats, candidates))
 
         if item.rare_name:
             suffix_count = len(self.rare_suffixes)
             pre, suf = item.rare_name
             for name_id, rows, offset in ((pre, self.rare_prefixes, suffix_count + 1),
                                           (suf, self.rare_suffixes, 1)):
+                if offset == 1 and name_id == 0:
+                    continue  # A rare name may omit its second fragment.
                 index = name_id - offset
                 if not 0 <= index < len(rows) or not allowed(types, rows[index]):
                     report('rare-name', f'rare name fragment {name_id} is unavailable on this base')
@@ -331,7 +386,21 @@ class Validator:
         if sum(skill not in authored for skill in staffmods) > 3:
             report('staffmods', 'more than three native skill bonuses')
 
-        variants = [mods]
+        variants = [mods + superior for superior in superior_mods]
+        if legacy_mods is not None:
+            variants.append(legacy_mods)
+        auto_group = base.get('auto prefix')
+        if auto_group and auto_group != '0' and not item.automagic and q <= 3:
+            # A saved base can retain its native bonus without an automagic ID.
+            # Each candidate still has to fit one authored roll for its class.
+            auto_rolls = [list(properties(row, 'mod{}code mod{}param mod{}min mod{}max',
+                                          range(1, 4)))
+                          for table, row in self.affixes.values()
+                          if table == 'automagic' and row.get('group') == auto_group
+                          and row.get('spawnable') == '1' and allowed(types, row)
+                          and to_int(row.get('level')) <= alvl
+                          and (not to_int(row.get('maxlevel')) or alvl <= to_int(row['maxlevel']))]
+            variants += [candidate + roll for candidate in variants for roll in auto_rolls]
         if q == 8:
             crafts = list(self._craft_mods(item, base, types))
             if not crafts:
@@ -360,7 +429,11 @@ class Validator:
             else:
                 label = row['rune name']
                 rwmods = list(properties(row, 't1code{} t1param{} t1min{} t1max{}', range(1, 8)))
-                findings.extend(self._stat_findings(label, item.runeword_stats, [rwmods]))
+                slot = 'weapon' if kind == 'weapons' else 'shield' if 'shld' in types else 'helm'
+                pattern = ' '.join(f'{slot}mod{{}}{field}' for field in ('code', 'param', 'min', 'max'))
+                rune_mods = [mod for rune in runes
+                             for mod in properties(self.gems.get(rune, {}), pattern, range(1, 4))]
+                findings.extend(self._stat_findings(label, item.runeword_stats, [rwmods, rwmods + rune_mods]))
 
         ethereal = bool(item.flags & (1 << 22))
         if ethereal and (kind == 'misc' or base.get('nodurability') == '1' or
@@ -401,12 +474,13 @@ class Validator:
             yield Finding(char.name, 'experience', f'level {level} inconsistent with {exp} experience')
         attributes = [stats.get(sid, 0) - to_int(row.get(col))
                       for sid, col in enumerate(('str', 'int', 'dex', 'vit'))]
-        stat_budget = (level - 1) * 5 + 5 * sum(bool(diff[17] & 1) for diff in char.quests)
+        stat_budget = (level - 1) * 5 + sum(
+            reward for diff in char.quests for quest, reward in STAT_REWARDS.items() if diff[quest] & 1)
         used = stats.get(4, 0) + sum(attributes)
         if used > stat_budget or min(attributes) < 0:
             yield Finding(char.name, 'stat-points', f'{used} stat points against budget {stat_budget}')
-        skill_budget = level - 1 + sum(bool(diff[1] & 1) + bool(diff[9] & 1) +
-                                       2 * bool(diff[25] & 1) for diff in char.quests)
+        skill_budget = level - 1 + sum(
+            reward for diff in char.quests for quest, reward in SKILL_REWARDS.items() if diff[quest] & 1)
         used = stats.get(5, 0) + sum(char.skills)
         if used > skill_budget or max(char.skills, default=0) > 20:
             yield Finding(char.name, 'skill-points', f'{used} skill points against budget {skill_budget}, max 20 per skill')

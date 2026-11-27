@@ -1,0 +1,209 @@
+{
+ "table": "lvlsub",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 348,
+ "fields": [
+  {
+   "name": "Type",
+   "ftype": 2,
+   "offset": 0,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "File",
+   "ftype": 1,
+   "offset": 4,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "CheckAll",
+   "ftype": 2,
+   "offset": 64,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "BordType",
+   "ftype": 2,
+   "offset": 68,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "GridSize",
+   "ftype": 2,
+   "offset": 76,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Dt1Mask",
+   "ftype": 2,
+   "offset": 72,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Prob0",
+   "ftype": 2,
+   "offset": 284,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Trials0",
+   "ftype": 2,
+   "offset": 304,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Max0",
+   "ftype": 2,
+   "offset": 324,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Prob1",
+   "ftype": 2,
+   "offset": 288,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Trials1",
+   "ftype": 2,
+   "offset": 308,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Max1",
+   "ftype": 2,
+   "offset": 328,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Prob2",
+   "ftype": 2,
+   "offset": 292,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Trials2",
+   "ftype": 2,
+   "offset": 312,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Max2",
+   "ftype": 2,
+   "offset": 332,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Prob3",
+   "ftype": 2,
+   "offset": 296,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Trials3",
+   "ftype": 2,
+   "offset": 316,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Max3",
+   "ftype": 2,
+   "offset": 336,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Prob4",
+   "ftype": 2,
+   "offset": 300,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Trials4",
+   "ftype": 2,
+   "offset": 320,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Max4",
+   "ftype": 2,
+   "offset": 340,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Expansion",
+   "ftype": 2,
+   "offset": 344,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  }
+ ],
+ "bin_record_size": 348
+}

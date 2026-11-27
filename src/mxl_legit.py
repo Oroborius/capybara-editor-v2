@@ -1,7 +1,7 @@
 """Legit mode (folder profiles such as vanilla 1.14d; Median XL has no such mode).
 
 While it is on, a character may only be written, and an item only be built, when the server's legit rules
-(the vendored d2legit package, from the D2-Development-Kit, MIT) find nothing impossible in it. The rules are run on
+(the dev kit's validator, vendored unchanged as package d2bt, MIT) find nothing impossible in it. The rules are run on
 the bytes the editor would write, against the stock 1.14d tables of the selected Diablo II folder. 'impossible'
 findings refuse the write; 'suspicious' ones only warn. No Tk in here."""
 from mxl_char import CharError
@@ -54,11 +54,22 @@ class Unavailable(Exception):
 
 
 def _validator():
+    """The dev kit's own validator (vendored unchanged: package d2bt, commit in d2bt/VENDORED.txt), so the editor
+    and the server give the same verdict. Its table cache lives in the editor's user folder."""
+    import os
     try:
-        import d2legit
-        from d2legit.tables import MissingTables
-        return d2legit.stock_validator(game_dir())
-    except (MissingTables, OSError, KeyError, ValueError) as e:
+        import paths
+        os.environ.setdefault('D2BT_HOME', os.path.join(paths.USER_DIR, 'legit'))
+    except Exception:
+        pass
+    import sys
+    here = os.path.dirname(os.path.abspath(__file__))     # Windows build: d2bt is a folder in _internal
+    if here not in sys.path:
+        sys.path.append(here)
+    try:
+        from d2bt.legit import stock_validator
+        return stock_validator(game_dir())
+    except Exception as e:
         raise Unavailable(f"the stock Diablo II tables could not be read ({e}); Legit mode cannot check anything")
 
 
@@ -72,32 +83,47 @@ def prepare():
 
 
 def _finding(item, rule, detail, severity=IMPOSSIBLE):
-    import d2legit
-    return d2legit.Finding(item, rule, detail, severity)
+    from d2bt.legit import Finding
+    return Finding(item, rule, detail, severity)
 
 
 def check_character(data):
-    """Findings of the bytes of a .d2s."""
-    from d2legit.savescan import SaveError, UnknownStatError
+    """Findings of the bytes of a .d2s (an unreadable save counts as hacked, like the server)."""
+    import os
+    import tempfile
+    from d2bt.lint.savescan import SaveError, UnknownStatError
     v = _validator()
+    fd, path = tempfile.mkstemp(suffix='.d2s')
     try:
-        char = v.parse(bytes(data))
-    except UnknownStatError as e:
-        return [_finding('character', 'stat', f'{e} (hacked)')]
-    except (SaveError, IndexError, KeyError) as e:
-        return [_finding('character', 'unreadable', str(e))]
-    return v.validate(char)
+        with os.fdopen(fd, 'wb') as f:
+            f.write(bytes(data))
+        try:
+            char = v.parse(path)
+        except UnknownStatError as e:
+            return [_finding('character', 'stat', f'{e} (hacked)')]
+        except (SaveError, IndexError, KeyError, ValueError) as e:
+            return [_finding('character', 'unreadable', str(e))]
+        return v.validate(char)
+    finally:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
 
 
 def check_item(blob):
-    """Findings of an item blob (the item plus its socketed items)."""
-    from d2legit.savescan import SaveError, UnknownStatError, parse_items
+    """Findings of an item blob (the item plus its socketed items), read by the dev kit's own item reader."""
+    from d2bt.lint.savescan import SaveError, UnknownStatError, Usage, _item
     v = _validator()
+    buf, items, u, pos = bytes(blob), [], Usage(''), 0
     try:
-        items = parse_items(bytes(blob), v.save_tables)
+        while pos < len(buf):
+            pos, flags, nsock = _item(buf, pos, v.save_tables, u, items)
+            for _ in range(nsock if flags >> 11 & 1 else 0):
+                pos, _f, _n = _item(buf, pos, v.save_tables, u, items[-1].children)
     except UnknownStatError as e:
         return [_finding('item', 'stat', f'{e} (hacked)')]
-    except (SaveError, IndexError, KeyError) as e:
+    except (SaveError, IndexError, KeyError, ValueError) as e:
         return [_finding('item', 'unreadable', str(e))]
     out = []
     for it in items:

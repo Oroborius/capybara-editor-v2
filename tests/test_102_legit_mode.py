@@ -1,5 +1,5 @@
 """Legit mode (vanilla profile): exclusive with Mock Mode, same rules as the dev kit's server validator
-(vendored as src/d2legit), refuses hacked characters / items and lets them through with the mode off.
+(the dev kit validator, vendored unchanged as src/d2bt), refuses hacked characters / items and lets them through with the mode off.
 
 Fixtures: the vanilla install (MXL_TEST_VANILLA_GAME), the vanilla sample character and, read only, the dev kit's
 legit_*.d2s files (skipped when the dev kit is not at its usual path)."""
@@ -143,5 +143,32 @@ def hacked_item_refused_only_in_legit_mode():
         T.check(False, '7 sockets on a unique built in Legit mode')
     G.set_legit(False)
 
+
+
+# impossible findings per private reference save (sorted order), as the dev kit's checker at the vendored commit
+# reports them (None: unreadable = hacked). The saves are private (.cache/samples, never committed): skipped without.
+REF_EXPECTED = {
+    'legit-ref': [0, 57, 81, 112, 147, 81, 90, 85, 28, 28, 33, 12, 87, 94, 111, 111, 123, None, 46, 25, 77, 13, 82,
+                  0, 79, 78, 69, 78, 14, 111, 108, 12, 57, 40, 33, 61],
+    'lld-ref': [163, 163, 165, 164, 128, 165, 40],
+}
+
+
+@T.test
+def legit_verdicts_match_the_dev_kit_on_the_references():
+    import glob
+    import mxl_legit
+    root = Path(T.REPO) / '.cache' / 'samples'
+    if not all((root / d).is_dir() for d in REF_EXPECTED) or not mxl_legit.prepare():
+        T.skip('private reference saves or stock tables unavailable')
+    for d, want in REF_EXPECTED.items():
+        files = sorted(glob.glob(str(root / d / '**' / '*.d2s'), recursive=True))
+        T.eq(len(files), len(want), f'{d}: file count')
+        got = []
+        for f in files:
+            fs = mxl_legit.check_character(Path(f).read_bytes())
+            got.append(None if any(x.rule in ('unreadable', 'stat') and x.item == 'character' for x in fs)
+                       else len(mxl_legit.impossible(fs)))
+        T.eq(got, want, f'{d}: impossible findings per save, as the dev kit')
 
 T.main(globals())

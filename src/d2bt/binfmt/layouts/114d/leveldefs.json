@@ -1,0 +1,389 @@
+{
+ "table": "leveldefs",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 156,
+ "fields": [
+  {
+   "name": "QuestFlag",
+   "ftype": 2,
+   "offset": 0,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "QuestFlagEx",
+   "ftype": 2,
+   "offset": 4,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Layer",
+   "ftype": 2,
+   "offset": 8,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "SizeX",
+   "ftype": 2,
+   "offset": 12,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "SizeY",
+   "ftype": 2,
+   "offset": 24,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "SizeX(N)",
+   "ftype": 2,
+   "offset": 16,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "SizeY(N)",
+   "ftype": 2,
+   "offset": 28,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "SizeX(H)",
+   "ftype": 2,
+   "offset": 20,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "SizeY(H)",
+   "ftype": 2,
+   "offset": 32,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "OffsetX",
+   "ftype": 2,
+   "offset": 36,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "OffsetY",
+   "ftype": 2,
+   "offset": 40,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Depend",
+   "ftype": 2,
+   "offset": 44,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "DrlgType",
+   "ftype": 2,
+   "offset": 48,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "LevelType",
+   "ftype": 2,
+   "offset": 52,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "SubType",
+   "ftype": 2,
+   "offset": 56,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "SubTheme",
+   "ftype": 2,
+   "offset": 60,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "SubWaypoint",
+   "ftype": 2,
+   "offset": 64,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "SubShrine",
+   "ftype": 2,
+   "offset": 68,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Vis0",
+   "ftype": 2,
+   "offset": 72,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Vis1",
+   "ftype": 2,
+   "offset": 76,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Vis2",
+   "ftype": 2,
+   "offset": 80,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Vis3",
+   "ftype": 2,
+   "offset": 84,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Vis4",
+   "ftype": 2,
+   "offset": 88,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Vis5",
+   "ftype": 2,
+   "offset": 92,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Vis6",
+   "ftype": 2,
+   "offset": 96,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Vis7",
+   "ftype": 2,
+   "offset": 100,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Warp0",
+   "ftype": 2,
+   "offset": 104,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Warp1",
+   "ftype": 2,
+   "offset": 108,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Warp2",
+   "ftype": 2,
+   "offset": 112,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Warp3",
+   "ftype": 2,
+   "offset": 116,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Warp4",
+   "ftype": 2,
+   "offset": 120,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Warp5",
+   "ftype": 2,
+   "offset": 124,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Warp6",
+   "ftype": 2,
+   "offset": 128,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Warp7",
+   "ftype": 2,
+   "offset": 132,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Intensity",
+   "ftype": 4,
+   "offset": 136,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Red",
+   "ftype": 4,
+   "offset": 137,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Green",
+   "ftype": 4,
+   "offset": 138,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Blue",
+   "ftype": 4,
+   "offset": 139,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Portal",
+   "ftype": 2,
+   "offset": 140,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Position",
+   "ftype": 2,
+   "offset": 144,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "SaveMonsters",
+   "ftype": 2,
+   "offset": 148,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "LOSDraw",
+   "ftype": 2,
+   "offset": 152,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  }
+ ],
+ "bin_record_size": 156
+}

@@ -1,0 +1,237 @@
+{
+ "table": "overlay",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 132,
+ "fields": [
+  {
+   "name": "overlay",
+   "ftype": 17,
+   "offset": 0,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16",
+   "key": true
+  },
+  {
+   "name": "Filename",
+   "ftype": 1,
+   "offset": 2,
+   "size": 64,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "version",
+   "ftype": 3,
+   "offset": 66,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "Frames",
+   "ftype": 2,
+   "offset": 68,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "PreDraw",
+   "ftype": 4,
+   "offset": 72,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "1ofN",
+   "ftype": 2,
+   "offset": 76,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Dir",
+   "ftype": 4,
+   "offset": 80,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Open",
+   "ftype": 4,
+   "offset": 81,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Beta",
+   "ftype": 4,
+   "offset": 82,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Xoffset",
+   "ftype": 2,
+   "offset": 84,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Yoffset",
+   "ftype": 2,
+   "offset": 88,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Height1",
+   "ftype": 2,
+   "offset": 92,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Height2",
+   "ftype": 2,
+   "offset": 96,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Height3",
+   "ftype": 2,
+   "offset": 100,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Height4",
+   "ftype": 2,
+   "offset": 104,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "AnimRate",
+   "ftype": 2,
+   "offset": 108,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "LoopWaitTime",
+   "ftype": 2,
+   "offset": 120,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Trans",
+   "ftype": 4,
+   "offset": 124,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "InitRadius",
+   "ftype": 2,
+   "offset": 112,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Radius",
+   "ftype": 2,
+   "offset": 116,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Red",
+   "ftype": 4,
+   "offset": 125,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Green",
+   "ftype": 4,
+   "offset": 126,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Blue",
+   "ftype": 4,
+   "offset": 127,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "NumDirections",
+   "ftype": 4,
+   "offset": 128,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "LocalBlood",
+   "ftype": 4,
+   "offset": 129,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  }
+ ],
+ "bin_record_size": 132
+}

@@ -1,0 +1,192 @@
+{
+ "table": "superuniques",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 52,
+ "fields": [
+  {
+   "name": "Superunique",
+   "ftype": 17,
+   "offset": 0,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16",
+   "key": true
+  },
+  {
+   "name": "Name",
+   "ftype": 22,
+   "offset": 2,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "Class",
+   "ftype": 19,
+   "offset": 4,
+   "size": 4,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "i32"
+  },
+  {
+   "name": "hcIdx",
+   "ftype": 2,
+   "offset": 8,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MonSound",
+   "ftype": 19,
+   "offset": 24,
+   "size": 4,
+   "bit": null,
+   "link": "monsounds.Id",
+   "type": "i32"
+  },
+  {
+   "name": "Mod1",
+   "ftype": 2,
+   "offset": 12,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Mod2",
+   "ftype": 2,
+   "offset": 16,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Mod3",
+   "ftype": 2,
+   "offset": 20,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MinGrp",
+   "ftype": 2,
+   "offset": 28,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MaxGrp",
+   "ftype": 2,
+   "offset": 32,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "AutoPos",
+   "ftype": 4,
+   "offset": 36,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "EClass",
+   "ftype": 4,
+   "offset": 37,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Stacks",
+   "ftype": 4,
+   "offset": 38,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Replaceable",
+   "ftype": 4,
+   "offset": 39,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Utrans",
+   "ftype": 4,
+   "offset": 40,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Utrans(N)",
+   "ftype": 4,
+   "offset": 41,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Utrans(H)",
+   "ftype": 4,
+   "offset": 42,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "TC",
+   "ftype": 20,
+   "offset": 44,
+   "size": 2,
+   "bit": null,
+   "link": "treasureclassex.Treasure Class",
+   "type": "u16"
+  },
+  {
+   "name": "TC(N)",
+   "ftype": 20,
+   "offset": 46,
+   "size": 2,
+   "bit": null,
+   "link": "treasureclassex.Treasure Class",
+   "type": "u16"
+  },
+  {
+   "name": "TC(H)",
+   "ftype": 20,
+   "offset": 48,
+   "size": 2,
+   "bit": null,
+   "link": "treasureclassex.Treasure Class",
+   "type": "u16"
+  }
+ ],
+ "bin_record_size": 52
+}

@@ -1,0 +1,1030 @@
+{
+ "table": "skilldesc",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 288,
+ "fields": [
+  {
+   "name": "skilldesc",
+   "ftype": 17,
+   "offset": 0,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16",
+   "key": true
+  },
+  {
+   "name": "skillpage",
+   "ftype": 4,
+   "offset": 2,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "skillrow",
+   "ftype": 4,
+   "offset": 3,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "skillcolumn",
+   "ftype": 4,
+   "offset": 4,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ListRow",
+   "ftype": 4,
+   "offset": 5,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8",
+   "signed": true
+  },
+  {
+   "name": "ListPool",
+   "ftype": 4,
+   "offset": 6,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "iconcel",
+   "ftype": 4,
+   "offset": 7,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "str name",
+   "ftype": 22,
+   "offset": 8,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "str short",
+   "ftype": 22,
+   "offset": 10,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "str long",
+   "ftype": 22,
+   "offset": 12,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "str alt",
+   "ftype": 22,
+   "offset": 14,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "str mana",
+   "ftype": 22,
+   "offset": 16,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "descdam",
+   "ftype": 3,
+   "offset": 18,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "descatt",
+   "ftype": 3,
+   "offset": 20,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "ddam calc1",
+   "ftype": 25,
+   "offset": 24,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "ddam calc2",
+   "ftype": 25,
+   "offset": 28,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "p1dmelem",
+   "ftype": 13,
+   "offset": 32,
+   "size": 1,
+   "bit": null,
+   "link": "elemtypes.code",
+   "type": "u8"
+  },
+  {
+   "name": "p1dmmin",
+   "ftype": 25,
+   "offset": 36,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "p1dmmax",
+   "ftype": 25,
+   "offset": 48,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "p2dmelem",
+   "ftype": 13,
+   "offset": 33,
+   "size": 1,
+   "bit": null,
+   "link": "elemtypes.code",
+   "type": "u8"
+  },
+  {
+   "name": "p2dmmin",
+   "ftype": 25,
+   "offset": 40,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "p2dmmax",
+   "ftype": 25,
+   "offset": 52,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "p3dmelem",
+   "ftype": 13,
+   "offset": 34,
+   "size": 1,
+   "bit": null,
+   "link": "elemtypes.code",
+   "type": "u8"
+  },
+  {
+   "name": "p3dmmin",
+   "ftype": 25,
+   "offset": 44,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "p3dmmax",
+   "ftype": 25,
+   "offset": 56,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "descmissile1",
+   "ftype": 20,
+   "offset": 60,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "descmissile2",
+   "ftype": 20,
+   "offset": 62,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "descmissile3",
+   "ftype": 20,
+   "offset": 64,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "descline1",
+   "ftype": 4,
+   "offset": 66,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "desctexta1",
+   "ftype": 22,
+   "offset": 84,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "desctextb1",
+   "ftype": 22,
+   "offset": 118,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "desccalca1",
+   "ftype": 25,
+   "offset": 152,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "desccalcb1",
+   "ftype": 25,
+   "offset": 220,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "descline2",
+   "ftype": 4,
+   "offset": 67,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "desctexta2",
+   "ftype": 22,
+   "offset": 86,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "desctextb2",
+   "ftype": 22,
+   "offset": 120,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "desccalca2",
+   "ftype": 25,
+   "offset": 156,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "desccalcb2",
+   "ftype": 25,
+   "offset": 224,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "descline3",
+   "ftype": 4,
+   "offset": 68,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "desctexta3",
+   "ftype": 22,
+   "offset": 88,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "desctextb3",
+   "ftype": 22,
+   "offset": 122,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "desccalca3",
+   "ftype": 25,
+   "offset": 160,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "desccalcb3",
+   "ftype": 25,
+   "offset": 228,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "descline4",
+   "ftype": 4,
+   "offset": 69,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "desctexta4",
+   "ftype": 22,
+   "offset": 90,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "desctextb4",
+   "ftype": 22,
+   "offset": 124,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "desccalca4",
+   "ftype": 25,
+   "offset": 164,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "desccalcb4",
+   "ftype": 25,
+   "offset": 232,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "descline5",
+   "ftype": 4,
+   "offset": 70,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "desctexta5",
+   "ftype": 22,
+   "offset": 92,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "desctextb5",
+   "ftype": 22,
+   "offset": 126,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "desccalca5",
+   "ftype": 25,
+   "offset": 168,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "desccalcb5",
+   "ftype": 25,
+   "offset": 236,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "descline6",
+   "ftype": 4,
+   "offset": 71,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "desctexta6",
+   "ftype": 22,
+   "offset": 94,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "desctextb6",
+   "ftype": 22,
+   "offset": 128,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "desccalca6",
+   "ftype": 25,
+   "offset": 172,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "desccalcb6",
+   "ftype": 25,
+   "offset": 240,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "dsc2line1",
+   "ftype": 4,
+   "offset": 72,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dsc2texta1",
+   "ftype": 22,
+   "offset": 96,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "dsc2textb1",
+   "ftype": 22,
+   "offset": 130,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "dsc2calca1",
+   "ftype": 25,
+   "offset": 176,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "dsc2calcb1",
+   "ftype": 25,
+   "offset": 244,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "dsc2line2",
+   "ftype": 4,
+   "offset": 73,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dsc2texta2",
+   "ftype": 22,
+   "offset": 98,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "dsc2textb2",
+   "ftype": 22,
+   "offset": 132,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "dsc2calca2",
+   "ftype": 25,
+   "offset": 180,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "dsc2calcb2",
+   "ftype": 25,
+   "offset": 248,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "dsc2line3",
+   "ftype": 4,
+   "offset": 74,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dsc2texta3",
+   "ftype": 22,
+   "offset": 100,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "dsc2textb3",
+   "ftype": 22,
+   "offset": 134,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "dsc2calca3",
+   "ftype": 25,
+   "offset": 184,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "dsc2calcb3",
+   "ftype": 25,
+   "offset": 252,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "dsc2line4",
+   "ftype": 4,
+   "offset": 75,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dsc2texta4",
+   "ftype": 22,
+   "offset": 102,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "dsc2textb4",
+   "ftype": 22,
+   "offset": 136,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "dsc2calca4",
+   "ftype": 25,
+   "offset": 188,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "dsc2calcb4",
+   "ftype": 25,
+   "offset": 256,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "dsc3line1",
+   "ftype": 4,
+   "offset": 76,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dsc3texta1",
+   "ftype": 22,
+   "offset": 104,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "dsc3textb1",
+   "ftype": 22,
+   "offset": 138,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "dsc3calca1",
+   "ftype": 25,
+   "offset": 192,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "dsc3calcb1",
+   "ftype": 25,
+   "offset": 260,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "dsc3line2",
+   "ftype": 4,
+   "offset": 77,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dsc3texta2",
+   "ftype": 22,
+   "offset": 106,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "dsc3textb2",
+   "ftype": 22,
+   "offset": 140,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "dsc3calca2",
+   "ftype": 25,
+   "offset": 196,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "dsc3calcb2",
+   "ftype": 25,
+   "offset": 264,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "dsc3line3",
+   "ftype": 4,
+   "offset": 78,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dsc3texta3",
+   "ftype": 22,
+   "offset": 108,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "dsc3textb3",
+   "ftype": 22,
+   "offset": 142,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "dsc3calca3",
+   "ftype": 25,
+   "offset": 200,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "dsc3calcb3",
+   "ftype": 25,
+   "offset": 268,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "dsc3line4",
+   "ftype": 4,
+   "offset": 79,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dsc3texta4",
+   "ftype": 22,
+   "offset": 110,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "dsc3textb4",
+   "ftype": 22,
+   "offset": 144,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "dsc3calca4",
+   "ftype": 25,
+   "offset": 204,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "dsc3calcb4",
+   "ftype": 25,
+   "offset": 272,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "dsc3line5",
+   "ftype": 4,
+   "offset": 80,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dsc3texta5",
+   "ftype": 22,
+   "offset": 112,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "dsc3textb5",
+   "ftype": 22,
+   "offset": 146,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "dsc3calca5",
+   "ftype": 25,
+   "offset": 208,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "dsc3calcb5",
+   "ftype": 25,
+   "offset": 276,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "dsc3line6",
+   "ftype": 4,
+   "offset": 81,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dsc3texta6",
+   "ftype": 22,
+   "offset": 114,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "dsc3textb6",
+   "ftype": 22,
+   "offset": 148,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "dsc3calca6",
+   "ftype": 25,
+   "offset": 212,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "dsc3calcb6",
+   "ftype": 25,
+   "offset": 280,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "dsc3line7",
+   "ftype": 4,
+   "offset": 82,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dsc3texta7",
+   "ftype": 22,
+   "offset": 116,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "dsc3textb7",
+   "ftype": 22,
+   "offset": 150,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "dsc3calca7",
+   "ftype": 25,
+   "offset": 216,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  },
+  {
+   "name": "dsc3calcb7",
+   "ftype": 25,
+   "offset": 284,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skilldesccode",
+   "type": "u32"
+  }
+ ],
+ "bin_record_size": 288
+}

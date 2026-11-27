@@ -1,0 +1,1327 @@
+{
+ "table": "missiles",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 420,
+ "fields": [
+  {
+   "name": "Missile",
+   "ftype": 17,
+   "offset": 0,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16",
+   "key": true
+  },
+  {
+   "name": "LastCollide",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 0,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "Explosion",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 1,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "Pierce",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 2,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "CanSlow",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 3,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "CanDestroy",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 4,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "NoMultiShot",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 12,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "NoUniqueMod",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 13,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "ClientSend",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 5,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "GetHit",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 6,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "SoftHit",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 7,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "ApplyMastery",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 8,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "ReturnFire",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 9,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "Town",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 10,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "SrcTown",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 11,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "pCltDoFunc",
+   "ftype": 3,
+   "offset": 8,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "pCltHitFunc",
+   "ftype": 3,
+   "offset": 10,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "pSrvDoFunc",
+   "ftype": 3,
+   "offset": 12,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "pSrvHitFunc",
+   "ftype": 3,
+   "offset": 14,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "pSrvDmgFunc",
+   "ftype": 3,
+   "offset": 16,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "Param1",
+   "ftype": 2,
+   "offset": 56,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Param2",
+   "ftype": 2,
+   "offset": 60,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Param3",
+   "ftype": 2,
+   "offset": 64,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Param4",
+   "ftype": 2,
+   "offset": 68,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Param5",
+   "ftype": 2,
+   "offset": 72,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "SrvCalc1",
+   "ftype": 25,
+   "offset": 128,
+   "size": 4,
+   "bit": null,
+   "link": "calc:misscode",
+   "type": "u32"
+  },
+  {
+   "name": "CltParam1",
+   "ftype": 2,
+   "offset": 88,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "CltParam2",
+   "ftype": 2,
+   "offset": 92,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "CltParam3",
+   "ftype": 2,
+   "offset": 96,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "CltParam4",
+   "ftype": 2,
+   "offset": 100,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "CltParam5",
+   "ftype": 2,
+   "offset": 104,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "CltCalc1",
+   "ftype": 25,
+   "offset": 132,
+   "size": 4,
+   "bit": null,
+   "link": "calc:misscode",
+   "type": "u32"
+  },
+  {
+   "name": "sHitPar1",
+   "ftype": 2,
+   "offset": 76,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "sHitPar2",
+   "ftype": 2,
+   "offset": 80,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "sHitPar3",
+   "ftype": 2,
+   "offset": 84,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "SHitCalc1",
+   "ftype": 25,
+   "offset": 136,
+   "size": 4,
+   "bit": null,
+   "link": "calc:misscode",
+   "type": "u32"
+  },
+  {
+   "name": "cHitPar1",
+   "ftype": 2,
+   "offset": 108,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "cHitPar2",
+   "ftype": 2,
+   "offset": 112,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "cHitPar3",
+   "ftype": 2,
+   "offset": 116,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "CHitCalc1",
+   "ftype": 25,
+   "offset": 140,
+   "size": 4,
+   "bit": null,
+   "link": "calc:misscode",
+   "type": "u32"
+  },
+  {
+   "name": "dParam1",
+   "ftype": 2,
+   "offset": 120,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "dParam2",
+   "ftype": 2,
+   "offset": 124,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "DmgCalc1",
+   "ftype": 25,
+   "offset": 144,
+   "size": 4,
+   "bit": null,
+   "link": "calc:misscode",
+   "type": "u32"
+  },
+  {
+   "name": "TravelSound",
+   "ftype": 20,
+   "offset": 18,
+   "size": 2,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "u16"
+  },
+  {
+   "name": "HitSound",
+   "ftype": 20,
+   "offset": 20,
+   "size": 2,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "u16"
+  },
+  {
+   "name": "ProgSound",
+   "ftype": 20,
+   "offset": 52,
+   "size": 2,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "u16"
+  },
+  {
+   "name": "ProgOverlay",
+   "ftype": 20,
+   "offset": 54,
+   "size": 2,
+   "bit": null,
+   "link": "overlay.overlay",
+   "type": "u16"
+  },
+  {
+   "name": "ExplosionMissile",
+   "ftype": 20,
+   "offset": 22,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "SubMissile1",
+   "ftype": 20,
+   "offset": 24,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "SubMissile2",
+   "ftype": 20,
+   "offset": 26,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "SubMissile3",
+   "ftype": 20,
+   "offset": 28,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "HitSubMissile1",
+   "ftype": 20,
+   "offset": 36,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "HitSubMissile2",
+   "ftype": 20,
+   "offset": 38,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "HitSubMissile3",
+   "ftype": 20,
+   "offset": 40,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "HitSubMissile4",
+   "ftype": 20,
+   "offset": 42,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "CltSubMissile1",
+   "ftype": 20,
+   "offset": 30,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "CltSubMissile2",
+   "ftype": 20,
+   "offset": 32,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "CltSubMissile3",
+   "ftype": 20,
+   "offset": 34,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "CltHitSubMissile1",
+   "ftype": 20,
+   "offset": 44,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "CltHitSubMissile2",
+   "ftype": 20,
+   "offset": 46,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "CltHitSubMissile3",
+   "ftype": 20,
+   "offset": 48,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "CltHitSubMissile4",
+   "ftype": 20,
+   "offset": 50,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "ResultFlags",
+   "ftype": 3,
+   "offset": 172,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "HitFlags",
+   "ftype": 8,
+   "offset": 168,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "HitClass",
+   "ftype": 4,
+   "offset": 148,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Range",
+   "ftype": 3,
+   "offset": 150,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "LevRange",
+   "ftype": 3,
+   "offset": 152,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "KnockBack",
+   "ftype": 4,
+   "offset": 174,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "animrate",
+   "ftype": 3,
+   "offset": 160,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "xoffset",
+   "ftype": 3,
+   "offset": 162,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "yoffset",
+   "ftype": 3,
+   "offset": 164,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "zoffset",
+   "ftype": 3,
+   "offset": 166,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "MissileSkill",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 15,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "Skill",
+   "ftype": 20,
+   "offset": 404,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  },
+  {
+   "name": "MinDamage",
+   "ftype": 2,
+   "offset": 176,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MinLevDam1",
+   "ftype": 2,
+   "offset": 184,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MinLevDam2",
+   "ftype": 2,
+   "offset": 188,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MinLevDam3",
+   "ftype": 2,
+   "offset": 192,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MinLevDam4",
+   "ftype": 2,
+   "offset": 196,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MinLevDam5",
+   "ftype": 2,
+   "offset": 200,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MaxDamage",
+   "ftype": 2,
+   "offset": 180,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MaxLevDam1",
+   "ftype": 2,
+   "offset": 204,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MaxLevDam2",
+   "ftype": 2,
+   "offset": 208,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MaxLevDam3",
+   "ftype": 2,
+   "offset": 212,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MaxLevDam4",
+   "ftype": 2,
+   "offset": 216,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MaxLevDam5",
+   "ftype": 2,
+   "offset": 220,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "DmgSymPerCalc",
+   "ftype": 25,
+   "offset": 224,
+   "size": 4,
+   "bit": null,
+   "link": "calc:misscode",
+   "type": "u32"
+  },
+  {
+   "name": "EType",
+   "ftype": 13,
+   "offset": 228,
+   "size": 1,
+   "bit": null,
+   "link": "elemtypes.code",
+   "type": "u8"
+  },
+  {
+   "name": "EMin",
+   "ftype": 2,
+   "offset": 232,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MinELev1",
+   "ftype": 2,
+   "offset": 240,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MinELev2",
+   "ftype": 2,
+   "offset": 244,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MinELev3",
+   "ftype": 2,
+   "offset": 248,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MinELev4",
+   "ftype": 2,
+   "offset": 252,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MinELev5",
+   "ftype": 2,
+   "offset": 256,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "EMax",
+   "ftype": 2,
+   "offset": 236,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MaxELev1",
+   "ftype": 2,
+   "offset": 260,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MaxELev2",
+   "ftype": 2,
+   "offset": 264,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MaxELev3",
+   "ftype": 2,
+   "offset": 268,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MaxELev4",
+   "ftype": 2,
+   "offset": 272,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MaxELev5",
+   "ftype": 2,
+   "offset": 276,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "EDmgSymPerCalc",
+   "ftype": 25,
+   "offset": 280,
+   "size": 4,
+   "bit": null,
+   "link": "calc:misscode",
+   "type": "u32"
+  },
+  {
+   "name": "ELen",
+   "ftype": 2,
+   "offset": 284,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "ELevLen1",
+   "ftype": 2,
+   "offset": 288,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "ELevLen2",
+   "ftype": 2,
+   "offset": 292,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "ELevLen3",
+   "ftype": 2,
+   "offset": 296,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "CltSrcTown",
+   "ftype": 4,
+   "offset": 300,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "SrcDamage",
+   "ftype": 4,
+   "offset": 301,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8",
+   "signed": true
+  },
+  {
+   "name": "SrcMissDmg",
+   "ftype": 4,
+   "offset": 302,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Half2HSrc",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 14,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "Vel",
+   "ftype": 4,
+   "offset": 154,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "VelLev",
+   "ftype": 4,
+   "offset": 155,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "MaxVel",
+   "ftype": 4,
+   "offset": 156,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Accel",
+   "ftype": 3,
+   "offset": 158,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "Holy",
+   "ftype": 4,
+   "offset": 303,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Light",
+   "ftype": 4,
+   "offset": 304,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Flicker",
+   "ftype": 4,
+   "offset": 305,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Red",
+   "ftype": 4,
+   "offset": 306,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Green",
+   "ftype": 4,
+   "offset": 307,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Blue",
+   "ftype": 4,
+   "offset": 308,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "InitSteps",
+   "ftype": 4,
+   "offset": 309,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Activate",
+   "ftype": 4,
+   "offset": 310,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "LoopAnim",
+   "ftype": 4,
+   "offset": 311,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "CelFile",
+   "ftype": 1,
+   "offset": 312,
+   "size": 64,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "AnimLen",
+   "ftype": 4,
+   "offset": 376,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "RandStart",
+   "ftype": 2,
+   "offset": 380,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "SubLoop",
+   "ftype": 4,
+   "offset": 384,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "SubStart",
+   "ftype": 4,
+   "offset": 385,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "SubStop",
+   "ftype": 4,
+   "offset": 386,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "CollideType",
+   "ftype": 4,
+   "offset": 387,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "CollideKill",
+   "ftype": 4,
+   "offset": 390,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "CollideFriend",
+   "ftype": 4,
+   "offset": 391,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Collision",
+   "ftype": 4,
+   "offset": 388,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ClientCol",
+   "ftype": 4,
+   "offset": 389,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "NextHit",
+   "ftype": 4,
+   "offset": 392,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "NextDelay",
+   "ftype": 4,
+   "offset": 393,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Size",
+   "ftype": 4,
+   "offset": 394,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ToHit",
+   "ftype": 4,
+   "offset": 395,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "AlwaysExplode",
+   "ftype": 4,
+   "offset": 396,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Trans",
+   "ftype": 4,
+   "offset": 397,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Qty",
+   "ftype": 4,
+   "offset": 398,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "SpecialSetup",
+   "ftype": 2,
+   "offset": 400,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "HitShift",
+   "ftype": 4,
+   "offset": 406,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "NumDirections",
+   "ftype": 4,
+   "offset": 416,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "AnimSpeed",
+   "ftype": 4,
+   "offset": 417,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "LocalBlood",
+   "ftype": 4,
+   "offset": 418,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "DamageRate",
+   "ftype": 2,
+   "offset": 412,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  }
+ ],
+ "bin_record_size": 420
+}

@@ -1,0 +1,119 @@
+{
+ "table": "monequip",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 28,
+ "fields": [
+  {
+   "name": "monster",
+   "ftype": 20,
+   "offset": 0,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "level",
+   "ftype": 3,
+   "offset": 2,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "oninit",
+   "ftype": 4,
+   "offset": 4,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "item1",
+   "ftype": 9,
+   "offset": 8,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  },
+  {
+   "name": "loc1",
+   "ftype": 13,
+   "offset": 20,
+   "size": 1,
+   "bit": null,
+   "link": "bodylocs.code",
+   "type": "u8"
+  },
+  {
+   "name": "mod1",
+   "ftype": 4,
+   "offset": 23,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "item2",
+   "ftype": 9,
+   "offset": 12,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  },
+  {
+   "name": "loc2",
+   "ftype": 13,
+   "offset": 21,
+   "size": 1,
+   "bit": null,
+   "link": "bodylocs.code",
+   "type": "u8"
+  },
+  {
+   "name": "mod2",
+   "ftype": 4,
+   "offset": 24,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "item3",
+   "ftype": 9,
+   "offset": 16,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  },
+  {
+   "name": "loc3",
+   "ftype": 13,
+   "offset": 22,
+   "size": 1,
+   "bit": null,
+   "link": "bodylocs.code",
+   "type": "u8"
+  },
+  {
+   "name": "mod3",
+   "ftype": 4,
+   "offset": 25,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  }
+ ],
+ "bin_record_size": 28
+}

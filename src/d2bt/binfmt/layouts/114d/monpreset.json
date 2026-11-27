@@ -1,0 +1,29 @@
+{
+ "table": "monpreset",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 4,
+ "fields": [
+  {
+   "name": "Act",
+   "ftype": 4,
+   "offset": 0,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Place",
+   "ftype": 23,
+   "offset": 0,
+   "size": null,
+   "bit": null,
+   "link": "monpreset_place",
+   "type": "custom"
+  }
+ ],
+ "bin_record_size": 4
+}

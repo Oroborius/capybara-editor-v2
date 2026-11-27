@@ -1,0 +1,47 @@
+{
+ "table": "monitempercent",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 4,
+ "fields": [
+  {
+   "name": "HeartPercent",
+   "ftype": 4,
+   "offset": 0,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "BodyPartPercent",
+   "ftype": 4,
+   "offset": 1,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "TreasureClassPercent",
+   "ftype": 4,
+   "offset": 2,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ComponentPercent",
+   "ftype": 4,
+   "offset": 3,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  }
+ ],
+ "bin_record_size": 4
+}

@@ -1,0 +1,317 @@
+{
+ "table": "lvltypes",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 1928,
+ "fields": [
+  {
+   "name": "File 1",
+   "ftype": 1,
+   "offset": 0,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 2",
+   "ftype": 1,
+   "offset": 60,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 3",
+   "ftype": 1,
+   "offset": 120,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 4",
+   "ftype": 1,
+   "offset": 180,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 5",
+   "ftype": 1,
+   "offset": 240,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 6",
+   "ftype": 1,
+   "offset": 300,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 7",
+   "ftype": 1,
+   "offset": 360,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 8",
+   "ftype": 1,
+   "offset": 420,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 9",
+   "ftype": 1,
+   "offset": 480,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 10",
+   "ftype": 1,
+   "offset": 540,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 11",
+   "ftype": 1,
+   "offset": 600,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 12",
+   "ftype": 1,
+   "offset": 660,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 13",
+   "ftype": 1,
+   "offset": 720,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 14",
+   "ftype": 1,
+   "offset": 780,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 15",
+   "ftype": 1,
+   "offset": 840,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 16",
+   "ftype": 1,
+   "offset": 900,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 17",
+   "ftype": 1,
+   "offset": 960,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 18",
+   "ftype": 1,
+   "offset": 1020,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 19",
+   "ftype": 1,
+   "offset": 1080,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 20",
+   "ftype": 1,
+   "offset": 1140,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 21",
+   "ftype": 1,
+   "offset": 1200,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 22",
+   "ftype": 1,
+   "offset": 1260,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 23",
+   "ftype": 1,
+   "offset": 1320,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 24",
+   "ftype": 1,
+   "offset": 1380,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 25",
+   "ftype": 1,
+   "offset": 1440,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 26",
+   "ftype": 1,
+   "offset": 1500,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 27",
+   "ftype": 1,
+   "offset": 1560,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 28",
+   "ftype": 1,
+   "offset": 1620,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 29",
+   "ftype": 1,
+   "offset": 1680,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 30",
+   "ftype": 1,
+   "offset": 1740,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 31",
+   "ftype": 1,
+   "offset": 1800,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File 32",
+   "ftype": 1,
+   "offset": 1860,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "Act",
+   "ftype": 4,
+   "offset": 1920,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Expansion",
+   "ftype": 2,
+   "offset": 1924,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  }
+ ],
+ "bin_record_size": 1928
+}

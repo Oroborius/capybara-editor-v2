@@ -1,0 +1,273 @@
+{
+ "table": "properties",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 46,
+ "fields": [
+  {
+   "name": "code",
+   "ftype": 17,
+   "offset": 0,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16",
+   "key": true
+  },
+  {
+   "name": "set1",
+   "ftype": 4,
+   "offset": 2,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "val1",
+   "ftype": 3,
+   "offset": 10,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "func1",
+   "ftype": 4,
+   "offset": 24,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "stat1",
+   "ftype": 20,
+   "offset": 32,
+   "size": 2,
+   "bit": null,
+   "link": "itemstatcost.stat",
+   "type": "u16"
+  },
+  {
+   "name": "set2",
+   "ftype": 4,
+   "offset": 3,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "val2",
+   "ftype": 3,
+   "offset": 12,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "func2",
+   "ftype": 4,
+   "offset": 25,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "stat2",
+   "ftype": 20,
+   "offset": 34,
+   "size": 2,
+   "bit": null,
+   "link": "itemstatcost.stat",
+   "type": "u16"
+  },
+  {
+   "name": "set3",
+   "ftype": 4,
+   "offset": 4,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "val3",
+   "ftype": 3,
+   "offset": 14,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "func3",
+   "ftype": 4,
+   "offset": 26,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "stat3",
+   "ftype": 20,
+   "offset": 36,
+   "size": 2,
+   "bit": null,
+   "link": "itemstatcost.stat",
+   "type": "u16"
+  },
+  {
+   "name": "set4",
+   "ftype": 4,
+   "offset": 5,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "val4",
+   "ftype": 3,
+   "offset": 16,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "func4",
+   "ftype": 4,
+   "offset": 27,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "stat4",
+   "ftype": 20,
+   "offset": 38,
+   "size": 2,
+   "bit": null,
+   "link": "itemstatcost.stat",
+   "type": "u16"
+  },
+  {
+   "name": "set5",
+   "ftype": 4,
+   "offset": 6,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "val5",
+   "ftype": 3,
+   "offset": 18,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "func5",
+   "ftype": 4,
+   "offset": 28,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "stat5",
+   "ftype": 20,
+   "offset": 40,
+   "size": 2,
+   "bit": null,
+   "link": "itemstatcost.stat",
+   "type": "u16"
+  },
+  {
+   "name": "set6",
+   "ftype": 4,
+   "offset": 7,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "val6",
+   "ftype": 3,
+   "offset": 20,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "func6",
+   "ftype": 4,
+   "offset": 29,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "stat6",
+   "ftype": 20,
+   "offset": 42,
+   "size": 2,
+   "bit": null,
+   "link": "itemstatcost.stat",
+   "type": "u16"
+  },
+  {
+   "name": "set7",
+   "ftype": 4,
+   "offset": 8,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "val7",
+   "ftype": 3,
+   "offset": 22,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "func7",
+   "ftype": 4,
+   "offset": 30,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "stat7",
+   "ftype": 20,
+   "offset": 44,
+   "size": 2,
+   "bit": null,
+   "link": "itemstatcost.stat",
+   "type": "u16"
+  }
+ ],
+ "bin_record_size": 46
+}

@@ -1,0 +1,633 @@
+{
+ "table": "states",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 60,
+ "fields": [
+  {
+   "name": "state",
+   "ftype": 17,
+   "offset": 0,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16",
+   "key": true
+  },
+  {
+   "name": "group",
+   "ftype": 3,
+   "offset": 30,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "nosend",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 0,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "hide",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 2,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "transform",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 3,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "aura",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 1,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "pgsv",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 4,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "active",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 5,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "remhit",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 6,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "damblue",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 7,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "damred",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 8,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "attblue",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 9,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "attred",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 10,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "curse",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 11,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "curable",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 12,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "plrstaydeath",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 13,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "monstaydeath",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 14,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "bossstaydeath",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 15,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "disguise",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 16,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "bossinv",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 37,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "meleeonly",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 38,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "restrict",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 17,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "blue",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 18,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "armblue",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 19,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "rfblue",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 20,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "rcblue",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 21,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "rlblue",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 22,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "rpblue",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 23,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "stambarblue",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 24,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "armred",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 25,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "rfred",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 26,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "rcred",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 27,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "rlred",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 28,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "rpred",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 29,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "exp",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 30,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "shatter",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 31,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "life",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 32,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "udead",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 33,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "green",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 34,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "nooverlays",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 35,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "notondead",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 39,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "noclear",
+   "ftype": 26,
+   "offset": 16,
+   "size": 1,
+   "bit": 36,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "overlay1",
+   "ftype": 20,
+   "offset": 2,
+   "size": 2,
+   "bit": null,
+   "link": "overlay.overlay",
+   "type": "u16"
+  },
+  {
+   "name": "overlay2",
+   "ftype": 20,
+   "offset": 4,
+   "size": 2,
+   "bit": null,
+   "link": "overlay.overlay",
+   "type": "u16"
+  },
+  {
+   "name": "overlay3",
+   "ftype": 20,
+   "offset": 6,
+   "size": 2,
+   "bit": null,
+   "link": "overlay.overlay",
+   "type": "u16"
+  },
+  {
+   "name": "overlay4",
+   "ftype": 20,
+   "offset": 8,
+   "size": 2,
+   "bit": null,
+   "link": "overlay.overlay",
+   "type": "u16"
+  },
+  {
+   "name": "pgsvoverlay",
+   "ftype": 20,
+   "offset": 14,
+   "size": 2,
+   "bit": null,
+   "link": "overlay.overlay",
+   "type": "u16"
+  },
+  {
+   "name": "castoverlay",
+   "ftype": 20,
+   "offset": 10,
+   "size": 2,
+   "bit": null,
+   "link": "overlay.overlay",
+   "type": "u16"
+  },
+  {
+   "name": "removerlay",
+   "ftype": 20,
+   "offset": 12,
+   "size": 2,
+   "bit": null,
+   "link": "overlay.overlay",
+   "type": "u16"
+  },
+  {
+   "name": "stat",
+   "ftype": 20,
+   "offset": 24,
+   "size": 2,
+   "bit": null,
+   "link": "itemstatcost.stat",
+   "type": "u16"
+  },
+  {
+   "name": "setfunc",
+   "ftype": 3,
+   "offset": 26,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "remfunc",
+   "ftype": 3,
+   "offset": 28,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "missile",
+   "ftype": 20,
+   "offset": 58,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "skill",
+   "ftype": 20,
+   "offset": 56,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  },
+  {
+   "name": "colorpri",
+   "ftype": 4,
+   "offset": 32,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "colorshift",
+   "ftype": 4,
+   "offset": 33,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "light-r",
+   "ftype": 4,
+   "offset": 34,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "light-g",
+   "ftype": 4,
+   "offset": 35,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "light-b",
+   "ftype": 4,
+   "offset": 36,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "onsound",
+   "ftype": 20,
+   "offset": 38,
+   "size": 2,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "u16"
+  },
+  {
+   "name": "offsound",
+   "ftype": 20,
+   "offset": 40,
+   "size": 2,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "u16"
+  },
+  {
+   "name": "itemtype",
+   "ftype": 15,
+   "offset": 42,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "itemtrans",
+   "ftype": 13,
+   "offset": 44,
+   "size": 1,
+   "bit": null,
+   "link": "colors.code",
+   "type": "u8"
+  },
+  {
+   "name": "gfxtype",
+   "ftype": 4,
+   "offset": 45,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "gfxclass",
+   "ftype": 3,
+   "offset": 46,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "cltevent",
+   "ftype": 20,
+   "offset": 48,
+   "size": 2,
+   "bit": null,
+   "link": "events.event",
+   "type": "u16"
+  },
+  {
+   "name": "clteventfunc",
+   "ftype": 3,
+   "offset": 50,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "cltactivefunc",
+   "ftype": 3,
+   "offset": 52,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "srvactivefunc",
+   "ftype": 3,
+   "offset": 54,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  }
+ ],
+ "bin_record_size": 60
+}

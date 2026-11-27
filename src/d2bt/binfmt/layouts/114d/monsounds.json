@@ -1,0 +1,372 @@
+{
+ "table": "monsounds",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 148,
+ "fields": [
+  {
+   "name": "Id",
+   "ftype": 17,
+   "offset": 0,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16",
+   "key": true
+  },
+  {
+   "name": "Attack1",
+   "ftype": 19,
+   "offset": 4,
+   "size": 4,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "i32"
+  },
+  {
+   "name": "Att1Del",
+   "ftype": 2,
+   "offset": 8,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Att1Prb",
+   "ftype": 2,
+   "offset": 12,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Attack2",
+   "ftype": 19,
+   "offset": 28,
+   "size": 4,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "i32"
+  },
+  {
+   "name": "Att2Del",
+   "ftype": 2,
+   "offset": 32,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Att2Prb",
+   "ftype": 2,
+   "offset": 36,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Weapon1",
+   "ftype": 19,
+   "offset": 16,
+   "size": 4,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "i32"
+  },
+  {
+   "name": "Wea1Del",
+   "ftype": 2,
+   "offset": 20,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Wea1Vol",
+   "ftype": 2,
+   "offset": 24,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Weapon2",
+   "ftype": 19,
+   "offset": 40,
+   "size": 4,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "i32"
+  },
+  {
+   "name": "Wea2Del",
+   "ftype": 2,
+   "offset": 44,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Wea2Vol",
+   "ftype": 2,
+   "offset": 48,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "HitSound",
+   "ftype": 19,
+   "offset": 52,
+   "size": 4,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "i32"
+  },
+  {
+   "name": "HitDelay",
+   "ftype": 2,
+   "offset": 56,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "DeathSound",
+   "ftype": 19,
+   "offset": 60,
+   "size": 4,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "i32"
+  },
+  {
+   "name": "DeaDelay",
+   "ftype": 2,
+   "offset": 64,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Skill1",
+   "ftype": 19,
+   "offset": 68,
+   "size": 4,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "i32"
+  },
+  {
+   "name": "Skill2",
+   "ftype": 19,
+   "offset": 72,
+   "size": 4,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "i32"
+  },
+  {
+   "name": "Skill3",
+   "ftype": 19,
+   "offset": 76,
+   "size": 4,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "i32"
+  },
+  {
+   "name": "Skill4",
+   "ftype": 19,
+   "offset": 80,
+   "size": 4,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "i32"
+  },
+  {
+   "name": "Footstep",
+   "ftype": 19,
+   "offset": 84,
+   "size": 4,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "i32"
+  },
+  {
+   "name": "FootstepLayer",
+   "ftype": 19,
+   "offset": 88,
+   "size": 4,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "i32"
+  },
+  {
+   "name": "FsCnt",
+   "ftype": 2,
+   "offset": 92,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "FsOff",
+   "ftype": 2,
+   "offset": 96,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "FsPrb",
+   "ftype": 2,
+   "offset": 100,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Neutral",
+   "ftype": 19,
+   "offset": 104,
+   "size": 4,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "i32"
+  },
+  {
+   "name": "NeuTime",
+   "ftype": 2,
+   "offset": 108,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Init",
+   "ftype": 19,
+   "offset": 112,
+   "size": 4,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "i32"
+  },
+  {
+   "name": "Taunt",
+   "ftype": 19,
+   "offset": 116,
+   "size": 4,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "i32"
+  },
+  {
+   "name": "Flee",
+   "ftype": 19,
+   "offset": 120,
+   "size": 4,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "i32"
+  },
+  {
+   "name": "CvtMo1",
+   "ftype": 13,
+   "offset": 124,
+   "size": 1,
+   "bit": null,
+   "link": "monmode.code",
+   "type": "u8"
+  },
+  {
+   "name": "CvtMo2",
+   "ftype": 13,
+   "offset": 132,
+   "size": 1,
+   "bit": null,
+   "link": "monmode.code",
+   "type": "u8"
+  },
+  {
+   "name": "CvtMo3",
+   "ftype": 13,
+   "offset": 140,
+   "size": 1,
+   "bit": null,
+   "link": "monmode.code",
+   "type": "u8"
+  },
+  {
+   "name": "CvtSk1",
+   "ftype": 19,
+   "offset": 128,
+   "size": 4,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "i32"
+  },
+  {
+   "name": "CvtSk2",
+   "ftype": 19,
+   "offset": 136,
+   "size": 4,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "i32"
+  },
+  {
+   "name": "CvtSk3",
+   "ftype": 19,
+   "offset": 144,
+   "size": 4,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "i32"
+  },
+  {
+   "name": "CvtTgt1",
+   "ftype": 13,
+   "offset": 125,
+   "size": 1,
+   "bit": null,
+   "link": "monmode.code",
+   "type": "u8"
+  },
+  {
+   "name": "CvtTgt2",
+   "ftype": 13,
+   "offset": 133,
+   "size": 1,
+   "bit": null,
+   "link": "monmode.code",
+   "type": "u8"
+  },
+  {
+   "name": "CvtTgt3",
+   "ftype": 13,
+   "offset": 141,
+   "size": 1,
+   "bit": null,
+   "link": "monmode.code",
+   "type": "u8"
+  }
+ ],
+ "bin_record_size": 148
+}

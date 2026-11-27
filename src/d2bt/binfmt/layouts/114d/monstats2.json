@@ -1,0 +1,1137 @@
+{
+ "table": "monstats2",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 308,
+ "fields": [
+  {
+   "name": "Id",
+   "ftype": 17,
+   "offset": 0,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16",
+   "key": true
+  },
+  {
+   "name": "Height",
+   "ftype": 4,
+   "offset": 11,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "overlayHeight",
+   "ftype": 4,
+   "offset": 12,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "pixHeight",
+   "ftype": 4,
+   "offset": 13,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "SizeX",
+   "ftype": 4,
+   "offset": 8,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "SizeY",
+   "ftype": 4,
+   "offset": 9,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "spawnCol",
+   "ftype": 4,
+   "offset": 10,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "MeleeRng",
+   "ftype": 4,
+   "offset": 14,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "BaseW",
+   "ftype": 9,
+   "offset": 16,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  },
+  {
+   "name": "HitClass",
+   "ftype": 4,
+   "offset": 20,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "HDv",
+   "ftype": 23,
+   "offset": 0,
+   "size": null,
+   "bit": null,
+   "link": "monstats2_comp",
+   "type": "custom"
+  },
+  {
+   "name": "TRv",
+   "ftype": 23,
+   "offset": 1,
+   "size": null,
+   "bit": null,
+   "link": "monstats2_comp",
+   "type": "custom"
+  },
+  {
+   "name": "LGv",
+   "ftype": 23,
+   "offset": 2,
+   "size": null,
+   "bit": null,
+   "link": "monstats2_comp",
+   "type": "custom"
+  },
+  {
+   "name": "Rav",
+   "ftype": 23,
+   "offset": 3,
+   "size": null,
+   "bit": null,
+   "link": "monstats2_comp",
+   "type": "custom"
+  },
+  {
+   "name": "Lav",
+   "ftype": 23,
+   "offset": 4,
+   "size": null,
+   "bit": null,
+   "link": "monstats2_comp",
+   "type": "custom"
+  },
+  {
+   "name": "RHv",
+   "ftype": 23,
+   "offset": 5,
+   "size": null,
+   "bit": null,
+   "link": "monstats2_comp",
+   "type": "custom"
+  },
+  {
+   "name": "LHv",
+   "ftype": 23,
+   "offset": 6,
+   "size": null,
+   "bit": null,
+   "link": "monstats2_comp",
+   "type": "custom"
+  },
+  {
+   "name": "SHv",
+   "ftype": 23,
+   "offset": 7,
+   "size": null,
+   "bit": null,
+   "link": "monstats2_comp",
+   "type": "custom"
+  },
+  {
+   "name": "S1v",
+   "ftype": 23,
+   "offset": 8,
+   "size": null,
+   "bit": null,
+   "link": "monstats2_comp",
+   "type": "custom"
+  },
+  {
+   "name": "S2v",
+   "ftype": 23,
+   "offset": 9,
+   "size": null,
+   "bit": null,
+   "link": "monstats2_comp",
+   "type": "custom"
+  },
+  {
+   "name": "S3v",
+   "ftype": 23,
+   "offset": 10,
+   "size": null,
+   "bit": null,
+   "link": "monstats2_comp",
+   "type": "custom"
+  },
+  {
+   "name": "S4v",
+   "ftype": 23,
+   "offset": 11,
+   "size": null,
+   "bit": null,
+   "link": "monstats2_comp",
+   "type": "custom"
+  },
+  {
+   "name": "S5v",
+   "ftype": 23,
+   "offset": 12,
+   "size": null,
+   "bit": null,
+   "link": "monstats2_comp",
+   "type": "custom"
+  },
+  {
+   "name": "S6v",
+   "ftype": 23,
+   "offset": 13,
+   "size": null,
+   "bit": null,
+   "link": "monstats2_comp",
+   "type": "custom"
+  },
+  {
+   "name": "S7v",
+   "ftype": 23,
+   "offset": 14,
+   "size": null,
+   "bit": null,
+   "link": "monstats2_comp",
+   "type": "custom"
+  },
+  {
+   "name": "S8v",
+   "ftype": 23,
+   "offset": 15,
+   "size": null,
+   "bit": null,
+   "link": "monstats2_comp",
+   "type": "custom"
+  },
+  {
+   "name": "HD",
+   "ftype": 26,
+   "offset": 232,
+   "size": 1,
+   "bit": 0,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "TR",
+   "ftype": 26,
+   "offset": 232,
+   "size": 1,
+   "bit": 1,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "LG",
+   "ftype": 26,
+   "offset": 232,
+   "size": 1,
+   "bit": 2,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "RA",
+   "ftype": 26,
+   "offset": 232,
+   "size": 1,
+   "bit": 3,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "LA",
+   "ftype": 26,
+   "offset": 232,
+   "size": 1,
+   "bit": 4,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "RH",
+   "ftype": 26,
+   "offset": 232,
+   "size": 1,
+   "bit": 5,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "LH",
+   "ftype": 26,
+   "offset": 232,
+   "size": 1,
+   "bit": 6,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "SH",
+   "ftype": 26,
+   "offset": 232,
+   "size": 1,
+   "bit": 7,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "S1",
+   "ftype": 26,
+   "offset": 232,
+   "size": 1,
+   "bit": 8,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "S2",
+   "ftype": 26,
+   "offset": 232,
+   "size": 1,
+   "bit": 9,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "S3",
+   "ftype": 26,
+   "offset": 232,
+   "size": 1,
+   "bit": 10,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "S4",
+   "ftype": 26,
+   "offset": 232,
+   "size": 1,
+   "bit": 11,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "S5",
+   "ftype": 26,
+   "offset": 232,
+   "size": 1,
+   "bit": 12,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "S6",
+   "ftype": 26,
+   "offset": 232,
+   "size": 1,
+   "bit": 13,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "S7",
+   "ftype": 26,
+   "offset": 232,
+   "size": 1,
+   "bit": 14,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "S8",
+   "ftype": 26,
+   "offset": 232,
+   "size": 1,
+   "bit": 15,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "TotalPieces",
+   "ftype": 4,
+   "offset": 236,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "mDT",
+   "ftype": 26,
+   "offset": 240,
+   "size": 1,
+   "bit": 0,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "mNU",
+   "ftype": 26,
+   "offset": 240,
+   "size": 1,
+   "bit": 1,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "mWL",
+   "ftype": 26,
+   "offset": 240,
+   "size": 1,
+   "bit": 2,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "mGH",
+   "ftype": 26,
+   "offset": 240,
+   "size": 1,
+   "bit": 3,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "mA1",
+   "ftype": 26,
+   "offset": 240,
+   "size": 1,
+   "bit": 4,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "mA2",
+   "ftype": 26,
+   "offset": 240,
+   "size": 1,
+   "bit": 5,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "mBL",
+   "ftype": 26,
+   "offset": 240,
+   "size": 1,
+   "bit": 6,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "mSC",
+   "ftype": 26,
+   "offset": 240,
+   "size": 1,
+   "bit": 7,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "mS1",
+   "ftype": 26,
+   "offset": 240,
+   "size": 1,
+   "bit": 8,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "mS2",
+   "ftype": 26,
+   "offset": 240,
+   "size": 1,
+   "bit": 9,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "mS3",
+   "ftype": 26,
+   "offset": 240,
+   "size": 1,
+   "bit": 10,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "mS4",
+   "ftype": 26,
+   "offset": 240,
+   "size": 1,
+   "bit": 11,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "mDD",
+   "ftype": 26,
+   "offset": 240,
+   "size": 1,
+   "bit": 12,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "mKB",
+   "ftype": 26,
+   "offset": 240,
+   "size": 1,
+   "bit": 13,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "mSQ",
+   "ftype": 26,
+   "offset": 240,
+   "size": 1,
+   "bit": 14,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "mRN",
+   "ftype": 26,
+   "offset": 240,
+   "size": 1,
+   "bit": 15,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "dDT",
+   "ftype": 4,
+   "offset": 244,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dNU",
+   "ftype": 4,
+   "offset": 245,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dWL",
+   "ftype": 4,
+   "offset": 246,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dGH",
+   "ftype": 4,
+   "offset": 247,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dA1",
+   "ftype": 4,
+   "offset": 248,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dA2",
+   "ftype": 4,
+   "offset": 249,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dBL",
+   "ftype": 4,
+   "offset": 250,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dSC",
+   "ftype": 4,
+   "offset": 251,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dS1",
+   "ftype": 4,
+   "offset": 252,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dS2",
+   "ftype": 4,
+   "offset": 253,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dS3",
+   "ftype": 4,
+   "offset": 254,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dS4",
+   "ftype": 4,
+   "offset": 255,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dDD",
+   "ftype": 4,
+   "offset": 256,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dKB",
+   "ftype": 4,
+   "offset": 257,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dSQ",
+   "ftype": 4,
+   "offset": 258,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dRN",
+   "ftype": 4,
+   "offset": 259,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "A1mv",
+   "ftype": 26,
+   "offset": 260,
+   "size": 1,
+   "bit": 4,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "A2mv",
+   "ftype": 26,
+   "offset": 260,
+   "size": 1,
+   "bit": 5,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "SCmv",
+   "ftype": 26,
+   "offset": 260,
+   "size": 1,
+   "bit": 7,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "S1mv",
+   "ftype": 26,
+   "offset": 260,
+   "size": 1,
+   "bit": 8,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "S2mv",
+   "ftype": 26,
+   "offset": 260,
+   "size": 1,
+   "bit": 9,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "S3mv",
+   "ftype": 26,
+   "offset": 260,
+   "size": 1,
+   "bit": 10,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "S4mv",
+   "ftype": 26,
+   "offset": 260,
+   "size": 1,
+   "bit": 11,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "noGfxHitTest",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 0,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "htTop",
+   "ftype": 3,
+   "offset": 270,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "htLeft",
+   "ftype": 3,
+   "offset": 272,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "htWidth",
+   "ftype": 3,
+   "offset": 274,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "htHeight",
+   "ftype": 3,
+   "offset": 276,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "restore",
+   "ftype": 4,
+   "offset": 304,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "automapCel",
+   "ftype": 2,
+   "offset": 280,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "noMap",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 1,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "noOvly",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 2,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "isSel",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 3,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "alSel",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 4,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "noSel",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 5,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "shiftSel",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 6,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "corpseSel",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 7,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "revive",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 8,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "isAtt",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 9,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "large",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 11,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "small",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 10,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "soft",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 12,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "critter",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 13,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "inert",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 17,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "objCol",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 18,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "deadCol",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 19,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "unflatDead",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 20,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "shadow",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 14,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "noUniqueShift",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 15,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "compositeDeath",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 16,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "localBlood",
+   "ftype": 4,
+   "offset": 284,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "bleed",
+   "ftype": 4,
+   "offset": 285,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "light",
+   "ftype": 4,
+   "offset": 286,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "light-r",
+   "ftype": 4,
+   "offset": 287,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "light-g",
+   "ftype": 4,
+   "offset": 288,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "light-b",
+   "ftype": 4,
+   "offset": 289,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Utrans",
+   "ftype": 4,
+   "offset": 290,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Utrans(N)",
+   "ftype": 4,
+   "offset": 291,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Utrans(H)",
+   "ftype": 4,
+   "offset": 292,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Heart",
+   "ftype": 9,
+   "offset": 296,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  },
+  {
+   "name": "BodyPart",
+   "ftype": 9,
+   "offset": 300,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  },
+  {
+   "name": "InfernoLen",
+   "ftype": 4,
+   "offset": 264,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "InfernoAnim",
+   "ftype": 4,
+   "offset": 265,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "InfernoRollback",
+   "ftype": 4,
+   "offset": 266,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ResurrectMode",
+   "ftype": 13,
+   "offset": 267,
+   "size": 1,
+   "bit": null,
+   "link": "monmode.code",
+   "type": "u8"
+  },
+  {
+   "name": "ResurrectSkill",
+   "ftype": 20,
+   "offset": 268,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  }
+ ],
+ "bin_record_size": 308
+}

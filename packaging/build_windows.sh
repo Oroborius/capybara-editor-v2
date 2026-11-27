@@ -12,6 +12,8 @@ mkdir -p "$OUT/lang"
 cp -r "$BASE_DIR/_internal" "$OUT/_internal"
 cp "$ROOT"/lang/*.json "$OUT/lang/"
 cp "$ROOT"/src/*.json "$OUT/_internal/"          # data files read next to the modules (dirname(__file__))
+cp -r "$ROOT/src/d2bt" "$OUT/_internal/d2bt"     # Legit mode: the dev kit's validator (a package with data files)
+find "$OUT/_internal/d2bt" -name __pycache__ -prune -exec rm -r {} +
 "$PY310" "$ROOT/src/repack.py" "$BASE_EXE" "$OUT/$APP_TITLE.exe" --icon="$ROOT/src/capybara.ico"
 # modules our code imports that the collector's exe does not contain (they would fail on Windows only)
 "$PY310" "$ROOT/tools/check_windows_imports.py" "$OUT" || echo "WARNING: imports missing in the exe (see above)" >&2

@@ -1,0 +1,94 @@
+{
+ "table": "automap",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 44,
+ "fields": [
+  {
+   "name": "LevelName",
+   "ftype": 1,
+   "offset": 0,
+   "size": 15,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "TileName",
+   "ftype": 1,
+   "offset": 16,
+   "size": 7,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "Style",
+   "ftype": 4,
+   "offset": 24,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "StartSequence",
+   "ftype": 4,
+   "offset": 25,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8",
+   "signed": true
+  },
+  {
+   "name": "EndSequence",
+   "ftype": 4,
+   "offset": 26,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8",
+   "signed": true
+  },
+  {
+   "name": "Cel1",
+   "ftype": 2,
+   "offset": 28,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Cel2",
+   "ftype": 2,
+   "offset": 32,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Cel3",
+   "ftype": 2,
+   "offset": 36,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Cel4",
+   "ftype": 2,
+   "offset": 40,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  }
+ ],
+ "bin_record_size": 44
+}

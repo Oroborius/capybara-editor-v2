@@ -1,0 +1,831 @@
+{
+ "table": "monprop",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 312,
+ "fields": [
+  {
+   "name": "Id",
+   "ftype": 18,
+   "offset": 0,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "u32",
+   "key": true
+  },
+  {
+   "name": "prop1",
+   "ftype": 19,
+   "offset": 4,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "par1",
+   "ftype": 2,
+   "offset": 8,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "chance1",
+   "ftype": 4,
+   "offset": 292,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "min1",
+   "ftype": 2,
+   "offset": 12,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "max1",
+   "ftype": 2,
+   "offset": 16,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "prop2",
+   "ftype": 19,
+   "offset": 20,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "chance2",
+   "ftype": 4,
+   "offset": 293,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "par2",
+   "ftype": 2,
+   "offset": 24,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "min2",
+   "ftype": 2,
+   "offset": 28,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "max2",
+   "ftype": 2,
+   "offset": 32,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "prop3",
+   "ftype": 19,
+   "offset": 36,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "chance3",
+   "ftype": 4,
+   "offset": 294,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "par3",
+   "ftype": 2,
+   "offset": 40,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "min3",
+   "ftype": 2,
+   "offset": 44,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "max3",
+   "ftype": 2,
+   "offset": 48,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "prop4",
+   "ftype": 19,
+   "offset": 52,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "chance4",
+   "ftype": 4,
+   "offset": 295,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "par4",
+   "ftype": 2,
+   "offset": 56,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "min4",
+   "ftype": 2,
+   "offset": 60,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "max4",
+   "ftype": 2,
+   "offset": 64,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "prop5",
+   "ftype": 19,
+   "offset": 68,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "chance5",
+   "ftype": 4,
+   "offset": 296,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "par5",
+   "ftype": 2,
+   "offset": 72,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "min5",
+   "ftype": 2,
+   "offset": 76,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "max5",
+   "ftype": 2,
+   "offset": 80,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "prop6",
+   "ftype": 19,
+   "offset": 84,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "chance6",
+   "ftype": 4,
+   "offset": 297,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "par6",
+   "ftype": 2,
+   "offset": 88,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "min6",
+   "ftype": 2,
+   "offset": 92,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "max6",
+   "ftype": 2,
+   "offset": 96,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "prop1 (N)",
+   "ftype": 19,
+   "offset": 100,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "chance1 (N)",
+   "ftype": 4,
+   "offset": 298,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "par1 (N)",
+   "ftype": 2,
+   "offset": 104,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "min1 (N)",
+   "ftype": 2,
+   "offset": 108,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "max1 (N)",
+   "ftype": 2,
+   "offset": 112,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "prop2 (N)",
+   "ftype": 19,
+   "offset": 116,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "chance2 (N)",
+   "ftype": 4,
+   "offset": 299,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "par2 (N)",
+   "ftype": 2,
+   "offset": 120,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "min2 (N)",
+   "ftype": 2,
+   "offset": 124,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "max2 (N)",
+   "ftype": 2,
+   "offset": 128,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "prop3 (N)",
+   "ftype": 19,
+   "offset": 132,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "chance3 (N)",
+   "ftype": 4,
+   "offset": 300,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "par3 (N)",
+   "ftype": 2,
+   "offset": 136,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "min3 (N)",
+   "ftype": 2,
+   "offset": 140,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "max3 (N)",
+   "ftype": 2,
+   "offset": 144,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "prop4 (N)",
+   "ftype": 19,
+   "offset": 148,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "chance4 (N)",
+   "ftype": 4,
+   "offset": 301,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "par4 (N)",
+   "ftype": 2,
+   "offset": 152,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "min4 (N)",
+   "ftype": 2,
+   "offset": 156,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "max4 (N)",
+   "ftype": 2,
+   "offset": 160,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "prop5 (N)",
+   "ftype": 19,
+   "offset": 164,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "chance5 (N)",
+   "ftype": 4,
+   "offset": 302,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "par5 (N)",
+   "ftype": 2,
+   "offset": 168,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "min5 (N)",
+   "ftype": 2,
+   "offset": 172,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "max5 (N)",
+   "ftype": 2,
+   "offset": 176,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "prop6 (N)",
+   "ftype": 19,
+   "offset": 180,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "chance6 (N)",
+   "ftype": 4,
+   "offset": 303,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "par6 (N)",
+   "ftype": 2,
+   "offset": 184,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "min6 (N)",
+   "ftype": 2,
+   "offset": 188,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "max6 (N)",
+   "ftype": 2,
+   "offset": 192,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "prop1 (H)",
+   "ftype": 19,
+   "offset": 196,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "chance1 (H)",
+   "ftype": 4,
+   "offset": 304,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "par1 (H)",
+   "ftype": 2,
+   "offset": 200,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "min1 (H)",
+   "ftype": 2,
+   "offset": 204,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "max1 (H)",
+   "ftype": 2,
+   "offset": 208,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "prop2 (H)",
+   "ftype": 19,
+   "offset": 212,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "chance2 (H)",
+   "ftype": 4,
+   "offset": 305,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "par2 (H)",
+   "ftype": 2,
+   "offset": 216,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "min2 (H)",
+   "ftype": 2,
+   "offset": 220,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "max2 (H)",
+   "ftype": 2,
+   "offset": 224,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "prop3 (H)",
+   "ftype": 19,
+   "offset": 228,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "chance3 (H)",
+   "ftype": 4,
+   "offset": 306,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "par3 (H)",
+   "ftype": 2,
+   "offset": 232,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "min3 (H)",
+   "ftype": 2,
+   "offset": 236,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "max3 (H)",
+   "ftype": 2,
+   "offset": 240,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "prop4 (H)",
+   "ftype": 19,
+   "offset": 244,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "chance4 (H)",
+   "ftype": 4,
+   "offset": 307,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "par4 (H)",
+   "ftype": 2,
+   "offset": 248,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "min4 (H)",
+   "ftype": 2,
+   "offset": 252,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "max4 (H)",
+   "ftype": 2,
+   "offset": 256,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "prop5 (H)",
+   "ftype": 19,
+   "offset": 260,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "chance5 (H)",
+   "ftype": 4,
+   "offset": 308,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "par5 (H)",
+   "ftype": 2,
+   "offset": 264,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "min5 (H)",
+   "ftype": 2,
+   "offset": 268,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "max5 (H)",
+   "ftype": 2,
+   "offset": 272,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "prop6 (H)",
+   "ftype": 19,
+   "offset": 276,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "chance6 (H)",
+   "ftype": 4,
+   "offset": 309,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "par6 (H)",
+   "ftype": 2,
+   "offset": 280,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "min6 (H)",
+   "ftype": 2,
+   "offset": 284,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "max6 (H)",
+   "ftype": 2,
+   "offset": 288,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  }
+ ],
+ "bin_record_size": 312
+}

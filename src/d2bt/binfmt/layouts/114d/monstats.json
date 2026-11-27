@@ -1,0 +1,2294 @@
+{
+ "table": "monstats",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 424,
+ "fields": [
+  {
+   "name": "Id",
+   "ftype": 17,
+   "offset": 0,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16",
+   "key": true
+  },
+  {
+   "name": "BaseId",
+   "ftype": 20,
+   "offset": 2,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "NextInClass",
+   "ftype": 20,
+   "offset": 4,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "NameStr",
+   "ftype": 22,
+   "offset": 6,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "DescStr",
+   "ftype": 22,
+   "offset": 8,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "Code",
+   "ftype": 9,
+   "offset": 16,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  },
+  {
+   "name": "TransLvl",
+   "ftype": 4,
+   "offset": 77,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "MonSound",
+   "ftype": 20,
+   "offset": 20,
+   "size": 2,
+   "bit": null,
+   "link": "monsounds.Id",
+   "type": "u16"
+  },
+  {
+   "name": "UMonSound",
+   "ftype": 20,
+   "offset": 22,
+   "size": 2,
+   "bit": null,
+   "link": "monsounds.Id",
+   "type": "u16"
+  },
+  {
+   "name": "MonStatsEx",
+   "ftype": 20,
+   "offset": 24,
+   "size": 2,
+   "bit": null,
+   "link": "monstats2.Id",
+   "type": "u16"
+  },
+  {
+   "name": "MonType",
+   "ftype": 20,
+   "offset": 28,
+   "size": 2,
+   "bit": null,
+   "link": "montype.type",
+   "type": "u16"
+  },
+  {
+   "name": "MonProp",
+   "ftype": 20,
+   "offset": 26,
+   "size": 2,
+   "bit": null,
+   "link": "monprop.Id",
+   "type": "u16"
+  },
+  {
+   "name": "AI",
+   "ftype": 20,
+   "offset": 30,
+   "size": 2,
+   "bit": null,
+   "link": "monai.AI",
+   "type": "u16"
+  },
+  {
+   "name": "spawn",
+   "ftype": 20,
+   "offset": 32,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "spawnx",
+   "ftype": 4,
+   "offset": 34,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8",
+   "signed": true
+  },
+  {
+   "name": "spawny",
+   "ftype": 4,
+   "offset": 35,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8",
+   "signed": true
+  },
+  {
+   "name": "spawnmode",
+   "ftype": 13,
+   "offset": 36,
+   "size": 1,
+   "bit": null,
+   "link": "monmode.code",
+   "type": "u8"
+  },
+  {
+   "name": "minion1",
+   "ftype": 20,
+   "offset": 38,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "minion2",
+   "ftype": 20,
+   "offset": 40,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "PartyMin",
+   "ftype": 4,
+   "offset": 44,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "PartyMax",
+   "ftype": 4,
+   "offset": 45,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Rarity",
+   "ftype": 4,
+   "offset": 46,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "MinGrp",
+   "ftype": 4,
+   "offset": 47,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "MaxGrp",
+   "ftype": 4,
+   "offset": 48,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "sparsePopulate",
+   "ftype": 4,
+   "offset": 49,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Velocity",
+   "ftype": 3,
+   "offset": 50,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "Run",
+   "ftype": 3,
+   "offset": 52,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "Align",
+   "ftype": 4,
+   "offset": 76,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "enabled",
+   "ftype": 26,
+   "offset": 12,
+   "size": 1,
+   "bit": 25,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "rangedtype",
+   "ftype": 26,
+   "offset": 12,
+   "size": 1,
+   "bit": 28,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "placespawn",
+   "ftype": 26,
+   "offset": 12,
+   "size": 1,
+   "bit": 23,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "isSpawn",
+   "ftype": 26,
+   "offset": 12,
+   "size": 1,
+   "bit": 0,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "isMelee",
+   "ftype": 26,
+   "offset": 12,
+   "size": 1,
+   "bit": 1,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "noRatio",
+   "ftype": 26,
+   "offset": 12,
+   "size": 1,
+   "bit": 2,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "SetBoss",
+   "ftype": 26,
+   "offset": 12,
+   "size": 1,
+   "bit": 4,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "BossXfer",
+   "ftype": 26,
+   "offset": 12,
+   "size": 1,
+   "bit": 5,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "boss",
+   "ftype": 26,
+   "offset": 12,
+   "size": 1,
+   "bit": 6,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "primeevil",
+   "ftype": 26,
+   "offset": 12,
+   "size": 1,
+   "bit": 7,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "opendoors",
+   "ftype": 26,
+   "offset": 12,
+   "size": 1,
+   "bit": 3,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "npc",
+   "ftype": 26,
+   "offset": 12,
+   "size": 1,
+   "bit": 8,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "interact",
+   "ftype": 26,
+   "offset": 12,
+   "size": 1,
+   "bit": 9,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "inventory",
+   "ftype": 26,
+   "offset": 12,
+   "size": 1,
+   "bit": 24,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "inTown",
+   "ftype": 26,
+   "offset": 12,
+   "size": 1,
+   "bit": 10,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "lUndead",
+   "ftype": 26,
+   "offset": 12,
+   "size": 1,
+   "bit": 11,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "hUndead",
+   "ftype": 26,
+   "offset": 12,
+   "size": 1,
+   "bit": 12,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "demon",
+   "ftype": 26,
+   "offset": 12,
+   "size": 1,
+   "bit": 13,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "flying",
+   "ftype": 26,
+   "offset": 12,
+   "size": 1,
+   "bit": 14,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "killable",
+   "ftype": 26,
+   "offset": 12,
+   "size": 1,
+   "bit": 15,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "switchai",
+   "ftype": 26,
+   "offset": 12,
+   "size": 1,
+   "bit": 16,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "noaura",
+   "ftype": 26,
+   "offset": 12,
+   "size": 1,
+   "bit": 27,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "nomultishot",
+   "ftype": 26,
+   "offset": 12,
+   "size": 1,
+   "bit": 17,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "neverCount",
+   "ftype": 26,
+   "offset": 12,
+   "size": 1,
+   "bit": 18,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "petIgnore",
+   "ftype": 26,
+   "offset": 12,
+   "size": 1,
+   "bit": 19,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "deathDmg",
+   "ftype": 26,
+   "offset": 12,
+   "size": 1,
+   "bit": 20,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "genericSpawn",
+   "ftype": 26,
+   "offset": 12,
+   "size": 1,
+   "bit": 21,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "zoo",
+   "ftype": 26,
+   "offset": 12,
+   "size": 1,
+   "bit": 22,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "MissA1",
+   "ftype": 20,
+   "offset": 58,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "MissA2",
+   "ftype": 20,
+   "offset": 60,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "MissS1",
+   "ftype": 20,
+   "offset": 62,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "MissS2",
+   "ftype": 20,
+   "offset": 64,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "MissS3",
+   "ftype": 20,
+   "offset": 66,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "MissS4",
+   "ftype": 20,
+   "offset": 68,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "MissC",
+   "ftype": 20,
+   "offset": 70,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "MissSQ",
+   "ftype": 20,
+   "offset": 72,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "TreasureClass1",
+   "ftype": 20,
+   "offset": 134,
+   "size": 2,
+   "bit": null,
+   "link": "treasureclassex.Treasure Class",
+   "type": "u16"
+  },
+  {
+   "name": "TreasureClass2",
+   "ftype": 20,
+   "offset": 136,
+   "size": 2,
+   "bit": null,
+   "link": "treasureclassex.Treasure Class",
+   "type": "u16"
+  },
+  {
+   "name": "TreasureClass3",
+   "ftype": 20,
+   "offset": 138,
+   "size": 2,
+   "bit": null,
+   "link": "treasureclassex.Treasure Class",
+   "type": "u16"
+  },
+  {
+   "name": "TreasureClass4",
+   "ftype": 20,
+   "offset": 140,
+   "size": 2,
+   "bit": null,
+   "link": "treasureclassex.Treasure Class",
+   "type": "u16"
+  },
+  {
+   "name": "TreasureClass1(N)",
+   "ftype": 20,
+   "offset": 142,
+   "size": 2,
+   "bit": null,
+   "link": "treasureclassex.Treasure Class",
+   "type": "u16"
+  },
+  {
+   "name": "TreasureClass2(N)",
+   "ftype": 20,
+   "offset": 144,
+   "size": 2,
+   "bit": null,
+   "link": "treasureclassex.Treasure Class",
+   "type": "u16"
+  },
+  {
+   "name": "TreasureClass3(N)",
+   "ftype": 20,
+   "offset": 146,
+   "size": 2,
+   "bit": null,
+   "link": "treasureclassex.Treasure Class",
+   "type": "u16"
+  },
+  {
+   "name": "TreasureClass4(N)",
+   "ftype": 20,
+   "offset": 148,
+   "size": 2,
+   "bit": null,
+   "link": "treasureclassex.Treasure Class",
+   "type": "u16"
+  },
+  {
+   "name": "TreasureClass1(H)",
+   "ftype": 20,
+   "offset": 150,
+   "size": 2,
+   "bit": null,
+   "link": "treasureclassex.Treasure Class",
+   "type": "u16"
+  },
+  {
+   "name": "TreasureClass2(H)",
+   "ftype": 20,
+   "offset": 152,
+   "size": 2,
+   "bit": null,
+   "link": "treasureclassex.Treasure Class",
+   "type": "u16"
+  },
+  {
+   "name": "TreasureClass3(H)",
+   "ftype": 20,
+   "offset": 154,
+   "size": 2,
+   "bit": null,
+   "link": "treasureclassex.Treasure Class",
+   "type": "u16"
+  },
+  {
+   "name": "TreasureClass4(H)",
+   "ftype": 20,
+   "offset": 156,
+   "size": 2,
+   "bit": null,
+   "link": "treasureclassex.Treasure Class",
+   "type": "u16"
+  },
+  {
+   "name": "TCQuestId",
+   "ftype": 4,
+   "offset": 158,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "TCQuestCP",
+   "ftype": 4,
+   "offset": 159,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "threat",
+   "ftype": 4,
+   "offset": 78,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "aidel",
+   "ftype": 4,
+   "offset": 79,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "aidel(N)",
+   "ftype": 4,
+   "offset": 80,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "aidel(H)",
+   "ftype": 4,
+   "offset": 81,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "aidist",
+   "ftype": 4,
+   "offset": 82,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "aidist(N)",
+   "ftype": 4,
+   "offset": 83,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "aidist(H)",
+   "ftype": 4,
+   "offset": 84,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "aip1",
+   "ftype": 3,
+   "offset": 86,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "aip1(N)",
+   "ftype": 3,
+   "offset": 88,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "aip1(H)",
+   "ftype": 3,
+   "offset": 90,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "aip2",
+   "ftype": 3,
+   "offset": 92,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "aip2(N)",
+   "ftype": 3,
+   "offset": 94,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "aip2(H)",
+   "ftype": 3,
+   "offset": 96,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "aip3",
+   "ftype": 3,
+   "offset": 98,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "aip3(N)",
+   "ftype": 3,
+   "offset": 100,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "aip3(H)",
+   "ftype": 3,
+   "offset": 102,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "aip4",
+   "ftype": 3,
+   "offset": 104,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "aip4(N)",
+   "ftype": 3,
+   "offset": 106,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "aip4(H)",
+   "ftype": 3,
+   "offset": 108,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "aip5",
+   "ftype": 3,
+   "offset": 110,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "aip5(N)",
+   "ftype": 3,
+   "offset": 112,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "aip5(H)",
+   "ftype": 3,
+   "offset": 114,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "aip6",
+   "ftype": 3,
+   "offset": 116,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "aip6(N)",
+   "ftype": 3,
+   "offset": 118,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "aip6(H)",
+   "ftype": 3,
+   "offset": 120,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "aip7",
+   "ftype": 3,
+   "offset": 122,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "aip7(N)",
+   "ftype": 3,
+   "offset": 124,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "aip7(H)",
+   "ftype": 3,
+   "offset": 126,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "aip8",
+   "ftype": 3,
+   "offset": 128,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "aip8(N)",
+   "ftype": 3,
+   "offset": 130,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "aip8(H)",
+   "ftype": 3,
+   "offset": 132,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "Level",
+   "ftype": 3,
+   "offset": 170,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "Level(N)",
+   "ftype": 3,
+   "offset": 172,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "Level(H)",
+   "ftype": 3,
+   "offset": 174,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "SkillDamage",
+   "ftype": 20,
+   "offset": 168,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  },
+  {
+   "name": "NoShldBlock",
+   "ftype": 26,
+   "offset": 12,
+   "size": 1,
+   "bit": 26,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "Drain",
+   "ftype": 4,
+   "offset": 160,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Drain(N)",
+   "ftype": 4,
+   "offset": 161,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Drain(H)",
+   "ftype": 4,
+   "offset": 162,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ToBlock",
+   "ftype": 4,
+   "offset": 163,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ToBlock(N)",
+   "ftype": 4,
+   "offset": 164,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ToBlock(H)",
+   "ftype": 4,
+   "offset": 165,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Crit",
+   "ftype": 4,
+   "offset": 166,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "MinHP",
+   "ftype": 3,
+   "offset": 176,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "MinHP(N)",
+   "ftype": 3,
+   "offset": 178,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "MinHP(H)",
+   "ftype": 3,
+   "offset": 180,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "MaxHP",
+   "ftype": 3,
+   "offset": 182,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "MaxHP(N)",
+   "ftype": 3,
+   "offset": 184,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "MaxHP(H)",
+   "ftype": 3,
+   "offset": 186,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "AC",
+   "ftype": 3,
+   "offset": 188,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "AC(N)",
+   "ftype": 3,
+   "offset": 190,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "AC(H)",
+   "ftype": 3,
+   "offset": 192,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "Exp",
+   "ftype": 3,
+   "offset": 212,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "Exp(N)",
+   "ftype": 3,
+   "offset": 214,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "Exp(H)",
+   "ftype": 3,
+   "offset": 216,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "A1TH",
+   "ftype": 3,
+   "offset": 194,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "A1TH(N)",
+   "ftype": 3,
+   "offset": 196,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "A1TH(H)",
+   "ftype": 3,
+   "offset": 198,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "A1MinD",
+   "ftype": 3,
+   "offset": 218,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "A1MinD(N)",
+   "ftype": 3,
+   "offset": 220,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "A1MinD(H)",
+   "ftype": 3,
+   "offset": 222,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "A1MaxD",
+   "ftype": 3,
+   "offset": 224,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "A1MaxD(N)",
+   "ftype": 3,
+   "offset": 226,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "A1MaxD(H)",
+   "ftype": 3,
+   "offset": 228,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "A2TH",
+   "ftype": 3,
+   "offset": 200,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "A2TH(N)",
+   "ftype": 3,
+   "offset": 202,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "A2TH(H)",
+   "ftype": 3,
+   "offset": 204,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "A2MinD",
+   "ftype": 3,
+   "offset": 230,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "A2MinD(N)",
+   "ftype": 3,
+   "offset": 232,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "A2MinD(H)",
+   "ftype": 3,
+   "offset": 234,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "A2MaxD",
+   "ftype": 3,
+   "offset": 236,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "A2MaxD(N)",
+   "ftype": 3,
+   "offset": 238,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "A2MaxD(H)",
+   "ftype": 3,
+   "offset": 240,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "S1TH",
+   "ftype": 3,
+   "offset": 206,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "S1TH(N)",
+   "ftype": 3,
+   "offset": 208,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "S1TH(H)",
+   "ftype": 3,
+   "offset": 210,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "S1MinD",
+   "ftype": 3,
+   "offset": 242,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "S1MinD(N)",
+   "ftype": 3,
+   "offset": 244,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "S1MinD(H)",
+   "ftype": 3,
+   "offset": 246,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "S1MaxD",
+   "ftype": 3,
+   "offset": 248,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "S1MaxD(N)",
+   "ftype": 3,
+   "offset": 250,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "S1MaxD(H)",
+   "ftype": 3,
+   "offset": 252,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "El1Mode",
+   "ftype": 13,
+   "offset": 254,
+   "size": 1,
+   "bit": null,
+   "link": "monmode.code",
+   "type": "u8"
+  },
+  {
+   "name": "El1Type",
+   "ftype": 13,
+   "offset": 257,
+   "size": 1,
+   "bit": null,
+   "link": "elemtypes.code",
+   "type": "u8"
+  },
+  {
+   "name": "El1Pct",
+   "ftype": 4,
+   "offset": 260,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "El1Pct(N)",
+   "ftype": 4,
+   "offset": 261,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "El1Pct(H)",
+   "ftype": 4,
+   "offset": 262,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "El1MinD",
+   "ftype": 3,
+   "offset": 270,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "El1MinD(N)",
+   "ftype": 3,
+   "offset": 272,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "El1MinD(H)",
+   "ftype": 3,
+   "offset": 274,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "El1MaxD",
+   "ftype": 3,
+   "offset": 288,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "El1MaxD(N)",
+   "ftype": 3,
+   "offset": 290,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "El1MaxD(H)",
+   "ftype": 3,
+   "offset": 292,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "El1Dur",
+   "ftype": 3,
+   "offset": 306,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "El1Dur(N)",
+   "ftype": 3,
+   "offset": 308,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "El1Dur(H)",
+   "ftype": 3,
+   "offset": 310,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "El2Mode",
+   "ftype": 13,
+   "offset": 255,
+   "size": 1,
+   "bit": null,
+   "link": "monmode.code",
+   "type": "u8"
+  },
+  {
+   "name": "El2Type",
+   "ftype": 13,
+   "offset": 258,
+   "size": 1,
+   "bit": null,
+   "link": "elemtypes.code",
+   "type": "u8"
+  },
+  {
+   "name": "El2Pct",
+   "ftype": 4,
+   "offset": 263,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "El2Pct(N)",
+   "ftype": 4,
+   "offset": 264,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "El2Pct(H)",
+   "ftype": 4,
+   "offset": 265,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "El2MinD",
+   "ftype": 3,
+   "offset": 276,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "El2MinD(N)",
+   "ftype": 3,
+   "offset": 278,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "El2MinD(H)",
+   "ftype": 3,
+   "offset": 280,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "El2MaxD",
+   "ftype": 3,
+   "offset": 294,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "El2MaxD(N)",
+   "ftype": 3,
+   "offset": 296,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "El2MaxD(H)",
+   "ftype": 3,
+   "offset": 298,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "El2Dur",
+   "ftype": 3,
+   "offset": 312,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "El2Dur(N)",
+   "ftype": 3,
+   "offset": 314,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "El2Dur(H)",
+   "ftype": 3,
+   "offset": 316,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "El3Mode",
+   "ftype": 13,
+   "offset": 256,
+   "size": 1,
+   "bit": null,
+   "link": "monmode.code",
+   "type": "u8"
+  },
+  {
+   "name": "El3Type",
+   "ftype": 13,
+   "offset": 259,
+   "size": 1,
+   "bit": null,
+   "link": "elemtypes.code",
+   "type": "u8"
+  },
+  {
+   "name": "El3Pct",
+   "ftype": 4,
+   "offset": 266,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "El3Pct(N)",
+   "ftype": 4,
+   "offset": 267,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "El3Pct(H)",
+   "ftype": 4,
+   "offset": 268,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "El3MinD",
+   "ftype": 3,
+   "offset": 282,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "El3MinD(N)",
+   "ftype": 3,
+   "offset": 284,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "El3MinD(H)",
+   "ftype": 3,
+   "offset": 286,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "El3MaxD",
+   "ftype": 3,
+   "offset": 300,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "El3MaxD(N)",
+   "ftype": 3,
+   "offset": 302,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "El3MaxD(H)",
+   "ftype": 3,
+   "offset": 304,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "El3Dur",
+   "ftype": 3,
+   "offset": 318,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "El3Dur(N)",
+   "ftype": 3,
+   "offset": 320,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "El3Dur(H)",
+   "ftype": 3,
+   "offset": 322,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "ColdEffect",
+   "ftype": 4,
+   "offset": 360,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8",
+   "signed": true
+  },
+  {
+   "name": "ColdEffect(N)",
+   "ftype": 4,
+   "offset": 361,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8",
+   "signed": true
+  },
+  {
+   "name": "ColdEffect(H)",
+   "ftype": 4,
+   "offset": 362,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8",
+   "signed": true
+  },
+  {
+   "name": "ResDm",
+   "ftype": 3,
+   "offset": 324,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "ResDm(N)",
+   "ftype": 3,
+   "offset": 326,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "ResDm(H)",
+   "ftype": 3,
+   "offset": 328,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "ResMa",
+   "ftype": 3,
+   "offset": 330,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "ResMa(N)",
+   "ftype": 3,
+   "offset": 332,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "ResMa(H)",
+   "ftype": 3,
+   "offset": 334,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "ResFi",
+   "ftype": 3,
+   "offset": 336,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "ResFi(N)",
+   "ftype": 3,
+   "offset": 338,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "ResFi(H)",
+   "ftype": 3,
+   "offset": 340,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "ResLi",
+   "ftype": 3,
+   "offset": 342,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "ResLi(N)",
+   "ftype": 3,
+   "offset": 344,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "ResLi(H)",
+   "ftype": 3,
+   "offset": 346,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "ResCo",
+   "ftype": 3,
+   "offset": 348,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "ResCo(N)",
+   "ftype": 3,
+   "offset": 350,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "ResCo(H)",
+   "ftype": 3,
+   "offset": 352,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "ResPo",
+   "ftype": 3,
+   "offset": 354,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "ResPo(N)",
+   "ftype": 3,
+   "offset": 356,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "ResPo(H)",
+   "ftype": 3,
+   "offset": 358,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "SendSkills",
+   "ftype": 8,
+   "offset": 364,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Skill1",
+   "ftype": 20,
+   "offset": 368,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  },
+  {
+   "name": "Sk1mode",
+   "ftype": 23,
+   "offset": 0,
+   "size": null,
+   "bit": null,
+   "link": "monstats_skmode",
+   "type": "custom"
+  },
+  {
+   "name": "Sk1lvl",
+   "ftype": 4,
+   "offset": 408,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Skill2",
+   "ftype": 20,
+   "offset": 370,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  },
+  {
+   "name": "Sk2mode",
+   "ftype": 23,
+   "offset": 1,
+   "size": null,
+   "bit": null,
+   "link": "monstats_skmode",
+   "type": "custom"
+  },
+  {
+   "name": "Sk2lvl",
+   "ftype": 4,
+   "offset": 409,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Skill3",
+   "ftype": 20,
+   "offset": 372,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  },
+  {
+   "name": "Sk3mode",
+   "ftype": 23,
+   "offset": 2,
+   "size": null,
+   "bit": null,
+   "link": "monstats_skmode",
+   "type": "custom"
+  },
+  {
+   "name": "Sk3lvl",
+   "ftype": 4,
+   "offset": 410,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Skill4",
+   "ftype": 20,
+   "offset": 374,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  },
+  {
+   "name": "Sk4mode",
+   "ftype": 23,
+   "offset": 3,
+   "size": null,
+   "bit": null,
+   "link": "monstats_skmode",
+   "type": "custom"
+  },
+  {
+   "name": "Sk4lvl",
+   "ftype": 4,
+   "offset": 411,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Skill5",
+   "ftype": 20,
+   "offset": 376,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  },
+  {
+   "name": "Sk5mode",
+   "ftype": 23,
+   "offset": 4,
+   "size": null,
+   "bit": null,
+   "link": "monstats_skmode",
+   "type": "custom"
+  },
+  {
+   "name": "Sk5lvl",
+   "ftype": 4,
+   "offset": 412,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Skill6",
+   "ftype": 20,
+   "offset": 378,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  },
+  {
+   "name": "Sk6mode",
+   "ftype": 23,
+   "offset": 5,
+   "size": null,
+   "bit": null,
+   "link": "monstats_skmode",
+   "type": "custom"
+  },
+  {
+   "name": "Sk6lvl",
+   "ftype": 4,
+   "offset": 413,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Skill7",
+   "ftype": 20,
+   "offset": 380,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  },
+  {
+   "name": "Sk7mode",
+   "ftype": 23,
+   "offset": 6,
+   "size": null,
+   "bit": null,
+   "link": "monstats_skmode",
+   "type": "custom"
+  },
+  {
+   "name": "Sk7lvl",
+   "ftype": 4,
+   "offset": 414,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Skill8",
+   "ftype": 20,
+   "offset": 382,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  },
+  {
+   "name": "Sk8mode",
+   "ftype": 23,
+   "offset": 7,
+   "size": null,
+   "bit": null,
+   "link": "monstats_skmode",
+   "type": "custom"
+  },
+  {
+   "name": "Sk8lvl",
+   "ftype": 4,
+   "offset": 415,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "DamageRegen",
+   "ftype": 2,
+   "offset": 416,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "SplEndDeath",
+   "ftype": 4,
+   "offset": 420,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "SplGetModeChart",
+   "ftype": 4,
+   "offset": 421,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "SplEndGeneric",
+   "ftype": 4,
+   "offset": 422,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "SplClientEnd",
+   "ftype": 4,
+   "offset": 423,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  }
+ ],
+ "bin_record_size": 424
+}

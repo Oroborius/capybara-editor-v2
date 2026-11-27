@@ -1,0 +1,632 @@
+{
+ "table": "hireling",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 280,
+ "fields": [
+  {
+   "name": "version",
+   "ftype": 3,
+   "offset": 0,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "id",
+   "ftype": 2,
+   "offset": 4,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "class",
+   "ftype": 2,
+   "offset": 8,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "act",
+   "ftype": 2,
+   "offset": 12,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "difficulty",
+   "ftype": 2,
+   "offset": 16,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "seller",
+   "ftype": 2,
+   "offset": 20,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "gold",
+   "ftype": 2,
+   "offset": 24,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "level",
+   "ftype": 2,
+   "offset": 28,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "namefirst",
+   "ftype": 1,
+   "offset": 211,
+   "size": 32,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "namelast",
+   "ftype": 1,
+   "offset": 243,
+   "size": 32,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "exp/lvl",
+   "ftype": 2,
+   "offset": 32,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "hp",
+   "ftype": 2,
+   "offset": 36,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "hp/lvl",
+   "ftype": 2,
+   "offset": 40,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "defense",
+   "ftype": 2,
+   "offset": 44,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "def/lvl",
+   "ftype": 2,
+   "offset": 48,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "str",
+   "ftype": 2,
+   "offset": 52,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "str/lvl",
+   "ftype": 2,
+   "offset": 56,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "dex",
+   "ftype": 2,
+   "offset": 60,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "dex/lvl",
+   "ftype": 2,
+   "offset": 64,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "ar",
+   "ftype": 2,
+   "offset": 68,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "ar/lvl",
+   "ftype": 2,
+   "offset": 72,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "share",
+   "ftype": 2,
+   "offset": 76,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "dmg-min",
+   "ftype": 2,
+   "offset": 80,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "dmg-max",
+   "ftype": 2,
+   "offset": 84,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "dmg/lvl",
+   "ftype": 2,
+   "offset": 88,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "resist",
+   "ftype": 2,
+   "offset": 92,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "resist/lvl",
+   "ftype": 2,
+   "offset": 96,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "hiredesc",
+   "ftype": 13,
+   "offset": 210,
+   "size": 1,
+   "bit": null,
+   "link": "hiredesc.code",
+   "type": "u8"
+  },
+  {
+   "name": "defaultchance",
+   "ftype": 2,
+   "offset": 100,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "skill1",
+   "ftype": 19,
+   "offset": 120,
+   "size": 4,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "i32"
+  },
+  {
+   "name": "mode1",
+   "ftype": 4,
+   "offset": 192,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "chance1",
+   "ftype": 2,
+   "offset": 144,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "chanceperlvl1",
+   "ftype": 2,
+   "offset": 168,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "level1",
+   "ftype": 4,
+   "offset": 198,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "lvlperlvl1",
+   "ftype": 4,
+   "offset": 204,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "skill2",
+   "ftype": 19,
+   "offset": 124,
+   "size": 4,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "i32"
+  },
+  {
+   "name": "mode2",
+   "ftype": 4,
+   "offset": 193,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "chance2",
+   "ftype": 2,
+   "offset": 148,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "chanceperlvl2",
+   "ftype": 2,
+   "offset": 172,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "level2",
+   "ftype": 4,
+   "offset": 199,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "lvlperlvl2",
+   "ftype": 4,
+   "offset": 205,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "skill3",
+   "ftype": 19,
+   "offset": 128,
+   "size": 4,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "i32"
+  },
+  {
+   "name": "mode3",
+   "ftype": 4,
+   "offset": 194,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "chance3",
+   "ftype": 2,
+   "offset": 152,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "chanceperlvl3",
+   "ftype": 2,
+   "offset": 176,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "level3",
+   "ftype": 4,
+   "offset": 200,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "lvlperlvl3",
+   "ftype": 4,
+   "offset": 206,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "skill4",
+   "ftype": 19,
+   "offset": 132,
+   "size": 4,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "i32"
+  },
+  {
+   "name": "mode4",
+   "ftype": 4,
+   "offset": 195,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "chance4",
+   "ftype": 2,
+   "offset": 156,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "chanceperlvl4",
+   "ftype": 2,
+   "offset": 180,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "level4",
+   "ftype": 4,
+   "offset": 201,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "lvlperlvl4",
+   "ftype": 4,
+   "offset": 207,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "skill5",
+   "ftype": 19,
+   "offset": 136,
+   "size": 4,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "i32"
+  },
+  {
+   "name": "mode5",
+   "ftype": 4,
+   "offset": 196,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "chance5",
+   "ftype": 2,
+   "offset": 160,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "chanceperlvl5",
+   "ftype": 2,
+   "offset": 184,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "level5",
+   "ftype": 4,
+   "offset": 202,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "lvlperlvl5",
+   "ftype": 4,
+   "offset": 208,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "skill6",
+   "ftype": 19,
+   "offset": 140,
+   "size": 4,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "i32"
+  },
+  {
+   "name": "mode6",
+   "ftype": 4,
+   "offset": 197,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "chance6",
+   "ftype": 2,
+   "offset": 164,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "chanceperlvl6",
+   "ftype": 2,
+   "offset": 188,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "level6",
+   "ftype": 4,
+   "offset": 203,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "lvlperlvl6",
+   "ftype": 4,
+   "offset": 209,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "head",
+   "ftype": 2,
+   "offset": 104,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "torso",
+   "ftype": 2,
+   "offset": 108,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "weapon",
+   "ftype": 2,
+   "offset": 112,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "shield",
+   "ftype": 2,
+   "offset": 116,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  }
+ ],
+ "bin_record_size": 280
+}

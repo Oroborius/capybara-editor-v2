@@ -1,0 +1,90 @@
+{
+ "table": "experience",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 32,
+ "fields": [
+  {
+   "name": "Amazon",
+   "ftype": 2,
+   "offset": 0,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32",
+   "signed": false
+  },
+  {
+   "name": "Sorceress",
+   "ftype": 2,
+   "offset": 4,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32",
+   "signed": false
+  },
+  {
+   "name": "Necromancer",
+   "ftype": 2,
+   "offset": 8,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32",
+   "signed": false
+  },
+  {
+   "name": "Paladin",
+   "ftype": 2,
+   "offset": 12,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32",
+   "signed": false
+  },
+  {
+   "name": "Barbarian",
+   "ftype": 2,
+   "offset": 16,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32",
+   "signed": false
+  },
+  {
+   "name": "Druid",
+   "ftype": 2,
+   "offset": 20,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32",
+   "signed": false
+  },
+  {
+   "name": "Assassin",
+   "ftype": 2,
+   "offset": 24,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32",
+   "signed": false
+  },
+  {
+   "name": "ExpRatio",
+   "ftype": 2,
+   "offset": 28,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  }
+ ],
+ "bin_record_size": 32
+}

@@ -1,0 +1,380 @@
+{
+ "table": "gems",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 192,
+ "fields": [
+  {
+   "name": "name",
+   "ftype": 1,
+   "offset": 0,
+   "size": 31,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "letter",
+   "ftype": 1,
+   "offset": 32,
+   "size": 5,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "code",
+   "ftype": 11,
+   "offset": 40,
+   "size": 4,
+   "bit": null,
+   "link": "weapons.code",
+   "type": "i32"
+  },
+  {
+   "name": "transform",
+   "ftype": 4,
+   "offset": 47,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "nummods",
+   "ftype": 4,
+   "offset": 46,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "weaponmod1code",
+   "ftype": 19,
+   "offset": 48,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "weaponmod1param",
+   "ftype": 25,
+   "offset": 52,
+   "size": 4,
+   "bit": null,
+   "link": "param",
+   "type": "u32"
+  },
+  {
+   "name": "weaponmod1min",
+   "ftype": 2,
+   "offset": 56,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "weaponmod1max",
+   "ftype": 2,
+   "offset": 60,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "weaponmod2code",
+   "ftype": 19,
+   "offset": 64,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "weaponmod2param",
+   "ftype": 25,
+   "offset": 68,
+   "size": 4,
+   "bit": null,
+   "link": "param",
+   "type": "u32"
+  },
+  {
+   "name": "weaponmod2min",
+   "ftype": 2,
+   "offset": 72,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "weaponmod2max",
+   "ftype": 2,
+   "offset": 76,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "weaponmod3code",
+   "ftype": 19,
+   "offset": 80,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "weaponmod3param",
+   "ftype": 25,
+   "offset": 84,
+   "size": 4,
+   "bit": null,
+   "link": "param",
+   "type": "u32"
+  },
+  {
+   "name": "weaponmod3min",
+   "ftype": 2,
+   "offset": 88,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "weaponmod3max",
+   "ftype": 2,
+   "offset": 92,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "helmmod1code",
+   "ftype": 19,
+   "offset": 96,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "helmmod1param",
+   "ftype": 25,
+   "offset": 100,
+   "size": 4,
+   "bit": null,
+   "link": "param",
+   "type": "u32"
+  },
+  {
+   "name": "helmmod1min",
+   "ftype": 2,
+   "offset": 104,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "helmmod1max",
+   "ftype": 2,
+   "offset": 108,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "helmmod2code",
+   "ftype": 19,
+   "offset": 112,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "helmmod2param",
+   "ftype": 25,
+   "offset": 116,
+   "size": 4,
+   "bit": null,
+   "link": "param",
+   "type": "u32"
+  },
+  {
+   "name": "helmmod2min",
+   "ftype": 2,
+   "offset": 120,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "helmmod2max",
+   "ftype": 2,
+   "offset": 124,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "helmmod3code",
+   "ftype": 19,
+   "offset": 128,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "helmmod3param",
+   "ftype": 25,
+   "offset": 132,
+   "size": 4,
+   "bit": null,
+   "link": "param",
+   "type": "u32"
+  },
+  {
+   "name": "helmmod3min",
+   "ftype": 2,
+   "offset": 136,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "helmmod3max",
+   "ftype": 2,
+   "offset": 140,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "shieldmod1code",
+   "ftype": 19,
+   "offset": 144,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "shieldmod1param",
+   "ftype": 25,
+   "offset": 148,
+   "size": 4,
+   "bit": null,
+   "link": "param",
+   "type": "u32"
+  },
+  {
+   "name": "shieldmod1min",
+   "ftype": 2,
+   "offset": 152,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "shieldmod1max",
+   "ftype": 2,
+   "offset": 156,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "shieldmod2code",
+   "ftype": 19,
+   "offset": 160,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "shieldmod2param",
+   "ftype": 25,
+   "offset": 164,
+   "size": 4,
+   "bit": null,
+   "link": "param",
+   "type": "u32"
+  },
+  {
+   "name": "shieldmod2min",
+   "ftype": 2,
+   "offset": 168,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "shieldmod2max",
+   "ftype": 2,
+   "offset": 172,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "shieldmod3code",
+   "ftype": 19,
+   "offset": 176,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "shieldmod3param",
+   "ftype": 25,
+   "offset": 180,
+   "size": 4,
+   "bit": null,
+   "link": "param",
+   "type": "u32"
+  },
+  {
+   "name": "shieldmod3min",
+   "ftype": 2,
+   "offset": 184,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "shieldmod3max",
+   "ftype": 2,
+   "offset": 188,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  }
+ ],
+ "bin_record_size": 192
+}

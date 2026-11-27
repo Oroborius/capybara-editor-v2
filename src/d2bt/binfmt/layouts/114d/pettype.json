@@ -1,0 +1,192 @@
+{
+ "table": "pettype",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 224,
+ "fields": [
+  {
+   "name": "pet type",
+   "ftype": 18,
+   "offset": 0,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "u32",
+   "key": true
+  },
+  {
+   "name": "group",
+   "ftype": 3,
+   "offset": 8,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "basemax",
+   "ftype": 3,
+   "offset": 10,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "warp",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 0,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "range",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 1,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "partysend",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 2,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "unsummon",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 3,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "automap",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 4,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "drawhp",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 5,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "icontype",
+   "ftype": 4,
+   "offset": 14,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "baseicon",
+   "ftype": 1,
+   "offset": 15,
+   "size": 32,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "mclass1",
+   "ftype": 3,
+   "offset": 178,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "micon1",
+   "ftype": 1,
+   "offset": 47,
+   "size": 32,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "mclass2",
+   "ftype": 3,
+   "offset": 180,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "micon2",
+   "ftype": 1,
+   "offset": 79,
+   "size": 32,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "mclass3",
+   "ftype": 3,
+   "offset": 182,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "micon3",
+   "ftype": 1,
+   "offset": 111,
+   "size": 32,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "mclass4",
+   "ftype": 3,
+   "offset": 184,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "micon4",
+   "ftype": 1,
+   "offset": 143,
+   "size": 32,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "name",
+   "ftype": 22,
+   "offset": 12,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  }
+ ],
+ "bin_record_size": 224
+}

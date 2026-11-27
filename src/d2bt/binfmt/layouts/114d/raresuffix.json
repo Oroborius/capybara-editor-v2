@@ -1,0 +1,128 @@
+{
+ "table": "raresuffix",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 72,
+ "fields": [
+  {
+   "name": "name",
+   "ftype": 1,
+   "offset": 38,
+   "size": 31,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "version",
+   "ftype": 3,
+   "offset": 14,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "itype1",
+   "ftype": 15,
+   "offset": 16,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "itype2",
+   "ftype": 15,
+   "offset": 18,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "itype3",
+   "ftype": 15,
+   "offset": 20,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "itype4",
+   "ftype": 15,
+   "offset": 22,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "itype5",
+   "ftype": 15,
+   "offset": 24,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "itype6",
+   "ftype": 15,
+   "offset": 26,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "itype7",
+   "ftype": 15,
+   "offset": 28,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "etype1",
+   "ftype": 15,
+   "offset": 30,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "etype2",
+   "ftype": 15,
+   "offset": 32,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "etype3",
+   "ftype": 15,
+   "offset": 34,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "etype4",
+   "ftype": 15,
+   "offset": 36,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  }
+ ],
+ "bin_record_size": 72
+}

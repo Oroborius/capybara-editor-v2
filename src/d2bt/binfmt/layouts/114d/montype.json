@@ -1,0 +1,66 @@
+{
+ "table": "montype",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 12,
+ "fields": [
+  {
+   "name": "type",
+   "ftype": 17,
+   "offset": 0,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16",
+   "key": true
+  },
+  {
+   "name": "equiv1",
+   "ftype": 20,
+   "offset": 2,
+   "size": 2,
+   "bit": null,
+   "link": "montype.type",
+   "type": "u16"
+  },
+  {
+   "name": "equiv2",
+   "ftype": 20,
+   "offset": 4,
+   "size": 2,
+   "bit": null,
+   "link": "montype.type",
+   "type": "u16"
+  },
+  {
+   "name": "equiv3",
+   "ftype": 20,
+   "offset": 6,
+   "size": 2,
+   "bit": null,
+   "link": "montype.type",
+   "type": "u16"
+  },
+  {
+   "name": "strsing",
+   "ftype": 22,
+   "offset": 8,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "strplur",
+   "ftype": 22,
+   "offset": 10,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  }
+ ],
+ "bin_record_size": 12
+}

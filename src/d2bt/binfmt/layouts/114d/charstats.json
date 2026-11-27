@@ -1,0 +1,650 @@
+{
+ "table": "charstats",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 196,
+ "fields": [
+  {
+   "name": "class",
+   "ftype": 1,
+   "offset": 32,
+   "size": 15,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "str",
+   "ftype": 4,
+   "offset": 48,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dex",
+   "ftype": 4,
+   "offset": 49,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "vit",
+   "ftype": 4,
+   "offset": 51,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "int",
+   "ftype": 4,
+   "offset": 50,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "stamina",
+   "ftype": 4,
+   "offset": 52,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "hpadd",
+   "ftype": 4,
+   "offset": 53,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "PercentStr",
+   "ftype": 4,
+   "offset": 54,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "PercentDex",
+   "ftype": 4,
+   "offset": 56,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "PercentVit",
+   "ftype": 4,
+   "offset": 57,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "PercentInt",
+   "ftype": 4,
+   "offset": 55,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ManaRegen",
+   "ftype": 4,
+   "offset": 58,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ToHitFactor",
+   "ftype": 2,
+   "offset": 60,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "WalkVelocity",
+   "ftype": 4,
+   "offset": 64,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "RunVelocity",
+   "ftype": 4,
+   "offset": 65,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "RunDrain",
+   "ftype": 4,
+   "offset": 66,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "LifePerLevel",
+   "ftype": 4,
+   "offset": 67,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "StaminaPerLevel",
+   "ftype": 4,
+   "offset": 68,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ManaPerLevel",
+   "ftype": 4,
+   "offset": 69,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "LifePerVitality",
+   "ftype": 4,
+   "offset": 70,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "StaminaPerVitality",
+   "ftype": 4,
+   "offset": 71,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ManaPerMagic",
+   "ftype": 4,
+   "offset": 72,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "BlockFactor",
+   "ftype": 4,
+   "offset": 73,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "basewclass",
+   "ftype": 9,
+   "offset": 76,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  },
+  {
+   "name": "StrAllSkills",
+   "ftype": 22,
+   "offset": 82,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "StrSkillTab1",
+   "ftype": 22,
+   "offset": 84,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "StrSkillTab2",
+   "ftype": 22,
+   "offset": 86,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "StrSkillTab3",
+   "ftype": 22,
+   "offset": 88,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "StrClassOnly",
+   "ftype": 22,
+   "offset": 90,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "StartSkill",
+   "ftype": 20,
+   "offset": 172,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  },
+  {
+   "name": "Skill 1",
+   "ftype": 20,
+   "offset": 174,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  },
+  {
+   "name": "Skill 2",
+   "ftype": 20,
+   "offset": 176,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  },
+  {
+   "name": "Skill 3",
+   "ftype": 20,
+   "offset": 178,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  },
+  {
+   "name": "Skill 4",
+   "ftype": 20,
+   "offset": 180,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  },
+  {
+   "name": "Skill 5",
+   "ftype": 20,
+   "offset": 182,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  },
+  {
+   "name": "Skill 6",
+   "ftype": 20,
+   "offset": 184,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  },
+  {
+   "name": "Skill 7",
+   "ftype": 20,
+   "offset": 186,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  },
+  {
+   "name": "Skill 8",
+   "ftype": 20,
+   "offset": 188,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  },
+  {
+   "name": "Skill 9",
+   "ftype": 20,
+   "offset": 190,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  },
+  {
+   "name": "Skill 10",
+   "ftype": 20,
+   "offset": 192,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  },
+  {
+   "name": "StatPerLevel",
+   "ftype": 4,
+   "offset": 80,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "item1loc",
+   "ftype": 13,
+   "offset": 96,
+   "size": 1,
+   "bit": null,
+   "link": "bodylocs.code",
+   "type": "u8"
+  },
+  {
+   "name": "item2loc",
+   "ftype": 13,
+   "offset": 104,
+   "size": 1,
+   "bit": null,
+   "link": "bodylocs.code",
+   "type": "u8"
+  },
+  {
+   "name": "item3loc",
+   "ftype": 13,
+   "offset": 112,
+   "size": 1,
+   "bit": null,
+   "link": "bodylocs.code",
+   "type": "u8"
+  },
+  {
+   "name": "item4loc",
+   "ftype": 13,
+   "offset": 120,
+   "size": 1,
+   "bit": null,
+   "link": "bodylocs.code",
+   "type": "u8"
+  },
+  {
+   "name": "item5loc",
+   "ftype": 13,
+   "offset": 128,
+   "size": 1,
+   "bit": null,
+   "link": "bodylocs.code",
+   "type": "u8"
+  },
+  {
+   "name": "item6loc",
+   "ftype": 13,
+   "offset": 136,
+   "size": 1,
+   "bit": null,
+   "link": "bodylocs.code",
+   "type": "u8"
+  },
+  {
+   "name": "item7loc",
+   "ftype": 13,
+   "offset": 144,
+   "size": 1,
+   "bit": null,
+   "link": "bodylocs.code",
+   "type": "u8"
+  },
+  {
+   "name": "item8loc",
+   "ftype": 13,
+   "offset": 152,
+   "size": 1,
+   "bit": null,
+   "link": "bodylocs.code",
+   "type": "u8"
+  },
+  {
+   "name": "item9loc",
+   "ftype": 13,
+   "offset": 160,
+   "size": 1,
+   "bit": null,
+   "link": "bodylocs.code",
+   "type": "u8"
+  },
+  {
+   "name": "item10loc",
+   "ftype": 13,
+   "offset": 168,
+   "size": 1,
+   "bit": null,
+   "link": "bodylocs.code",
+   "type": "u8"
+  },
+  {
+   "name": "item1",
+   "ftype": 9,
+   "offset": 92,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  },
+  {
+   "name": "item1count",
+   "ftype": 4,
+   "offset": 97,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "item2",
+   "ftype": 9,
+   "offset": 100,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  },
+  {
+   "name": "item2count",
+   "ftype": 4,
+   "offset": 105,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "item3",
+   "ftype": 9,
+   "offset": 108,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  },
+  {
+   "name": "item3count",
+   "ftype": 4,
+   "offset": 113,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "item4",
+   "ftype": 9,
+   "offset": 116,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  },
+  {
+   "name": "item4count",
+   "ftype": 4,
+   "offset": 121,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "item5",
+   "ftype": 9,
+   "offset": 124,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  },
+  {
+   "name": "item5count",
+   "ftype": 4,
+   "offset": 129,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "item6",
+   "ftype": 9,
+   "offset": 132,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  },
+  {
+   "name": "item6count",
+   "ftype": 4,
+   "offset": 137,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "item7",
+   "ftype": 9,
+   "offset": 140,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  },
+  {
+   "name": "item7count",
+   "ftype": 4,
+   "offset": 145,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "item8",
+   "ftype": 9,
+   "offset": 148,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  },
+  {
+   "name": "item8count",
+   "ftype": 4,
+   "offset": 153,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "item9",
+   "ftype": 9,
+   "offset": 156,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  },
+  {
+   "name": "item9count",
+   "ftype": 4,
+   "offset": 161,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "item10",
+   "ftype": 9,
+   "offset": 164,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  },
+  {
+   "name": "item10count",
+   "ftype": 4,
+   "offset": 169,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  }
+ ],
+ "bin_record_size": 196
+}

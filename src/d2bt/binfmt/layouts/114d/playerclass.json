@@ -1,0 +1,21 @@
+{
+ "table": "playerclass",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 4,
+ "fields": [
+  {
+   "name": "code",
+   "ftype": 10,
+   "offset": 0,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code",
+   "key": true
+  }
+ ],
+ "bin_record_size": 4
+}

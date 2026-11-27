@@ -1,10 +1,18 @@
-"""Save reader for the legit validator (from the dev kit lint/savescan.py, trimmed). MIT, see LICENSE."""
+"""Read-only save scanner: what each character / stash file references in the game tables.
+
+Format: docs of the MXL Capybara Editor V2 (SAVE_FORMAT.md) - .d2s header, 'gf' stat stream, 'if' skills,
+'JM' item lists (bit streams, LSB first), corpses, 'jf' mercenary; Median .stash / _sharedstash.shared =
+u32 version, u32 page, then 'STASH' + u32 page + item list per page.  Vanilla 1.10-1.14 .d2s is read the same
+way with 12-bit set/unique ids and 30 class skills.
+
+Never writes anything; callers should scan a COPY of the save folder (copy_saves).
+"""
 import os
 import shutil
 import struct
 from dataclasses import dataclass, field
 
-from .items import to_int
+from .common import TxtDir
 
 STAT_GROUPS = {17: (18,), 48: (49,), 50: (51,), 52: (53,), 54: (55, 56), 57: (58, 59)}
 STAT_DEFENSE, STAT_DURABILITY, STAT_MAX_DURABILITY = 31, 72, 73
@@ -42,33 +50,35 @@ class Bits:
 
 
 class SaveTables:
-    """The widths a save needs, from the stock txt tables (td.table(name) -> Table)."""
+    """The widths a save needs, from an (unmodified) txt folder."""
 
-    def __init__(self, td, median=False):
-        self.median = median
-        isc = td.table('itemstatcost')
+    def __init__(self, txt_dir, median=None):
+        td = TxtDir(txt_dir)
+        self.median = td.is_median() if median is None else median
+        isc = td['itemstatcost']
         self.stats = {}
         for r in range(len(isc)):
-            g = lambda c, r=r: to_int(isc.get(r, c))
-            self.stats[r] = (g('save bits'), g('save add'), g('save param bits'), g('csvbits'), g('csvparam'))
-        it = td.table('itemtypes')
+            self.stats[r] = (isc.num(r, 'save bits'), isc.num(r, 'save add'), isc.num(r, 'save param bits'),
+                             isc.num(r, 'csvbits'), isc.num(r, 'csvparam'))
+        it = td['itemtypes']
+        codes = it.col('code')
         self._parents = {}
-        for r in range(len(it)):
-            c = it.get(r, 'code').strip()
+        for r, c in enumerate(codes):
             if c and c not in self._parents:
-                self._parents[c] = [x for x in (it.get(r, 'equiv1').strip(), it.get(r, 'equiv2').strip()) if x]
+                self._parents[c] = [x for x in (it.cell(r, 'equiv1'), it.cell(r, 'equiv2')) if x]
         self.bases = {}
         for t in ('weapons', 'armor', 'misc'):
-            tab = td.table(t)
+            tab = td[t]
+            if tab is None:
+                continue
             for r in range(len(tab)):
-                code = (tab.get(r, 'code').strip() + '    ')[:4]
+                code = (tab.cell(r, 'code') + '    ')[:4]
                 if code.strip() and code not in self.bases:
-                    self.bases[code] = (t, self.kind(t, tab.get(r, 'type').strip(), tab.get(r, 'type2').strip()),
-                                        bool(to_int(tab.get(r, 'stackable'))))
-        pc = td.table('playerclass')
-        pc = [pc.get(r, 'code').strip() for r in range(len(pc))] or ['ama', 'sor', 'nec', 'pal', 'bar', 'dru', 'ass']
-        sk = td.table('skills')
-        sk = [sk.get(r, 'charclass').strip() for r in range(len(sk))]
+                    self.bases[code] = (t, self.kind(t, tab.cell(r, 'type'), tab.cell(r, 'type2')),
+                                        bool(tab.num(r, 'stackable')))
+        pc = td['playerclass'].col('code') if td['playerclass'] else ['ama', 'sor', 'nec', 'pal', 'bar',
+                                                                       'dru', 'ass']
+        sk = td['skills'].col('charclass')
         self.class_skills = [sum(1 for c in sk if c == code) for code in pc]
         self.class_codes = pc
 
@@ -140,8 +150,10 @@ class ParsedCharacter:
     items: list = field(default_factory=list)
 
 
-def parse_d2s(data, tab, path=''):
-    """Read an expansion v96 save (bytes) using the scanner's item and stat readers."""
+def parse_d2s(path, tab):
+    """Read an expansion v96 save using the scanner's item and stat readers."""
+    with open(path, 'rb') as fh:
+        data = fh.read()
     if len(data) < 0x2ff or data[:8] != b'\x55\xaa\x55\xaa\x60\x00\x00\x00' or not data[36] & 32:
         raise SaveError('expected a LoD v96 character save')
     if data[0x14f:0x153] != b'Woo!':
@@ -228,7 +240,7 @@ def _item(buf, pos, tab, u, items=None):
     if flags >> 26 & 1:
         packed = br.read(16)
         u.runewords.add(packed)
-        item.runeword = packed & 0xfff
+        item.runeword = packed
     if flags >> 24 & 1:
         while br.read(7):
             pass
@@ -236,9 +248,8 @@ def _item(buf, pos, tab, u, items=None):
         br.read(5)
     kind = base[1]
     if br.read(1) and not tab.median:
-        # v96 stores 96 bits of realm data for misc items. Weapons and
-        # armor carry only the three-bit realm field before durability.
-        br.read(96 if kind == 'misc' else 3)
+        # Realm data has the same width before armor, weapon and misc fields.
+        br.read(96)
     if kind == 'armor':
         bits, add = tab.stats[STAT_DEFENSE][:2]
         item.defense = br.read(bits) - add
@@ -261,15 +272,20 @@ def _item(buf, pos, tab, u, items=None):
 
 
 def _item_list(buf, pos, tab, u, items=None):
-    if buf[pos:pos + 2] != b'JM':
+    if pos + 4 > len(buf) or buf[pos:pos + 2] != b'JM':
         raise SaveError(f"'JM' expected at byte {pos}")
     n = struct.unpack_from('<H', buf, pos + 2)[0]
     pos += 4
     for _ in range(n):
-        pos, flags, nsock = _item(buf, pos, tab, u, items)
-        for _k in range(nsock if flags >> 11 & 1 else 0):
-            children = items[-1].children if items is not None else None
-            pos, _f, _n = _item(buf, pos, tab, u, children)
+        pos = _item_with_sockets(buf, pos, tab, u, items)
+    return pos
+
+
+def _item_with_sockets(buf, pos, tab, u, items):
+    pos, flags, count = _item(buf, pos, tab, u, items)
+    for _ in range(count if flags >> 11 & 1 else 0):
+        children = items[-1].children if items is not None else None
+        pos, _, _ = _item(buf, pos, tab, u, children)
     return pos
 
 
@@ -320,6 +336,8 @@ def _scan_d2s(path, b, tab, character=None):
     p += 2 + n
     p = _item_list(b, p, tab, u, items)
     if b[p:p + 2] == b'JM':                   # corpses
+        if p + 4 > len(b):
+            raise SaveError('truncated corpse count')
         nc = struct.unpack_from('<H', b, p + 2)[0]
         p += 4
         for _ in range(nc):
@@ -328,16 +346,54 @@ def _scan_d2s(path, b, tab, character=None):
         p += 2
         if b[p:p + 2] == b'JM':
             p = _item_list(b, p, tab, u, items)
-    if character is not None and b[p:p + 3] == b'kf\x01':
-        _item(b, p + 3, tab, u, items)
+    if b[p:p + 2] == b'kf':
+        if b[p + 2:p + 3] == b'\x01':
+            p = _item_with_sockets(b, p + 3, tab, u, items)
+        elif b[p + 2:p + 3] == b'\x00':
+            p += 3
+        else:
+            raise SaveError('invalid iron golem marker')
+    if character is not None and p != len(b):
+        raise SaveError(f'unexpected data after item sections at byte {p}')
     return u
 
 
-def parse_items(buf, tab):
-    """Parse a run of item blobs (an item followed by its socketed items, repeated) -> [ParsedItem]."""
-    items, u, pos = [], Usage(''), 0
-    while pos < len(buf):
-        pos, flags, nsock = _item(buf, pos, tab, u, items)
-        for _ in range(nsock if flags >> 11 & 1 else 0):
-            pos, _f, _n = _item(buf, pos, tab, u, items[-1].children)
-    return items
+def scan_stash(path, tab):
+    u = Usage(path, name=os.path.basename(path))
+    b = open(path, 'rb').read()
+    p = 8
+    while p < len(b):
+        if b[p:p + 5] != b'STASH':
+            raise SaveError(f"'STASH' expected at byte {p}")
+        p = _item_list(b, p + 9, tab, u)
+    return u
+
+
+def scan_dir(save_dir, txt_dir, median=None):
+    """-> [Usage] for every save in save_dir, parsed with the tables of txt_dir (use the UNMODIFIED data the
+    saves were written with).  A file that does not parse gets Usage.error set."""
+    tab = SaveTables(txt_dir, median)
+    out = []
+    for fn in sorted(os.listdir(save_dir)):
+        p = os.path.join(save_dir, fn)
+        low = fn.lower()
+        if not os.path.isfile(p) or not low.endswith(('.d2s', '.stash', '.shared')):
+            continue
+        try:
+            out.append(scan_d2s(p, tab) if low.endswith('.d2s') else scan_stash(p, tab))
+        except (SaveError, IndexError, struct.error) as e:
+            out.append(Usage(p, name=fn, error=str(e)))
+    return out
+
+
+def copy_saves(src_dir, dst_dir):
+    """Copy the save files (.d2s / .stash / .shared, nothing else) so they can be scanned without touching the
+    originals.  -> number of files copied."""
+    os.makedirs(dst_dir, exist_ok=True)
+    n = 0
+    for fn in os.listdir(src_dir):
+        p = os.path.join(src_dir, fn)
+        if os.path.isfile(p) and fn.lower().endswith(('.d2s', '.stash', '.shared')):
+            shutil.copy2(p, os.path.join(dst_dir, fn))
+            n += 1
+    return n

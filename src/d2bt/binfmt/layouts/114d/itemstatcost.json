@@ -1,0 +1,471 @@
+{
+ "table": "itemstatcost",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 324,
+ "fields": [
+  {
+   "name": "stat",
+   "ftype": 17,
+   "offset": 0,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16",
+   "key": true
+  },
+  {
+   "name": "send bits",
+   "ftype": 4,
+   "offset": 8,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "send param bits",
+   "ftype": 4,
+   "offset": 9,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "divide",
+   "ftype": 2,
+   "offset": 12,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "multiply",
+   "ftype": 2,
+   "offset": 16,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "add",
+   "ftype": 2,
+   "offset": 20,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "valshift",
+   "ftype": 4,
+   "offset": 24,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "minaccr",
+   "ftype": 2,
+   "offset": 44,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "save bits",
+   "ftype": 4,
+   "offset": 25,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "save add",
+   "ftype": 2,
+   "offset": 28,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "save param bits",
+   "ftype": 2,
+   "offset": 36,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "1.09-save bits",
+   "ftype": 4,
+   "offset": 26,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "1.09-save add",
+   "ftype": 2,
+   "offset": 32,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "encode",
+   "ftype": 4,
+   "offset": 48,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "send other",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 0,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "signed",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 1,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "updateanimrate",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 9,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "fmin",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 10,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "damagerelated",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 2,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "itemspecific",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 3,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "direct",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 4,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "fcallback",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 11,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "saved",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 12,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "csvsigned",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 13,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "csvbits",
+   "ftype": 4,
+   "offset": 10,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "csvparam",
+   "ftype": 4,
+   "offset": 11,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "maxstat",
+   "ftype": 20,
+   "offset": 50,
+   "size": 2,
+   "bit": null,
+   "link": "itemstatcost.stat",
+   "type": "u16"
+  },
+  {
+   "name": "itemevent1",
+   "ftype": 20,
+   "offset": 72,
+   "size": 2,
+   "bit": null,
+   "link": "events.event",
+   "type": "u16"
+  },
+  {
+   "name": "itemeventfunc1",
+   "ftype": 3,
+   "offset": 76,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "itemevent2",
+   "ftype": 20,
+   "offset": 74,
+   "size": 2,
+   "bit": null,
+   "link": "events.event",
+   "type": "u16"
+  },
+  {
+   "name": "itemeventfunc2",
+   "ftype": 3,
+   "offset": 78,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "descpriority",
+   "ftype": 3,
+   "offset": 52,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "descfunc",
+   "ftype": 4,
+   "offset": 54,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "descval",
+   "ftype": 4,
+   "offset": 55,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "descstrpos",
+   "ftype": 22,
+   "offset": 56,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "descstrneg",
+   "ftype": 22,
+   "offset": 58,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "descstr2",
+   "ftype": 22,
+   "offset": 60,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "dgrp",
+   "ftype": 3,
+   "offset": 62,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "dgrpfunc",
+   "ftype": 4,
+   "offset": 64,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dgrpval",
+   "ftype": 4,
+   "offset": 65,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dgrpstrpos",
+   "ftype": 22,
+   "offset": 66,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "dgrpstrneg",
+   "ftype": 22,
+   "offset": 68,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "dgrpstr2",
+   "ftype": 22,
+   "offset": 70,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "keepzero",
+   "ftype": 4,
+   "offset": 80,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "op",
+   "ftype": 4,
+   "offset": 84,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "op base",
+   "ftype": 20,
+   "offset": 86,
+   "size": 2,
+   "bit": null,
+   "link": "itemstatcost.stat",
+   "type": "u16"
+  },
+  {
+   "name": "op param",
+   "ftype": 4,
+   "offset": 85,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "op stat1",
+   "ftype": 20,
+   "offset": 88,
+   "size": 2,
+   "bit": null,
+   "link": "itemstatcost.stat",
+   "type": "u16"
+  },
+  {
+   "name": "op stat2",
+   "ftype": 20,
+   "offset": 90,
+   "size": 2,
+   "bit": null,
+   "link": "itemstatcost.stat",
+   "type": "u16"
+  },
+  {
+   "name": "op stat3",
+   "ftype": 20,
+   "offset": 92,
+   "size": 2,
+   "bit": null,
+   "link": "itemstatcost.stat",
+   "type": "u16"
+  },
+  {
+   "name": "stuff",
+   "ftype": 2,
+   "offset": 320,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  }
+ ],
+ "bin_record_size": 324
+}

@@ -1,0 +1,434 @@
+{
+ "table": "runes",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 288,
+ "fields": [
+  {
+   "name": "name",
+   "ftype": 1,
+   "offset": 0,
+   "size": 63,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "rune name",
+   "ftype": 1,
+   "offset": 64,
+   "size": 63,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "complete",
+   "ftype": 4,
+   "offset": 128,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "server",
+   "ftype": 4,
+   "offset": 129,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "itype1",
+   "ftype": 15,
+   "offset": 134,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "itype2",
+   "ftype": 15,
+   "offset": 136,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "itype3",
+   "ftype": 15,
+   "offset": 138,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "itype4",
+   "ftype": 15,
+   "offset": 140,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "itype5",
+   "ftype": 15,
+   "offset": 142,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "itype6",
+   "ftype": 15,
+   "offset": 144,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "etype1",
+   "ftype": 15,
+   "offset": 146,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "etype2",
+   "ftype": 15,
+   "offset": 148,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "etype3",
+   "ftype": 15,
+   "offset": 150,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "rune1",
+   "ftype": 11,
+   "offset": 152,
+   "size": 4,
+   "bit": null,
+   "link": "weapons.code",
+   "type": "i32"
+  },
+  {
+   "name": "rune2",
+   "ftype": 11,
+   "offset": 156,
+   "size": 4,
+   "bit": null,
+   "link": "weapons.code",
+   "type": "i32"
+  },
+  {
+   "name": "rune3",
+   "ftype": 11,
+   "offset": 160,
+   "size": 4,
+   "bit": null,
+   "link": "weapons.code",
+   "type": "i32"
+  },
+  {
+   "name": "rune4",
+   "ftype": 11,
+   "offset": 164,
+   "size": 4,
+   "bit": null,
+   "link": "weapons.code",
+   "type": "i32"
+  },
+  {
+   "name": "rune5",
+   "ftype": 11,
+   "offset": 168,
+   "size": 4,
+   "bit": null,
+   "link": "weapons.code",
+   "type": "i32"
+  },
+  {
+   "name": "rune6",
+   "ftype": 11,
+   "offset": 172,
+   "size": 4,
+   "bit": null,
+   "link": "weapons.code",
+   "type": "i32"
+  },
+  {
+   "name": "t1code1",
+   "ftype": 19,
+   "offset": 176,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "t1param1",
+   "ftype": 25,
+   "offset": 180,
+   "size": 4,
+   "bit": null,
+   "link": "param",
+   "type": "u32"
+  },
+  {
+   "name": "t1min1",
+   "ftype": 2,
+   "offset": 184,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "t1max1",
+   "ftype": 2,
+   "offset": 188,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "t1code2",
+   "ftype": 19,
+   "offset": 192,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "t1param2",
+   "ftype": 25,
+   "offset": 196,
+   "size": 4,
+   "bit": null,
+   "link": "param",
+   "type": "u32"
+  },
+  {
+   "name": "t1min2",
+   "ftype": 2,
+   "offset": 200,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "t1max2",
+   "ftype": 2,
+   "offset": 204,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "t1code3",
+   "ftype": 19,
+   "offset": 208,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "t1param3",
+   "ftype": 25,
+   "offset": 212,
+   "size": 4,
+   "bit": null,
+   "link": "param",
+   "type": "u32"
+  },
+  {
+   "name": "t1min3",
+   "ftype": 2,
+   "offset": 216,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "t1max3",
+   "ftype": 2,
+   "offset": 220,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "t1code4",
+   "ftype": 19,
+   "offset": 224,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "t1param4",
+   "ftype": 25,
+   "offset": 228,
+   "size": 4,
+   "bit": null,
+   "link": "param",
+   "type": "u32"
+  },
+  {
+   "name": "t1min4",
+   "ftype": 2,
+   "offset": 232,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "t1max4",
+   "ftype": 2,
+   "offset": 236,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "t1code5",
+   "ftype": 19,
+   "offset": 240,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "t1param5",
+   "ftype": 25,
+   "offset": 244,
+   "size": 4,
+   "bit": null,
+   "link": "param",
+   "type": "u32"
+  },
+  {
+   "name": "t1min5",
+   "ftype": 2,
+   "offset": 248,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "t1max5",
+   "ftype": 2,
+   "offset": 252,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "t1code6",
+   "ftype": 19,
+   "offset": 256,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "t1param6",
+   "ftype": 25,
+   "offset": 260,
+   "size": 4,
+   "bit": null,
+   "link": "param",
+   "type": "u32"
+  },
+  {
+   "name": "t1min6",
+   "ftype": 2,
+   "offset": 264,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "t1max6",
+   "ftype": 2,
+   "offset": 268,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "t1code7",
+   "ftype": 19,
+   "offset": 272,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "t1param7",
+   "ftype": 25,
+   "offset": 276,
+   "size": 4,
+   "bit": null,
+   "link": "param",
+   "type": "u32"
+  },
+  {
+   "name": "t1min7",
+   "ftype": 2,
+   "offset": 280,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "t1max7",
+   "ftype": 2,
+   "offset": 284,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  }
+ ],
+ "bin_record_size": 288
+}

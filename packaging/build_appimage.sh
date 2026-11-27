@@ -60,9 +60,10 @@ cp "$ROOT"/src/mxl_*.py "$ROOT"/src/*.json "$ROOT/packaging/linux/capybara_edito
 # mxl_savecheck reads every file with it before it is written
 mkdir -p "$APPDIR/opt/capybara/mxlsave"
 cp "$ROOT"/tools/mxlsave/*.py "$APPDIR/opt/capybara/mxlsave/"
-# Legit mode: the vendored server rules (package d2legit, with its MIT LICENSE)
-mkdir -p "$APPDIR/opt/capybara/d2legit"
-cp "$ROOT"/src/d2legit/*.py "$ROOT"/src/d2legit/LICENSE "$APPDIR/opt/capybara/d2legit/"
+# Legit mode: the dev kit's validator, vendored unchanged as package d2bt (MIT LICENSE, layouts data)
+rm -rf "$APPDIR/opt/capybara/d2bt"
+cp -r "$ROOT/src/d2bt" "$APPDIR/opt/capybara/d2bt"
+find "$APPDIR/opt/capybara/d2bt" -name __pycache__ -prune -exec rm -r {} +
 cp "$BASE_DIR"/_internal/lang/*.json "$APPDIR/opt/capybara/lang/" 2>/dev/null || true
 cp "$ROOT"/lang/*.json "$APPDIR/opt/capybara/lang/"              # superset of the collector's files
 "$PY" -I -m compileall -q "$APPDIR/opt/capybara" >>"$LOG"

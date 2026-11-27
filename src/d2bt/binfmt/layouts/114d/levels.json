@@ -1,0 +1,1280 @@
+{
+ "table": "levels",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 544,
+ "fields": [
+  {
+   "name": "Id",
+   "ftype": 4,
+   "offset": 0,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Pal",
+   "ftype": 4,
+   "offset": 2,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Act",
+   "ftype": 4,
+   "offset": 3,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Teleport",
+   "ftype": 4,
+   "offset": 4,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Rain",
+   "ftype": 4,
+   "offset": 5,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Mud",
+   "ftype": 4,
+   "offset": 6,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "NoPer",
+   "ftype": 4,
+   "offset": 7,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "IsInside",
+   "ftype": 4,
+   "offset": 8,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "DrawEdges",
+   "ftype": 4,
+   "offset": 9,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "WarpDist",
+   "ftype": 2,
+   "offset": 12,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MonLvl1",
+   "ftype": 3,
+   "offset": 16,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "MonLvl2",
+   "ftype": 3,
+   "offset": 18,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "MonLvl3",
+   "ftype": 3,
+   "offset": 20,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "MonLvl1Ex",
+   "ftype": 3,
+   "offset": 22,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "MonLvl2Ex",
+   "ftype": 3,
+   "offset": 24,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "MonLvl3Ex",
+   "ftype": 3,
+   "offset": 26,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "MonDen",
+   "ftype": 2,
+   "offset": 28,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MonDen(N)",
+   "ftype": 2,
+   "offset": 32,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MonDen(H)",
+   "ftype": 2,
+   "offset": 36,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MonUMin",
+   "ftype": 4,
+   "offset": 40,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "MonUMax",
+   "ftype": 4,
+   "offset": 43,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "MonUMin(N)",
+   "ftype": 4,
+   "offset": 41,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "MonUMax(N)",
+   "ftype": 4,
+   "offset": 44,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "MonUMin(H)",
+   "ftype": 4,
+   "offset": 42,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "MonUMax(H)",
+   "ftype": 4,
+   "offset": 45,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "MonWndr",
+   "ftype": 4,
+   "offset": 46,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "MonSpcWalk",
+   "ftype": 4,
+   "offset": 47,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ObjGrp0",
+   "ftype": 4,
+   "offset": 229,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ObjGrp1",
+   "ftype": 4,
+   "offset": 230,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ObjGrp2",
+   "ftype": 4,
+   "offset": 231,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ObjGrp3",
+   "ftype": 4,
+   "offset": 232,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ObjGrp4",
+   "ftype": 4,
+   "offset": 233,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ObjGrp5",
+   "ftype": 4,
+   "offset": 234,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ObjGrp6",
+   "ftype": 4,
+   "offset": 235,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ObjGrp7",
+   "ftype": 4,
+   "offset": 236,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ObjPrb0",
+   "ftype": 4,
+   "offset": 237,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ObjPrb1",
+   "ftype": 4,
+   "offset": 238,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ObjPrb2",
+   "ftype": 4,
+   "offset": 239,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ObjPrb3",
+   "ftype": 4,
+   "offset": 240,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ObjPrb4",
+   "ftype": 4,
+   "offset": 241,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ObjPrb5",
+   "ftype": 4,
+   "offset": 242,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ObjPrb6",
+   "ftype": 4,
+   "offset": 243,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ObjPrb7",
+   "ftype": 4,
+   "offset": 244,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Quest",
+   "ftype": 4,
+   "offset": 48,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "NumMon",
+   "ftype": 4,
+   "offset": 50,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "mon1",
+   "ftype": 20,
+   "offset": 54,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "mon2",
+   "ftype": 20,
+   "offset": 56,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "mon3",
+   "ftype": 20,
+   "offset": 58,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "mon4",
+   "ftype": 20,
+   "offset": 60,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "mon5",
+   "ftype": 20,
+   "offset": 62,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "mon6",
+   "ftype": 20,
+   "offset": 64,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "mon7",
+   "ftype": 20,
+   "offset": 66,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "mon8",
+   "ftype": 20,
+   "offset": 68,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "mon9",
+   "ftype": 20,
+   "offset": 70,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "mon10",
+   "ftype": 20,
+   "offset": 72,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "mon11",
+   "ftype": 20,
+   "offset": 74,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "mon12",
+   "ftype": 20,
+   "offset": 76,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "mon13",
+   "ftype": 20,
+   "offset": 78,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "mon14",
+   "ftype": 20,
+   "offset": 80,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "mon15",
+   "ftype": 20,
+   "offset": 82,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "mon16",
+   "ftype": 20,
+   "offset": 84,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "mon17",
+   "ftype": 20,
+   "offset": 86,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "mon18",
+   "ftype": 20,
+   "offset": 88,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "mon19",
+   "ftype": 20,
+   "offset": 90,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "mon20",
+   "ftype": 20,
+   "offset": 92,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "mon21",
+   "ftype": 20,
+   "offset": 94,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "mon22",
+   "ftype": 20,
+   "offset": 96,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "mon23",
+   "ftype": 20,
+   "offset": 98,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "mon24",
+   "ftype": 20,
+   "offset": 100,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "mon25",
+   "ftype": 20,
+   "offset": 102,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "rangedspawn",
+   "ftype": 4,
+   "offset": 49,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "nmon1",
+   "ftype": 20,
+   "offset": 104,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "nmon2",
+   "ftype": 20,
+   "offset": 106,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "nmon3",
+   "ftype": 20,
+   "offset": 108,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "nmon4",
+   "ftype": 20,
+   "offset": 110,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "nmon5",
+   "ftype": 20,
+   "offset": 112,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "nmon6",
+   "ftype": 20,
+   "offset": 114,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "nmon7",
+   "ftype": 20,
+   "offset": 116,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "nmon8",
+   "ftype": 20,
+   "offset": 118,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "nmon9",
+   "ftype": 20,
+   "offset": 120,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "nmon10",
+   "ftype": 20,
+   "offset": 122,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "nmon11",
+   "ftype": 20,
+   "offset": 124,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "nmon12",
+   "ftype": 20,
+   "offset": 126,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "nmon13",
+   "ftype": 20,
+   "offset": 128,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "nmon14",
+   "ftype": 20,
+   "offset": 130,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "nmon15",
+   "ftype": 20,
+   "offset": 132,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "nmon16",
+   "ftype": 20,
+   "offset": 134,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "nmon17",
+   "ftype": 20,
+   "offset": 136,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "nmon18",
+   "ftype": 20,
+   "offset": 138,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "nmon19",
+   "ftype": 20,
+   "offset": 140,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "nmon20",
+   "ftype": 20,
+   "offset": 142,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "nmon21",
+   "ftype": 20,
+   "offset": 144,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "nmon22",
+   "ftype": 20,
+   "offset": 146,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "nmon23",
+   "ftype": 20,
+   "offset": 148,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "nmon24",
+   "ftype": 20,
+   "offset": 150,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "nmon25",
+   "ftype": 20,
+   "offset": 152,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "umon1",
+   "ftype": 20,
+   "offset": 154,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "umon2",
+   "ftype": 20,
+   "offset": 156,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "umon3",
+   "ftype": 20,
+   "offset": 158,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "umon4",
+   "ftype": 20,
+   "offset": 160,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "umon5",
+   "ftype": 20,
+   "offset": 162,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "umon6",
+   "ftype": 20,
+   "offset": 164,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "umon7",
+   "ftype": 20,
+   "offset": 166,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "umon8",
+   "ftype": 20,
+   "offset": 168,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "umon9",
+   "ftype": 20,
+   "offset": 170,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "umon10",
+   "ftype": 20,
+   "offset": 172,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "umon11",
+   "ftype": 20,
+   "offset": 174,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "umon12",
+   "ftype": 20,
+   "offset": 176,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "umon13",
+   "ftype": 20,
+   "offset": 178,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "umon14",
+   "ftype": 20,
+   "offset": 180,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "umon15",
+   "ftype": 20,
+   "offset": 182,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "umon16",
+   "ftype": 20,
+   "offset": 184,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "umon17",
+   "ftype": 20,
+   "offset": 186,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "umon18",
+   "ftype": 20,
+   "offset": 188,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "umon19",
+   "ftype": 20,
+   "offset": 190,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "umon20",
+   "ftype": 20,
+   "offset": 192,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "umon21",
+   "ftype": 20,
+   "offset": 194,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "umon22",
+   "ftype": 20,
+   "offset": 196,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "umon23",
+   "ftype": 20,
+   "offset": 198,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "umon24",
+   "ftype": 20,
+   "offset": 200,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "umon25",
+   "ftype": 20,
+   "offset": 202,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "cmon1",
+   "ftype": 20,
+   "offset": 204,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "cmon2",
+   "ftype": 20,
+   "offset": 206,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "cmon3",
+   "ftype": 20,
+   "offset": 208,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "cmon4",
+   "ftype": 20,
+   "offset": 210,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "cpct1",
+   "ftype": 3,
+   "offset": 212,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "cpct2",
+   "ftype": 3,
+   "offset": 214,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "cpct3",
+   "ftype": 3,
+   "offset": 216,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "cpct4",
+   "ftype": 3,
+   "offset": 218,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "camt1",
+   "ftype": 3,
+   "offset": 220,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "camt2",
+   "ftype": 3,
+   "offset": 220,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "camt3",
+   "ftype": 3,
+   "offset": 220,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "camt4",
+   "ftype": 3,
+   "offset": 220,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "Themes",
+   "ftype": 2,
+   "offset": 528,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "FloorFilter",
+   "ftype": 2,
+   "offset": 532,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "BlankScreen",
+   "ftype": 2,
+   "offset": 536,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "SoundEnv",
+   "ftype": 4,
+   "offset": 540,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Waypoint",
+   "ftype": 4,
+   "offset": 228,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "LevelName",
+   "ftype": 1,
+   "offset": 245,
+   "size": 39,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "LevelWarp",
+   "ftype": 1,
+   "offset": 285,
+   "size": 39,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "EntryFile",
+   "ftype": 1,
+   "offset": 325,
+   "size": 39,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  }
+ ],
+ "bin_record_size": 544
+}

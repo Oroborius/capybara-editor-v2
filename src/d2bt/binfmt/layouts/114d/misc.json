@@ -1,0 +1,1749 @@
+{
+ "table": "misc",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 424,
+ "fields": [
+  {
+   "name": "code",
+   "ftype": 10,
+   "offset": 128,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code",
+   "key": true
+  },
+  {
+   "name": "namestr",
+   "ftype": 22,
+   "offset": 244,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "version",
+   "ftype": 3,
+   "offset": 246,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "compactsave",
+   "ftype": 6,
+   "offset": 323,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "type",
+   "ftype": 15,
+   "offset": 286,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "type2",
+   "ftype": 15,
+   "offset": 288,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "hit class",
+   "ftype": 13,
+   "offset": 316,
+   "size": 1,
+   "bit": null,
+   "link": "hitclass.code",
+   "type": "u8"
+  },
+  {
+   "name": "gemapplytype",
+   "ftype": 4,
+   "offset": 318,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "levelreq",
+   "ftype": 4,
+   "offset": 319,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "magic lvl",
+   "ftype": 4,
+   "offset": 320,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "auto prefix",
+   "ftype": 3,
+   "offset": 248,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "gamble cost",
+   "ftype": 2,
+   "offset": 212,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "alternategfx",
+   "ftype": 9,
+   "offset": 144,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  },
+  {
+   "name": "spawnable",
+   "ftype": 4,
+   "offset": 307,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "rarity",
+   "ftype": 4,
+   "offset": 252,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "level",
+   "ftype": 4,
+   "offset": 253,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "mindam",
+   "ftype": 6,
+   "offset": 254,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "maxdam",
+   "ftype": 6,
+   "offset": 255,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "2handmindam",
+   "ftype": 6,
+   "offset": 258,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "2handmaxdam",
+   "ftype": 6,
+   "offset": 259,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "minmisdam",
+   "ftype": 4,
+   "offset": 256,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "maxmisdam",
+   "ftype": 4,
+   "offset": 257,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "minac",
+   "ftype": 2,
+   "offset": 204,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "maxac",
+   "ftype": 2,
+   "offset": 208,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "block",
+   "ftype": 6,
+   "offset": 273,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "absorbs",
+   "ftype": 6,
+   "offset": 270,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "rangeadder",
+   "ftype": 6,
+   "offset": 260,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "speed",
+   "ftype": 2,
+   "offset": 216,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "strbonus",
+   "ftype": 3,
+   "offset": 262,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "dexbonus",
+   "ftype": 3,
+   "offset": 264,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "reqstr",
+   "ftype": 3,
+   "offset": 266,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "reqdex",
+   "ftype": 3,
+   "offset": 268,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "invwidth",
+   "ftype": 4,
+   "offset": 271,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "invheight",
+   "ftype": 4,
+   "offset": 272,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "stackable",
+   "ftype": 4,
+   "offset": 306,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "minstack",
+   "ftype": 2,
+   "offset": 228,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "maxstack",
+   "ftype": 2,
+   "offset": 232,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "spawnstack",
+   "ftype": 2,
+   "offset": 236,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "flippyfile",
+   "ftype": 1,
+   "offset": 0,
+   "size": 31,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "invfile",
+   "ftype": 1,
+   "offset": 32,
+   "size": 31,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "uniqueinvfile",
+   "ftype": 1,
+   "offset": 64,
+   "size": 31,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "setinvfile",
+   "ftype": 1,
+   "offset": 96,
+   "size": 31,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "durability",
+   "ftype": 6,
+   "offset": 274,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "nodurability",
+   "ftype": 4,
+   "offset": 275,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "missile",
+   "ftype": 6,
+   "offset": 276,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "component",
+   "ftype": 4,
+   "offset": 277,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "cost",
+   "ftype": 2,
+   "offset": 224,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "normcode",
+   "ftype": 9,
+   "offset": 132,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  },
+  {
+   "name": "ubercode",
+   "ftype": 9,
+   "offset": 136,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  },
+  {
+   "name": "ultracode",
+   "ftype": 9,
+   "offset": 140,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  },
+  {
+   "name": "wclass",
+   "ftype": 9,
+   "offset": 192,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  },
+  {
+   "name": "2handedwclass",
+   "ftype": 9,
+   "offset": 196,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  },
+  {
+   "name": "1or2handed",
+   "ftype": 6,
+   "offset": 317,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "BetterGem",
+   "ftype": 9,
+   "offset": 188,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  },
+  {
+   "name": "rArm",
+   "ftype": 6,
+   "offset": 278,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "lArm",
+   "ftype": 6,
+   "offset": 279,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "torso",
+   "ftype": 6,
+   "offset": 280,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "legs",
+   "ftype": 6,
+   "offset": 281,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "rspad",
+   "ftype": 6,
+   "offset": 282,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "lspad",
+   "ftype": 6,
+   "offset": 283,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "2handed",
+   "ftype": 6,
+   "offset": 284,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "useable",
+   "ftype": 4,
+   "offset": 285,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "subtype",
+   "ftype": 6,
+   "offset": 290,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "dropsound",
+   "ftype": 20,
+   "offset": 292,
+   "size": 2,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "u16"
+  },
+  {
+   "name": "dropsfxframe",
+   "ftype": 4,
+   "offset": 296,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "usesound",
+   "ftype": 20,
+   "offset": 294,
+   "size": 2,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "u16"
+  },
+  {
+   "name": "unique",
+   "ftype": 4,
+   "offset": 297,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "quest",
+   "ftype": 4,
+   "offset": 298,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "questdiffcheck",
+   "ftype": 4,
+   "offset": 299,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "transparent",
+   "ftype": 4,
+   "offset": 300,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "transtbl",
+   "ftype": 4,
+   "offset": 301,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "lightradius",
+   "ftype": 4,
+   "offset": 303,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "belt",
+   "ftype": 4,
+   "offset": 304,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "autobelt",
+   "ftype": 4,
+   "offset": 305,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "missiletype",
+   "ftype": 3,
+   "offset": 250,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "spellicon",
+   "ftype": 6,
+   "offset": 308,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "durwarning",
+   "ftype": 4,
+   "offset": 309,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "qntwarning",
+   "ftype": 4,
+   "offset": 310,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "hasinv",
+   "ftype": 6,
+   "offset": 311,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "gemsockets",
+   "ftype": 6,
+   "offset": 312,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "gemoffset",
+   "ftype": 2,
+   "offset": 240,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "pSpell",
+   "ftype": 2,
+   "offset": 148,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "state",
+   "ftype": 20,
+   "offset": 152,
+   "size": 2,
+   "bit": null,
+   "link": "states.state",
+   "type": "u16"
+  },
+  {
+   "name": "cstate1",
+   "ftype": 20,
+   "offset": 154,
+   "size": 2,
+   "bit": null,
+   "link": "states.state",
+   "type": "u16"
+  },
+  {
+   "name": "cstate2",
+   "ftype": 20,
+   "offset": 156,
+   "size": 2,
+   "bit": null,
+   "link": "states.state",
+   "type": "u16"
+  },
+  {
+   "name": "len",
+   "ftype": 25,
+   "offset": 176,
+   "size": 4,
+   "bit": null,
+   "link": "calc:itemscode",
+   "type": "u32"
+  },
+  {
+   "name": "stat1",
+   "ftype": 20,
+   "offset": 158,
+   "size": 2,
+   "bit": null,
+   "link": "itemstatcost.stat",
+   "type": "u16"
+  },
+  {
+   "name": "calc1",
+   "ftype": 25,
+   "offset": 164,
+   "size": 4,
+   "bit": null,
+   "link": "calc:itemscode",
+   "type": "u32"
+  },
+  {
+   "name": "stat2",
+   "ftype": 20,
+   "offset": 160,
+   "size": 2,
+   "bit": null,
+   "link": "itemstatcost.stat",
+   "type": "u16"
+  },
+  {
+   "name": "calc2",
+   "ftype": 25,
+   "offset": 168,
+   "size": 4,
+   "bit": null,
+   "link": "calc:itemscode",
+   "type": "u32"
+  },
+  {
+   "name": "stat3",
+   "ftype": 20,
+   "offset": 162,
+   "size": 2,
+   "bit": null,
+   "link": "itemstatcost.stat",
+   "type": "u16"
+  },
+  {
+   "name": "calc3",
+   "ftype": 25,
+   "offset": 172,
+   "size": 4,
+   "bit": null,
+   "link": "calc:itemscode",
+   "type": "u32"
+  },
+  {
+   "name": "spelldesc",
+   "ftype": 4,
+   "offset": 180,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "spelldescstr",
+   "ftype": 22,
+   "offset": 182,
+   "size": 2,
+   "bit": null,
+   "link": "tbl",
+   "type": "u16"
+  },
+  {
+   "name": "spelldesccalc",
+   "ftype": 25,
+   "offset": 184,
+   "size": 4,
+   "bit": null,
+   "link": "calc:itemscode",
+   "type": "u32"
+  },
+  {
+   "name": "SkipName",
+   "ftype": 4,
+   "offset": 324,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "bitfield1",
+   "ftype": 2,
+   "offset": 220,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "CharsiMin",
+   "ftype": 4,
+   "offset": 328,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "CharsiMax",
+   "ftype": 4,
+   "offset": 345,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "CharsiMagicMin",
+   "ftype": 4,
+   "offset": 362,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "CharsiMagicMax",
+   "ftype": 4,
+   "offset": 379,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "CharsiMagicLvl",
+   "ftype": 4,
+   "offset": 396,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "GheedMin",
+   "ftype": 4,
+   "offset": 327,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "GheedMax",
+   "ftype": 4,
+   "offset": 344,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "GheedMagicMin",
+   "ftype": 4,
+   "offset": 361,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "GheedMagicMax",
+   "ftype": 4,
+   "offset": 378,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "GheedMagicLvl",
+   "ftype": 4,
+   "offset": 395,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "AkaraMin",
+   "ftype": 4,
+   "offset": 326,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "AkaraMax",
+   "ftype": 4,
+   "offset": 343,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "AkaraMagicMin",
+   "ftype": 4,
+   "offset": 360,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "AkaraMagicMax",
+   "ftype": 4,
+   "offset": 377,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "AkaraMagicLvl",
+   "ftype": 4,
+   "offset": 394,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "FaraMin",
+   "ftype": 4,
+   "offset": 329,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "FaraMax",
+   "ftype": 4,
+   "offset": 346,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "FaraMagicMin",
+   "ftype": 4,
+   "offset": 363,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "FaraMagicMax",
+   "ftype": 4,
+   "offset": 380,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "FaraMagicLvl",
+   "ftype": 4,
+   "offset": 397,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "LysanderMin",
+   "ftype": 4,
+   "offset": 330,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "LysanderMax",
+   "ftype": 4,
+   "offset": 347,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "LysanderMagicMin",
+   "ftype": 4,
+   "offset": 364,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "LysanderMagicMax",
+   "ftype": 4,
+   "offset": 381,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "LysanderMagicLvl",
+   "ftype": 4,
+   "offset": 398,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "DrognanMin",
+   "ftype": 4,
+   "offset": 331,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "DrognanMax",
+   "ftype": 4,
+   "offset": 348,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "DrognanMagicMin",
+   "ftype": 4,
+   "offset": 365,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "DrognanMagicMax",
+   "ftype": 4,
+   "offset": 382,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "DrognanMagicLvl",
+   "ftype": 4,
+   "offset": 399,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "HraltiMin",
+   "ftype": 4,
+   "offset": 332,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "HraltiMax",
+   "ftype": 4,
+   "offset": 349,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "HraltiMagicMin",
+   "ftype": 4,
+   "offset": 366,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "HraltiMagicMax",
+   "ftype": 4,
+   "offset": 383,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "HraltiMagicLvl",
+   "ftype": 4,
+   "offset": 400,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "AlkorMin",
+   "ftype": 4,
+   "offset": 333,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "AlkorMax",
+   "ftype": 4,
+   "offset": 350,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "AlkorMagicMin",
+   "ftype": 4,
+   "offset": 367,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "AlkorMagicMax",
+   "ftype": 4,
+   "offset": 384,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "AlkorMagicLvl",
+   "ftype": 4,
+   "offset": 401,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "OrmusMin",
+   "ftype": 4,
+   "offset": 334,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "OrmusMax",
+   "ftype": 4,
+   "offset": 351,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "OrmusMagicMin",
+   "ftype": 4,
+   "offset": 368,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "OrmusMagicMax",
+   "ftype": 4,
+   "offset": 385,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "OrmusMagicLvl",
+   "ftype": 4,
+   "offset": 402,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ElzixMin",
+   "ftype": 4,
+   "offset": 335,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ElzixMax",
+   "ftype": 4,
+   "offset": 352,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ElzixMagicMin",
+   "ftype": 4,
+   "offset": 369,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ElzixMagicMax",
+   "ftype": 4,
+   "offset": 386,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ElzixMagicLvl",
+   "ftype": 4,
+   "offset": 403,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "AshearaMin",
+   "ftype": 4,
+   "offset": 336,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "AshearaMax",
+   "ftype": 4,
+   "offset": 353,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "AshearaMagicMin",
+   "ftype": 4,
+   "offset": 370,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "AshearaMagicMax",
+   "ftype": 4,
+   "offset": 387,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "AshearaMagicLvl",
+   "ftype": 4,
+   "offset": 404,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "CainMin",
+   "ftype": 4,
+   "offset": 337,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "CainMax",
+   "ftype": 4,
+   "offset": 354,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "CainMagicMin",
+   "ftype": 4,
+   "offset": 371,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "CainMagicMax",
+   "ftype": 4,
+   "offset": 388,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "CainMagicLvl",
+   "ftype": 4,
+   "offset": 405,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "HalbuMin",
+   "ftype": 4,
+   "offset": 338,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "HalbuMax",
+   "ftype": 4,
+   "offset": 355,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "HalbuMagicMin",
+   "ftype": 4,
+   "offset": 372,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "HalbuMagicMax",
+   "ftype": 4,
+   "offset": 389,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "HalbuMagicLvl",
+   "ftype": 4,
+   "offset": 406,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "JamellaMin",
+   "ftype": 4,
+   "offset": 339,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "JamellaMax",
+   "ftype": 4,
+   "offset": 356,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "JamellaMagicMin",
+   "ftype": 4,
+   "offset": 373,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "JamellaMagicMax",
+   "ftype": 4,
+   "offset": 390,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "JamellaMagicLvl",
+   "ftype": 4,
+   "offset": 407,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "MalahMin",
+   "ftype": 4,
+   "offset": 340,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "MalahMax",
+   "ftype": 4,
+   "offset": 357,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "MalahMagicMin",
+   "ftype": 4,
+   "offset": 374,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "MalahMagicMax",
+   "ftype": 4,
+   "offset": 391,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "MalahMagicLvl",
+   "ftype": 4,
+   "offset": 408,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "LarzukMin",
+   "ftype": 4,
+   "offset": 341,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "LarzukMax",
+   "ftype": 4,
+   "offset": 358,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "LarzukMagicMin",
+   "ftype": 4,
+   "offset": 375,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "LarzukMagicMax",
+   "ftype": 4,
+   "offset": 392,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "LarzukMagicLvl",
+   "ftype": 4,
+   "offset": 409,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "DrehyaMin",
+   "ftype": 4,
+   "offset": 342,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "DrehyaMax",
+   "ftype": 4,
+   "offset": 359,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "DrehyaMagicMin",
+   "ftype": 4,
+   "offset": 376,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "DrehyaMagicMax",
+   "ftype": 4,
+   "offset": 393,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "DrehyaMagicLvl",
+   "ftype": 4,
+   "offset": 410,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Transmogrify",
+   "ftype": 6,
+   "offset": 313,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "TMogType",
+   "ftype": 9,
+   "offset": 200,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  },
+  {
+   "name": "TMogMin",
+   "ftype": 6,
+   "offset": 314,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "TMogMax",
+   "ftype": 6,
+   "offset": 315,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "Transform",
+   "ftype": 4,
+   "offset": 321,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "InvTrans",
+   "ftype": 4,
+   "offset": 322,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "PermStoreItem",
+   "ftype": 4,
+   "offset": 420,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "multibuy",
+   "ftype": 4,
+   "offset": 421,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "NightmareUpgrade",
+   "ftype": 9,
+   "offset": 412,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  },
+  {
+   "name": "HellUpgrade",
+   "ftype": 9,
+   "offset": 416,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  },
+  {
+   "name": "Nameable",
+   "ftype": 4,
+   "offset": 325,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  }
+ ],
+ "bin_record_size": 424
+}

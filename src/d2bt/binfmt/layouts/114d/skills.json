@@ -1,0 +1,2154 @@
+{
+ "table": "skills",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 572,
+ "fields": [
+  {
+   "name": "skill",
+   "ftype": 17,
+   "offset": 0,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16",
+   "key": true
+  },
+  {
+   "name": "charclass",
+   "ftype": 13,
+   "offset": 12,
+   "size": 1,
+   "bit": null,
+   "link": "playerclass.code",
+   "type": "u8"
+  },
+  {
+   "name": "skilldesc",
+   "ftype": 20,
+   "offset": 404,
+   "size": 2,
+   "bit": null,
+   "link": "skilldesc.skilldesc",
+   "type": "u16"
+  },
+  {
+   "name": "srvstfunc",
+   "ftype": 3,
+   "offset": 44,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "srvdofunc",
+   "ftype": 3,
+   "offset": 46,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "srvprgfunc1",
+   "ftype": 3,
+   "offset": 48,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "srvprgfunc2",
+   "ftype": 3,
+   "offset": 50,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "srvprgfunc3",
+   "ftype": 3,
+   "offset": 52,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "prgcalc1",
+   "ftype": 25,
+   "offset": 56,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "prgcalc2",
+   "ftype": 25,
+   "offset": 60,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "prgcalc3",
+   "ftype": 25,
+   "offset": 64,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "prgdam",
+   "ftype": 4,
+   "offset": 68,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "srvmissile",
+   "ftype": 20,
+   "offset": 70,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "srvmissilea",
+   "ftype": 20,
+   "offset": 72,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "srvmissileb",
+   "ftype": 20,
+   "offset": 74,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "srvmissilec",
+   "ftype": 20,
+   "offset": 76,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "srvoverlay",
+   "ftype": 20,
+   "offset": 78,
+   "size": 2,
+   "bit": null,
+   "link": "overlay.overlay",
+   "type": "u16"
+  },
+  {
+   "name": "lob",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 1,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "decquant",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 0,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "immediate",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 15,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "aurafilter",
+   "ftype": 2,
+   "offset": 80,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "aurastate",
+   "ftype": 20,
+   "offset": 128,
+   "size": 2,
+   "bit": null,
+   "link": "states.state",
+   "type": "u16"
+  },
+  {
+   "name": "auratargetstate",
+   "ftype": 20,
+   "offset": 130,
+   "size": 2,
+   "bit": null,
+   "link": "states.state",
+   "type": "u16"
+  },
+  {
+   "name": "auralencalc",
+   "ftype": 25,
+   "offset": 96,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "aurarangecalc",
+   "ftype": 25,
+   "offset": 100,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "aurastat1",
+   "ftype": 20,
+   "offset": 84,
+   "size": 2,
+   "bit": null,
+   "link": "itemstatcost.stat",
+   "type": "u16"
+  },
+  {
+   "name": "aurastatcalc1",
+   "ftype": 25,
+   "offset": 104,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "aurastat2",
+   "ftype": 20,
+   "offset": 86,
+   "size": 2,
+   "bit": null,
+   "link": "itemstatcost.stat",
+   "type": "u16"
+  },
+  {
+   "name": "aurastatcalc2",
+   "ftype": 25,
+   "offset": 108,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "aurastat3",
+   "ftype": 20,
+   "offset": 88,
+   "size": 2,
+   "bit": null,
+   "link": "itemstatcost.stat",
+   "type": "u16"
+  },
+  {
+   "name": "aurastatcalc3",
+   "ftype": 25,
+   "offset": 112,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "aurastat4",
+   "ftype": 20,
+   "offset": 90,
+   "size": 2,
+   "bit": null,
+   "link": "itemstatcost.stat",
+   "type": "u16"
+  },
+  {
+   "name": "aurastatcalc4",
+   "ftype": 25,
+   "offset": 116,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "aurastat5",
+   "ftype": 20,
+   "offset": 92,
+   "size": 2,
+   "bit": null,
+   "link": "itemstatcost.stat",
+   "type": "u16"
+  },
+  {
+   "name": "aurastatcalc5",
+   "ftype": 25,
+   "offset": 120,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "aurastat6",
+   "ftype": 20,
+   "offset": 94,
+   "size": 2,
+   "bit": null,
+   "link": "itemstatcost.stat",
+   "type": "u16"
+  },
+  {
+   "name": "aurastatcalc6",
+   "ftype": 25,
+   "offset": 124,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "auraevent1",
+   "ftype": 20,
+   "offset": 132,
+   "size": 2,
+   "bit": null,
+   "link": "events.event",
+   "type": "u16"
+  },
+  {
+   "name": "auraeventfunc1",
+   "ftype": 3,
+   "offset": 138,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "auraevent2",
+   "ftype": 20,
+   "offset": 134,
+   "size": 2,
+   "bit": null,
+   "link": "events.event",
+   "type": "u16"
+  },
+  {
+   "name": "auraeventfunc2",
+   "ftype": 3,
+   "offset": 140,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "auraevent3",
+   "ftype": 20,
+   "offset": 136,
+   "size": 2,
+   "bit": null,
+   "link": "events.event",
+   "type": "u16"
+  },
+  {
+   "name": "auraeventfunc3",
+   "ftype": 3,
+   "offset": 142,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "auratgtevent",
+   "ftype": 20,
+   "offset": 144,
+   "size": 2,
+   "bit": null,
+   "link": "events.event",
+   "type": "u16"
+  },
+  {
+   "name": "auratgteventfunc",
+   "ftype": 3,
+   "offset": 146,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "passivestate",
+   "ftype": 20,
+   "offset": 148,
+   "size": 2,
+   "bit": null,
+   "link": "states.state",
+   "type": "u16"
+  },
+  {
+   "name": "passiveitype",
+   "ftype": 15,
+   "offset": 150,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "passivestat1",
+   "ftype": 20,
+   "offset": 152,
+   "size": 2,
+   "bit": null,
+   "link": "itemstatcost.stat",
+   "type": "u16"
+  },
+  {
+   "name": "passivecalc1",
+   "ftype": 25,
+   "offset": 164,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "passivestat2",
+   "ftype": 20,
+   "offset": 154,
+   "size": 2,
+   "bit": null,
+   "link": "itemstatcost.stat",
+   "type": "u16"
+  },
+  {
+   "name": "passivecalc2",
+   "ftype": 25,
+   "offset": 168,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "passivestat3",
+   "ftype": 20,
+   "offset": 156,
+   "size": 2,
+   "bit": null,
+   "link": "itemstatcost.stat",
+   "type": "u16"
+  },
+  {
+   "name": "passivecalc3",
+   "ftype": 25,
+   "offset": 172,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "passivestat4",
+   "ftype": 20,
+   "offset": 158,
+   "size": 2,
+   "bit": null,
+   "link": "itemstatcost.stat",
+   "type": "u16"
+  },
+  {
+   "name": "passivecalc4",
+   "ftype": 25,
+   "offset": 176,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "passivestat5",
+   "ftype": 20,
+   "offset": 160,
+   "size": 2,
+   "bit": null,
+   "link": "itemstatcost.stat",
+   "type": "u16"
+  },
+  {
+   "name": "passivecalc5",
+   "ftype": 25,
+   "offset": 180,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "passiveevent",
+   "ftype": 20,
+   "offset": 184,
+   "size": 2,
+   "bit": null,
+   "link": "events.event",
+   "type": "u16"
+  },
+  {
+   "name": "passiveeventfunc",
+   "ftype": 3,
+   "offset": 186,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "summon",
+   "ftype": 20,
+   "offset": 188,
+   "size": 2,
+   "bit": null,
+   "link": "monstats.Id",
+   "type": "u16"
+  },
+  {
+   "name": "pettype",
+   "ftype": 21,
+   "offset": 190,
+   "size": 1,
+   "bit": null,
+   "link": "pettype.pet type",
+   "type": "u8"
+  },
+  {
+   "name": "summode",
+   "ftype": 13,
+   "offset": 191,
+   "size": 1,
+   "bit": null,
+   "link": "monmode.code",
+   "type": "u8"
+  },
+  {
+   "name": "petmax",
+   "ftype": 25,
+   "offset": 192,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "sumskill1",
+   "ftype": 20,
+   "offset": 196,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  },
+  {
+   "name": "sumsk1calc",
+   "ftype": 25,
+   "offset": 208,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "sumskill2",
+   "ftype": 20,
+   "offset": 198,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  },
+  {
+   "name": "sumsk2calc",
+   "ftype": 25,
+   "offset": 212,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "sumskill3",
+   "ftype": 20,
+   "offset": 200,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  },
+  {
+   "name": "sumsk3calc",
+   "ftype": 25,
+   "offset": 216,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "sumskill4",
+   "ftype": 20,
+   "offset": 202,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  },
+  {
+   "name": "sumsk4calc",
+   "ftype": 25,
+   "offset": 220,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "sumskill5",
+   "ftype": 20,
+   "offset": 204,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  },
+  {
+   "name": "sumsk5calc",
+   "ftype": 25,
+   "offset": 224,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "sumumod",
+   "ftype": 3,
+   "offset": 228,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "sumoverlay",
+   "ftype": 20,
+   "offset": 230,
+   "size": 2,
+   "bit": null,
+   "link": "overlay.overlay",
+   "type": "u16"
+  },
+  {
+   "name": "cltmissile",
+   "ftype": 20,
+   "offset": 232,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "cltmissilea",
+   "ftype": 20,
+   "offset": 234,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "cltmissileb",
+   "ftype": 20,
+   "offset": 236,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "cltmissilec",
+   "ftype": 20,
+   "offset": 238,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "cltmissiled",
+   "ftype": 20,
+   "offset": 240,
+   "size": 2,
+   "bit": null,
+   "link": "missiles.Missile",
+   "type": "u16"
+  },
+  {
+   "name": "cltstfunc",
+   "ftype": 3,
+   "offset": 242,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "cltdofunc",
+   "ftype": 3,
+   "offset": 244,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "cltprgfunc1",
+   "ftype": 3,
+   "offset": 246,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "cltprgfunc2",
+   "ftype": 3,
+   "offset": 248,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "cltprgfunc3",
+   "ftype": 3,
+   "offset": 250,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "stsuccessonly",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 12,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "stsound",
+   "ftype": 20,
+   "offset": 252,
+   "size": 2,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "u16"
+  },
+  {
+   "name": "stsoundclass",
+   "ftype": 20,
+   "offset": 254,
+   "size": 2,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "u16"
+  },
+  {
+   "name": "stsounddelay",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 13,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "weaponsnd",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 14,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "dosound",
+   "ftype": 20,
+   "offset": 256,
+   "size": 2,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "u16"
+  },
+  {
+   "name": "dosound a",
+   "ftype": 20,
+   "offset": 258,
+   "size": 2,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "u16"
+  },
+  {
+   "name": "dosound b",
+   "ftype": 20,
+   "offset": 260,
+   "size": 2,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "u16"
+  },
+  {
+   "name": "tgtsound",
+   "ftype": 20,
+   "offset": 266,
+   "size": 2,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "u16"
+  },
+  {
+   "name": "tgtoverlay",
+   "ftype": 20,
+   "offset": 264,
+   "size": 2,
+   "bit": null,
+   "link": "overlay.overlay",
+   "type": "u16"
+  },
+  {
+   "name": "castoverlay",
+   "ftype": 20,
+   "offset": 262,
+   "size": 2,
+   "bit": null,
+   "link": "overlay.overlay",
+   "type": "u16"
+  },
+  {
+   "name": "cltoverlaya",
+   "ftype": 20,
+   "offset": 272,
+   "size": 2,
+   "bit": null,
+   "link": "overlay.overlay",
+   "type": "u16"
+  },
+  {
+   "name": "cltoverlayb",
+   "ftype": 20,
+   "offset": 274,
+   "size": 2,
+   "bit": null,
+   "link": "overlay.overlay",
+   "type": "u16"
+  },
+  {
+   "name": "prgsound",
+   "ftype": 20,
+   "offset": 270,
+   "size": 2,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "u16"
+  },
+  {
+   "name": "prgoverlay",
+   "ftype": 20,
+   "offset": 268,
+   "size": 2,
+   "bit": null,
+   "link": "overlay.overlay",
+   "type": "u16"
+  },
+  {
+   "name": "cltcalc1",
+   "ftype": 25,
+   "offset": 276,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "cltcalc2",
+   "ftype": 25,
+   "offset": 280,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "cltcalc3",
+   "ftype": 25,
+   "offset": 284,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "warp",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 38,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "anim",
+   "ftype": 13,
+   "offset": 16,
+   "size": 1,
+   "bit": null,
+   "link": "plrmode.code",
+   "type": "u8"
+  },
+  {
+   "name": "seqtrans",
+   "ftype": 13,
+   "offset": 18,
+   "size": 1,
+   "bit": null,
+   "link": "plrmode.code",
+   "type": "u8"
+  },
+  {
+   "name": "monanim",
+   "ftype": 13,
+   "offset": 17,
+   "size": 1,
+   "bit": null,
+   "link": "monmode.code",
+   "type": "u8"
+  },
+  {
+   "name": "seqnum",
+   "ftype": 4,
+   "offset": 19,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "seqinput",
+   "ftype": 4,
+   "offset": 22,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "range",
+   "ftype": 13,
+   "offset": 20,
+   "size": 1,
+   "bit": null,
+   "link": "static:none,h2h,rng,both,loc",
+   "type": "u8"
+  },
+  {
+   "name": "weapsel",
+   "ftype": 4,
+   "offset": 360,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "itypea1",
+   "ftype": 15,
+   "offset": 24,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "itypea2",
+   "ftype": 15,
+   "offset": 26,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "itypea3",
+   "ftype": 15,
+   "offset": 28,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "etypea1",
+   "ftype": 15,
+   "offset": 36,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "etypea2",
+   "ftype": 15,
+   "offset": 38,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "itypeb1",
+   "ftype": 15,
+   "offset": 30,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "itypeb2",
+   "ftype": 15,
+   "offset": 32,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "itypeb3",
+   "ftype": 15,
+   "offset": 34,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "etypeb1",
+   "ftype": 15,
+   "offset": 40,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "etypeb2",
+   "ftype": 15,
+   "offset": 42,
+   "size": 2,
+   "bit": null,
+   "link": "itemtypes.code",
+   "type": "u16"
+  },
+  {
+   "name": "maxlvl",
+   "ftype": 3,
+   "offset": 300,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "progressive",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 2,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "finishing",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 3,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "prgstack",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 7,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "InTown",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 8,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "ResultFlags",
+   "ftype": 3,
+   "offset": 302,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "HitFlags",
+   "ftype": 8,
+   "offset": 304,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "HitClass",
+   "ftype": 8,
+   "offset": 308,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Kick",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 9,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "passive",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 4,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "aura",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 5,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "periodic",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 6,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "perdelay",
+   "ftype": 25,
+   "offset": 296,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "general",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 35,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "scroll",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 36,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "ItemEffect",
+   "ftype": 3,
+   "offset": 362,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "ItemCltEffect",
+   "ftype": 3,
+   "offset": 364,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "ItemTgtDo",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 29,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "ItemCheckStart",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 33,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "ItemCltCheckStart",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 34,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "ItemTarget",
+   "ftype": 4,
+   "offset": 288,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ItemCastSound",
+   "ftype": 20,
+   "offset": 290,
+   "size": 2,
+   "bit": null,
+   "link": "sounds.Sound",
+   "type": "u16"
+  },
+  {
+   "name": "ItemCastOverlay",
+   "ftype": 20,
+   "offset": 292,
+   "size": 2,
+   "bit": null,
+   "link": "overlay.overlay",
+   "type": "u16"
+  },
+  {
+   "name": "InGame",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 10,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "lineofsight",
+   "ftype": 4,
+   "offset": 399,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "attackrank",
+   "ftype": 4,
+   "offset": 398,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "noammo",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 16,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "enhanceable",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 17,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "durability",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 18,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "UseAttackRate",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 19,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "SelectProc",
+   "ftype": 4,
+   "offset": 21,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "TargetableOnly",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 20,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "SearchEnemyXY",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 21,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "SearchEnemyNear",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 22,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "SearchOpenXY",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 23,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "TargetCorpse",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 24,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "TargetPet",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 25,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "TargetAlly",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 26,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "TargetItem",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 27,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "AttackNoMana",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 28,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "leftskill",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 30,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "interrupt",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 31,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "TgtPlaceCheck",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 32,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "repeat",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 11,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "skpoints",
+   "ftype": 25,
+   "offset": 368,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "reqlevel",
+   "ftype": 3,
+   "offset": 372,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "reqstr",
+   "ftype": 3,
+   "offset": 374,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "reqdex",
+   "ftype": 3,
+   "offset": 376,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "reqint",
+   "ftype": 3,
+   "offset": 378,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "reqvit",
+   "ftype": 3,
+   "offset": 380,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "reqskill1",
+   "ftype": 20,
+   "offset": 382,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  },
+  {
+   "name": "reqskill2",
+   "ftype": 20,
+   "offset": 384,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  },
+  {
+   "name": "reqskill3",
+   "ftype": 20,
+   "offset": 386,
+   "size": 2,
+   "bit": null,
+   "link": "skills.skill",
+   "type": "u16"
+  },
+  {
+   "name": "delay",
+   "ftype": 25,
+   "offset": 400,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "usemanaondo",
+   "ftype": 26,
+   "offset": 4,
+   "size": 1,
+   "bit": 37,
+   "link": null,
+   "type": "bit"
+  },
+  {
+   "name": "startmana",
+   "ftype": 3,
+   "offset": 388,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "minmana",
+   "ftype": 3,
+   "offset": 390,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "manashift",
+   "ftype": 3,
+   "offset": 392,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "mana",
+   "ftype": 3,
+   "offset": 394,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "lvlmana",
+   "ftype": 3,
+   "offset": 396,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "Param1",
+   "ftype": 2,
+   "offset": 328,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Param2",
+   "ftype": 2,
+   "offset": 332,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Param3",
+   "ftype": 2,
+   "offset": 336,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Param4",
+   "ftype": 2,
+   "offset": 340,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Param5",
+   "ftype": 2,
+   "offset": 344,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Param6",
+   "ftype": 2,
+   "offset": 348,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Param7",
+   "ftype": 2,
+   "offset": 352,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Param8",
+   "ftype": 2,
+   "offset": 356,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "calc1",
+   "ftype": 25,
+   "offset": 312,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "calc2",
+   "ftype": 25,
+   "offset": 316,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "calc3",
+   "ftype": 25,
+   "offset": 320,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "calc4",
+   "ftype": 25,
+   "offset": 324,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "ToHit",
+   "ftype": 2,
+   "offset": 408,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "LevToHit",
+   "ftype": 2,
+   "offset": 412,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "ToHitCalc",
+   "ftype": 25,
+   "offset": 416,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "HitShift",
+   "ftype": 4,
+   "offset": 420,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "SrcDam",
+   "ftype": 4,
+   "offset": 421,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "MinDam",
+   "ftype": 2,
+   "offset": 424,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MinLevDam1",
+   "ftype": 2,
+   "offset": 432,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MinLevDam2",
+   "ftype": 2,
+   "offset": 436,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MinLevDam3",
+   "ftype": 2,
+   "offset": 440,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MinLevDam4",
+   "ftype": 2,
+   "offset": 444,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MinLevDam5",
+   "ftype": 2,
+   "offset": 448,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MaxDam",
+   "ftype": 2,
+   "offset": 428,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MaxLevDam1",
+   "ftype": 2,
+   "offset": 452,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MaxLevDam2",
+   "ftype": 2,
+   "offset": 456,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MaxLevDam3",
+   "ftype": 2,
+   "offset": 460,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MaxLevDam4",
+   "ftype": 2,
+   "offset": 464,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "MaxLevDam5",
+   "ftype": 2,
+   "offset": 468,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "DmgSymPerCalc",
+   "ftype": 25,
+   "offset": 472,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "EType",
+   "ftype": 13,
+   "offset": 476,
+   "size": 1,
+   "bit": null,
+   "link": "elemtypes.code",
+   "type": "u8"
+  },
+  {
+   "name": "EMin",
+   "ftype": 2,
+   "offset": 480,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "EMinLev1",
+   "ftype": 2,
+   "offset": 488,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "EMinLev2",
+   "ftype": 2,
+   "offset": 492,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "EMinLev3",
+   "ftype": 2,
+   "offset": 496,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "EMinLev4",
+   "ftype": 2,
+   "offset": 500,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "EMinLev5",
+   "ftype": 2,
+   "offset": 504,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "EMax",
+   "ftype": 2,
+   "offset": 484,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "EMaxLev1",
+   "ftype": 2,
+   "offset": 508,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "EMaxLev2",
+   "ftype": 2,
+   "offset": 512,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "EMaxLev3",
+   "ftype": 2,
+   "offset": 516,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "EMaxLev4",
+   "ftype": 2,
+   "offset": 520,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "EMaxLev5",
+   "ftype": 2,
+   "offset": 524,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "EDmgSymPerCalc",
+   "ftype": 25,
+   "offset": 528,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "ELen",
+   "ftype": 2,
+   "offset": 532,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "ELevLen1",
+   "ftype": 2,
+   "offset": 536,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "ELevLen2",
+   "ftype": 2,
+   "offset": 540,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "ELevLen3",
+   "ftype": 2,
+   "offset": 544,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "ELenSymPerCalc",
+   "ftype": 25,
+   "offset": 548,
+   "size": 4,
+   "bit": null,
+   "link": "calc:skillscode",
+   "type": "u32"
+  },
+  {
+   "name": "restrict",
+   "ftype": 4,
+   "offset": 552,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "state1",
+   "ftype": 20,
+   "offset": 554,
+   "size": 2,
+   "bit": null,
+   "link": "states.state",
+   "type": "u16"
+  },
+  {
+   "name": "state2",
+   "ftype": 20,
+   "offset": 556,
+   "size": 2,
+   "bit": null,
+   "link": "states.state",
+   "type": "u16"
+  },
+  {
+   "name": "state3",
+   "ftype": 20,
+   "offset": 558,
+   "size": 2,
+   "bit": null,
+   "link": "states.state",
+   "type": "u16"
+  },
+  {
+   "name": "aitype",
+   "ftype": 4,
+   "offset": 560,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "aibonus",
+   "ftype": 3,
+   "offset": 562,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "cost mult",
+   "ftype": 2,
+   "offset": 564,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "cost add",
+   "ftype": 2,
+   "offset": 568,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  }
+ ],
+ "bin_record_size": 572
+}

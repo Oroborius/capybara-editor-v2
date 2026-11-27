@@ -1,0 +1,29 @@
+{
+ "table": "objmode",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 52,
+ "fields": [
+  {
+   "name": "name",
+   "ftype": 1,
+   "offset": 0,
+   "size": 31,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "token",
+   "ftype": 9,
+   "offset": 32,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "code"
+  }
+ ],
+ "bin_record_size": 52
+}

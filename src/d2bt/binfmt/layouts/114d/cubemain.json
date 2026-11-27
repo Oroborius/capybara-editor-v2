@@ -1,0 +1,938 @@
+{
+ "table": "cubemain",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 328,
+ "fields": [
+  {
+   "name": "enabled",
+   "ftype": 4,
+   "offset": 0,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ladder",
+   "ftype": 4,
+   "offset": 1,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "min diff",
+   "ftype": 4,
+   "offset": 2,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "op",
+   "ftype": 4,
+   "offset": 4,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "param",
+   "ftype": 2,
+   "offset": 8,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "value",
+   "ftype": 2,
+   "offset": 12,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "class",
+   "ftype": 13,
+   "offset": 3,
+   "size": 1,
+   "bit": null,
+   "link": "playerclass.code",
+   "type": "u8"
+  },
+  {
+   "name": "numinputs",
+   "ftype": 4,
+   "offset": 16,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "version",
+   "ftype": 3,
+   "offset": 18,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "input 1",
+   "ftype": 23,
+   "offset": 0,
+   "size": null,
+   "bit": null,
+   "link": "cube_input",
+   "type": "custom"
+  },
+  {
+   "name": "input 2",
+   "ftype": 23,
+   "offset": 1,
+   "size": null,
+   "bit": null,
+   "link": "cube_input",
+   "type": "custom"
+  },
+  {
+   "name": "input 3",
+   "ftype": 23,
+   "offset": 2,
+   "size": null,
+   "bit": null,
+   "link": "cube_input",
+   "type": "custom"
+  },
+  {
+   "name": "input 4",
+   "ftype": 23,
+   "offset": 3,
+   "size": null,
+   "bit": null,
+   "link": "cube_input",
+   "type": "custom"
+  },
+  {
+   "name": "input 5",
+   "ftype": 23,
+   "offset": 4,
+   "size": null,
+   "bit": null,
+   "link": "cube_input",
+   "type": "custom"
+  },
+  {
+   "name": "input 6",
+   "ftype": 23,
+   "offset": 5,
+   "size": null,
+   "bit": null,
+   "link": "cube_input",
+   "type": "custom"
+  },
+  {
+   "name": "input 7",
+   "ftype": 23,
+   "offset": 6,
+   "size": null,
+   "bit": null,
+   "link": "cube_input",
+   "type": "custom"
+  },
+  {
+   "name": "output",
+   "ftype": 23,
+   "offset": 0,
+   "size": null,
+   "bit": null,
+   "link": "cube_output",
+   "type": "custom"
+  },
+  {
+   "name": "lvl",
+   "ftype": 4,
+   "offset": 85,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "plvl",
+   "ftype": 4,
+   "offset": 86,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "ilvl",
+   "ftype": 4,
+   "offset": 87,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "mod 1",
+   "ftype": 19,
+   "offset": 100,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "mod 1 chance",
+   "ftype": 4,
+   "offset": 110,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "mod 1 param",
+   "ftype": 3,
+   "offset": 104,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "mod 1 min",
+   "ftype": 3,
+   "offset": 106,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "mod 1 max",
+   "ftype": 3,
+   "offset": 108,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "mod 2",
+   "ftype": 19,
+   "offset": 112,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "mod 2 chance",
+   "ftype": 4,
+   "offset": 122,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "mod 2 param",
+   "ftype": 3,
+   "offset": 116,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "mod 2 min",
+   "ftype": 3,
+   "offset": 118,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "mod 2 max",
+   "ftype": 3,
+   "offset": 120,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "mod 3",
+   "ftype": 19,
+   "offset": 124,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "mod 3 chance",
+   "ftype": 4,
+   "offset": 134,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "mod 3 param",
+   "ftype": 3,
+   "offset": 128,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "mod 3 min",
+   "ftype": 3,
+   "offset": 130,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "mod 3 max",
+   "ftype": 3,
+   "offset": 132,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "mod 4",
+   "ftype": 19,
+   "offset": 136,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "mod 4 chance",
+   "ftype": 4,
+   "offset": 146,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "mod 4 param",
+   "ftype": 3,
+   "offset": 140,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "mod 4 min",
+   "ftype": 3,
+   "offset": 142,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "mod 4 max",
+   "ftype": 3,
+   "offset": 144,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "mod 5",
+   "ftype": 19,
+   "offset": 148,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "mod 5 chance",
+   "ftype": 4,
+   "offset": 158,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "mod 5 param",
+   "ftype": 3,
+   "offset": 152,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "mod 5 min",
+   "ftype": 3,
+   "offset": 154,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "mod 5 max",
+   "ftype": 3,
+   "offset": 156,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "output b",
+   "ftype": 23,
+   "offset": 1,
+   "size": null,
+   "bit": null,
+   "link": "cube_output",
+   "type": "custom"
+  },
+  {
+   "name": "b lvl",
+   "ftype": 4,
+   "offset": 169,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "b plvl",
+   "ftype": 4,
+   "offset": 170,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "b ilvl",
+   "ftype": 4,
+   "offset": 171,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "b mod 1",
+   "ftype": 19,
+   "offset": 184,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "b mod 1 chance",
+   "ftype": 4,
+   "offset": 194,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "b mod 1 param",
+   "ftype": 3,
+   "offset": 188,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "b mod 1 min",
+   "ftype": 3,
+   "offset": 190,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "b mod 1 max",
+   "ftype": 3,
+   "offset": 192,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "b mod 2",
+   "ftype": 19,
+   "offset": 196,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "b mod 2 chance",
+   "ftype": 4,
+   "offset": 206,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "b mod 2 param",
+   "ftype": 3,
+   "offset": 200,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "b mod 2 min",
+   "ftype": 3,
+   "offset": 202,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "b mod 2 max",
+   "ftype": 3,
+   "offset": 204,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "b mod 3",
+   "ftype": 19,
+   "offset": 208,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "b mod 3 chance",
+   "ftype": 4,
+   "offset": 218,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "b mod 3 param",
+   "ftype": 3,
+   "offset": 212,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "b mod 3 min",
+   "ftype": 3,
+   "offset": 214,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "b mod 3 max",
+   "ftype": 3,
+   "offset": 216,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "b mod 4",
+   "ftype": 19,
+   "offset": 220,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "b mod 4 chance",
+   "ftype": 4,
+   "offset": 230,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "b mod 4 param",
+   "ftype": 3,
+   "offset": 224,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "b mod 4 min",
+   "ftype": 3,
+   "offset": 226,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "b mod 4 max",
+   "ftype": 3,
+   "offset": 228,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "b mod 5",
+   "ftype": 19,
+   "offset": 232,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "b mod 5 chance",
+   "ftype": 4,
+   "offset": 242,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "b mod 5 param",
+   "ftype": 3,
+   "offset": 236,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "b mod 5 min",
+   "ftype": 3,
+   "offset": 238,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "b mod 5 max",
+   "ftype": 3,
+   "offset": 240,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "output c",
+   "ftype": 23,
+   "offset": 2,
+   "size": null,
+   "bit": null,
+   "link": "cube_output",
+   "type": "custom"
+  },
+  {
+   "name": "c lvl",
+   "ftype": 4,
+   "offset": 253,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "c plvl",
+   "ftype": 4,
+   "offset": 254,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "c ilvl",
+   "ftype": 4,
+   "offset": 255,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "c mod 1",
+   "ftype": 19,
+   "offset": 268,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "c mod 1 chance",
+   "ftype": 4,
+   "offset": 278,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "c mod 1 param",
+   "ftype": 3,
+   "offset": 272,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "c mod 1 min",
+   "ftype": 3,
+   "offset": 274,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "c mod 1 max",
+   "ftype": 3,
+   "offset": 276,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "c mod 2",
+   "ftype": 19,
+   "offset": 280,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "c mod 2 chance",
+   "ftype": 4,
+   "offset": 290,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "c mod 2 param",
+   "ftype": 3,
+   "offset": 284,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "c mod 2 min",
+   "ftype": 3,
+   "offset": 286,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "c mod 2 max",
+   "ftype": 3,
+   "offset": 288,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "c mod 3",
+   "ftype": 19,
+   "offset": 292,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "c mod 3 chance",
+   "ftype": 4,
+   "offset": 302,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "c mod 3 param",
+   "ftype": 3,
+   "offset": 296,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "c mod 3 min",
+   "ftype": 3,
+   "offset": 298,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "c mod 3 max",
+   "ftype": 3,
+   "offset": 300,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "c mod 4",
+   "ftype": 19,
+   "offset": 304,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "c mod 4 chance",
+   "ftype": 4,
+   "offset": 314,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "c mod 4 param",
+   "ftype": 3,
+   "offset": 308,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "c mod 4 min",
+   "ftype": 3,
+   "offset": 310,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "c mod 4 max",
+   "ftype": 3,
+   "offset": 312,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "c mod 5",
+   "ftype": 19,
+   "offset": 316,
+   "size": 4,
+   "bit": null,
+   "link": "properties.code",
+   "type": "i32"
+  },
+  {
+   "name": "c mod 5 chance",
+   "ftype": 4,
+   "offset": 326,
+   "size": 1,
+   "bit": null,
+   "link": null,
+   "type": "u8"
+  },
+  {
+   "name": "c mod 5 param",
+   "ftype": 3,
+   "offset": 320,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "c mod 5 min",
+   "ftype": 3,
+   "offset": 322,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "c mod 5 max",
+   "ftype": 3,
+   "offset": 324,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  }
+ ],
+ "bin_record_size": 328
+}

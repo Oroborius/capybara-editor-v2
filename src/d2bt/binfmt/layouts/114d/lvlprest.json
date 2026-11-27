@@ -1,0 +1,218 @@
+{
+ "table": "lvlprest",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 432,
+ "fields": [
+  {
+   "name": "Def",
+   "ftype": 2,
+   "offset": 0,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "LevelId",
+   "ftype": 2,
+   "offset": 4,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Populate",
+   "ftype": 2,
+   "offset": 8,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Logicals",
+   "ftype": 2,
+   "offset": 12,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Outdoors",
+   "ftype": 2,
+   "offset": 16,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Animate",
+   "ftype": 2,
+   "offset": 20,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "KillEdge",
+   "ftype": 2,
+   "offset": 24,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "FillBlanks",
+   "ftype": 2,
+   "offset": 28,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "SizeX",
+   "ftype": 2,
+   "offset": 40,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "SizeY",
+   "ftype": 2,
+   "offset": 44,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "AutoMap",
+   "ftype": 2,
+   "offset": 48,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Scan",
+   "ftype": 2,
+   "offset": 52,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Pops",
+   "ftype": 2,
+   "offset": 56,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "PopPad",
+   "ftype": 2,
+   "offset": 60,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Files",
+   "ftype": 2,
+   "offset": 64,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "File1",
+   "ftype": 1,
+   "offset": 68,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File2",
+   "ftype": 1,
+   "offset": 128,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File3",
+   "ftype": 1,
+   "offset": 188,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File4",
+   "ftype": 1,
+   "offset": 248,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File5",
+   "ftype": 1,
+   "offset": 308,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "File6",
+   "ftype": 1,
+   "offset": 368,
+   "size": 59,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "Dt1Mask",
+   "ftype": 2,
+   "offset": 428,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "Expansion",
+   "ftype": 2,
+   "offset": 32,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  }
+ ],
+ "bin_record_size": 432
+}

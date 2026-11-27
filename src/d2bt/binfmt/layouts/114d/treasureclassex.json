@@ -1,0 +1,272 @@
+{
+ "table": "treasureclassex",
+ "version": "114d",
+ "source": "Diablo II 1.14d Game.exe",
+ "verified": true,
+ "method": "extract_layouts.py: D2BinField arrays in the PE",
+ "record_size": 736,
+ "fields": [
+  {
+   "name": "treasure class",
+   "ftype": 1,
+   "offset": 0,
+   "size": 32,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "group",
+   "ftype": 3,
+   "offset": 36,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "level",
+   "ftype": 3,
+   "offset": 38,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "picks",
+   "ftype": 2,
+   "offset": 32,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "unique",
+   "ftype": 3,
+   "offset": 46,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "set",
+   "ftype": 3,
+   "offset": 44,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "rare",
+   "ftype": 3,
+   "offset": 42,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "magic",
+   "ftype": 3,
+   "offset": 40,
+   "size": 2,
+   "bit": null,
+   "link": null,
+   "type": "u16"
+  },
+  {
+   "name": "nodrop",
+   "ftype": 2,
+   "offset": 52,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "item1",
+   "ftype": 1,
+   "offset": 56,
+   "size": 64,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "prob1",
+   "ftype": 2,
+   "offset": 696,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "item2",
+   "ftype": 1,
+   "offset": 120,
+   "size": 64,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "prob2",
+   "ftype": 2,
+   "offset": 700,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "item3",
+   "ftype": 1,
+   "offset": 184,
+   "size": 64,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "prob3",
+   "ftype": 2,
+   "offset": 704,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "item4",
+   "ftype": 1,
+   "offset": 248,
+   "size": 64,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "prob4",
+   "ftype": 2,
+   "offset": 708,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "item5",
+   "ftype": 1,
+   "offset": 312,
+   "size": 64,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "prob5",
+   "ftype": 2,
+   "offset": 712,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "item6",
+   "ftype": 1,
+   "offset": 376,
+   "size": 64,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "prob6",
+   "ftype": 2,
+   "offset": 716,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "item7",
+   "ftype": 1,
+   "offset": 440,
+   "size": 64,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "prob7",
+   "ftype": 2,
+   "offset": 720,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "item8",
+   "ftype": 1,
+   "offset": 504,
+   "size": 64,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "prob8",
+   "ftype": 2,
+   "offset": 724,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "item9",
+   "ftype": 1,
+   "offset": 568,
+   "size": 64,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "prob9",
+   "ftype": 2,
+   "offset": 728,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  },
+  {
+   "name": "item10",
+   "ftype": 1,
+   "offset": 632,
+   "size": 64,
+   "bit": null,
+   "link": null,
+   "type": "str"
+  },
+  {
+   "name": "prob10",
+   "ftype": 2,
+   "offset": 732,
+   "size": 4,
+   "bit": null,
+   "link": null,
+   "type": "i32"
+  }
+ ],
+ "bin_record_size": 736
+}
