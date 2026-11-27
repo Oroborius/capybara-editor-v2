@@ -743,7 +743,6 @@ def creator_hellfire_torch_every_class_and_grand_charm_tabs():
     row = next(i for i, r in enumerate(v.uniques) if r['index'] == 'Hellfire Torch')
     for cls in range(7):
         spec = cr.new_spec('unique', None, row)
-        spec['ilvl'] = 99
         cr.roll(spec, 'max')
         for m in cr.mods(spec):
             if m.raw[0] == next(p for p in range(len(d.prop_func)) if d.prop_func[p] == 36):
@@ -799,8 +798,6 @@ def creator_runewords_and_defense_are_legit():
     d = win.data
     bad, ex, n = collections.Counter(), _Ex(), 0
     for row, _name, _runes in cr.runewords():
-        if _name.startswith('Ancient'):
-            continue   # known: the creator's runeword table lacks one of its mods (Cold Resist +30); reported
         bases, seen = cr.runeword_bases(row), set()
         picks = [b for b in bases if not (b.type in seen or seen.add(b.type))][:3]
         for b in picks:

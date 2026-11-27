@@ -630,4 +630,4 @@ def vocab(game_dir=None, *, tables=None):
     return build(game_dir, tables)
 
 
-from .api import legal_affixes, runeword_stats  # noqa: E402,F401
+from .api import MAX_ITEM_LEVEL, ilvl_range, legal_affixes, runeword_stats  # noqa: E402,F401

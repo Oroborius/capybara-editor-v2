@@ -990,7 +990,7 @@ class CreatorWindow:
             spec = cr.new_spec('rare', key)                # Angelic items are rares on the Angelic bases
         else:
             spec = cr.new_spec(q, key)
-        spec['ilvl'] = max(spec['ilvl'], min(99, cr.max_ilvl()))
+        spec['ilvl'] = max(spec['ilvl'], min(99, cr.max_ilvl(spec)))
         spec['max_sockets'] = q in ('unique', 'set', 'crafted', 'tempered')   # as the game gives them (Sacred gear)
         if q == 'tempered':                    # the cube recipe's output: a blank item, a rare-style name, the
             spec['extra'] = []                 # maximum sockets and the recipe's own stats (in its stat list)
@@ -1194,7 +1194,7 @@ class CreatorWindow:
             vals = [NONE] + [self.sup_label(i) for i in sup]
             combo(T('cr.superior', 'Superior'), vals, self.sup_label(spec['superior']) if spec.get('superior') is not None else NONE,
                   lambda i, sup=sup: self.set_field('superior', None if i == 0 else sup[i - 1]))
-        spin(T('cr.item_level', 'Item level'), cr.min_ilvl(spec), cr.max_ilvl(), spec['ilvl'], lambda v: self.set_field('ilvl', v))
+        spin(T('cr.item_level', 'Item level'), cr.min_ilvl(spec), cr.max_ilvl(spec), spec['ilvl'], lambda v: self.set_field('ilvl', v))
         if cr.ethereal_ok(spec):                         # Median: any item (charms, jewels, rings ... too)
             rr = row(T('cr.ethereal', 'Ethereal'))
             ev = tk.BooleanVar(value=spec['ethereal'])
