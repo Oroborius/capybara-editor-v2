@@ -254,9 +254,124 @@ def role(widget, name):
     return widget
 
 
+def paint_tree(widget):
+    paint(widget)
+    for child in widget.winfo_children():
+        paint_tree(child)
+
+
+class EmbedHost(tk.Frame):
+    """The content area of the Hero Editor window where Stash, Creator, Library, Bit editor (and Mock) open as
+    pages: the same page builders as the notebook tabs, with a frame of this window as their parent."""
+
+    def __init__(self, win, bar, names):
+        super().__init__(win.top, bg=FORM)
+        self.win, self.bar, self.names = win, bar, tuple(names)
+        self.dying = False
+        self.pages = {}
+        self.current = None
+        self.scroll_pack = None
+        self.page_var = tk.StringVar(master=win.top, value='')
+
+    def destroy(self):
+        self.dying = True
+        import mxl_tabs
+        if mxl_tabs._state.get('embed') is self:
+            mxl_tabs._state['embed'] = None
+        self._restore_stash()
+        super().destroy()
+
+    def _restore_stash(self):
+        import mxl_tabs
+        body = self._stash_body()
+        stash = mxl_tabs._state['pages'].get('Stash')
+        if body is not None and stash is not None and 'Stash' in self.pages:
+            try:
+                body.pack(in_=stash, fill='both', expand=True)
+            except tk.TclError:
+                pass
+
+    def _stash_body(self):
+        try:
+            return self.win.app.canvas.master.master
+        except (AttributeError, tk.TclError):
+            return None
+
+    def page(self, name):
+        import mxl_tabs
+        page = self.pages.get(name)
+        if page is None:
+            page = self.pages[name] = mxl_tabs.EmbedPage(self, name)
+            if name == 'Stash':
+                body = self._stash_body()
+                if body is not None:
+                    body.pack(in_=page, fill='both', expand=True)
+                    body.lift()
+                page.built = True
+            else:
+                page.placeholder()
+        return page
+
+    def show(self, page):
+        if page is self.current:
+            return
+        win = self.win
+        opened = self.current is not None
+        self._hide_current()
+        if not opened:
+            self.scroll_pack = win.scroll.pack_info()
+            win.scroll.pack_forget()
+            self.pack(after=self.bar, fill='both', expand=True)
+        self.current = page
+        page.pack(fill='both', expand=True)
+        self.page_var.set(page._key)
+        if page._key == 'Stash':
+            body = self._stash_body()
+            if body is not None:
+                body.lift()
+        elif page._key == 'Library' and not page.built:
+            import mxl_itemlib
+            mxl_itemlib.open_library(win.app)
+        self.after_idle(self._paint, page)
+
+    def _paint(self, page):
+        try:
+            if page._key != 'Stash':
+                paint_tree(page)
+        except tk.TclError:
+            pass
+
+    def _hide_current(self):
+        if self.current is not None:
+            self.current.pack_forget()
+            self.current = None
+
+    def leave(self):
+        """Back to the character view."""
+        if self.current is None:
+            return
+        self._hide_current()
+        self.pack_forget()
+        self.page_var.set('')
+        if self.scroll_pack:
+            self.win.scroll.pack(**{k: v for k, v in self.scroll_pack.items() if k != 'in'})
+
+    def closed(self, page):
+        """A hosted window closed itself: its page is empty again, so the character view comes back."""
+        if page is self.current:
+            self.leave()
+
+    def toggle(self, name):
+        page = self.page(name)
+        if page is self.current:
+            self.leave()
+        else:
+            self.show(page)
+
+
 def set_tab(win, key):
     win.tab.set(key)
-    win.show_tab()
+    win.show_tab()                                # also brings the character view back from an embedded page
 
 
 def choose_character(win):
@@ -490,41 +605,55 @@ def chrome(win, bottom, actions):
     tools.add_command(label='Mark Hell finished', command=lambda: win.st_done(3))
     menu.add_separator()
     for name in ('Stash', 'Creator', 'Library', 'Bit editor'):
-        menu.add_command(label=mxl_tabs.tab_label(name),
-                         command=lambda key=name: win.top.master.select(mxl_tabs._state['pages'][key]))
+        menu.add_command(label=mxl_tabs.tab_label(name), command=lambda key=name: win.he_embed.toggle(key))
     mock_mode = mxl_mock_gui._state['var']
     if mock_mode is not None:
         menu.add_checkbutton(label='Mock Mode', variable=mock_mode,
                              command=lambda: mxl_mock_gui.set_mode(mock_mode.get()))
-        menu.add_command(label='Open Mock Tools', command=lambda: mxl_tabs.focus_existing(mxl_mock_gui.TAB))
+        menu.add_command(label='Open Mock Tools', command=lambda: win.he_embed.toggle(mxl_mock_gui.TAB))
         mock_tools_index = menu.index('end')
 
-    # the other tabs as buttons right of Menu (testers did not find the Stash / Creator tabs in the menu)
+    # the other tabs as buttons right of Menu: they open their page inside this window (see EmbedHost)
     win.he_tab_buttons = {}
+    names = ['Stash', 'Creator', 'Library', 'Bit editor'] + ([mxl_mock_gui.TAB] if mock_mode is not None else [])
+    old = mxl_tabs._state.get('embed')
+    if old is not None:
+        old.dying = True
+    win.he_bar = bar
+    win.he_embed = mxl_tabs._state['embed'] = EmbedHost(win, bar, names)
 
-    def tab_button(text, command):
-        b = role(tk.Button(bar, text=text, font=font(), bd=0, relief='flat', bg=WHITE, padx=6, pady=0,
-                           activebackground=SELECT, activeforeground=WHITE, command=command), 'menu')
-        b.pack(side='left', ipady=1)
+    def tab_button(text, key):
+        b = role(tk.Radiobutton(bar, text=text, value=key, variable=win.he_embed.page_var, indicatoron=0,
+                                font=font(), bd=1, relief='raised', padx=pixels(bar, 7)[0], pady=0,
+                                command=lambda: win.he_embed.toggle(key)), 'tab')
+        b.pack(side='left', ipady=0, padx=(0, 1))
         win.he_tab_buttons[text] = b
         return b
 
-    for name in ('Stash', 'Creator', 'Library', 'Bit editor'):
-        tab_button(mxl_tabs.tab_label(name),
-                   lambda key=name: win.top.master.select(mxl_tabs._state['pages'][key]))
+    for name in names[:4]:
+        tab_button(mxl_tabs.tab_label(name), name)
     if mock_mode is not None:
-        mock_button = tab_button('Mock', lambda: mxl_tabs.focus_existing(mxl_mock_gui.TAB))
+        mock_button = tab_button('Mock', mxl_mock_gui.TAB)
 
         def show_mock(*_a):
             try:
                 if mock_mode.get():
-                    mock_button.pack(side='left', ipady=1)
+                    mock_button.pack(side='left', padx=(0, 1))
                 else:
                     mock_button.pack_forget()
             except tk.TclError:
                 pass
         mock_mode.trace_add('write', show_mock)
         show_mock()
+        if mxl_mock_gui._state.get('page') is not None:      # built in a notebook tab before this window: rebuild here
+            nb = win.top.master
+            keep = nb.select()
+            mxl_mock_gui._set_mode(False)
+            mxl_mock_gui.set_mode(True, select=False)
+            try:
+                nb.select(keep)
+            except tk.TclError:
+                pass
 
     if mock_mode is not None:
         menu.configure(postcommand=lambda: menu.entryconfigure(

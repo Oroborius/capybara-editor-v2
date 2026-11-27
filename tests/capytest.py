@@ -803,7 +803,12 @@ def chartab_menu(where):
 
 def select_tab(name):
     import mxl_tabs
-    mxl_tabs._state['nb'].select(mxl_tabs._state['pages'][name])
+    if name == 'Character':
+        mxl_tabs._state['nb'].select(mxl_tabs._state['pages'][name])
+        if mxl_tabs.embed_host() is not None:
+            mxl_tabs.embed_host().leave()
+    else:
+        mxl_tabs.show(name)
     pump(6)
 
 

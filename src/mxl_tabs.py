@@ -23,7 +23,7 @@ import os
 import tkinter as tk
 from tkinter import ttk
 
-_state = {'nb': None, 'pages': {}}
+_state = {'nb': None, 'pages': {}, 'embed': None}
 
 
 def tab_label(key):
@@ -183,6 +183,9 @@ def _autoload(app):
         mxl_creator_gui.CreatorWindow(app)
     except Exception as e:
         print('creator tab autoload failed:', e)
+    host = embed_host()
+    if host is not None:                      # the Creator built itself into its embedded page: show the character view
+        host.leave()
     import mxl_vanilla_he
     if mxl_vanilla_he.active() and focus_existing('Character'):
         return
@@ -327,6 +330,80 @@ class TabPage(tk.Frame):
             pass
 
 
+def embed_host():
+    """The vanilla Hero Editor window hosting Stash / Creator / Library / Bit editor / Mock inside itself, or None."""
+    host = _state.get('embed')
+    try:
+        if host is not None and not host.dying and host.winfo_exists():
+            return host
+    except tk.TclError:
+        pass
+    return None
+
+
+def _lookup(name):
+    """The page of a tab: an embedded one while the Hero Editor hosts it, else the notebook's own."""
+    host = embed_host()
+    if host is not None and name in host.names:
+        return host.page(name)
+    return _state['pages'].get(name)
+
+
+def _show(page):
+    if isinstance(page, EmbedPage):
+        page.host.show(page)
+    else:
+        _state['nb'].select(page)
+
+
+def show(name):
+    """Brings the named tab to the front (inside the Hero Editor window when it hosts the tab)."""
+    page = _lookup(name)
+    if page is not None:
+        _show(page)
+
+
+class EmbedPage(TabPage):
+    """A page built into the Hero Editor window's own content frame instead of a notebook tab."""
+
+    def __init__(self, host, name):
+        tk.Frame.__init__(self, host)
+        self.host = host
+        self._key = name
+        self._name = name
+        self._owner = None
+        self._fixed_name = True
+        self._on_close = None
+        self.built = False
+
+    def placeholder(self):
+        if self._key != 'Stash':
+            super().placeholder()
+
+    def bind_all_once(self):
+        pass                                  # the Library builds when its button shows the page
+
+    def title(self, text=None):
+        pass
+
+    wm_title = title
+
+    def lift(self, *a, **k):
+        self.host.show(self)
+
+    def destroy(self):
+        if self.host.dying:
+            tk.Frame.destroy(self)
+            return
+        try:
+            self.clear()
+            self.built = False
+            self.placeholder()
+            self.host.closed(self)
+        except tk.TclError:
+            pass
+
+
 def host_window(app, name, owner=None, replace=False):
     """The "Toplevel" of a new editor window: a notebook page when the tabs are installed,
     a real Toplevel otherwise (tabs not enabled / host not built yet).
@@ -335,11 +412,11 @@ def host_window(app, name, owner=None, replace=False):
     nb = _state['nb']
     if nb is None:
         return tk.Toplevel(app.root)
-    page = _state['pages'].get(name)
+    page = _lookup(name)
     if page is not None:
         if not replace and page.built:
             try:
-                nb.select(page)
+                _show(page)
             except tk.TclError:
                 pass
             return None
@@ -350,7 +427,8 @@ def host_window(app, name, owner=None, replace=False):
         page = TabPage(nb, name, owner)
     page.built = True
     try:
-        nb.select(page)
+        if not (isinstance(page, EmbedPage) and page._key not in FIXED):
+            _show(page)                       # the Mock tab appears quietly: its own button opens it
     except tk.TclError:
         pass
     return page
@@ -358,11 +436,11 @@ def host_window(app, name, owner=None, replace=False):
 
 def focus_existing(name):
     """True when a tab with this name is already showing its window: it is just selected."""
-    page = _state['pages'].get(name)
+    page = _lookup(name)
     if page is None or not page.built:
         return False
     try:
-        _state['nb'].select(page)
+        _show(page)
     except tk.TclError:
         pass
     return True
@@ -370,7 +448,7 @@ def focus_existing(name):
 
 def built_owner(name):
     """The window object currently built into the named tab, or None when the tab is empty."""
-    page = _state['pages'].get(name)
+    page = _lookup(name)
     if page is None or not page.built:
         return None
     return page._owner

@@ -840,11 +840,82 @@ def tab_buttons_right_of_the_menu_open_their_tabs():
     if shot:
         win.top.update_idletasks()
         os.system(f'import -window root {shot}')
-    nb = win.top.master
     for name in ('Creator', 'Stash'):
         buttons[mxl_tabs.tab_label(name)].invoke()
         T.pump(3)
-        T.eq(nb.select(), str(mxl_tabs._state['pages'][name]), f'{name} button selects its tab')
+        page = win.he_embed.pages[name]
+        T.eq(win.he_embed.current, page, f'{name} button shows its page inside the Hero Editor')
+        T.eq(win.top.master.select(), str(win.top), f'{name} does not leave the Character tab')
+
+
+def _descends_from(widget, top):
+    """True when the widget is a child of top, or is packed into one (pack in_)."""
+    while widget is not None:
+        if widget == top:
+            return True
+        try:
+            inside = widget.pack_info().get('in')
+        except Exception:
+            inside = None
+        widget = inside if inside is not None else widget.master
+    return False
+
+
+@T.test
+def tab_buttons_embed_each_page_in_the_hero_editor_window():
+    """Stash / Creator / Library / Bit editor open as pages inside the Hero Editor window: no new toplevel, the
+    page is a descendant of the window, and the character view comes back from its own tabs."""
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    import mxl_tabs
+    import tkinter as tk
+    win = T.chartab()
+    T.pump(3)
+    top, root = win.top, win.top.winfo_toplevel()
+
+    def toplevels():
+        found, stack = [], [root]
+        while stack:
+            w = stack.pop()
+            stack.extend(w.winfo_children())
+            if w.winfo_class() == 'Toplevel':
+                found.append(w)
+        return found
+
+    win.he_embed.leave()
+    before = toplevels()
+    shots = os.environ.get('HE_TABS_SHOTS')
+    for name in ('Stash', 'Creator', 'Library', 'Bit editor'):
+        button = win.he_tab_buttons[mxl_tabs.tab_label(name)]
+        button.invoke()
+        T.pump(5)
+        page = win.he_embed.pages[name]
+        T.eq(win.he_embed.current, page, f'{name}: its page is showing')
+        T.check(page.winfo_parent().startswith(str(top)), f'{name}: the page is a child widget of the Hero Editor')
+        T.check(_descends_from(page, top), f'{name}: the page is inside the Hero Editor window')
+        T.eq(win.he_embed.page_var.get(), name, f'{name}: its button shows as selected')
+        T.eq(top.master.select(), str(top), f'{name}: the notebook still shows the Hero Editor')
+        T.eq(toplevels(), before, f'{name}: no new toplevel')
+        T.check(not win.scroll.winfo_ismapped(), f'{name}: the character view is hidden')
+        owner = mxl_tabs.built_owner(name)
+        if name in ('Creator', 'Library'):
+            T.check(owner is not None, f'{name}: its window is built')
+            T.check(_descends_from(getattr(owner, 'top', page), top), f'{name}: the built window is inside')
+        if shots:
+            top.update_idletasks()
+            os.system(f'import -window root "{shots}/hetabs-{name.replace(" ", "")}.png"')
+        button.invoke()                                # the active button again goes back
+        T.pump(3)
+        T.eq(win.he_embed.current, None, f'{name}: clicking the active button closes the page')
+        T.check(win.scroll.winfo_ismapped(), f'{name}: the character view is back')
+        button.invoke()
+        T.pump(3)
+        win.tab_buttons[0].invoke()                    # the character view's own tab
+        T.pump(3)
+        T.eq(win.he_embed.current, None, f'{name}: the character view\'s own tab brings it back')
+        T.check(win.scroll.winfo_ismapped(), f'{name}: the character view is shown again')
+        T.eq(win.he_embed.page_var.get(), '', f'{name}: no tab button is selected')
+    T.eq(toplevels(), before, 'no toplevel was created')
 
 
 @T.test

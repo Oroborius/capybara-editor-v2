@@ -165,9 +165,9 @@ def vanilla_workspace_pages_and_tools():
     for name in ('Stash', 'Creator', 'Library', 'Bit editor'):
         cw.he_menu.invoke(mxl_tabs.tab_label(name))
         T.pump(5)
-        T.eq(nb.select(), str(mxl_tabs._state['pages'][name]), f'{name} reachable from Menu')
-        T.check(app.char_combo.master.winfo_ismapped(), f'{name} workspace toolbar restored')
-        T.select_tab('Character')
+        T.eq(cw.he_embed.current, cw.he_embed.pages[name], f'{name} reachable from Menu, inside the Hero Editor')
+        T.eq(nb.select(), str(cw.top), f'{name} opens without leaving the Character tab')
+        cw.he_embed.leave()
     V.extras(cw)
     T.pump(5)
     extras = next(w for w in cw.top.winfo_children() if w.winfo_class() == 'Toplevel')

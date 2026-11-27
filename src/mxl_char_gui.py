@@ -301,6 +301,9 @@ class CharacterWindow(StatEditMixin):
         # Inventory tab: drawn with the collector's own dark theme (dark in both modes)
 
     def show_tab(self):
+        embed = getattr(self, 'he_embed', None)
+        if embed is not None:                     # a click on the character view's own tabs leaves an embedded page
+            embed.leave()
         for key, page in self.pages.items():
             if self.vanilla_he and key == 'containers':
                 continue
