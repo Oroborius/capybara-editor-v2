@@ -786,7 +786,8 @@ def item_creator_offers_only_the_sockets_the_game_generates():
         T.skip("no Andariel's Visage row")
     spec = cr.new_spec('unique', row=row)
     spec['ilvl'] = 99
-    T.eq(cr.creator_socket_limit(spec), 0, 'a new unique: no sockets')
+    T.eq(cr.creator_socket_limit(spec), 1, "a unique: up to Larzuk's 1 socket")
+    T.eq(spec.get('sockets') or 0, 0, 'a new unique starts with none')
     normal = cr.new_spec('normal', code=spec['code'])
     normal['ilvl'] = 99
     T.eq(cr.creator_socket_limit(normal), cr.max_sockets(spec['code'], 99), "a normal helm: the base's own")
