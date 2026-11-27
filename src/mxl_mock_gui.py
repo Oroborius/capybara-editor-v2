@@ -485,9 +485,43 @@ class MockPage:
         self.summary = SummaryPanel(right, title=T('mock.sum.plan', 'Summary of the plan'))
         self.summary.frame.pack(fill='both', expand=True)
         self._preset_changed()
+        snap = _state.pop('snap', None)                   # a page rebuilt with another character's window:
+        if snap:                                          # the user's inputs carry over
+            self.restore(snap)
+        self.host.bind('<Destroy>', lambda e: e.widget is self.host and _state.__setitem__('snap', self.snapshot()),
+                       add='+')
 
     def key(self):
         return self.labels.get(self.preset.get(), 'mock_high')
+
+    def snapshot(self):
+        """The user's inputs, so a rebuilt page (the Hero Editor window of another character) keeps them."""
+        try:
+            return dict(preset=self.preset.get(), name=self.name.get(), read_only=self.read_only.get(),
+                        ov={k: v.get() for k, v in self.ov.items()}, touched=set(self.touched),
+                        last=getattr(self, 'last', None))
+        except (tk.TclError, AttributeError):
+            return None
+
+    def restore(self, snap):
+        if not snap:
+            return
+        try:
+            self.preset.set(snap['preset'])
+            self._preset_changed()
+            self._filling = True
+            try:
+                for k, val in snap['ov'].items():
+                    if k in self.ov:
+                        self.ov[k].set(val)
+            finally:
+                self._filling = False
+            self.touched = set(snap['touched'])
+            self.name.set(snap['name'])
+            self.read_only.set(snap['read_only'])
+            self.last = snap['last']
+        except (tk.TclError, KeyError, AttributeError):
+            pass
 
     def _preset_changed(self):
         p = M.PRESETS[self.key()]
@@ -657,6 +691,17 @@ class MockPage:
             self.app.select_character(os.path.splitext(os.path.basename(path))[0], self.app.view.get())
         except Exception as e:
             print('mock: new character not selected:', e)
+        live = _state.get('page')
+        if live is not None and live is not self:  # the new character's Hero Editor window rebuilt the page
+            live.last, live.defense_targets = path, self.defense_targets
+            try:
+                live.summary.show(M.model_from_plan(P, raw), M.PRESET_ROLE[key])
+                live.status.configure(text=T('mock.written', 'Written: {file}', file=os.path.basename(path)) + '  '
+                                      + M.plan_line(P, raw), foreground=COLORS[M.GOOD])
+            except tk.TclError:
+                pass
+            live.analyze()
+            return path
         self.analyze()
         return path
 

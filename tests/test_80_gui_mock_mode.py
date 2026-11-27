@@ -37,9 +37,14 @@ WAIT_TABS = True
 
 
 def _tab_names():
+    """The notebook tabs, plus 'Mock' while the Mock page exists (it is embedded in the Hero Editor window)."""
     import mxl_tabs
+    import mxl_mock_gui
     nb = mxl_tabs._state['nb']
-    return [nb.tab(t, 'text') for t in nb.tabs()]
+    names = [nb.tab(t, 'text') for t in nb.tabs()]
+    if mxl_mock_gui._state.get('page') is not None and 'Mock' not in names:
+        names.append('Mock')
+    return names
 
 
 def _rows(tree):
@@ -85,6 +90,7 @@ def toggle_tab_analyzer_generator():
     # ---- analyzer: checks + summary of the loaded character, per switch
     G.app.select_character('clone-90', G.app.view.get())
     T.pump(10, 0.02)
+    page = MG._state['page']             # the Hero Editor window of the new character embeds a fresh Mock page
     a = page.analyze()
     T.check(a is not None, 'analysis of the loaded character')
     rows = _rows(page.ana.tree)
@@ -150,7 +156,7 @@ def toggle_tab_analyzer_generator():
     T.check('att' in sa and sb.startswith('none'), f'stun on side A only ({sa} / {sb})')
     T.check(next(r[2] for r in ra if r[1] == 'Mana') != next(r[2] for r in rb if r[1] == 'Mana'), 'side B mana')
     import mxl_tabs
-    mxl_tabs._state['nb'].select(page.host)
+    mxl_tabs.show(MG.TAB)                # a notebook tab, or embedded in the Hero Editor window
     page.nb.select(page.nb.tabs()[0])
     T.pump()
     calc = page.calc_btn
@@ -170,6 +176,9 @@ def toggle_tab_analyzer_generator():
     G.boxes.clear()
     T.check(page.generate() is not None, 'generated')
     T.pump(10, 0.02)
+    old_page, page = page, MG._state['page']     # the new character's Hero Editor window rebuilds the Mock page
+    if page is not old_page:
+        T.eq(page.name.get(), 'GuiMock', 'the rebuilt page keeps the inputs')
     new = set(os.listdir(_S)) - before
     T.eq(sorted(new), ['GuiMock.d2s'], 'new file')
     T.eq([x for x in G.boxes if x[0] in ('askyesno', 'showerror')], [], 'no dialog')
@@ -178,9 +187,11 @@ def toggle_tab_analyzer_generator():
     T.eq([c for c in a['checks'] if c[3] == 'bad'], [], 'generated funky: no bad check')
     T.check(a['values']['band']['funky'], 'generated funky: on the funky zero')
     page.generate()                                     # same name again: a free name, nothing overwritten
+    page = MG._state['page']
     T.eq(sorted(set(os.listdir(_S)) - before), ['GuiMock.d2s', 'GuiMocka.d2s'], 'second file, free name')
     from mxl_char import Character
 
+    page = MG._state['page']
     page.name.set('9')
     files = set(os.listdir(_S))
     G.boxes.clear()
@@ -191,6 +202,7 @@ def toggle_tab_analyzer_generator():
         T.check(any(kind == 'askyesno' and 'Save anyway?' in msg for kind, _, msg in G.boxes),
                 'invalid name asks for confirmation')
         G.answers['askyesno'] = True
+        page = MG._state['page']
         path = page.generate()
         T.eq(os.path.basename(path), '9.d2s', 'confirmed name in filename')
         T.eq(Character(path, G.app.data).name, '9', 'confirmed name in save header')

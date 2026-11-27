@@ -648,6 +648,7 @@ def chrome(win, bottom, actions):
         if mxl_mock_gui._state.get('page') is not None:      # built in a notebook tab before this window: rebuild here
             nb = win.top.master
             keep = nb.select()
+            mxl_mock_gui._state['snap'] = mxl_mock_gui._state['page'].snapshot()   # the inputs carry over
             mxl_mock_gui._set_mode(False)
             mxl_mock_gui.set_mode(True, select=False)
             try:

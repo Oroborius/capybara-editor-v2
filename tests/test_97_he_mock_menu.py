@@ -79,7 +79,7 @@ def he_menu_mock_mode_shows_the_mock_tools():
     T.pump(10)
     page = mxl_mock_gui._state['page']
     nb = mxl_tabs._state['nb']
-    T.eq(nb.select(), str(page.host), 'the Mock tools page is the selected page')
+    T.check(str(page.host).startswith(nb.select()), 'the Mock tools page is shown in the Hero Editor window')
     T.check(page.host.winfo_ismapped(), 'Mock page is visible')
     T.check(cw.he_back is not None if hasattr(cw, 'he_back') else True, 'ok')
     menu.invoke(idx['Mock Mode'])
