@@ -182,11 +182,11 @@ def character_tab_drag_gem_into_free_socket():
     cr = C.Creator(d)
     gem = next(c for c, _n in cr.sockets_fillers())
     base = next((b for b in cr.bases() if b.kind == 'weapons' and b.size[1] <= 3
-                 and cr.max_sockets(b.code, C.MAX_ILVL) >= 2), None)
+                 and cr.max_sockets(b.code, cr.max_ilvl()) >= 2), None)
     if base is None:
         T.skip('no weapon base with 2 sockets')
     spec = cr.new_spec('normal', base.code)
-    spec['ilvl'] = C.MAX_ILVL
+    spec["ilvl"] = cr.max_ilvl()
     spec['sockets'] = 2
     spec['socketed'] = [gem]
     blob = bytes(cr.build(spec)[0])
