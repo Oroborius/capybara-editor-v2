@@ -848,4 +848,107 @@ def make_item_socketed_follows_the_servers_socket_rule_in_legit_mode():
         G.set_legit(False)
 
 
+
+@T.test
+def stat_params_use_the_dev_kit_vocabulary():
+    """Skill-tab / class params are named by statvocab ('Combat Skills (Barbarian Only)'), stat lines come from
+    statvocab.display."""
+    need()
+    import mxl_statnames as SN
+    win = T.chartab()
+    tabs = dict(SN.param_choices(win.data, 188))
+    T.check('Combat Skills (Barbarian Only)' in tabs, f'skill tab names: {list(tabs)[:4]}')
+    T.eq(tabs['Combat Skills (Barbarian Only)'], 4 << 3, 'the packed class << 3 | tab layer')
+    T.check('Barbarian' in dict(SN.param_choices(win.data, 83)), 'class names')
+    T.eq(SN.vanilla_stat_value(win.data, 188, 4 << 3, 2), '+2 to Combat Skills (Barbarian Only)', 'item line')
+    from mxl_vanilla_he_extras import skill_tab_choices
+    T.eq(dict(skill_tab_choices(win.data))['Combat Skills (Barbarian Only)'], 4 << 3, 'Item editor dropdown')
+
+
+@T.test
+def creator_affix_inference_compares_the_skill_tab_layer():
+    """A skill-tab affix's stat carries the packed layer (class << 3 | tab), as the saved item does."""
+    need()
+    import mxl_legit
+    import mxl_creator as MC
+    from mxl_rc_menu import _creator_for
+    if not mxl_legit.prepare():
+        T.skip('stock tables unavailable')
+    cr = _creator_for(T.chartab())
+    found = 0
+    for _i, _l, a in cr.affix_choices('magicprefix', 'cm3 ', 99):
+        for m in a['mods']:
+            if cr.data.prop_func[m['prop']] == 10:
+                st = MC.layered_stats([(m['prop'], m['param'], m['min'], m['max'])], cr.data, 'max')
+                T.eq([x['param'] for x in st], [((m['param'] // 3) << 3) | (m['param'] % 3)], 'packed layer')
+                found += 1
+    T.check(found >= 7, f'{found} skill-tab prefixes on a grand charm')
+
+
+@T.test
+def creator_targeted_writers_go_to_the_item_buffer():
+    """create_here (character / inventory / containers page) in the Hero Editor layout: a new item lands in the
+    item buffer, the target writer is not called."""
+    need()
+    win = T.chartab()
+    win.app._capy_clip = None
+    called = []
+    w = _open_creator(win, target=lambda blob: called.append(1) or 'written', target_label='x')
+    spec = w.cr.new_spec('normal', 'hax ')
+    w.spec = spec
+    w.load_spec(spec)
+    w.commit()
+    T.pump(5)
+    T.check(getattr(win.app, '_capy_clip', None) is not None and not called, 'in the item buffer, target untouched')
+    w.top.destroy()
+    win.app._capy_clip = None
+
+
+@T.test
+def convert_remaps_retired_affix_rows_and_rare_name_fragments():
+    """A rare ring made by an older editor: retired classic rows (prefix 78, suffix 91: frequency 0) and the rare name
+    fragment 199 the base cannot have. Convert to Strict Legit maps the rows to the rolling twins that
+    legal_affixes offers, replaces the fragment, clamps the rolls and leaves no impossible finding."""
+    need()
+    import mxl_legit
+    import mxl_legit_convert as LC
+    from mxl_creator import build_blob, decode_blob
+    from mxl_rc_menu import _creator_for
+    if not mxl_legit.prepare():
+        T.skip('stock tables unavailable')
+    win = T.chartab()
+    cr = _creator_for(win)
+    v = mxl_legit._validator()
+    spec = cr.new_spec('rare', 'rin ')
+    spec['ilvl'] = 80
+    names = cr.rare_name_choices('rin ')
+    spec['rare_names'] = (names['rareprefix'][0][0], names['raresuffix'][0][0])
+    spec['rare_prefixes'] = [cr.affix_choices('magicprefix', 'rin ', 80, rare=True)[0][0]]
+    spec['rare_suffixes'] = [cr.affix_choices('magicsuffix', 'rin ', 80, rare=True)[0][0]]
+    cr.roll(spec, 'max')
+    blob, _r = cr.build(spec)
+    rec, kids = decode_blob(blob, win.data)
+    rec['rare_affixes'][0], rec['rare_affixes'][1] = 78, 91
+    old = build_blob(rec, kids, win.data, preserve_stat_order=True)
+    found = mxl_legit.impossible(mxl_legit.check_item(old))
+    T.check(any(f.rule == 'affix-quality' for f in found), f'the retired rows are refused: {[f.detail for f in found]}')
+    res = LC.convert(old, win.data)
+    T.check(res.blob is not None, f'converted: {res.changes} / {[f.detail for f in res.remaining]}')
+    T.eq(mxl_legit.impossible(mxl_legit.check_item(res.blob)), [], 'no impossible finding left')
+    new = decode_blob(res.blob, win.data)[0]['rare_affixes']
+    twins = {v.affixes[('magicprefix', 78)][1]['name'], v.affixes[('magicsuffix', 91)][1]['name']}
+    T.eq({v.affixes[('magicprefix', new[0])][1]['name'], v.affixes[('magicsuffix', new[1])][1]['name']}, twins,
+         'same names, rolling rows')
+    T.check(new[0] != 78 and new[1] != 91, f'rows replaced: {new[:2]}')
+    # the fragment: a name the base cannot have
+    rec2, kids2 = decode_blob(blob, win.data)
+    rec2['rare_names'] = (199, rec2['rare_names'][1])
+    bad = build_blob(rec2, kids2, win.data, preserve_stat_order=True)
+    f2 = mxl_legit.impossible(mxl_legit.check_item(bad))
+    if any(f.rule == 'rare-name' for f in f2):
+        r2 = LC.convert(bad, win.data)
+        T.check(r2.blob is not None and not mxl_legit.impossible(mxl_legit.check_item(r2.blob)),
+                f'fragment replaced: {r2.changes}')
+
+
 T.main(globals())

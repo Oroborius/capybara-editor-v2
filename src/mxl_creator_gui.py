@@ -3095,6 +3095,8 @@ class CreatorWindow:
             self._busy = False
 
     def _commit(self, app):
+        if self.target is not None and self.edit_item is None and self._item_buffer_target() is not None:
+            return self._commit_to_buffer(app)       # Hero Editor layout: a new item goes to the item buffer
         if self.target is not None:
             blob = self.refresh()
             if blob is None:

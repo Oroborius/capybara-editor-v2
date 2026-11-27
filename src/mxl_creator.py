@@ -679,6 +679,19 @@ def decode_blob(blob, data, *, exact=False):
 
 # --------------------------------------------------------------------------------------------- stats from mods
 
+def layered_stats(mods, data, how):
+    """mods_stats with the stat param the item stores: vanilla skill tabs (property function 10) pack the sheet's
+    param (class * 3 + tab) as class << 3 | tab, so affix / mod stats compare with the saved item's."""
+    out = []
+    for m in mods:
+        part = mods_stats([m], data, how)
+        if Creator._vanilla() and data.prop_func[m[0]] == 10:
+            part = [dict(x, param=((x['param'] // 3) << 3) | (x['param'] % 3)) if x.get('param') is not None else x
+                    for x in part]
+        out += part
+    return merge_stats(out)
+
+
 def merge_stats(stats):
     """Same (stat, param) added together, then sorted as the game saves them."""
     acc = {}
@@ -1869,8 +1882,8 @@ class Creator:
             if key not in cache:
                 try:
                     mods = [(m['prop'], m['param'], m['min'], m['max']) for m in a['mods']]
-                    lo = {(x['id'], x.get('param')): x['value'] for x in mods_stats(mods, d, 'min')}
-                    hi = {(x['id'], x.get('param')): x['value'] for x in mods_stats(mods, d, 'max')}
+                    lo = {(x['id'], x.get('param')): x['value'] for x in layered_stats(mods, d, 'min')}
+                    hi = {(x['id'], x.get('param')): x['value'] for x in layered_stats(mods, d, 'max')}
                     vis = {k for k in set(lo) | set(hi) if k[0] not in (S.PREFIX_COUNT, S.SUFFIX_COUNT)
                            and self._visible(dict(id=k[0], param=k[1], value=hi.get(k, lo.get(k, 1)) or 1))}
                     cache[key] = (lo, hi, vis)
@@ -2267,8 +2280,8 @@ class Creator:
                     pass
                 continue
             try:
-                a = {(x['id'], x.get('param')): x['value'] for x in mods_stats([(prop, param, m.min, m.min)], d, 'min')}
-                b = {(x['id'], x.get('param')): x['value'] for x in mods_stats([(prop, param, m.max, m.max)], d, 'min')}
+                a = {(x['id'], x.get('param')): x['value'] for x in layered_stats([(prop, param, m.min, m.min)], d, 'min')}
+                b = {(x['id'], x.get('param')): x['value'] for x in layered_stats([(prop, param, m.max, m.max)], d, 'min')}
             except Exception:
                 info.append(None)
                 continue

@@ -654,6 +654,10 @@ def browse_attributes(parent, choices, select):
 
 
 def skill_tab_choices(data):
+    from mxl_statnames import vocab_choices
+    named = vocab_choices(188)
+    if named:
+        return named
     from mxl_char import class_names, skill_trees
 
     names = class_names(data)
