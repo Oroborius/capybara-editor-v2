@@ -1264,4 +1264,77 @@ def every_staffmod_skill_is_offered_and_the_item_level_follows():
         T.eq(mxl_legit.impossible(mxl_legit.check_item(blob)), [], 'the server accepts it')
     w.top.destroy()
 
+
+@T.test
+def creator_offers_exactly_what_possible_lists():
+    """The dev kit's possible() lists what can spawn on a base at a quality and item level; the creator must offer
+    exactly that: prefixes, suffixes, automagic, staff-mod skills, sockets, ethereal and superior rows."""
+    need()
+    import time
+    import mxl_legit
+    from d2bt.itemgen import possible
+    win = T.chartab()
+    v = mxl_legit._validator()
+    from mxl_rc_menu import _creator_for
+    cr = _creator_for(win)
+    qids = {'low': 1, 'normal': 2, 'superior': 3, 'magic': 4, 'rare': 6, 'crafted': 8, 'runeword': 2}
+    ilvls = (1, 12, 19, 25, 37, 60, 85, 99)
+    bases = [b for b in cr.bases() if b.code.strip() in v.bases]
+    per_type, picked = {}, []
+    for b in bases:                      # every item type at least once, a few bases of each
+        t = v.bases[b.code.strip()][1].get('type')
+        if per_type.get(t, 0) < (1 if b.kind == 'misc' else 2):
+            per_type[t] = per_type.get(t, 0) + 1
+            picked.append(b)
+    bad = {}
+
+    def miss(kind, b, text):
+        t = v.bases[b.code.strip()][1].get('type')
+        row = bad.setdefault((kind, t), [0, text])
+        row[0] += 1
+
+    t0 = time.time()
+    for b in picked:
+        raw, code = b.code, b.code.strip()     # the creator keys its bases with the table's padding
+        offered = sorted(cr.superior_choices(raw))
+        want = sorted(possible(v, code, 3, 1)['superior'])
+        if offered != want:
+            miss('superior', b, f'{code}: offered {offered} possible {want}')
+        for qn, qid in qids.items():
+            if qn in ('low', 'superior') and not cr.can_have_quality(raw, qn):
+                continue
+            for ilvl in ilvls:
+                p = possible(v, code, qid, ilvl)
+                spec = cr.new_spec(qn, raw)
+                spec['ilvl'] = ilvl
+                if qn in ('magic', 'rare', 'crafted'):
+                    for kind, key in (('magicprefix', 'prefix'), ('magicsuffix', 'suffix')):
+                        got = sorted(i for i, _l, _a in cr.affix_choices(kind, raw, ilvl, rare=qn != 'magic'))
+                        want = sorted(r['id'] for r in p['affixes'][key])
+                        if got != want:
+                            miss(key, b, f'{code} {qn} ilvl {ilvl}: extra {sorted(set(got) - set(want))[:6]} '
+                                         f'missing {sorted(set(want) - set(got))[:6]}')
+                if qn in ('magic', 'rare', 'crafted', 'normal', 'superior', 'low'):
+                    got = sorted(i for i, _l, _a in cr.auto_choices(raw, ilvl, qn))
+                    want = sorted(r['id'] for r in p['affixes']['automagic'])
+                    if got != want and qn in ('magic', 'rare', 'crafted', 'normal'):
+                        miss('automagic', b, f'{code} {qn} ilvl {ilvl}: got {got[:6]} want {want[:6]}')
+                if qn in cr.STAFFMOD_QUALITIES:
+                    got = sorted(i for i, _n, _m in cr.staffmod_choices(spec))
+                    sm = p['staffmods']
+                    want = sorted({s for t in sm['tiers'] for s in sm['skills'][t]}) if sm else []
+                    if got != want:
+                        miss('staffmods', b, f'{code} {qn} ilvl {ilvl}: got {got} want {want}')
+                if qn != 'runeword':
+                    # sockets: only low / normal / superior; for magic / rare / crafted possible() allows more than the
+                    # server's legit check does (rare 2 vs max 1, magic 4 vs max 2), so the creator keeps its stricter cap
+                    lim, mx = cr.creator_socket_limit(spec), p['sockets']['max']
+                    if lim != mx and qn in ('low', 'normal', 'superior'):
+                        miss('sockets', b, f'{code} {qn} ilvl {ilvl}: creator {lim} possible {mx}')
+                    if bool(cr.ethereal_ok(spec)) != bool(p['ethereal_allowed']):
+                        miss('ethereal', b, f"{code} {qn}: creator {cr.ethereal_ok(spec)} possible {p['ethereal_allowed']}")
+    report = {f'{k} / {t}': (n, ex) for (k, t), (n, ex) in sorted(bad.items())}
+    T.check(not report, f'{len(picked)} bases in {time.time() - t0:.0f}s, mismatches: {report}')
+
+
 T.main(globals())
