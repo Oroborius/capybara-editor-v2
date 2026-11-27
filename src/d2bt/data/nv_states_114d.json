@@ -1,0 +1,1301 @@
+{
+ "source": "1.14d states.txt (Patch_D2 > d2exp > d2data); names/effects from ShadowDiablo forum topic 293 \"Nv States\" (Bob-FrisK list), else states.txt code",
+ "stat": "item stat 98 (state): param = state id, value 1",
+ "states": [
+  {
+   "id": 0,
+   "code": "none",
+   "name": "None",
+   "effect": "",
+   "name_source": "states.txt"
+  },
+  {
+   "id": 1,
+   "code": "freeze",
+   "name": "Freeze",
+   "effect": "Blue body",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 2,
+   "code": "poison",
+   "name": "Poison",
+   "effect": "Green body",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 3,
+   "code": "resistfire",
+   "name": "Resist Fire",
+   "effect": "Orange/red Aura by the feet.",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 4,
+   "code": "resistcold",
+   "name": "Resist Cold",
+   "effect": "Blue Aura by the feet.",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 5,
+   "code": "resistlight",
+   "name": "Resist Lightning",
+   "effect": "White Aura by the feet.",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 6,
+   "code": "resistmagic",
+   "name": "Resist Magic",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 7,
+   "code": "playerbody",
+   "name": "Player Body",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 8,
+   "code": "resistall",
+   "name": "Resist All",
+   "effect": "Rainbow Aura on the feet",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 9,
+   "code": "amplifydamage",
+   "name": "Amplify Damage",
+   "effect": "Orange Curse (head)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 10,
+   "code": "frozenarmor",
+   "name": "Frozen Armor",
+   "effect": "Blue Sparkles (body)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 11,
+   "code": "cold",
+   "name": "Cold",
+   "effect": "Blue body",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 12,
+   "code": "inferno",
+   "name": "Inferno",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 13,
+   "code": "blaze",
+   "name": "Blaze",
+   "effect": "As you walk, fire spawns under your feet.",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 14,
+   "code": "bonearmor",
+   "name": "Bone Armor",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 15,
+   "code": "concentrate",
+   "name": "Concentrate",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 16,
+   "code": "enchant",
+   "name": "Enchant",
+   "effect": "Makes you Weapon Red",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 17,
+   "code": "innersight",
+   "name": "Inner Sight",
+   "effect": "White Sparkles",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 18,
+   "code": "skill_move",
+   "name": "Skill Move",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 19,
+   "code": "weaken",
+   "name": "Weaken",
+   "effect": "Yellow Swirls (head)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 20,
+   "code": "chillingarmor",
+   "name": "Chilling Armor",
+   "effect": "Blue Sparkles (body)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 21,
+   "code": "stunned",
+   "name": "Stunned",
+   "effect": "White Swirls (head)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 22,
+   "code": "spiderlay",
+   "name": "Spider Lay",
+   "effect": "Spider Web Trail",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 23,
+   "code": "dimvision",
+   "name": "Dim Vision",
+   "effect": "Orange Ball (head)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 24,
+   "code": "slowed",
+   "name": "Slowed",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 25,
+   "code": "fetishaura",
+   "name": "Fetish Aura",
+   "effect": "Orange Sparks (body)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 26,
+   "code": "shout",
+   "name": "Shout",
+   "effect": "Red/Orange Aura",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 27,
+   "code": "taunt",
+   "name": "Taunt",
+   "effect": "Purple/Green Balls (head)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 28,
+   "code": "conviction",
+   "name": "Conviction",
+   "effect": "Green Aura under/on your feet.",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 29,
+   "code": "convicted",
+   "name": "Convicted",
+   "effect": "Green Aura under/on your feet.",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 30,
+   "code": "energyshield",
+   "name": "Energy Shield",
+   "effect": "Gold ball (head)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 31,
+   "code": "venomclaws",
+   "name": "Venom Claws",
+   "effect": "Makes your Weapon Green",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 32,
+   "code": "battleorders",
+   "name": "Battle Orders",
+   "effect": "Blue Aura",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 33,
+   "code": "might",
+   "name": "Might",
+   "effect": "Might Aura",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 34,
+   "code": "prayer",
+   "name": "Prayer",
+   "effect": "Blue Aura",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 35,
+   "code": "holyfire",
+   "name": "Holy Fire",
+   "effect": "Orange Aura",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 36,
+   "code": "thorns",
+   "name": "Thorns",
+   "effect": "Thorns (yellow/gold spike arua)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 37,
+   "code": "defiance",
+   "name": "Defiance",
+   "effect": "Blue/Green Aura",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 38,
+   "code": "thunderstorm",
+   "name": "Thunderstorm",
+   "effect": "Thunderstorm Aura",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 39,
+   "code": "lightningbolt",
+   "name": "Lightning Bolt",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 40,
+   "code": "blessedaim",
+   "name": "Blessed Aim",
+   "effect": "Red Aura on/under your feet",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 41,
+   "code": "stamina",
+   "name": "Stamina",
+   "effect": "Orange/Red/Yellow Ball Aura",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 42,
+   "code": "concentration",
+   "name": "Concentration",
+   "effect": "Blue/White Aura",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 43,
+   "code": "holywind",
+   "name": "Holy Wind",
+   "effect": "Blue/White (freeze) Aura",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 44,
+   "code": "holywindcold",
+   "name": "Holy Wind Cold",
+   "effect": "Blue",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 45,
+   "code": "cleansing",
+   "name": "Cleansing",
+   "effect": "White Ball Aura",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 46,
+   "code": "holyshock",
+   "name": "Holy Shock",
+   "effect": "White Lightning Aura",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 47,
+   "code": "sanctuary",
+   "name": "Sanctuary",
+   "effect": "White Star Aura",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 48,
+   "code": "meditation",
+   "name": "Meditation",
+   "effect": "Smoke (feet) Blue Sparkles (body)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 49,
+   "code": "fanaticism",
+   "name": "Fanaticism",
+   "effect": "Orange/Red Aura",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 50,
+   "code": "redemption",
+   "name": "Redemption",
+   "effect": "Red Swirl Aura",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 51,
+   "code": "battlecommand",
+   "name": "Battle Command",
+   "effect": "Yellow Aura",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 52,
+   "code": "preventheal",
+   "name": "Prevent Heal",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 53,
+   "code": "conversion",
+   "name": "Conversion",
+   "effect": "Blue/White Swirl (face)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 54,
+   "code": "uninterruptable",
+   "name": "Uninterruptable",
+   "effect": "Can't Move (DON'T USE!!)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 55,
+   "code": "ironmaiden",
+   "name": "Iron Maiden",
+   "effect": "Orange/Red Sparks (head)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 56,
+   "code": "terror",
+   "name": "Terror",
+   "effect": "Green Sparks (head)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 57,
+   "code": "attract",
+   "name": "Attract",
+   "effect": "Orange Swirl (head)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 58,
+   "code": "lifetap",
+   "name": "Life Tap",
+   "effect": "Red Sparks (head)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 59,
+   "code": "confuse",
+   "name": "Confuse",
+   "effect": "Purple/Green Balls (head)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 60,
+   "code": "decrepify",
+   "name": "Decrepify",
+   "effect": "Blue Cloud (head)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 61,
+   "code": "lowerresist",
+   "name": "Lower Resists",
+   "effect": "Purple Sparks (head)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 62,
+   "code": "openwounds",
+   "name": "Open Wounds",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 63,
+   "code": "dopplezon",
+   "name": "DoppleZon",
+   "effect": "Zon (makes you look like a amazon)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 64,
+   "code": "criticalstrike",
+   "name": "Critical Strike",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 65,
+   "code": "dodge",
+   "name": "Dodge",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 66,
+   "code": "avoid",
+   "name": "Avoid",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 67,
+   "code": "penetrate",
+   "name": "Penetrate",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 68,
+   "code": "evade",
+   "name": "Evade",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 69,
+   "code": "pierce",
+   "name": "Pierce",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 70,
+   "code": "warmth",
+   "name": "Warmth",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 71,
+   "code": "firemastery",
+   "name": "Fire Mastery",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 72,
+   "code": "lightningmastery",
+   "name": "Lightning Mastery",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 73,
+   "code": "coldmastery",
+   "name": "Cold Mastery",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 74,
+   "code": "swordmastery",
+   "name": "Sword Mastery",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 75,
+   "code": "axemastery",
+   "name": "Axe Mastery",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 76,
+   "code": "macemastery",
+   "name": "Mace Mastery",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 77,
+   "code": "polearmmastery",
+   "name": "Polearm Mastery",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 78,
+   "code": "throwingmastery",
+   "name": "Throwing Mastery",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 79,
+   "code": "spearmastery",
+   "name": "Spear Mastery",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 80,
+   "code": "increasedstamina",
+   "name": "Increase Stamina",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 81,
+   "code": "ironskin",
+   "name": "Iron Skin",
+   "effect": "Nothing #82 Name:Increase Speed Effect:Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 82,
+   "code": "increasedspeed",
+   "name": "Increased Speed",
+   "effect": "",
+   "name_source": "states.txt"
+  },
+  {
+   "id": 83,
+   "code": "naturalresistance",
+   "name": "Natural Resistance",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 84,
+   "code": "fingermagecurse",
+   "name": "Finger Mage Curse",
+   "effect": "Red/Pink Swirl (body)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 85,
+   "code": "nomanaregen",
+   "name": "Non Mana Regeneration",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 86,
+   "code": "justhit",
+   "name": "Just Hit",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 87,
+   "code": "slowmissiles",
+   "name": "Slows Missiles",
+   "effect": "White Sparkles (body)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 88,
+   "code": "shiverarmor",
+   "name": "Shiver Armor",
+   "effect": "Blue Sparkles (body)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 89,
+   "code": "battlecry",
+   "name": "Battle Cry",
+   "effect": "Red Orange Ball (head) :#90 Name:Blue Effect:Blue (only on things where you don't have armor)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 90,
+   "code": "blue",
+   "name": "Blue",
+   "effect": "",
+   "name_source": "states.txt"
+  },
+  {
+   "id": 91,
+   "code": "red",
+   "name": "Red",
+   "effect": "Red",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 92,
+   "code": "death_delay",
+   "name": "Death Delay",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 93,
+   "code": "valkyrie",
+   "name": "Valkyrie",
+   "effect": "Zon with Valkyrie Aura",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 94,
+   "code": "frenzy",
+   "name": "Frenzy",
+   "effect": "White Swirl (body)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 95,
+   "code": "berserk",
+   "name": "Berserk",
+   "effect": "White/Blue Swirl (head)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 96,
+   "code": "revive",
+   "name": "Revive",
+   "effect": "Black",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 97,
+   "code": "skel_mastery",
+   "name": "Skeleton Mastery",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 98,
+   "code": "sourceunit",
+   "name": "Source Unit",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 99,
+   "code": "redeemed",
+   "name": "Redeemed",
+   "effect": "Invisible (irreversible)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 100,
+   "code": "healthpot",
+   "name": "Heath Potion",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 101,
+   "code": "holyshield",
+   "name": "Holy Shield",
+   "effect": "Invisible Shield (non Pally)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 102,
+   "code": "just_portaled",
+   "name": "Just Portaled",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 103,
+   "code": "monfrenzy",
+   "name": "Monster Frenzy",
+   "effect": "White Swirls (body)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 104,
+   "code": "corpse_nodraw",
+   "name": "Corpse No Draw",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 105,
+   "code": "alignment",
+   "name": "Alignment",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 106,
+   "code": "manapot",
+   "name": "Mana Potion",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 107,
+   "code": "shatter",
+   "name": "Shatter",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 108,
+   "code": "sync_warped",
+   "name": "Sync Warped",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 109,
+   "code": "conversion_save",
+   "name": "Conversion Save",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 110,
+   "code": "pregnant",
+   "name": "Pregnant",
+   "effect": "Orange/Pink Aura (One of my personal favorites)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 111,
+   "code": "golem_mastery",
+   "name": "Golem Mastery",
+   "effect": "Nothing :#112 Name:Rabies Effect:Red Cloud (body)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 112,
+   "code": "rabies",
+   "name": "Rabies",
+   "effect": "",
+   "name_source": "states.txt"
+  },
+  {
+   "id": 113,
+   "code": "defense_curse",
+   "name": "Defense Curse",
+   "effect": "Orange/Red/Yellow Sparks (head)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 114,
+   "code": "blood_mana",
+   "name": "Blood Mana",
+   "effect": "Red/Yellow Swirl (head) (WILL CRASH!!!) :#115 Name:Burning Effect:Fire (feet)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 115,
+   "code": "burning",
+   "name": "Burning",
+   "effect": "",
+   "name_source": "states.txt"
+  },
+  {
+   "id": 116,
+   "code": "dragonflight",
+   "name": "Dragon Flight",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 117,
+   "code": "maul",
+   "name": "Maul",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 118,
+   "code": "corpse_noselect",
+   "name": "Corpse No Select",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 119,
+   "code": "shadowwarrior",
+   "name": "Shadow Warrior",
+   "effect": "Sassy",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 120,
+   "code": "feralrage",
+   "name": "Feral Rage",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 121,
+   "code": "skilldelay",
+   "name": "Skill Delay",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 122,
+   "code": "progressive_damage",
+   "name": "Progressive Damage",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 123,
+   "code": "progressive_steal",
+   "name": "Progressive Steal",
+   "effect": ":Nothing #124 Name:Progressive Other Effect:Nothing :#125 Name:Progressive Fire Effect:Nothing #126 Name:Progressive Cold Effect:Nothing :#127 Name:Progressive Lightning Effect:Nothing :#128 Name:Shrine Armor Effect:Armor Shine",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 124,
+   "code": "progressive_other",
+   "name": "Progressive Other",
+   "effect": "",
+   "name_source": "states.txt"
+  },
+  {
+   "id": 125,
+   "code": "progressive_fire",
+   "name": "Progressive Fire",
+   "effect": "",
+   "name_source": "states.txt"
+  },
+  {
+   "id": 126,
+   "code": "progressive_cold",
+   "name": "Progressive Cold",
+   "effect": "",
+   "name_source": "states.txt"
+  },
+  {
+   "id": 127,
+   "code": "progressive_lightning",
+   "name": "Progressive Lightning",
+   "effect": "",
+   "name_source": "states.txt"
+  },
+  {
+   "id": 128,
+   "code": "shrine_armor",
+   "name": "Shrine Armor",
+   "effect": "",
+   "name_source": "states.txt"
+  },
+  {
+   "id": 129,
+   "code": "shrine_combat",
+   "name": "Shrine Combat",
+   "effect": "Combat Shine",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 130,
+   "code": "shrine_resist_lightning",
+   "name": "Shrine Lightning Resist",
+   "effect": "Lightning Resist Shrine",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 131,
+   "code": "shrine_resist_fire",
+   "name": "Shrine Fire Resist",
+   "effect": "Fire Resist Shrine",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 132,
+   "code": "shrine_resist_cold",
+   "name": "Shrine Resist Cold",
+   "effect": "Resist Cold Shrine",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 133,
+   "code": "shrine_resist_poison",
+   "name": "Shrine Resist Poison",
+   "effect": "Resist Poison Shrine",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 134,
+   "code": "shrine_skill",
+   "name": "Shrine Skill",
+   "effect": "Skill Shrine :#135 Name:Shrine Mana Regeneration Effect:Regenerate Mana Shrine",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 135,
+   "code": "shrine_mana_regen",
+   "name": "Shrine Mana Regen",
+   "effect": "",
+   "name_source": "states.txt"
+  },
+  {
+   "id": 136,
+   "code": "shrine_stamina",
+   "name": "Shrine Stamina",
+   "effect": "Stamina Shrine",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 137,
+   "code": "shrine_experience",
+   "name": "Shrine Experience",
+   "effect": "Experience Shrine",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 138,
+   "code": "fenris_rage",
+   "name": "Fenris Rage",
+   "effect": "White Stars (body)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 139,
+   "code": "wolf",
+   "name": "Wolf",
+   "effect": "Wolf (druids wolf)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 140,
+   "code": "bear",
+   "name": "Bear",
+   "effect": "Bear (druids wearbear)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 141,
+   "code": "bloodlust",
+   "name": "Blood Lust",
+   "effect": "Red Swirl Aura on/uner feet",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 142,
+   "code": "changeclass",
+   "name": "Change Class",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 143,
+   "code": "attached",
+   "name": "Attached",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 144,
+   "code": "hurricane",
+   "name": "Hurricane",
+   "effect": "Nothing #145 Name:Armageddon Effect:Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 145,
+   "code": "armageddon",
+   "name": "Armageddon",
+   "effect": "",
+   "name_source": "states.txt"
+  },
+  {
+   "id": 146,
+   "code": "invis",
+   "name": "Invis",
+   "effect": "Invisible (reversible)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 147,
+   "code": "barbs",
+   "name": "Barbs",
+   "effect": "Rainbow Star Aura",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 148,
+   "code": "wolverine",
+   "name": "Wolverine",
+   "effect": "Red Aura",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 149,
+   "code": "oaksage",
+   "name": "Oak Sage",
+   "effect": "Orange Ball Aura on/under feet",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 150,
+   "code": "vine_beast",
+   "name": "Vine Beast",
+   "effect": "Invisible with Shadow (irreversible)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 151,
+   "code": "cyclonearmor",
+   "name": "Cyclone Armor",
+   "effect": "Cyclone Armor / White strings go around your body",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 152,
+   "code": "clawmastery",
+   "name": "Claw Mastery",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 153,
+   "code": "cloak_of_shadows",
+   "name": "Cloak of Shadows",
+   "effect": "Nothing (sound)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 154,
+   "code": "recycled",
+   "name": "Recycled",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 155,
+   "code": "weaponblock",
+   "name": "Weapon Block",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 156,
+   "code": "cloaked",
+   "name": "Cloaked",
+   "effect": "White Smoke (head)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 157,
+   "code": "quickness",
+   "name": "Quickness",
+   "effect": "Grey/white Aura",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 158,
+   "code": "bladeshield",
+   "name": "Blade Shield",
+   "effect": "Blade Shield ( Spinning blades go around your body )",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 159,
+   "code": "fade",
+   "name": "Fade",
+   "effect": "Yellow/Orange Aura (your faded a little bit \"darker\")",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 160,
+   "code": "summonresist",
+   "name": "Summon Resist",
+   "effect": "Nothing #L:161 Name:Oak Sage Control Effect:Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 161,
+   "code": "oaksagecontrol",
+   "name": "Oak Sage Control",
+   "effect": "",
+   "name_source": "states.txt"
+  },
+  {
+   "id": 162,
+   "code": "wolverinecontrol",
+   "name": "Wolverine Control",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 163,
+   "code": "barbscontrol",
+   "name": "Barbs Control",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 164,
+   "code": "debugcontrol",
+   "name": "Debug Control",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 165,
+   "code": "itemset1",
+   "name": "Item Set 1",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 166,
+   "code": "itemset2",
+   "name": "Item Set 2",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 167,
+   "code": "itemset3",
+   "name": "Item Set 3",
+   "effect": "",
+   "name_source": "states.txt"
+  },
+  {
+   "id": 168,
+   "code": "itemset4",
+   "name": "Item Set 4",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 169,
+   "code": "itemset5",
+   "name": "Item Set 5",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 170,
+   "code": "itemset6",
+   "name": "Item Set 6",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 171,
+   "code": "runeword",
+   "name": "Runeword",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 172,
+   "code": "restinpeace",
+   "name": "Rest in Peace",
+   "effect": "Makes Opponent Get \"Stuck\" or locked when they die",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 173,
+   "code": "corpseexp",
+   "name": "Corpse Explosion",
+   "effect": "Nothing (sound)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 174,
+   "code": "whirlwind",
+   "name": "Whirlwind",
+   "effect": "Grey Swirls (body)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 175,
+   "code": "fullsetgeneric",
+   "name": "Full Set Generic",
+   "effect": ":Golden Glow (body)",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 176,
+   "code": "monsterset",
+   "name": "Monster Set",
+   "effect": "Ghoul Lord",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 177,
+   "code": "delerium",
+   "name": "Delirium",
+   "effect": "Stygian Doll",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 178,
+   "code": "antidote",
+   "name": "Antidote",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 179,
+   "code": "thawing",
+   "name": "Thawing",
+   "effect": "Nothing",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 180,
+   "code": "staminapot",
+   "name": "Stamina Potion",
+   "effect": "Nothing -Bob-Frisk Peace, Anubis_HoS. 😳 😳 😳 This post has been edited by Anubis_HoS: 29 June 2009 - 05:34 AM Reason for edit: Here's bob's full list of nv states he listed on HoP, but not here. Anubis_HoS.",
+   "name_source": "shadowdiablo"
+  },
+  {
+   "id": 181,
+   "code": "passive_resistfire",
+   "name": "Passive Resist Fire",
+   "effect": "",
+   "name_source": "states.txt"
+  },
+  {
+   "id": 182,
+   "code": "passive_resistcold",
+   "name": "Passive Resist Cold",
+   "effect": "",
+   "name_source": "states.txt"
+  },
+  {
+   "id": 183,
+   "code": "passive_resistltng",
+   "name": "Passive Resist Lightning",
+   "effect": "",
+   "name_source": "states.txt"
+  },
+  {
+   "id": 184,
+   "code": "uberminion",
+   "name": "Uber Minion",
+   "effect": "",
+   "name_source": "states.txt"
+  }
+ ]
+}

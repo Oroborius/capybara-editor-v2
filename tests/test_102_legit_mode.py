@@ -251,7 +251,7 @@ def convert_menu_entry_only_for_illegit_items_in_legit_mode():
 # impossible findings per private reference save (sorted order), as the dev kit's checker at the vendored commit
 # reports them (None: unreadable = hacked). The saves are private (.cache/samples, never committed): skipped without.
 REF_EXPECTED = {
-    'legit-ref': [0, 69, 102, 135, 163, 93, 100, 96, 48, 48, 54, 27, 94, 106, 131, 131, 155, None, 66, 41, 93, 32, 100,
+    'legit-ref': [0, 69, 102, 135, 163, 93, 100, 96, 48, 48, 54, 27, 94, 106, 131, 131, 155, 27, 66, 41, 93, 32, 100,
                   0, 93, 90, 91, 91, 29, 125, 133, 26, 69, 63, 54, 98],
     'lld-ref': [166, 167, 171, 171, 129, 171, 41],
 }
@@ -1336,5 +1336,50 @@ def creator_offers_exactly_what_possible_lists():
     report = {f'{k} / {t}': (n, ex) for (k, t), (n, ex) in sorted(bad.items())}
     T.check(not report, f'{len(picked)} bases in {time.time() - t0:.0f}s, mismatches: {report}')
 
+
+
+@T.test
+def normal_charm_reads_its_affix_field():
+    """A tester's character showed "cm1 - 495": an identified normal-quality charm has 1 + 11 bits after its quality
+    (D2MOO ITEMS_DecodeItemBitstreamComplete). The charm decodes, and re-encodes to the same bytes."""
+    need()
+    from mxl_creator import decode_item, encode_item
+    win = T.chartab()
+    blob = bytes.fromhex('4a4d100080006400403ad616030200000080bf0000c458157269cc4ff67bf537f67bf51ff67bf567f7affbd5fd54ff53ff52ff88fe87fe62c0fe07')
+    rec, n = decode_item(blob, win.data)
+    T.eq(n, len(blob), 'the whole item is read')
+    T.eq(rec['charm_affix'], (0, 0), 'the affix field')
+    ids = [x['id'] for x in rec['stats']]
+    T.eq(ids, [98, 66, 151, 201, 198, 195, 236, 235, 234, 340, 339, 338, 136, 135, 98], 'stats as the game reads them')
+    T.eq(bytes(encode_item(rec, win.data, preserve_stat_order=True)), blob, 'written back unchanged')
+
+
+@T.test
+def nv_states_use_the_dev_kit_names():
+    """Owner: the editor showed wrong NV state names (raw keys, skill names). Vanilla uses the dev kit's 1.14d list
+    (d2bt/data/nv_states_114d.json: states.txt ids, ShadowDiablo "Nv States" names)."""
+    need()
+    import json
+    import os
+    import d2bt
+    from mxl_creator import decode_item
+    from mxl_statnames import state_name, state_names_sorted, vanilla_stat_value
+    win = T.chartab()
+    with open(os.path.join(os.path.dirname(d2bt.__file__), 'data', 'nv_states_114d.json'), encoding='utf-8') as f:
+        rows = json.load(f)['states']
+    bad = [(r['id'], r['name'], state_name(win.data, r['id'])) for r in rows if r['id'] and r.get('name')
+           and state_name(win.data, r['id']) != r['name']]
+    T.eq(bad, [], 'every state by the list')
+    T.eq(state_name(win.data, 86), 'Just Hit', '86')
+    T.eq(state_name(win.data, 8), 'Resist All', '8 (not Salvation)')
+    picks = state_names_sorted(win.data)
+    T.eq(len(picks), 185, 'the picker lists all 185 states, 0-184')
+    T.eq(len({label for label, _sid in picks}), 185, 'every label unique')
+    T.eq(picks[86], ('86 - Just Hit', 86), 'numbered, by id')
+    T.eq(picks[101], ('101 - Holy Shield', 101), '101')
+    blob = bytes.fromhex('4a4d100080006400403ad616030200000080bf0000c458157269cc4ff67bf537f67bf51ff67bf567f7affbd5fd54ff53ff52ff88fe87fe62c0fe07')
+    rec, _n = decode_item(blob, win.data)
+    lines = [str(vanilla_stat_value(win.data, x['id'], x.get('param'), x['value'])) for x in rec['stats'] if x['id'] == 98]
+    T.check(any('Just Hit' in l for l in lines) and any('Revive' in l for l in lines), f'the charm shows them: {lines}')
 
 T.main(globals())

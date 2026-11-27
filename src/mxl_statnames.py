@@ -153,6 +153,10 @@ def vanilla_stat_value(data, sid, param, value):
     """A vanilla item attribute and its value for reports and attribute buffers."""
     from mxl_profile import fallback_stat_line, missing_stat_text
 
+    if sid == STATE_STAT and param is not None and _vanilla_state_names():
+        name = _vanilla_state_names().get(param)
+        if name and _is_vanilla():
+            return f'NV state: {param} - {name}'
     line = vocab_line(sid, param, value) or rendered_line(data, sid, param, value)
     return (fallback_stat_line(data, dict(id=sid, param=param, value=value))
             if missing_stat_text(line) else line)
@@ -849,11 +853,54 @@ def _state_skills(data):
     return m
 
 
+def _vanilla_state_names():
+    """{state id: name} of vanilla 1.14d (all 185 rows of states.txt, 0 = none): the dev kit's NV state list
+    (d2bt/data/nv_states_114d.json, names from the ShadowDiablo "Nv States" list, else the cleaned states.txt
+    code). {} when it is missing."""
+    global _VANILLA_STATES
+    if _VANILLA_STATES is None:
+        try:
+            import json
+            import os
+            import d2bt
+            with open(os.path.join(os.path.dirname(d2bt.__file__), 'data', 'nv_states_114d.json'), encoding='utf-8') as f:
+                d = json.load(f)
+            rows = d['states'] if isinstance(d, dict) else d
+            _VANILLA_STATES = {int(r['id']): r.get('name') or r.get('code') or f"State {r['id']}" for r in rows}
+        except Exception:
+            _VANILLA_STATES = {}
+    return _VANILLA_STATES
+
+
+_VANILLA_STATES = None
+
+
+def _is_vanilla():
+    try:
+        from mxl_profile import is_median
+        return not is_median()
+    except Exception:
+        return False
+
+
 def state_name(data, sid):
     """Display name of a state id: the names of the skills that set it (the states table carries no
     name strings, the skills that set the state do). None when no skill sets it."""
     if sid is None:
         return None
+    try:
+        from mxl_profile import is_median
+        vanilla = not is_median()
+    except Exception:
+        vanilla = False
+    if vanilla:
+        own = _vanilla_state_names().get(sid)
+        if own:
+            return own
+    return _state_name_from_tables(data, sid)
+
+
+def _state_name_from_tables(data, sid):
     icon = _state_icon_names(data).get(sid)          # the text under the state's buff icon, when it has one
     if icon:
         return icon
@@ -894,6 +941,9 @@ def _state_row_name(data, sid):
 def state_names_sorted(data):
     """[(state name, state id)] sorted by name, for the state stat's (98) param dropdown: every state of
     the states table (named by its buff icon, the skills that set it, or its own row)."""
+    vanilla = _vanilla_state_names() if _is_vanilla() else {}
+    if vanilla:                  # vanilla: all 185 NV states by number ("101 - Holy Shield"), none merged or dropped
+        return [(f'{sid} - {name}', sid) for sid, name in sorted(vanilla.items())]
     out = []
     for sid in sorted(set(_state_skills(data)) | set(_state_icon_names(data)) | set(_state_row_names(data))):
         n = state_name(data, sid)

@@ -68,6 +68,7 @@ class SaveTables:
             if c and c not in self._parents:
                 self._parents[c] = [x for x in (it.cell(r, 'equiv1'), it.cell(r, 'equiv2')) if x]
         self.bases = {}
+        self.charms = set()
         for t in ('weapons', 'armor', 'misc'):
             tab = td[t]
             if tab is None:
@@ -77,6 +78,8 @@ class SaveTables:
                 if code.strip() and code not in self.bases:
                     self.bases[code] = (t, self.kind(t, tab.cell(r, 'type'), tab.cell(r, 'type2')),
                                         bool(tab.num(r, 'stackable')))
+                    if 'char' in self.ancestors(tab.cell(r, 'type')) | self.ancestors(tab.cell(r, 'type2')):
+                        self.charms.add(code)
         pc = td['playerclass'].col('code') if td['playerclass'] else ['ama', 'sor', 'nec', 'pal', 'bar',
                                                                        'dru', 'ass']
         sk = td['skills'].col('charclass')
@@ -179,7 +182,7 @@ def _stats(br, tab, u, values=None):
             return
         for x in (sid,) + STAT_GROUPS.get(sid, ()):
             sd = tab.stats.get(x)
-            if not sd or not sd[0]:
+            if not sd:     # 0 save bits is a real zero-width stat (stunlength, 355): the game reads 0 bits
                 raise UnknownStatError(x)
             u.stats.add(x)
             layer = br.read(sd[2]) if sd[2] else 0
@@ -246,7 +249,13 @@ def _item(buf, pos, tab, u, items=None):
                 if br.read(1):
                     table = 'magicprefix' if k % 2 == 0 else 'magicsuffix'
                     item.affixes.append((table, affix(table, 11)))
-    elif q != 2:
+    elif q == 2:
+        # ITEMS_DecodeItemBitstreamComplete (0x0062A970): an identified normal charm carries
+        # a prefix/suffix selector bit and an 11-bit affix
+        if code in tab.charms and flags & 0x10:
+            table = 'magicprefix' if br.read(1) else 'magicsuffix'
+            item.affixes.append((table, affix(table, 11)))
+    else:
         raise SaveError(f'unknown item quality {q}')
     if flags >> 26 & 1:
         packed = br.read(16)

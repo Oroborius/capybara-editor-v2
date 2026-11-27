@@ -372,6 +372,10 @@ def encode_item(rec, data, *, preserve_stat_order=False):
                 bw.write(11, af)
             else:
                 bw.write(1, 0)
+    elif _charm_affix_field(rec.get('code'), q, flags):
+        kind, aid = rec.get('charm_affix') or (0, 0)
+        bw.write(1, kind)
+        bw.write(11, aid)
     if flags & FLAG_RUNEWORD:
         bw.write(16, rec['runeword_id'])
     if flags & FLAG_PERSONALIZED:
@@ -463,6 +467,21 @@ def _read_stats(br, data, starts=None):
             c = data.isc[x]
             p = br.read(c['param']) if c['param'] else None
             out.append(dict(id=x, param=p, value=br.read(c['bits']) - c['add']))
+
+
+VANILLA_CHARMS = ('cm1 ', 'cm2 ', 'cm3 ')
+
+
+def _charm_affix_field(rec_or_code, quality, flags):
+    """1.14d reads 1 + 11 bits after the quality of an identified normal-quality charm (D2MOO
+    ITEMS_DecodeItemBitstreamComplete: 1 = a prefix id, 0 = a suffix id, then the id). Vanilla only."""
+    if quality != 'normal' or not flags & 0x10 or rec_or_code not in VANILLA_CHARMS:
+        return False
+    try:
+        import mxl_profile
+        return not mxl_profile.is_median()
+    except Exception:
+        return False
 
 
 def decode_item(blob, data, *, offsets=None):
@@ -557,6 +576,9 @@ def decode_item(blob, data, *, offsets=None):
         r['rare_names'] = (br.read(8), br.read(8))
         mark('rare_affixes')
         r['rare_affixes'] = [br.read(11) if br.read(1) else None for _ in range(6)]
+    elif _charm_affix_field(code, q, flags):
+        mark('charm_affix')
+        r['charm_affix'] = (br.read(1), br.read(11))
     if flags & FLAG_RUNEWORD:
         mark('runeword_id')
         r['runeword_id'] = br.read(16)

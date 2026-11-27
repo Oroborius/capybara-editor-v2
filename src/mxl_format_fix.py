@@ -213,6 +213,11 @@ def _read_early_trailer(br):
         br.read(64)
 
 
+def _vanilla_charm(code):
+    from mxl_creator import _charm_affix_field
+    return _charm_affix_field(code, 'normal', 0x10)
+
+
 def _parse_item(blob, data):
     expect(blob, 0, b'JM')
     br = BitReader(blob[2:])
@@ -284,10 +289,15 @@ def _parse_item(blob, data):
         it['rare_affixes'] = [br.read(11) if br.read(1) else None for _ in range(6)]
     elif q == TEMPERED:
         it['rare_names'] = (br.read(8), br.read(8))
-    if early_lod and q == 'normal':
+    if q == 'normal' and (early_lod or it['identified'] and _vanilla_charm(code)):
         types = data.type_ancestors(base.type) | data.type_ancestors(base.type2)
         if _tag_index(data, 'char') in types:
-            br.read(12)
+            # 1.14d too: an identified normal charm has 1 + 11 bits (prefix / suffix id) here (D2MOO
+            # ITEMS_DecodeItemBitstreamComplete); mxl_creator.decode_item keeps them as charm_affix
+            try:                                     # an attribute: the host's item rejects unknown keys
+                it._charm_affix = (br.read(1), br.read(11))
+            except AttributeError:
+                pass
         if _tag_index(data, 'body') in types and _tag_index(data, 'play') not in types:
             br.read(10)
         if code in ('tbk ', 'ibk ', 'tsc ', 'isc '):
