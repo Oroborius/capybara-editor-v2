@@ -318,7 +318,7 @@ class Importer:
         words = canon(display).split()
         a = next((i for i, n in pre if words and canon(n) == words[0]), pre[0][0])
         c = next((i for i, n in suf if len(words) > 1 and canon(n) == ' '.join(words[1:])), suf[0][0])
-        return a + len(self.d.rare_suffix), c
+        return self.cr.rare_names_stored((a, c))
 
     def _base_defense(self, code, stats, shown, eth):
         """Base defense of the save so that the game shows the page's value: shown = base * (100 + ED%) / 100

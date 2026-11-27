@@ -165,7 +165,8 @@ def _now(app, it):
 
 def _copy(app, it):
     try:
-        app._capy_clip = (_now(app, it)[2], app.full_name(it))
+        from mxl_creator import ClipItem
+        app._capy_clip = ClipItem(_now(app, it)[2], app.full_name(it), app.data)
         _status(app, rc('copied', '{name} copied (right-click an empty cell to paste it)',
                         name=app.full_name(it)))
     except (EditError, FormatError, OSError) as e:
@@ -177,6 +178,8 @@ def _copy(app, it):
 def _duplicate(app, it):
     try:
         _buf, items, blob = _now(app, it)
+        from mxl_creator import renew_item_ids
+        blob = renew_item_ids(blob, app.data)
         pages = [it['page']] + [p for p in range(STASH_PAGES) if p != it['page']]
         spot = free_spot(items, blob_item(blob, app.data), app.data, pages)
         if spot is None:
@@ -649,7 +652,8 @@ def _vanilla_char_commands(win, menu, entry, clip, *, paste=None, delete=None, e
 def _char_copy(win, e):
     import mxl_char as MC
     try:
-        win.app._capy_clip = (win.ch.stash_blob(e), clean_name(win, e))
+        from mxl_creator import ClipItem
+        win.app._capy_clip = ClipItem(win.ch.stash_blob(e), clean_name(win, e), win.data)
     except MC.CharError as err:                       # a 1.09 item kept as read
         win.set_status(str(err), True)
         return
@@ -763,7 +767,8 @@ def _char_duplicate(win, e):
         win.set_status(rc('err.merc', 'the mercenary has no inventory to duplicate into'), True)
         return
     try:
-        blob = win.ch.stash_blob(e)
+        from mxl_creator import renew_item_ids
+        blob = renew_item_ids(win.ch.stash_blob(e), win.data)
         spot = win.ch.free_inventory_spot(MC.blob_item(blob, win.data))
         if spot is None:
             win.set_status(rc('err.nofree_inv', 'no free place in the inventory'), True)
@@ -914,7 +919,7 @@ def _quality_to(rec, cr, data, code, q, pick=None, pick2=None):
     elif q == 'magic':
         rec['prefix'] = rec['suffix'] = 0
     elif q in ('rare', 'crafted', 'tempered'):
-        rec['rare_names'] = (pick + len(data.rare_suffix), pick2)
+        rec['rare_names'] = cr.rare_names_stored((pick, pick2))
         rec['rare_affixes'] = [None] * 6
     elif q in ('set', 'unique'):
         rec['set_unique_id'] = pick
@@ -1448,6 +1453,15 @@ def _socket_limit(holder, code, rec):
         ms = 0
     if _unrestricted() and body_kind(data, code) in ('armor', 'weapons'):
         ms = MAX_SOCKETED
+    try:
+        import mxl_legit
+        if mxl_legit.enabled():                 # Legit Mode: the server's socket rule
+            have = (rec.get('sockets') or 0) if rec['flags'] & FLAG_SOCKETED else 0
+            cap = mxl_legit.max_sockets(rec, have)
+            if cap is not None:
+                ms = min(ms, cap)
+    except Exception:
+        pass
     return min(ms, MAX_SOCKETED)
 
 

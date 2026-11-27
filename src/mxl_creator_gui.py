@@ -564,24 +564,26 @@ class CreatorWindow:
         for w in (outer, rowc, rowp, rowb):
             w.bind('<Configure>', fold)
         self.btn_ok = D2.button(rowr, T('cr.btn.replace', 'Replace item') if self.edit_item else
-                                (T('cr.btn.create', 'Create') if self.target else T('cr.btn.create_stash', 'Create in stash')),
+                                (T('cr.btn.create', 'Create') if self.target else T('cr.btn.create_buffer', 'Create in item buffer')
+                                 if self._no_shared_stash() else T('cr.btn.create_stash', 'Create in stash')),
                                 self.commit)
         self.btn_ok.pack(side='right')            # packed first: never squeezed out of the window
         D2.button(rowr, T('cr.btn.close', 'Close'), self.top.destroy).pack(side='right', padx=4)
         # bulk add: write N copies into the first N free spots (plain stash-create mode only)
         self.copies = tk.IntVar(value=1)
         self._copies_widgets = []
-        if self.edit_item is None and self.target is None:
+        if self.edit_item is None and self.target is None and not self._no_shared_stash():
             ttk.Label(rowc, text=T('cr.copies', 'copies')).pack(side='left', padx=(2, 2))
             self.copies_spin = ttk.Spinbox(rowc, from_=1, to=100, textvariable=self.copies, width=4)
             self.copies_spin.pack(side='left')
             self._copies_widgets = [self.copies_spin]
             D2.button(rowc, T('cr.btn.fill_containers', 'All containers'), self.fill_containers).pack(side='left', padx=(6, 0))
-        ttk.Label(rowp, text=T('cr.stash_page', 'Stash page')).pack(side='left', padx=(4, 0))
         self.page_current, self.page_first = T('cr.page.current', 'Current page'), T('cr.page.first_free', 'First free')
         self.page = tk.StringVar(value=self.page_current)
-        ttk.Combobox(rowp, state='readonly', width=14, textvariable=self.page,
-                     values=[self.page_current, self.page_first] + [str(i + 1) for i in range(STASH_PAGES)]).pack(side='left', padx=4)
+        if not self._no_shared_stash():          # 1.14d has no stash pages to choose (nor a shared stash)
+            ttk.Label(rowp, text=T('cr.stash_page', 'Stash page')).pack(side='left', padx=(4, 0))
+            ttk.Combobox(rowp, state='readonly', width=14, textvariable=self.page,
+                         values=[self.page_current, self.page_first] + [str(i + 1) for i in range(STASH_PAGES)]).pack(side='left', padx=4)
         if settings.get('capy_unrestricted') is None:          # first start: unrestricted on (this build's point)
             settings.put('capy_unrestricted', True)
         self.unrestricted = tk.BooleanVar(value=bool(settings.get('capy_unrestricted')))
@@ -776,6 +778,9 @@ class CreatorWindow:
     def update_dest(self):
         if self.target is not None:
             self.dest.configure(text=f'-> {self.target_label}')
+            return
+        if self.edit_item is None and self._no_shared_stash():
+            self.dest.configure(text=T('cr.dest_buffer', '-> item buffer'))
             return
         path = self.app.path
         self.dest.configure(text=f'-> {os.path.basename(path)}' if path else T('cr.no_stash', '-> (no stash open)'))
@@ -985,7 +990,7 @@ class CreatorWindow:
             spec = cr.new_spec('rare', key)                # Angelic items are rares on the Angelic bases
         else:
             spec = cr.new_spec(q, key)
-        spec['ilvl'] = max(spec['ilvl'], min(99, MAX_ILVL))
+        spec['ilvl'] = max(spec['ilvl'], min(99, cr.max_ilvl()))
         spec['max_sockets'] = q in ('unique', 'set', 'crafted', 'tempered')   # as the game gives them (Sacred gear)
         if q == 'tempered':                    # the cube recipe's output: a blank item, a rare-style name, the
             spec['extra'] = []                 # maximum sockets and the recipe's own stats (in its stat list)
@@ -996,8 +1001,8 @@ class CreatorWindow:
             finally:
                 self.spec = old
         self.prepare_defaults(spec)
-        if q == 'crafted':                     # one roll, as the cube gives it: name, affixes, values
-            cr.reroll_crafted(spec)
+        if q == 'crafted' and not cr._vanilla():   # one roll, as the cube gives it: name, affixes, values
+            cr.reroll_crafted(spec)          # (vanilla: no affixes to start with, the recipe's own mods only)
         else:
             cr.roll(spec, 'max')
         self.spec = spec
@@ -1006,7 +1011,11 @@ class CreatorWindow:
     def prepare_defaults(self, spec):
         """Picks the first legit option wherever one is required (innate affix, superior bonus, names...)."""
         cr, code, q, ilvl = self.cr, spec['code'], spec['quality'], spec['ilvl']
-        autos = cr.auto_choices(code, ilvl)              # every quality has its base's innate affix (Sigma)
+        if not cr.ethereal_ok(spec):                     # vanilla: no ethereal charms, set items, indestructible bases
+            spec['ethereal'] = False
+        elif cr.ethereal_forced(spec):
+            spec['ethereal'] = True
+        autos = cr.auto_choices(code, ilvl, q)              # every quality has its base's innate affix (Sigma)
         ids = [a for a, _, _ in autos]
         keep_none = bool(spec.get('extra')) and not spec.get('auto')   # edited item without one
         if ids and spec.get('auto') not in ids and not keep_none:
@@ -1025,7 +1034,7 @@ class CreatorWindow:
                 ok = {i for i, _, _ in cr.affix_choices(kind, code, ilvl)}
                 if spec.get(key) not in ok:
                     spec[key] = None
-            if not spec.get('prefix') and not spec.get('suffix'):
+            if not spec.get('prefix') and not spec.get('suffix') and not cr._vanilla():   # vanilla: starts empty
                 ch = cr.affix_choices('magicprefix', code, ilvl) or []
                 if ch:
                     spec['prefix'] = ch[-1][0]
@@ -1054,7 +1063,9 @@ class CreatorWindow:
             for kind, key in (('magicprefix', 'rare_prefixes'), ('magicsuffix', 'rare_suffixes')):
                 ok = {i for i, _, _ in cr.affix_choices(kind, code, ilvl, rare=True)}
                 spec[key] = [x for x in (spec.get(key) or []) if x in ok]
-            if not spec['rare_prefixes'] or not spec['rare_suffixes'] or len(spec['rare_prefixes']) + len(spec['rare_suffixes']) < 3:
+            if cr._vanilla():                            # vanilla: a new rare starts without affixes
+                pass
+            elif not spec['rare_prefixes'] or not spec['rare_suffixes'] or len(spec['rare_prefixes']) + len(spec['rare_suffixes']) < 3:
                 for kind, key, n in (('magicprefix', 'rare_prefixes', 2), ('magicsuffix', 'rare_suffixes', 2)):
                     groups = {self.data.affixes[kind][x - 1]['group'] for x in spec[key]}
                     for i, _, a in reversed(cr.affix_choices(kind, code, ilvl, rare=True)):
@@ -1183,10 +1194,14 @@ class CreatorWindow:
             vals = [NONE] + [self.sup_label(i) for i in sup]
             combo(T('cr.superior', 'Superior'), vals, self.sup_label(spec['superior']) if spec.get('superior') is not None else NONE,
                   lambda i, sup=sup: self.set_field('superior', None if i == 0 else sup[i - 1]))
-        spin(T('cr.item_level', 'Item level'), cr.min_ilvl(spec), MAX_ILVL, spec['ilvl'], lambda v: self.set_field('ilvl', v))
-        rr = row(T('cr.ethereal', 'Ethereal'))          # any item can be ethereal (charms, jewels, rings ... too)
-        ev = tk.BooleanVar(value=spec['ethereal'])
-        ttk.Checkbutton(f, variable=ev, command=lambda ev=ev: self.set_field('ethereal', ev.get())).grid(row=rr, column=1, sticky='w')
+        spin(T('cr.item_level', 'Item level'), cr.min_ilvl(spec), cr.max_ilvl(), spec['ilvl'], lambda v: self.set_field('ilvl', v))
+        if cr.ethereal_ok(spec):                         # Median: any item (charms, jewels, rings ... too)
+            rr = row(T('cr.ethereal', 'Ethereal'))
+            ev = tk.BooleanVar(value=spec['ethereal'])
+            cb = ttk.Checkbutton(f, variable=ev, command=lambda ev=ev: self.set_field('ethereal', ev.get()))
+            cb.grid(row=rr, column=1, sticky='w')
+            if cr.ethereal_forced(spec):
+                cb.state(['disabled'])
         ms = cr.creator_socket_limit(spec)
         if q == 'runeword':
             rr = row(T('cr.sockets', 'Sockets'))
@@ -1244,7 +1259,7 @@ class CreatorWindow:
         if b.stack_max is not None:
             spin(T('cr.quantity', 'Quantity'), 1, cr.quantity_max(code), spec.get('quantity') or 1, lambda v: self.set_field('quantity', v))
         if True:
-            autos = cr.auto_choices(code, spec['ilvl'])
+            autos = cr.auto_choices(code, spec['ilvl'], q)
             if autos:
                 vals = [lab for _, lab, _ in autos]
                 cur = next((lab for i, lab, _ in autos if i == spec.get('auto')), vals[-1])
@@ -1276,7 +1291,7 @@ class CreatorWindow:
                 lst = names[kind]
                 vals = [clean(t) for _, t in lst]
                 cur = next((clean(t) for i, t in lst if i == rn[n]), vals[0] if vals else '')
-                combo(lab, vals, cur, lambda i, n=n, lst=lst: self.set_rare_name(n, lst[i][0]))
+                combo(lab, vals, cur, lambda i, n=n, lst=lst: self.set_rare_name(n, lst[i][0]), search=False)
             for kind, key, lab in ((('magicprefix', 'rare_prefixes', T('cr.prefix', 'Prefix')), ('magicsuffix', 'rare_suffixes', T('cr.suffix', 'Suffix')))
                                    if q != 'tempered' else ()):
                 ch = cr.affix_choices(kind, code, spec['ilvl'], rare=True)
@@ -2938,11 +2953,22 @@ class CreatorWindow:
             if n:
                 probs.append(T('cr.warn.kept', "{n} stat(s) kept as they were on the item (outside the game's ranges "
                                'or from upgrades the editor does not model)', n=n))
+        server = None
+        if self._no_shared_stash():       # vanilla: the server's own verdict, never the older range check
+            try:
+                import mxl_legit
+                server = mxl_legit.impossible(mxl_legit.check_item(blob))
+                probs = [f'{f.item}: {f.rule} - {f.detail}' for f in server[:4]]
+            except Exception:
+                server = None
         if probs:
             self.set_status(T('cr.warning', 'Warning: {text}', text='; '.join(str(p) for p in probs)), error=True)
         else:
             w, h = self.data.base(it['code']).size
-            self.set_status(T('cr.legit', "Legit: every value is within the game's ranges. Size {w}x{h}.", w=w, h=h))
+            if server is not None:
+                self.set_status(T('cr.legit_server', 'Legit (server rules). Size {w}x{h}.', w=w, h=h))
+            else:
+                self.set_status(T('cr.legit', "Legit: every value is within the game's ranges. Size {w}x{h}.", w=w, h=h))
         self.btn_ok.state(['!disabled'])
         return blob
 
@@ -3018,6 +3044,46 @@ class CreatorWindow:
             t.insert('end', line + '\n', blue)
         t.configure(state='disabled')
 
+    def _item_buffer_target(self):
+        """Hero Editor layout (vanilla): the character window whose item buffer (Picked Up) takes a new item."""
+        try:
+            import mxl_vanilla_he
+            import mxl_tabs
+            if not mxl_vanilla_he.active():
+                return None
+            win = mxl_tabs.built_owner('Character')
+            return win if win is not None and hasattr(win, 'he_pickup') else None
+        except Exception:
+            return None
+
+    @staticmethod
+    def _no_shared_stash():
+        try:
+            import mxl_vanilla_he
+            return mxl_vanilla_he.active()
+        except Exception:
+            return False
+
+    def _commit_to_buffer(self, app):
+        from mxl_vanilla_he_extras import put_picked_up
+        blob = self.refresh()
+        if blob is None:
+            return
+        win = self._item_buffer_target()
+        try:
+            put_picked_up(win, blob)
+        except Exception as e:
+            messagebox.showerror(T('cr.title.creator', 'Item Creator'), str(e), parent=self.top)
+            return
+        msg = T('cr.created_buffer', '{name} created: in the item buffer (right-click > Paste)',
+                name=clean(self.cr.describe(self.spec)))
+        self.set_status(msg)
+        app.status.configure(text=msg)
+        try:
+            win.set_status(msg)
+        except Exception:
+            pass
+
     def commit(self):
         app = self.app
         if getattr(self, '_busy', False):
@@ -3042,6 +3108,14 @@ class CreatorWindow:
             app.status.configure(text=msg or '')
             if self.edit_item is not None:
                 self.top.destroy()
+            return
+        if self.edit_item is None and self._item_buffer_target() is not None:
+            return self._commit_to_buffer(app)
+        if self.edit_item is None and self._no_shared_stash():
+            # 1.14d has no shared stash (a Median XL / PlugY idea): items go to the character's item buffer only
+            messagebox.showerror(T('cr.title.creator', 'Item Creator'),
+                                 T('cr.open_char', 'Open a character first: a new item goes into its item buffer.'),
+                                 parent=self.top)
             return
         if not app.path:
             messagebox.showerror(T('cr.title.creator', 'Item Creator'), T('cr.open_stash', 'Open a stash in the main window first.'),

@@ -72,6 +72,14 @@ def max_sockets(cr, code, rec):
         n = cr.socket_limit(code, rec['ilvl'])
     except (KeyError, IndexError, AttributeError, TypeError):
         n = 0
+    try:
+        import mxl_legit
+        if mxl_legit.enabled():             # Legit Mode: the server's own socket rule, whatever the hand-edit limit
+            cap = mxl_legit.max_sockets(rec, current(rec))
+            if cap is not None:
+                n = min(n or 0, cap)
+    except Exception:
+        pass
     return max(0, min(n or 0, MAX_COUNT))
 
 

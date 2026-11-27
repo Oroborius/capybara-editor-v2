@@ -158,7 +158,8 @@ def put_picked_up(win, blob):
     item = blob_item(blob, win.data)
     if getattr(win.data, 'beta_items', False):
         blob = BetaItemBlob(blob)
-    win.app._capy_clip = blob, clean(item.get('name') or item['code'])
+    from mxl_creator import ClipItem
+    win.app._capy_clip = ClipItem(blob, clean(item.get('name') or item['code']), win.data)
     draw_pickup(win)
     win.set_status('Item copied into Picked Up.')
     return 'Item copied into Picked Up.'
@@ -1150,10 +1151,9 @@ class ItemEdit:
         code = self.record['code']
         if field == 'rare_names':
             names = creator.rare_name_choices(code)
-            offset = len(self.win.data.rare_suffix)
             choices = (
-                [(key + offset, name) for key, name in names['rareprefix']],
-                names['raresuffix'],
+                [(creator.rare_names_stored((key, 0))[0], name) for key, name in names['rareprefix']],
+                [(creator.rare_names_stored((0, key))[1], name) for key, name in names['raresuffix']],
             )
         else:
             choices = tuple(

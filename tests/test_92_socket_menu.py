@@ -326,11 +326,11 @@ def _vanilla_char():
     cr = C.Creator(d)
     gem = next(c for c, _n in cr.sockets_fillers())
     base = next((b for b in cr.bases() if b.kind == 'weapons' and b.size[1] <= 3
-                 and 2 <= cr.max_sockets(b.code, C.MAX_ILVL) < 7), None)
+                 and 2 <= cr.max_sockets(b.code, cr.max_ilvl()) < 7), None)
     if base is None:
         T.skip('no weapon base with 2 sockets')
     spec = cr.new_spec('normal', base.code)
-    spec['ilvl'] = C.MAX_ILVL
+    spec["ilvl"] = cr.max_ilvl()
     spec['sockets'] = 2
     spec['socketed'] = [gem, gem]
     blob = bytes(cr.build(spec)[0])
@@ -399,7 +399,7 @@ def vanilla_menu_only_on_socketable_items():
     boots = next((b for b in cr.bases() if 'boot' in cr.type_codes(b.code)), None)
     if boots is not None:
         spec = cr.new_spec('normal', boots.code)
-        spec['ilvl'] = C.MAX_ILVL
+        spec["ilvl"] = cr.max_ilvl()
         loose.append(bytes(cr.build(spec)[0]))
     spots = []
     for b in loose:
@@ -447,11 +447,11 @@ def _vbuild(cr, sockets, n_gems):
     import mxl_creator as C
     gem = next(c for c, _n in cr.sockets_fillers())
     base = next((b for b in cr.bases() if b.kind == 'weapons' and b.size[0] <= 2 and b.size[1] <= 3
-                 and sockets <= cr.max_sockets(b.code, C.MAX_ILVL) < 7), None)
+                 and sockets <= cr.max_sockets(b.code, cr.max_ilvl()) < 7), None)
     if base is None:
         T.skip(f'no 2 x 3 weapon base with {sockets} sockets')
     spec = cr.new_spec('normal', base.code)
-    spec['ilvl'] = C.MAX_ILVL
+    spec["ilvl"] = cr.max_ilvl()
     spec['sockets'] = sockets
     spec['socketed'] = [gem] * n_gems
     return bytes(cr.build(spec)[0]), gem

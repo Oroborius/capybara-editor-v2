@@ -1133,7 +1133,8 @@ def install_main_readonly():
         name = mxl_rc_menu.clean_name(None, e)
         if what == 'copy':
             try:
-                app._capy_clip = (app.van_ch.stash_blob(e), name)
+                from mxl_creator import ClipItem
+                app._capy_clip = ClipItem(app.van_ch.stash_blob(e), name, app.van_ch.data)
             except Exception as err:
                 _say(app, f'{type(err).__name__}: {err}')
                 return
