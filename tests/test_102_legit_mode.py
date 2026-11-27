@@ -1326,10 +1326,10 @@ def creator_offers_exactly_what_possible_lists():
                     if got != want:
                         miss('staffmods', b, f'{code} {qn} ilvl {ilvl}: got {got} want {want}')
                 if qn != 'runeword':
-                    # sockets: only low / normal / superior; for magic / rare / crafted possible() allows more than the
-                    # server's legit check does (rare 2 vs max 1, magic 4 vs max 2), so the creator keeps its stricter cap
+                    # sockets on every quality: possible()['sockets']['max'] is the cap without a socket affix (dev kit
+                    # 3a34bf1: drop sockets, or Larzuk: magic 2, rare / crafted 1)
                     lim, mx = cr.creator_socket_limit(spec), p['sockets']['max']
-                    if lim != mx and qn in ('low', 'normal', 'superior'):
+                    if lim != mx:
                         miss('sockets', b, f'{code} {qn} ilvl {ilvl}: creator {lim} possible {mx}')
                     if bool(cr.ethereal_ok(spec)) != bool(p['ethereal_allowed']):
                         miss('ethereal', b, f"{code} {qn}: creator {cr.ethereal_ok(spec)} possible {p['ethereal_allowed']}")

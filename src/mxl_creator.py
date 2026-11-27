@@ -972,14 +972,16 @@ class Creator:
 
     def creator_socket_limit(self, spec):
         """Most sockets the item creator offers for a NEW item. Vanilla: what the game generates - the base's
-        sockets at the item level (itemtypes MaxSock) on low / normal / superior / magic items, none on rare,
-        crafted, set and unique items (only a quest adds sockets to those). More (up to 7) is a hand edit:
+        sockets at the item level (itemtypes MaxSock) on low / normal / superior / magic items (magic: 2, Larzuk),
+        1 on rare, crafted, set and unique items (only Larzuk's quest adds one). More (up to 7) is a hand edit:
         Specific item edit > Socketing. Median and an item opened with Edit item: socket_limit."""
         code, ilvl = spec['code'], spec['ilvl']
         if not self._vanilla() or spec.get('_from_item') or code not in self.data.bases:
             return self.socket_limit(code, ilvl)
-        if spec.get('quality') in ('rare', 'crafted', 'tempered', 'set', 'unique'):
+        if spec.get('quality') == 'tempered':
             return 0
+        if spec.get('quality') in ('rare', 'crafted', 'set', 'unique'):
+            return min(1, self.max_sockets(code, ilvl))     # none drop; Larzuk's quest adds 1 (dev kit possible())
         if spec.get('quality') == 'magic':
             return min(self.max_sockets(code, ilvl), 2)      # the server's legit rule: a magic item has up to 2
         return self.max_sockets(code, ilvl)

@@ -320,7 +320,11 @@ def possible(validator, code, quality, ilvl):
         'affixes': affixes, 'staffmods': staff,
         'sockets': {'base_max': maximum, 'drop_max': min(maximum, 6) if quality in (2, 3) else 0,
                     'quest': list(quest_sockets(maximum, quality)),
-                    'max': saved_socket_limit(maximum, quality, authored),
+                    # 'max' holds without a socket affix (drop + Larzuk); 'max_with_affix' only when the
+                    # item carries a 'sock' affix (Jeweler's/Artisan's: magic only, not rare-allowed).
+                    'max': saved_socket_limit(maximum, quality, 0),
+                    'max_with_affix': saved_socket_limit(maximum, quality, authored) if quality == 4 else
+                                      saved_socket_limit(maximum, quality, 0),
                     'socket_affix': socket_affix_allowed(base, maximum)},
         'ethereal_allowed': ethereal_allowed(kind, base, quality),
         'superior': superior,
