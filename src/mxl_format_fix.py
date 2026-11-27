@@ -365,6 +365,116 @@ def _install_no_picture_icon():
     mxl_gfx.base_icon_name = base_icon_name
 
 
+def _install_row_art():
+    """Vanilla: a unique / set item on another base (a Gnasher made on a charm) shows its row's picture in game.
+    The host used the row only when the item's base matched it. The picture: the row's own invfile, else the
+    unique / set picture of the row's base (items .bin offset 0x40 / 0x60), else that base's picture."""
+    import os
+    import mxl_gfx
+    orig = mxl_gfx.icon_name
+    if getattr(orig, '_row_art', False):
+        return
+    cache = {}
+
+    def own_art(data, code, kind):
+        key = (id(data), code, kind)
+        if key not in cache:
+            name = ''
+            try:
+                import paths
+                from mxl_profile_tables import bin_rows
+                off = 0x40 if kind == 'unique' else 0x60
+                for table in ('weapons', 'armor', 'misc'):
+                    path = os.path.join(paths.DATA_DIR, table + '.bin')
+                    if not os.path.isfile(path):
+                        continue
+                    with open(path, 'rb') as f:
+                        for row in bin_rows(f.read()):
+                            if len(row) >= 0x84 and row[0x80:0x84].decode('latin1') == code:
+                                name = row[off:off + 32].split(b'\0')[0].decode('latin1')
+                                break
+                    if name:
+                        break
+            except Exception:
+                name = ''
+            cache[key] = name
+        return cache[key]
+
+    def icon_name(it, data):
+        try:
+            from mxl_profile import is_median
+            q, uid = it.get('quality'), it.get('set_unique_id')
+            if not is_median() and q in ('unique', 'set') and uid is not None:
+                table = data.uniques if q == 'unique' else data.set_items
+                if 0 <= uid < len(table) and table[uid]['code'] != it['code']:
+                    row = table[uid]
+                    return (row.get('inv_file') or own_art(data, row['code'], q)
+                            or data.base(row['code']).inv_file or orig(it, data))
+        except Exception:
+            pass
+        return orig(it, data)
+    icon_name._row_art = True
+    mxl_gfx.icon_name = icon_name
+
+
+def _install_oversize_art():
+    """A unique / set picture larger than its base (a Gnasher on a 1x1 charm: a 1x3 picture) is drawn by the game
+    at its own size, centred on the item. The host drew the picture inside the base's cells only (a larger one did
+    not fit and no picture showed). Vanilla only: the layers get the picture's own size (whole cells); the pages
+    centre them on the item."""
+    import math
+    import os
+    import sys
+    import mxl_gfx
+    orig = mxl_gfx.icon_layers
+    if getattr(orig, '_oversize', False):
+        return
+    sizes, big = {}, {}
+
+    class _Bigger:
+        def __init__(self, data, code, size):
+            self._data, self._code, self._size = data, code, size
+
+        def base(self, code):
+            b = self._data.base(code)
+            if code != self._code:
+                return b
+            import dataclasses
+            return dataclasses.replace(b, size=self._size)      # ItemBase is a frozen dataclass
+
+        def __getattr__(self, name):
+            return getattr(self._data, name)
+
+    def icon_layers(it, data, bg, folder='data/items', *a, **k):
+        try:
+            from mxl_profile import is_median
+            if is_median():
+                return orig(it, data, bg, folder, *a, **k)
+            path = os.path.join(folder, f'{mxl_gfx.icon_name(it, data)}.png')
+            if path not in sizes:
+                from PIL import Image
+                with Image.open(path) as im:
+                    sizes[path] = im.size
+            w, h = data.base(it['code']).size
+            cell = mxl_gfx.ICON_CELL
+            need = (max(w, math.ceil(sizes[path][0] / cell)), max(h, math.ceil(sizes[path][1] / cell)))
+            if need != (w, h):
+                key = (path, need, bg, folder, it.get('ethereal'), it.get('sockets'),
+                       tuple(mxl_gfx.icon_name(x, data) for x in it.get('socketed') or ()))
+                if key not in big:                   # few such items: kept apart from the host's own cache
+                    big[key] = orig(it, _Bigger(data, it['code'], need), bg, folder, *a, **k)
+                got = big[key]
+                return None if got is None else {n: (im.copy() if im is not None else None) for n, im in got.items()}
+        except Exception:
+            pass
+        return orig(it, data, bg, folder, *a, **k)
+    icon_layers._oversize = True
+    for name in ('mxl_gfx', 'mxl_gui', 'mxl_library_gui'):
+        m = sys.modules.get(name)
+        if m is not None and getattr(m, 'icon_layers', None) is orig:
+            m.icon_layers = icon_layers
+
+
 def shown_sockets(it):
     """Sockets the game gives an item: the save's socket field plus its item_numsockets (194) lines (mock clones:
     field 3 + 194 = 4 -> 7 jewels). The host drew / printed only the field."""
@@ -602,6 +712,14 @@ def install():
         pass
     try:
         _install_socket_display()         # field + item_numsockets (194) sockets, like the game
+    except Exception:
+        pass
+    try:
+        _install_row_art()                # a unique / set row on another base: the row's picture, like the game
+    except Exception:
+        pass
+    try:
+        _install_oversize_art()           # a unique picture larger than its base: drawn at its own size
     except Exception:
         pass
     try:

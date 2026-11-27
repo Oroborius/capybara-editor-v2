@@ -747,6 +747,30 @@ def delete_gear_and_inventory_separately():
         win.reload(keep=False)
 
 
+@T.test
+def unique_picture_larger_than_its_base_is_drawn_whole():
+    """Tester: a Gnasher (1x3 picture) made on a 1x1 item shows its whole picture in game; the editor drew none."""
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    import copy
+    import mxl_gfx
+    import paths
+    from mxl_rc_menu import _creator_for
+
+    win = T.chartab()
+    gnasher = next((key for key, label, _row in _creator_for(win).uniques() if 'Gnasher' in label), None)
+    small = next((e for e in win.ch.items if win.data.base(e.it['code']).size == (1, 1)), None)
+    if gnasher is None or small is None:
+        T.skip('no Gnasher row or no 1x1 item in the sample')
+    it = copy.copy(small.it)
+    it['quality'] = 'unique'
+    it['set_unique_id'] = gnasher
+    layers = mxl_gfx.icon_layers(it, win.data, (0, 0, 0), paths.ICONS_DIR)
+    T.check(layers is not None and layers[1] is not None, 'a picture is drawn')
+    T.check(layers[1].height >= 3 * mxl_gfx.ICON_CELL, f'the whole 1x3 picture: {layers[1].size}')
+    T.eq(win.data.base(it['code']).size, (1, 1), 'the item itself stays 1x1')
+
+
 
 @T.test
 def character_name_warning_and_save_anyway():
