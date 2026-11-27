@@ -1118,7 +1118,9 @@ class Creator:
 
     # ---- staff mods (vanilla): the native "+1..3 to <Skill> (<Class> Only)" of bases whose itemtypes StaffMods names
     # a class (Items.cpp ITEMS_AssignModernStaffMods, vendored as d2bt.itemgen.stats.staffmods)
-    STAFFMOD_QUALITIES = ('normal', 'superior', 'magic', 'rare', 'crafted')
+    # D2MOO ITEMS_AssignModernStaffMods call sites: low, normal, superior, magic, rare, crafted drops; a runeword
+    # keeps its base's; never on set / unique items (the server rejects them there)
+    STAFFMOD_QUALITIES = ('low', 'normal', 'superior', 'magic', 'rare', 'crafted', 'runeword')
     STAFFMOD_MAX = 3
 
     def staffmod_class(self, code):
@@ -1158,10 +1160,15 @@ class Creator:
             first = min(ids)
             base = v.bases[code.strip()][1]
             anc = v.save_tables.ancestors(base.get('type')) | v.save_tables.ancestors(base.get('type2'))
-            tier = staffmod_tier(spec.get('ilvl') or 1, 100, 2)
+            # tiers base-2 .. base+1 for the item's level (base 1..5 by ilvl > 11/18/24/36), at least 1, at most 4
+            # on low quality (D2MOO ITEMS_AssignModernStaffMods)
+            qid = 1 if spec.get('quality') == 'low' else 2
+            ilvl = spec.get('ilvl') or 1
+            lo_tier, hi_tier = staffmod_tier(ilvl, 0, qid), staffmod_tier(ilvl, 100, qid)
+            top = 1 if qid == 1 else self.STAFFMOD_MAX                      # low quality: always +1
             out = []
             for sid in ids:
-                if not first + 5 * (tier - 1) + 5 > sid:
+                if not first + 5 * (lo_tier - 1) <= sid < first + 5 * hi_tier:
                     continue
                 r = rows[sid]
                 it, et = (r.get('itypea1') or '').strip(), (r.get('etypea1') or '').strip()
@@ -1169,7 +1176,7 @@ class Creator:
                     continue
                 name = str(self.data.skill_names.get(sid) or r.get('skill') or '').strip()
                 if name:
-                    out.append((sid, name, self.STAFFMOD_MAX))
+                    out.append((sid, name, top))
             return out
         except Exception:
             return []

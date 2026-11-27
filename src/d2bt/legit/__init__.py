@@ -515,7 +515,10 @@ class Validator:
             if not lo <= item.defense <= hi:
                 report('defense', f'base defense {item.defense} outside {lo}..{hi}', 'suspicious')
         if q != 3 or self.superior is not None:
-            findings.extend(self._stat_findings(label, item.stats, variants, types, item.ilvl))
+            # Staff mods (ITEMS_AssignStaffModsForFormat) are rolled only on low/normal/superior/magic/rare/
+            # crafted drops (D2Game Items.cpp + ItemsMagic.cpp call sites), never on set or unique items.
+            staff_types = () if q in (5, 7) else types
+            findings.extend(self._stat_findings(label, item.stats, variants, staff_types, item.ilvl))
         if required is not None and self.check_required:
             present = {(sid, layer) for sid, layer, _ in required[2]}
             sids = {sid for sid, _ in present}
