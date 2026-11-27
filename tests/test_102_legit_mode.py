@@ -1082,4 +1082,33 @@ def convert_fixes_ethereal_base_defense_and_renews_the_id():
     T.eq([f.rule for f in mxl_legit.check_item(res.blob) if f.rule == 'defense'], [], 'defense in range')
     T.check(C.decode_blob(res.blob, win.data)[0]['id'] != rec['id'], 'a fresh item id')
 
+
+@T.test
+def convert_adds_missing_required_stats():
+    """Tester characters from older releases: Spirit without its FHR, Enigma without its defense... Convert adds
+    every stat the game always puts on the item (d2bt required_stats) at the top of its range."""
+    need()
+    import mxl_creator as C
+    import mxl_legit
+    import mxl_legit_convert as LC
+    from mxl_rc_menu import _creator_for
+    win = T.chartab()
+    cr = _creator_for(win)
+    if not mxl_legit.prepare():
+        T.skip('stock tables unavailable')
+    key = next(k for k, label, _r in cr.runewords() if 'Spirit' in label)
+    spec = cr.new_spec('runeword', 'uit ', key)
+    spec['ilvl'] = 99
+    spec['sockets'] = 4
+    blob, _rec = cr.build(spec)
+    rec, kids = C.decode_blob(bytes(blob), win.data)
+    rec['stats_runeword'] = [x for x in rec['stats_runeword'] if x['id'] != 99]      # FHR gone
+    bad = C.build_blob(rec, kids, win.data, preserve_stat_order=True)
+    T.check(any(f.rule == 'missing-stat' for f in mxl_legit.check_item(bad)), 'the missing FHR is found')
+    res = LC.convert(bad, win.data)
+    T.check(res.blob is not None, f'converted: {res.changes}')
+    T.eq(mxl_legit.impossible(mxl_legit.check_item(res.blob)), [], 'complete again')
+    fhr = [x['value'] for x in C.decode_blob(res.blob, win.data)[0]['stats_runeword'] if x['id'] == 99]
+    T.eq(fhr, [55], 'FHR 55 back')
+
 T.main(globals())

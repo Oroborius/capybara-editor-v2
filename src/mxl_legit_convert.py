@@ -63,6 +63,38 @@ def _fixable(found):
     return [f for f in found if f.severity == mxl_legit.IMPOSSIBLE or f.rule == 'defense']
 
 
+def _add_required(v, item, rec, data, changes):
+    """Completeness: the stats the game always puts on a unique / set item / runeword (d2bt required_stats) that
+    the item lacks are added at the top of their range - to the runeword list for a runeword (its T1 mods), else
+    to the item's own list (items from older editors: Enigma without its defense, Spirit without FHR...)."""
+    try:
+        from d2bt.itemgen import required_stats
+        if item.runeword is not None:
+            req, target = required_stats(v, 'runeword', item.runeword, item.code, item.ilvl), 'stats_runeword'
+        elif item.quality in (5, 7):
+            req, target = required_stats(v, item.quality, item.quality_id, item.code, item.ilvl), 'stats'
+        else:
+            return
+    except Exception:
+        return
+    stats = list(rec.get(target) or [])
+    have = {(s['id'], s.get('param')) for s in stats}
+    ids = {s['id'] for s in stats}
+    for sid, param, lo, hi, source, display in req:
+        if sid >= len(data.isc) or not data.isc[sid]['bits']:
+            continue
+        c = data.isc[sid]
+        key_param = param if c['param'] else None
+        if (sid, key_param) in have or (param is None and sid in ids):     # random class / skill: any layer
+            continue
+        value = ((max(lo, hi) + c['add']) & ((1 << c['bits']) - 1)) - c['add']
+        stats.append(dict(id=sid, param=key_param, value=value))
+        have.add((sid, key_param))
+        ids.add(sid)
+        changes.append(f'added {display or sid}')
+    rec[target] = stats
+
+
 def _where(v, row):
     for k, t in row.items():
         if k.startswith('itype') and t:
@@ -292,6 +324,10 @@ def convert(blob, data):
     _item2, found = _parsed(new)
     if seen_tabs:                                    # a repacked skill tab that is still refused: removed
         _fix_stats(v, rec, found, changes, seen_tabs)
+        new = rebuild()
+        _item2, found = _parsed(new)
+    if 'missing-stat' in rules:                      # after the repack: present stats are compared as stored
+        _add_required(v, item, rec, data, changes)
         new = rebuild()
         _item2, found = _parsed(new)
     for f in found:
