@@ -628,3 +628,6 @@ def vocab(game_dir=None, *, tables=None):
     """Stat and parameter vocabulary of stock 1.14d; see d2bt.itemgen.statvocab."""
     from .statvocab import build
     return build(game_dir, tables)
+
+
+from .api import legal_affixes, runeword_stats  # noqa: E402,F401
