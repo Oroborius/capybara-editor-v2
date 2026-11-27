@@ -874,7 +874,8 @@ class ItemEdit:
                   'rare': 'rare_names', 'crafted': 'rare_names'}.get(quality)
         if quality in ('set', 'unique'):
             rows = creator.set_items() if quality == 'set' else creator.uniques()
-            pick = next(key for key, _label, row in rows if row['code'] == code)
+            # the set / unique of this base first, else the first one (any base works, like Hero Editor 1.04)
+            pick = next((key for key, _label, row in rows if row['code'] == code), rows[0][0] if rows else None)
         elif quality in ('rare', 'crafted'):
             names = creator.rare_name_choices(code)
             pick, pick2 = names['rareprefix'][0][0], names['raresuffix'][0][0]
@@ -1131,7 +1132,8 @@ class ItemEdit:
                                                      if name)] if variants else []
         if field == 'set_unique_id':
             rows = creator.set_items() if self.record['quality'] == 'set' else creator.uniques()
-            return [(key, label) for key, label, row in rows if row['code'] == code]
+            # every set / unique item by name, whatever the base (Hero Editor 1.04's full list)
+            return [(key, label) for key, label, _row in rows]
         if field == 'runeword_id':
             rows = ((creator.rw_string_id(key), label) for key, label, _ in creator.runewords())
             return [(key, label) for key, label in rows if key is not None]

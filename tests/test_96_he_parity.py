@@ -686,6 +686,36 @@ def vanilla_extras_quality_picker_and_quest_note_write():
 
 
 
+@T.test
+def any_base_can_become_any_set_item_by_name():
+    """Tester: an elite Breast Plate could not be made a set item (the picker was stuck on a number). Like Hero
+    Editor 1.04 the picker lists every set item by name, whatever the base."""
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    import tkinter as tk
+    from mxl_rc_menu import _creator_for
+    from mxl_vanilla_he_extras import ItemEdit
+    from mxl_vanilla_he_items import extras_entries
+
+    win = T.chartab()
+    cr = _creator_for(win)
+    set_codes = {row['code'] for _k, _l, row in cr.set_items()}
+    entries = extras_entries(win.ch)
+    entry = next((e for e, owner in entries if owner is False and e.it.get('defense') is not None
+                  and e.it.get('code') not in set_codes), None)
+    if entry is None:
+        T.skip('no armor piece whose base no set item uses')
+    top = tk.Toplevel(win.top)
+    editor = ItemEdit(top, win, entries, entry, 'Quality:set', tk.StringVar(top))
+    try:
+        T.eq(editor.record['quality'], 'set', 'a base without a set item still becomes a set item')
+        labels = [label for _key, label in editor.field_choices('set_unique_id')]
+        T.eq(len(labels), len(cr.set_items()), 'every set item is offered')
+        T.check(any("Sigon's Shelter" in label for label in labels), f'listed by name: {labels[:3]}')
+    finally:
+        top.destroy()
+
+
 
 @T.test
 def character_name_warning_and_save_anyway():

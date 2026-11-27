@@ -587,7 +587,10 @@ def add_specific(win, menu, entry):
     for name, label in (('low', 'Low'), ('normal', 'Normal'), ('superior', 'Superior'),
                         ('magic', 'Magically Enhanced'), ('set', 'Part of a Set'), ('rare', 'Rare'),
                         ('unique', 'Unique'), ('crafted', 'Crafted')):
-        allowed = extended and (_quality_ok(cr, code, name) if name != 'low' else kind in ('armor', 'weapons'))
+        if name in ('set', 'unique'):          # any set / unique item on any base (Hero Editor 1.04's full list)
+            allowed = extended and bool(cr.set_items() if name == 'set' else cr.uniques())
+        else:
+            allowed = extended and (_quality_ok(cr, code, name) if name != 'low' else kind in ('armor', 'weapons'))
         command(quality, label, lambda q=name: edit_item(win, entry, 'Quality:' + q), allowed)
 
     starter = submenu(specific, 'STARTING Item…', editable)
