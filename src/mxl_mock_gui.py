@@ -74,6 +74,8 @@ def _make_toggle(app):
     first = (bar.pack_slaves() or [None])[0]
     b.pack(side='right', padx=(2, 4), **({'before': first} if first is not None else {}))
     _state.update(app=app, var=var, button=b)
+    import mxl_mock_zoom                                   # dragging the window bigger scales the UI (Mock Mode)
+    _state['zoom'] = mxl_mock_zoom.Zoom(app.root, lambda: bool(var.get()))
     tb = getattr(app, 'toolbar', None)
     if tb is not None and hasattr(tb, '_needed'):            # the bar's layout leaves room for the toggle
         o_needed = tb._needed
@@ -88,6 +90,13 @@ def _make_toggle(app):
 
 
 def set_mode(on, select=True):
+    _set_mode(on, select)
+    zoom = _state.get('zoom')
+    if zoom is not None:
+        zoom.top.after_idle(zoom.apply)
+
+
+def _set_mode(on, select=True):
     """Switches Mock Mode: the Mock tab appears / goes; the choice is kept in the settings."""
     app = _state['app']
     if app is None or not enabled():                     # Median XL: no Mock Mode at all
