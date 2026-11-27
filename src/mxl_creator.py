@@ -2197,6 +2197,11 @@ class Creator:
         except Exception as e:               # corrupted a stash: never let an unreadable blob reach a file)
             raise CreateError(T('cr.err.verify', 'the encoded item failed verification ({error}); '
                                                   'nothing was written', error=e))
+        import mxl_legit                     # Legit mode: only items the server's rules accept
+        try:
+            mxl_legit.guard_item(blob)
+        except mxl_legit.LegitItemError as e:
+            raise CreateError(str(e))
         return blob, rec
 
     def _build(self, spec):

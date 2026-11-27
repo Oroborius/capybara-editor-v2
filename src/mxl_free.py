@@ -93,6 +93,8 @@ def _free_character_save():
     def save(self, backup=True):
         from mxl_save import commit_file, load_character, EditError
         content = self.build()
+        import mxl_legit                      # Legit mode: nothing impossible is written (raises CharError)
+        self.legit_warnings = mxl_legit.guard_character(content)
         n_items = len(self.items)
         n_merc = None if self.merc_items is None else len(self.merc_items)
 

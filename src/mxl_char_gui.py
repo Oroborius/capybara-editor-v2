@@ -885,11 +885,14 @@ class CharacterWindow(StatEditMixin):
                     backup = policy != 'off'
             bak = self.ch.save(backup=backup)
         except (CharError, EditError, OSError) as e:   # EditError: the safe writer or the save check refused
+            legit_msg = str(e).replace('\n', ' | ') if getattr(e, 'findings', None) else None
             messagebox.showerror(T('ch.title', 'Character'), str(e) + (
                 '\n\n' + T('ch.kept_pending', 'The file has been read again. The changes not yet saved are still '
                            'shown: check them and click SAVE again (RELOAD drops them).') if self.dirty() else ''),
                 parent=self.top)
             self.reload()
+            if legit_msg:                                   # Legit mode refused: file unchanged, say why
+                self.set_status(legit_msg, True)
             return False
         app.backup_made(self.ch.path, bak)
         self.items_pending = False
@@ -900,6 +903,10 @@ class CharacterWindow(StatEditMixin):
         if app.path:
             app.load(app.path, keep_selection=True)
         self.set_status(msg + (T('cr.backup', ' - backup: {file}', file=os.path.basename(bak)) if bak else ''))
+        warn = getattr(self.ch, 'legit_warnings', None)
+        if warn:                                            # Legit mode: suspicious findings only warn
+            import mxl_legit
+            self.set_status(self.status.cget('text') + ' - suspicious: ' + mxl_legit.summary(warn, 3).replace('\n', '; '))
         return True
 
     def to_stash(self):

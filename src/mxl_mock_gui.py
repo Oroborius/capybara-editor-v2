@@ -21,7 +21,7 @@ from mxl_lang import T
 TAB = 'Mock'
 SETTING = 'mock_mode'
 COLORS = {M.GOOD: '#3fa34d', M.WARN: '#d9a520', M.BAD: '#e0524a', M.INFO: ''}
-_state = {'app': None, 'var': None, 'button': None, 'page': None}
+_state = {'app': None, 'var': None, 'button': None, 'page': None, 'lvar': None, 'lbutton': None, 'llabel': None}
 
 
 def _setting(default=False):
@@ -82,13 +82,27 @@ def _make_toggle(app):
                         command=lambda: set_mode(var.get()), takefocus=False)
     first = (bar.pack_slaves() or [None])[0]
     b.pack(side='right', padx=(2, 4), **({'before': first} if first is not None else {}))
-    _state.update(app=app, var=var, button=b)
+    import mxl_legit
+    if var.get() and mxl_legit.enabled():                  # both saved on: Mock Mode wins
+        mxl_legit.set_enabled(False)
+    lvar = tk.BooleanVar(value=mxl_legit.enabled())
+    lb = ttk.Checkbutton(bar, text=T('legit.toggle', 'Legit Mode'), variable=lvar, style='Toolbutton',
+                         command=lambda: set_legit(lvar.get()), takefocus=False)
+    lb.pack(side='right', padx=(2, 2), before=b)
+    _Tip(lb, T('legit.label', mxl_legit.LABEL))
+    ll = ttk.Label(bar, text=T('legit.label', mxl_legit.LABEL))
+    _state.update(app=app, var=var, button=b, lvar=lvar, lbutton=lb, llabel=ll)
+    if lvar.get():
+        ll.pack(side='right', padx=(2, 4), before=lb)
+        mxl_legit.set_enabled(True)
+        _warm_legit()
     import mxl_mock_zoom                                   # dragging the window bigger scales the UI (Mock Mode)
     _state['zoom'] = mxl_mock_zoom.Zoom(app.root, lambda: bool(var.get()))
     tb = getattr(app, 'toolbar', None)
     if tb is not None and hasattr(tb, '_needed'):            # the bar's layout leaves room for the toggle
         o_needed = tb._needed
-        tb._needed = lambda hidden: o_needed(hidden) + b.winfo_reqwidth() + 6
+        tb._needed = lambda hidden: (o_needed(hidden) + b.winfo_reqwidth() + lb.winfo_reqwidth() + 12
+                                     + (ll.winfo_reqwidth() + 6 if lvar.get() else 0))
         tb.state = None
         try:
             tb.layout()
@@ -96,6 +110,50 @@ def _make_toggle(app):
             pass
     if var.get():
         app.root.after_idle(lambda: set_mode(True, select=False))
+
+
+def legit_on():
+    """Legit mode is on (checkbox and setting); exclusive with Mock Mode."""
+    var = _state.get('lvar')
+    try:
+        return var is not None and bool(var.get()) and enabled()
+    except tk.TclError:
+        return False
+
+
+def _warm_legit():
+    """Reads the stock tables in the background (a few seconds) so the first check does not stall."""
+    import threading
+    import mxl_legit
+    threading.Thread(target=mxl_legit.prepare, daemon=True).start()
+
+
+def set_legit(on):
+    """Legit Mode on/off (kept in the settings as 'legit_mode'); turning it on turns Mock Mode off."""
+    import mxl_legit
+    if not enabled():                                    # Median XL: no Legit mode
+        return
+    on = bool(on)
+    lvar, ll, lb = _state.get('lvar'), _state.get('llabel'), _state.get('lbutton')
+    if lvar is None:
+        return
+    if lvar.get() != on:
+        lvar.set(on)
+    mxl_legit.set_enabled(on)
+    if on:
+        if _state['var'] is not None and _state['var'].get():
+            set_mode(False)
+        ll.pack(side='right', padx=(2, 4), before=lb)
+        _warm_legit()
+    else:
+        ll.pack_forget()
+    tb = getattr(_state['app'], 'toolbar', None)
+    if tb is not None and hasattr(tb, 'layout'):
+        tb.state = None
+        try:
+            tb.layout()
+        except Exception:
+            pass
 
 
 def set_mode(on, select=True):
@@ -113,6 +171,8 @@ def _set_mode(on, select=True):
     if _state['var'] is not None and _state['var'].get() != bool(on):
         _state['var'].set(bool(on))
     _put(on)
+    if on and _state.get('lvar') is not None and _state['lvar'].get():     # Mock Mode on => Legit Mode off
+        set_legit(False)
     if app is None:
         return
     import mxl_tabs

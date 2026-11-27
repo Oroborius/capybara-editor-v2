@@ -9,7 +9,8 @@ import carch
 
 # packages packed into the exe from outside src/: {name: folder}. tools/mxlsave is the independent save-format
 # library (one copy of the source: the command line tool there, the package `mxlsave` in both builds)
-PACKAGES = {'mxlsave': os.path.join(os.path.dirname(HERE), 'tools', 'mxlsave')}
+PACKAGES = {'mxlsave': os.path.join(os.path.dirname(HERE), 'tools', 'mxlsave'),
+            'd2legit': os.path.join(HERE, 'd2legit')}      # Legit mode's rules (flat package, MIT, see its LICENSE)
 
 def package_modules(name, folder):
     """{dotted name: code} of a flat package folder: 'pkg' (its __init__) and 'pkg.<module>' for every other .py."""
