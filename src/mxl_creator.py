@@ -679,6 +679,19 @@ def decode_blob(blob, data, *, exact=False):
 
 # --------------------------------------------------------------------------------------------- stats from mods
 
+def layered_stats(mods, data, how):
+    """mods_stats with the stat param the item stores: vanilla skill tabs (property function 10) pack the sheet's
+    param (class * 3 + tab) as class << 3 | tab, so affix / mod stats compare with the saved item's."""
+    out = []
+    for m in mods:
+        part = mods_stats([m], data, how)
+        if Creator._vanilla() and data.prop_func[m[0]] == 10:
+            part = [dict(x, param=((x['param'] // 3) << 3) | (x['param'] % 3)) if x.get('param') is not None else x
+                    for x in part]
+        out += part
+    return merge_stats(out)
+
+
 def merge_stats(stats):
     """Same (stat, param) added together, then sorted as the game saves them."""
     acc = {}
@@ -743,8 +756,8 @@ class Mod:
     def _stats(self, data):
         prop, param, lo, hi = self.raw
         funcs = data.prop_funcs[prop]
-        if data.prop_func[prop] in (11, 19) and Creator._vanilla():
-            # charged skill: the game's level and charges for the item level (ITEMMODS_PropertyFunc19, the dev
+        if data.prop_func[prop] == 19 and Creator._vanilla():
+            # charged skill (function 11, skill on hit / striking / level up, keeps the sheet's level as it is): the game's level and charges for the item level (ITEMMODS_PropertyFunc19, the dev
             # kit's d2bt.itemgen.stats.charged_level_capacity): min = charges (negative: level x |min| / 8 + |min|),
             # max = level (0 / negative: from the item level and the skill's reqlevel / maxlvl)
             req, top = _skill_req(param)
@@ -973,8 +986,25 @@ class Creator:
         b = self.data.base(code)
         return len(self.data.itype_gfx[b.type]) if 0 <= b.type < len(self.data.itype_gfx) else 0
 
+    def _val_base(self, code):
+        """(validator, row, item type row) of a vanilla base, or None."""
+        try:
+            import mxl_legit
+            v = mxl_legit._validator()
+            kind, row = v.bases[code.strip()]
+            return v, kind, row, v.item_types.get(row.get('type'), {})
+        except Exception:
+            return None
+
     def can_have_quality(self, code, q):
         b = self.data.base(code)
+        vb = self._val_base(code) if self._vanilla() and q in ('low', 'superior') else None
+        if vb:
+            v, kind, row, itype = vb
+            from d2bt.itemgen import coerced_quality
+            if kind not in ('weapons', 'armor') or coerced_quality(QUALITY_ID[q], row, itype) != QUALITY_ID[q]:
+                return False
+            return q == 'low' or bool(self.superior_choices(code))
         it = self.t.itype[b.type] if 0 <= b.type < len(self.t.itype) else {}
         if q in ('normal', 'superior'):
             return not it.get('magic_only') and b.kind in ('weapons', 'armor') or (q == 'normal')
@@ -1017,9 +1047,27 @@ class Creator:
         return (self._vanilla() and spec.get('quality') == 'unique' and not spec.get('_from_item')
                 and 'ethereal' in self._unique_props(spec))
 
-    def max_ilvl(self):
-        """Highest item level the creator offers: the save's field holds 127 (Median); vanilla's game stops at 99."""
-        return min(99, MAX_ILVL) if self._vanilla() else MAX_ILVL
+    def max_ilvl(self, spec=None):
+        """Highest item level the creator offers: the save's field holds 127 (Median); vanilla: the dev kit's
+        ilvl_range (1..110)."""
+        if not self._vanilla():
+            return MAX_ILVL
+        return self.ilvl_bounds(spec)[1]
+
+    def ilvl_bounds(self, spec=None):
+        """Vanilla (lo, hi) item level from d2bt ilvl_range (a set / unique row's lvl is the least)."""
+        try:
+            import mxl_legit
+            from d2bt.itemgen import ilvl_range
+            v = mxl_legit._validator()
+            q = (spec or {}).get('quality')
+            row = None
+            if spec and spec.get('row') is not None and q in ('unique', 'set'):
+                row = (v.uniques if q == 'unique' else v.set_items)[spec['row']]
+            code = ((spec or {}).get('code') or '').strip()
+            return ilvl_range(v, code, QUALITY_ID.get(q, 2), row) or (1, 110)
+        except Exception:
+            return (1, 110)
 
     def crafted_counts(self, ilvl):
         """(fewest, most) random affixes of a crafted item. Median: always 4. Vanilla: the item level sets the
@@ -1029,18 +1077,24 @@ class Creator:
         return (4 if ilvl >= 71 else 3 if ilvl >= 51 else 2 if ilvl >= 31 else 1), CRAFTED_AFFIXES
 
     def ethereal_ok(self, spec):
-        """Whether the item can be ethereal. Vanilla: only gear with a durability that is not a set item (the
-        server's legit rule: misc items, indestructible bases and set items are never ethereal; neither is a
-        unique with 'indestruct' and without 'ethereal'). Median: any item."""
+        """Whether the item can be ethereal. Vanilla: the validator's rule (d2bt ethereal_allowed: no misc /
+        no-durability / quest bases, not low or set, not an indestructible unique unless it authors 'ethereal').
+        Median: any item."""
         code = spec.get('code')
         if not self._vanilla() or code not in self.data.bases or spec.get('_from_item'):
             return True
-        if self.data.base(code).kind == 'misc' or self.t.item.get(code, {}).get('nodur') or spec.get('quality') == 'set':
+        try:
+            import mxl_legit
+            from d2bt.itemgen import ethereal_allowed
+            v = mxl_legit._validator()
+            kind, base = v.bases[code.strip()]
+            q = spec.get('quality')
+            props = self._unique_props(spec) if q == 'unique' else set()
+            return bool(ethereal_allowed(kind, base, 2 if q == 'runeword' else QUALITY_ID.get(q, 2),
+                                         indestructible=q == 'unique' and 'indestruct' in props,
+                                         authored='ethereal' in props))
+        except Exception:
             return False
-        if spec.get('quality') == 'unique':
-            props = self._unique_props(spec)
-            return 'ethereal' in props or 'indestruct' not in props
-        return True
 
     def affix_level(self, code, ilvl):
         """The level the game picks affixes at. Vanilla: the item level clamped to 99 and raised to the base's
@@ -1056,40 +1110,65 @@ class Creator:
         half = qlvl // 2
         return level - half if level < 99 - half else 2 * level - 99
 
-    def _server_allows(self, kind, idx, code):
-        """Vanilla: the server's own item-type rule for affix row idx (1-based) on this base (d2bt.legit.allowed),
-        so what the creator offers is what the server accepts. True when it cannot be asked."""
-        try:
+    def _legal(self, code, ilvl, quality):
+        """legal_affixes of the validator for base code (cached): the rows it accepts at ilvl and quality id."""
+        cache = self.__dict__.setdefault('_legal_cache', {})
+        key = (code, min(ilvl, 99), quality)
+        if key not in cache:
             import mxl_legit
-            from d2bt.legit import allowed
-            v = mxl_legit._validator()
-            cache = self.__dict__.setdefault('_srv_types', {})
-            if code not in cache:
-                b = v.bases[code.strip()][1]
-                cache[code] = v.save_tables.ancestors(b.get('type')) | v.save_tables.ancestors(b.get('type2'))
-            return allowed(cache[code], v.affixes[(kind, idx)][1])
-        except Exception:
-            return True
+            from d2bt.itemgen import legal_affixes
+            cache[key] = legal_affixes(mxl_legit._validator(), code.strip(), key[1], quality)
+        return cache[key]
 
     def _affix_ok(self, a, extra, anc, ilvl, rare=False):
         if not a['spawnable'] or a['level'] > ilvl or (a['maxlevel'] and ilvl > a['maxlevel']):
             return False
-        if self._vanilla() and not extra.get('freq'):
-            return False                  # frequency 0: the game never rolls the row (the old 31-50% resist rings)
         if rare and not extra['rare']:
             return False
         return bool(a['itypes'] & anc) and not (a['etypes'] & anc)
 
     def affix_choices(self, kind, code, ilvl, rare=False):
-        """[(save id, label, affix)] of magic prefixes / suffixes that can spawn on this base at this ilvl."""
-        anc = self.types_of(code)
+        """[(save id, label, affix)] of magic prefixes / suffixes that can spawn on this base at this ilvl.
+        Vanilla: the validator's legal_affixes."""
         out = []
+        if self._vanilla():
+            legal = self._legal(code, ilvl, 6 if rare else 4)['prefix' if kind == 'magicprefix' else 'suffix']
+            return [(r['id'], self.affix_label(kind, r['id']), self.data.affixes[kind][r['id'] - 1]) for r in legal]
+        anc = self.types_of(code)
         ilvl = self.affix_level(code, ilvl)
         for i, a in enumerate(self.data.affixes[kind]):
-            if self._affix_ok(a, self.t.affix_extra[kind][i], anc, ilvl, rare) and \
-                    (not self._vanilla() or self._server_allows(kind, i + 1, code)):
+            if self._affix_ok(a, self.t.affix_extra[kind][i], anc, ilvl, rare):
                 out.append((i + 1, self.affix_label(kind, i + 1), a))
         return out
+
+    def _runeword_api_stats(self, spec, rolled):
+        """Vanilla runeword stats from the dev kit's runeword_stats (runes.txt mods plus each rune's slot mods):
+        a rolled value of the creator's own mod stays when it lies in the range, else the range's maximum."""
+        try:
+            import mxl_legit
+            from d2bt.itemgen import runeword_stats
+            v = mxl_legit._validator()
+            key = self.rw_string_id(spec['row'])
+            if key not in v.runewords:
+                key = None
+            if key is None:
+                return rolled
+            api = runeword_stats(v, key, spec['code'].strip(), spec.get('ilvl') or 0)
+        except Exception:
+            return rolled
+        have = {(x['id'], x.get('param')): x['value'] for x in rolled}
+        out = []
+        for sid, par, lo, hi, src in api:
+            if sid >= len(self.data.isc) or not self.data.isc[sid]['bits']:
+                continue
+            val = have.get((sid, par if self.data.isc[sid]['param'] else None)) if src == 'runeword' else None
+            lo, hi = min(lo, hi), max(lo, hi)
+            out.append(dict(id=sid, param=par if self.data.isc[sid]['param'] else None,
+                            value=val if val is not None and lo <= val <= hi else hi))
+        merged = merge_stats(out)
+        # a stat the save cannot hold at its summed value (ignore target defense x3 of Last Wish: 1 bit) is left
+        # out, as the validator checks only the stats an item has (reported to the dev kit)
+        return [x for x in merged if x['value'] <= (1 << self.data.isc[x['id']]['bits']) - 1 - self.data.isc[x['id']]['add']]
 
     def mods_text(self, mods, code=None):
         """Tooltip lines of mods [(prop, param, min, max)] as the game writes them, ranges merged:
@@ -1152,17 +1231,27 @@ class Creator:
         b = self.data.base(code)
         if not b.auto_group:
             return []
+        if self._vanilla():
+            legal = self._legal(code, ilvl, 6 if quality in ('rare', 'crafted') else 2)['automagic']
+            return [(r['id'], self.affix_label('automagic', r['id']), self.data.affixes['automagic'][r['id'] - 1])
+                    for r in legal]
         anc = self.types_of(code)
         out = []
-        ilvl = self.affix_level(code, ilvl)                 # like magic affixes (the server's legit rule)
-        rare = quality in ('rare', 'crafted') and self._vanilla()      # vanilla: the rare flag counts on rares too
+        ilvl = self.affix_level(code, ilvl)
         for i, a in enumerate(self.data.affixes['automagic']):
-            if a['group'] == b.auto_group and self._affix_ok(a, self.t.affix_extra['automagic'][i], anc, ilvl, rare) and \
-                    (not self._vanilla() or self._server_allows('automagic', i + 1, code)):
+            if a['group'] == b.auto_group and self._affix_ok(a, self.t.affix_extra['automagic'][i], anc, ilvl, False):
                 out.append((i + 1, self.affix_label('automagic', i + 1), a))
         return out
 
     def superior_choices(self, code):
+        vb = self._val_base(code) if self._vanilla() else None
+        if vb and vb[0].superior is not None:
+            v, _kind, row, itype = vb
+            from d2bt.itemgen import superior_candidates
+            types = v.save_tables.ancestors(row.get('type')) | v.save_tables.ancestors(row.get('type2'))
+            return superior_candidates(v.superior, types, row.get('type'),
+                                       no_durability=row.get('nodurability') == '1',
+                                       throwable=itype.get('throwable') == '1')
         k = self.data.base(code).kind
         return [i for i, r in enumerate(self.t.superior) if (k == 'weapons' and r['weapon']) or (k == 'armor' and r['armor'])]
 
@@ -1793,8 +1882,8 @@ class Creator:
             if key not in cache:
                 try:
                     mods = [(m['prop'], m['param'], m['min'], m['max']) for m in a['mods']]
-                    lo = {(x['id'], x.get('param')): x['value'] for x in mods_stats(mods, d, 'min')}
-                    hi = {(x['id'], x.get('param')): x['value'] for x in mods_stats(mods, d, 'max')}
+                    lo = {(x['id'], x.get('param')): x['value'] for x in layered_stats(mods, d, 'min')}
+                    hi = {(x['id'], x.get('param')): x['value'] for x in layered_stats(mods, d, 'max')}
                     vis = {k for k in set(lo) | set(hi) if k[0] not in (S.PREFIX_COUNT, S.SUFFIX_COUNT)
                            and self._visible(dict(id=k[0], param=k[1], value=hi.get(k, lo.get(k, 1)) or 1))}
                     cache[key] = (lo, hi, vis)
@@ -2117,7 +2206,9 @@ class Creator:
             lv = max(lv, self.data.uniques[spec['row']]['level'])
         elif spec['quality'] == 'set':
             lv = max(lv, self.data.set_items[spec['row']]['level'])
-        return min(lv, self.max_ilvl())
+        if self._vanilla():
+            lv = max(lv, self.ilvl_bounds(spec)[0])
+        return min(lv, self.max_ilvl(spec))
 
     def mods(self, spec):
         """[Mod] of the spec, in display order; rolled values taken from spec['rolls'] (key -> value)."""
@@ -2189,8 +2280,8 @@ class Creator:
                     pass
                 continue
             try:
-                a = {(x['id'], x.get('param')): x['value'] for x in mods_stats([(prop, param, m.min, m.min)], d, 'min')}
-                b = {(x['id'], x.get('param')): x['value'] for x in mods_stats([(prop, param, m.max, m.max)], d, 'min')}
+                a = {(x['id'], x.get('param')): x['value'] for x in layered_stats([(prop, param, m.min, m.min)], d, 'min')}
+                b = {(x['id'], x.get('param')): x['value'] for x in layered_stats([(prop, param, m.max, m.max)], d, 'min')}
             except Exception:
                 info.append(None)
                 continue
@@ -2280,8 +2371,8 @@ class Creator:
             raise CreateError(T('cr.err.base', 'choose a base item'))
         b = d.base(code)
         ilvl = spec['ilvl']
-        if not self.min_ilvl(spec) <= ilvl <= self.max_ilvl():
-            raise CreateError(T('cr.err.ilvl', 'item level must be {lo} to {hi}', lo=self.min_ilvl(spec), hi=self.max_ilvl()))
+        if not self.min_ilvl(spec) <= ilvl <= self.max_ilvl(spec):
+            raise CreateError(T('cr.err.ilvl', 'item level must be {lo} to {hi}', lo=self.min_ilvl(spec), hi=self.max_ilvl(spec)))
         qq = 'normal' if q == 'runeword' else q
         if qq in ('normal', 'superior', 'magic', 'rare') and not self.can_have_quality(code, qq):
             raise CreateError(T('cr.err.quality', '{base} cannot be {quality}', base=b.name, quality=T(f'cr.quality.{qq}', qq)))
@@ -2442,6 +2533,8 @@ class Creator:
         mods = self.mods(spec)
         own = [s for m in mods if m.source.split(':')[0] != 'rw' for s in m.stats(d)]
         rw = [s for m in mods if m.source.split(':')[0] == 'rw' for s in m.stats(d)]
+        if q == 'runeword' and self._vanilla():
+            rw = self._runeword_api_stats(spec, rw)
         own += [dict(x) for x in spec.get('extra') or []]              # kept as they were on an edited item
         if fresh:                    # a new reagent: what the game's own making recipe puts on it (display text...)
             have = {(s['id'], s.get('param')) for s in own}

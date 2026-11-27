@@ -101,21 +101,15 @@ def _slots(rec):
 
 
 def _fix_affixes(v, rec, base, changes):
-    from d2bt.legit import allowed, affix_level
+    from d2bt.itemgen import legal_affixes
     from d2bt.tooltip.data import to_int
-    types = v.save_tables.ancestors(base.get('type')) | v.save_tables.ancestors(base.get('type2'))
-    q = {'magic': 4, 'rare': 6, 'crafted': 8}.get(rec['quality'], 0)
-    alvl = affix_level(rec['ilvl'], to_int(base.get('level')), to_int(base.get('magic lvl')))
+    q = {'magic': 4, 'rare': 6, 'crafted': 8}.get(rec['quality'], 2)
+    legal = legal_affixes(v, rec['code'].strip(), rec['ilvl'], q)
+    legal_ids = {('magicprefix', r['id']) for r in legal['prefix']} | {('magicsuffix', r['id']) for r in legal['suffix']} \
+        | {('automagic', r['id']) for r in legal['automagic']}
 
-    def ok(table, row, group_used=()):
-        if not row or not row.get('name') or not allowed(types, row):
-            return False
-        if table == 'automagic' and row.get('group') != base.get('auto prefix'):
-            return False
-        if row.get('spawnable') != '1' or (q in (6, 8) and row.get('rare') != '1'):
-            return False
-        high = to_int(row.get('maxlevel'))
-        if alvl < to_int(row.get('level')) or (high and alvl > high):
+    def ok(table, row, group_used=(), idx=None):
+        if not row or (table, idx) not in legal_ids:
             return False
         g = to_int(row.get('group'))
         return not (g and table != 'automagic' and g in group_used)
@@ -130,7 +124,7 @@ def _fix_affixes(v, rec, base, changes):
         if not idx:
             continue
         row = (v.affixes.get((table, idx)) or (None, None))[1]
-        if row is not None and ok(table, row, seen):
+        if row is not None and ok(table, row, seen, idx):
             g = to_int(row.get('group'))
             if g and table != 'automagic':
                 seen.add(g)
@@ -142,14 +136,14 @@ def _fix_affixes(v, rec, base, changes):
         best = None
         if want:
             for (t, i), (_t, cand) in v.affixes.items():
-                if t != table or not ok(table, cand, seen) or _sig(v, cand) != want:
+                if t != table or not ok(table, cand, seen, i) or _sig(v, cand) != want:
                     continue
                 dist = 0
                 for key, iv in v._bounds(_mods(cand)).items():
                     lo, hi = sorted((iv.lo, iv.hi))
                     val = current.get(key, 0)
                     dist += max(0, lo - val, val - hi)
-                score = (dist, abs(to_int(cand.get('level')) - to_int((row or {}).get('level'))), -i)
+                score = (cand.get('name') != (row or {}).get('name'), dist, abs(to_int(cand.get('level')) - to_int((row or {}).get('level'))), -i)
                 if best is None or score < best[0]:
                     best = (score, i, cand)
         old = row['name'] if row and row.get('name') else f'#{idx}'
@@ -191,7 +185,7 @@ def _entries(rec):
             yield key, s
 
 
-def _fix_stats(v, rec, findings, changes):
+def _fix_stats(v, rec, findings, changes, repacked=None):
     for f in findings:
         if f.rule != 'stat':
             continue
@@ -207,6 +201,15 @@ def _fix_stats(v, rec, findings, changes):
         m = _NONE.match(f.detail)
         if m:
             name, val = m.group(1), int(m.group(2))
+            if name == 'item_addskill_tab' and repacked is not None:
+                hit = next((s for _k, s in _entries(rec) if s['id'] == 188 and s['value'] == val
+                            and id(s) not in repacked and s.get('param') is not None), None)
+                if hit is not None:                   # saved as the sheet's class * 3 + tab, not the layer class << 3 | tab
+                    repacked.add(id(hit))
+                    new_param = ((hit['param'] // 3) << 3) | (hit['param'] % 3)
+                    changes.append(f'skill tab {hit["param"]} -> layer {new_param}')
+                    hit['param'] = new_param
+                    continue
             for key in ('stats', 'stats_runeword', *(f'set_stats_{i}' for i in range(5))):
                 rows = rec.get(key) or []
                 hit = next((s for s in rows if s['value'] == val and _stat_name(v, s['id']) == name), None)
@@ -244,9 +247,13 @@ def convert(blob, data):
     changes = []
     rules = {f.rule for f in before}
 
-    if not 1 <= rec['ilvl'] <= 99:
-        changes.append(f"item level {rec['ilvl']} -> {min(max(rec['ilvl'], 1), 99)}")
-        rec['ilvl'] = min(max(rec['ilvl'], 1), 99)
+    need = [int(m.group(1)) for f in before if f.rule == 'identity-level'
+            for m in [re.search(r'requires item level (\d+)', f.detail)] if m]
+    top = max([rec['ilvl'], *need]) if need else rec['ilvl']
+    if not 1 <= top <= 110 or top != rec['ilvl']:
+        new_level = min(max(top, 1), 110)           # the dev kit's ilvl_range: 1..110, a set / unique row's lvl least
+        changes.append(f"item level {rec['ilvl']} -> {new_level}")
+        rec['ilvl'] = new_level
     if 'ethereal' in rules and rec['flags'] & FLAG_ETHEREAL and any(
             f.rule == 'ethereal' and 'cannot be ethereal' in f.detail for f in before):
         rec['flags'] &= ~FLAG_ETHEREAL
@@ -273,9 +280,14 @@ def convert(blob, data):
 
     new = rebuild()
     _item2, found = _parsed(new)
-    _fix_stats(v, rec, found, changes)
+    seen_tabs = set()
+    _fix_stats(v, rec, found, changes, seen_tabs)
     new = rebuild()
     _item2, found = _parsed(new)
+    if seen_tabs:                                    # a repacked skill tab that is still refused: removed
+        _fix_stats(v, rec, found, changes, seen_tabs)
+        new = rebuild()
+        _item2, found = _parsed(new)
     for f in found:
         m = f.rule == 'defense' and _DEF.search(f.detail)
         if m and rec.get('defense') is not None:

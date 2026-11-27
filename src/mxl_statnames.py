@@ -81,7 +81,11 @@ def stat_text(data, sid, param=None, value=1, desc=None):
 
 def rendered_line(data, sid, param, value):
     """The line the item tooltip shows for one stored stat (stat id, param, value) - the text of the hover
-    display, plain; '' when the tooltip shows nothing for it (hidden stats) or only a placeholder."""
+    display, plain; '' when the tooltip shows nothing for it (hidden stats) or only a placeholder.
+    Vanilla: the dev kit's statvocab.display first."""
+    named = vocab_line(sid, param, value)
+    if named:
+        return named
     try:
         from mxl_stat_text import stat_lines
         out = []
@@ -98,11 +102,58 @@ def rendered_line(data, sid, param, value):
     return txt
 
 
+def vocab():
+    """The dev kit's stat vocabulary (d2bt.itemgen.statvocab) of the vanilla game folder; None in Median XL or
+    when it cannot be read."""
+    try:
+        import mxl_legit
+        import mxl_profile
+        if mxl_profile.is_median() or not mxl_legit.prepare():
+            return None
+        mxl_legit._validator()                                   # puts d2bt on the path
+        from d2bt.itemgen import statvocab
+        return statvocab.load(mxl_legit.game_dir())
+    except Exception:
+        return None
+
+
+def vocab_line(sid, param, value):
+    """The line the game prints for one stat (statvocab.display), '' when unavailable."""
+    v = vocab()
+    if v is None:
+        return ''
+    try:
+        from d2bt.itemgen import statvocab
+        return statvocab.display(sid, param or 0, value, vocab=v)
+    except Exception:
+        return ''
+
+
+def vocab_choices(sid):
+    """[(name, param)] from statvocab for a skill-tab / class / monster-type stat ('Combat Skills (Barbarian
+    Only)', 'Paladin'), else []. Vanilla only."""
+    v = vocab()
+    if v is None:
+        return []
+    try:
+        from d2bt.itemgen import statvocab
+        kind = statvocab.param_kind(v, sid)[0]
+        if kind == 'skilltab':
+            return [(e['text_for_value_1'].split(' to ', 1)[-1], e['layer']) for e in statvocab.skilltabs_section(v)]
+        if kind == 'class':
+            return [(v.class_name(i), i) for i in range(len(v.classes))]
+        if kind == 'montype':
+            return [(e['code'].title(), e['id']) for e in statvocab.montypes_section(v)]
+    except Exception:
+        pass
+    return []
+
+
 def vanilla_stat_value(data, sid, param, value):
     """A vanilla item attribute and its value for reports and attribute buffers."""
     from mxl_profile import fallback_stat_line, missing_stat_text
 
-    line = rendered_line(data, sid, param, value)
+    line = vocab_line(sid, param, value) or rendered_line(data, sid, param, value)
     return (fallback_stat_line(data, dict(id=sid, param=param, value=value))
             if missing_stat_text(line) else line)
 
@@ -246,6 +297,9 @@ def param_choices(data, sid):
     """[(name, value)] the stat's param can be picked from, names unique, sorted for the lists: skills (value
     = skill id; the level of a 'skill' stat is typed separately), classes, states, monsters, orbs, or the
     combinations of a packed param of small enumerations ('Lightning / Dexterity'). [] for plain numbers."""
+    named = vocab_choices(sid)
+    if named:
+        return named
     kind = param_kind(sid)
     if kind is None:
         return []
