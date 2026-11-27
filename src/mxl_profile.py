@@ -315,11 +315,11 @@ def _use_save_dir(game_dir, root=None, info=None):
         return None
     info = info or detect(game_dir)
     version = info.get('version') or ''
-    if info.get('mod') or (version and not version.startswith('1.14')):
+    if version.startswith('1.14') or not version and not info.get('mod'):
+        d = save_dir(game_dir)        # 1.14 (mods too) saves in the user's Saved Games\Diablo II
+    else:
         local = _child(game_dir, 'Save')
         d = local if local and os.path.isdir(local) else None
-    else:
-        d = save_dir(game_dir)
     if not d and root:
         d = os.path.join(root, 'saves')
         try:

@@ -264,6 +264,28 @@ def d2se_unicode_relative_base_and_per_profile_save_fallback():
 
 
 @T.test
+def mod_on_1_14_uses_the_saved_games_folder():
+    """A 1.14d folder that looks like a mod (extra archives) still saves in Saved Games\\Diablo II (tester report)."""
+    from unittest.mock import patch
+
+    import mxl_profile as P
+
+    temp = Path(T.tmp())
+    game = temp / 'd2-114-extra'
+    game.mkdir()
+    saved = temp / 'Saved Games' / 'Diablo II'
+    saved.mkdir(parents=True)
+    info = {'kind': 'd2', 'version': '1.14d', 'mod': True, 'supported': True}
+    with patch.dict(os.environ, {'MXL_SAVE_DIR': 'old guess', 'MXL_SAVE_DIR_AUTO': '1'}), \
+            patch.object(P, 'save_dir', lambda game_dir, home=None: str(saved)):
+        T.eq(P._use_save_dir(str(game), str(temp / 'profile'), info), str(saved), '1.14 mod: Saved Games')
+    info13 = dict(info, version='1.13c')
+    with patch.dict(os.environ, {'MXL_SAVE_DIR': 'old guess', 'MXL_SAVE_DIR_AUTO': '1'}), \
+            patch.object(P, 'save_dir', lambda game_dir, home=None: str(saved)):
+        T.eq(P._use_save_dir(str(game), str(temp / 'profile'), info13), str(temp / 'profile' / 'saves'),
+             '1.13 mod without a Save folder: never the 1.14 Saved Games')
+
+@T.test
 def removed_game_folder_skips_live_extraction():
     from types import SimpleNamespace
     from unittest.mock import patch
