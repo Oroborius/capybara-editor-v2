@@ -885,4 +885,36 @@ def legit_save_judges_only_what_the_edit_adds():
     finally:
         G.set_legit(False)
 
+
+@T.test
+def rare_name_storm_touch_round_trip():
+    """Tester: a rare ring named "Storm Touch" showed as "Rune Finger". The game reads the ids 1-based over
+    raresuffix + rareprefix (D2Common DATATBLS_GetRareAffixTxtRecord); written 169 / 97, shown "Storm Touch"."""
+    need()
+    import mxl_creator as C
+    import mxl_legit
+    import mxl_rules
+    from mxl_rc_menu import _creator_for
+    win = T.chartab()
+    cr = _creator_for(win)
+    d = win.data
+
+    def row(lst, word):
+        return next(k for k, x in enumerate(lst)
+                    if word in str(x if isinstance(x, str) else getattr(x, 'get', lambda k: x)('name')).lower())
+    stored = cr.rare_names_stored((row(d.rare_prefix, 'storm'), row(d.rare_suffix, 'touch')))
+    T.eq(tuple(stored), (169, 97), 'written as the game numbers them')
+    spec = cr.new_spec('rare', 'rin ')
+    spec['ilvl'] = 99
+    spec['rare_names'] = cr.rare_names_from_stored(stored)
+    pre = cr.affix_choices('magicprefix', 'rin ', 99, rare=True)
+    if pre:
+        spec['rare_prefixes'] = [pre[0][0]]
+    blob, _rec = cr.build(spec)
+    it = C.decode_item(bytes(blob), d)[0]
+    T.eq(tuple(it['rare_names']), (169, 97), 'the saved ids')
+    T.check('storm touch' in str(mxl_rules.rare_name(it, d)).lower(), f'shown as {mxl_rules.rare_name(it, d)!r}')
+    if mxl_legit.prepare():
+        T.eq([f.rule for f in mxl_legit.check_item(blob) if f.rule == 'rare-name'], [], 'the server accepts the name')
+
 T.main(globals())

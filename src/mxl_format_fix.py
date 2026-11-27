@@ -417,6 +417,37 @@ def _install_row_art():
     mxl_gfx.icon_name = icon_name
 
 
+def _install_rare_name_one_based():
+    """Vanilla: the save's rare name ids are 1-based over raresuffix + rareprefix (D2Common
+    DATATBLS_GetRareAffixTxtRecord returns pRareAffixTxt[id - 1]; 0 = no name). The host read them 0-based (the
+    Median XL layout), so the editor showed the next row: "Storm Touch" (169 / 97) as "Rune Finger" (tester)."""
+    import copy
+    import sys
+    import mxl_rules
+    orig = mxl_rules.rare_name
+    if getattr(orig, '_one_based', False):
+        return
+
+    def rare_name(it, data):
+        try:
+            from mxl_profile import is_median
+            if not is_median() and 'rare_names' in it:
+                a, b = it['rare_names']
+                shifted = copy.copy(it)
+                shifted['rare_names'] = (a - 1, b - 1)
+                return orig(shifted, data)
+        except Exception:
+            pass
+        return orig(it, data)
+    rare_name._one_based = True
+    for m in list(sys.modules.values()):
+        if m is not None and getattr(m, 'rare_name', None) is orig:
+            try:
+                m.rare_name = rare_name
+            except Exception:
+                pass
+
+
 def _install_oversize_art():
     """A unique / set picture larger than its base (a Gnasher on a 1x1 charm: a 1x3 picture) is drawn by the game
     at its own size, centred on the item. The host drew the picture inside the base's cells only (a larger one did
@@ -712,6 +743,10 @@ def install():
         pass
     try:
         _install_socket_display()         # field + item_numsockets (194) sockets, like the game
+    except Exception:
+        pass
+    try:
+        _install_rare_name_one_based()    # vanilla rare names are 1-based (the game's DATATBLS_GetRareAffixTxtRecord)
     except Exception:
         pass
     try:
