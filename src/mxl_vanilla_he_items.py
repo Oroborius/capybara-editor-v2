@@ -776,11 +776,12 @@ def delete_inventory(win, target):
     mercenary = None if ch.merc_items is None else ch.merc_items[:]
     corpse, tail = ch.corpse, ch.tail
     opaque = getattr(ch, '_read_only_items', None)
-    panels = {'Person': PANEL_INVENTORY, 'Stash': PANEL_STASH, 'Cube': PANEL_CUBE}
+    panels = {'Inventory': PANEL_INVENTORY, 'Stash': PANEL_STASH, 'Cube': PANEL_CUBE}
 
     def chosen(entry):
         loc = entry.it.get('location')
-        return (target == 'ALL' or target == 'Person' and loc == LOC_EQUIPPED
+        return (target == 'ALL' or target in ('Person', 'Gear') and loc == LOC_EQUIPPED
+                or target == 'Person' and loc == LOC_STORED and entry.it.get('panel') == PANEL_INVENTORY
                 or target == 'Belt' and loc == LOC_BELT
                 or target in panels and loc == LOC_STORED and entry.it.get('panel') == panels[target])
 
@@ -807,7 +808,7 @@ def delete_inventory(win, target):
             ch._read_only_items = opaque
         win.set_status(str(error), True)
         return
-    if target in ('ALL', 'Person'):
+    if target in ('ALL', 'Person', 'Gear', 'Inventory'):
         _clear_char_clip(win)
     _record_char_write(win, ch.path, before, 'Item Deletion')
 

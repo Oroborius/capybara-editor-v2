@@ -442,7 +442,7 @@ class CharacterWindow(StatEditMixin):
             controls.pack(fill='x')
             actions = ttk.LabelFrame(controls, text='Item Deletion', padding=2)
             actions.pack(side='left', anchor='n', fill='x', expand=True)
-            for target in ('ALL', 'Person', 'Stash', 'Cube', 'Merc', 'Belt'):
+            for target in ('ALL', 'Gear', 'Inventory', 'Stash', 'Cube', 'Merc', 'Belt'):
                 text = 'ALL Items' if target == 'ALL' else f'All in "{target}"'
                 ttk.Button(actions, text=text, style='Inventory.TButton', width=11,
                            command=lambda key=target: delete_inventory(self, key)).pack(fill='x')

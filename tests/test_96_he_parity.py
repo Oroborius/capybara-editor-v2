@@ -716,6 +716,37 @@ def any_base_can_become_any_set_item_by_name():
         top.destroy()
 
 
+@T.test
+def delete_gear_and_inventory_separately():
+    """Item Deletion: "Gear" removes only the equipped items, "Inventory" only the inventory grid."""
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    from unittest.mock import patch
+    from mxl_char import LOC_EQUIPPED, LOC_STORED, PANEL_INVENTORY
+    from mxl_vanilla_he_items import delete_inventory
+
+    win = T.chartab()
+    original = bytes(win.ch.raw)
+
+    def where(ch):
+        gear = sum(1 for e in ch.items if e.it.get('location') == LOC_EQUIPPED)
+        inv = sum(1 for e in ch.items if e.it.get('location') == LOC_STORED and e.it.get('panel') == PANEL_INVENTORY)
+        return gear, inv, len(ch.items)
+
+    try:
+        gear, inv, total = where(win.ch)
+        if not gear or not inv:
+            T.skip('the sample needs gear and inventory items')
+        with patch('mxl_vanilla_he_items.messagebox.askyesno', return_value=True):
+            delete_inventory(win, 'Gear')
+            T.eq(where(win.ch), (0, inv, total - gear), 'Gear: only the equipped items are gone')
+            delete_inventory(win, 'Inventory')
+            T.eq(where(win.ch), (0, 0, total - gear - inv), 'Inventory: only the inventory grid is emptied')
+    finally:
+        Path(win.ch.path).write_bytes(original)
+        win.reload(keep=False)
+
+
 
 @T.test
 def character_name_warning_and_save_anyway():
