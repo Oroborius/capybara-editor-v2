@@ -53,33 +53,6 @@ class Unavailable(Exception):
     pass
 
 
-def _windows_pread():
-    """Windows has no os.pread, which the vendored MPQ reader (d2bt/mpq.py, kept unchanged) uses: a seek + read
-    stand-in that leaves the descriptor's position where it was (tester: "module 'os' has no attribute 'pread'")."""
-    import os
-    import threading
-    if hasattr(os, 'pread'):
-        return
-    lock = threading.Lock()
-
-    def pread(fd, n, offset):
-        with lock:
-            here = os.lseek(fd, 0, os.SEEK_CUR)
-            try:
-                os.lseek(fd, offset, os.SEEK_SET)
-                parts, left = [], n
-                while left > 0:
-                    chunk = os.read(fd, left)
-                    if not chunk:
-                        break
-                    parts.append(chunk)
-                    left -= len(chunk)
-                return b''.join(parts)
-            finally:
-                os.lseek(fd, here, os.SEEK_SET)
-    os.pread = pread
-
-
 def _validator():
     """The dev kit's own validator (vendored unchanged: package d2bt, commit in d2bt/VENDORED.txt), so the editor
     and the server give the same verdict. Its table cache lives in the editor's user folder."""
@@ -90,7 +63,6 @@ def _validator():
     except Exception:
         pass
     import sys
-    _windows_pread()
     here = os.path.dirname(os.path.abspath(__file__))     # Windows build: d2bt is a folder in _internal
     if here not in sys.path:
         sys.path.append(here)

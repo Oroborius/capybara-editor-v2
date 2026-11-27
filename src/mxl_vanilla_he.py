@@ -499,6 +499,33 @@ def chrome(win, bottom, actions):
         menu.add_command(label='Open Mock Tools', command=lambda: mxl_tabs.focus_existing(mxl_mock_gui.TAB))
         mock_tools_index = menu.index('end')
 
+    # the other tabs as buttons right of Menu (testers did not find the Stash / Creator tabs in the menu)
+    win.he_tab_buttons = {}
+
+    def tab_button(text, command):
+        b = role(tk.Button(bar, text=text, font=font(), bd=0, relief='flat', bg=WHITE, padx=6, pady=0,
+                           activebackground=SELECT, activeforeground=WHITE, command=command), 'menu')
+        b.pack(side='left', ipady=1)
+        win.he_tab_buttons[text] = b
+        return b
+
+    for name in ('Stash', 'Creator', 'Library', 'Bit editor'):
+        tab_button(mxl_tabs.tab_label(name),
+                   lambda key=name: win.top.master.select(mxl_tabs._state['pages'][key]))
+    if mock_mode is not None:
+        mock_button = tab_button('Mock', lambda: mxl_tabs.focus_existing(mxl_mock_gui.TAB))
+
+        def show_mock(*_a):
+            try:
+                if mock_mode.get():
+                    mock_button.pack(side='left', ipady=1)
+                else:
+                    mock_button.pack_forget()
+            except tk.TclError:
+                pass
+        mock_mode.trace_add('write', show_mock)
+        show_mock()
+
     if mock_mode is not None:
         menu.configure(postcommand=lambda: menu.entryconfigure(
             mock_tools_index, state='normal' if mock_mode.get() else 'disabled'))

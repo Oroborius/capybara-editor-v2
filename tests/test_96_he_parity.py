@@ -794,6 +794,29 @@ def item_creator_offers_only_the_sockets_the_game_generates():
     T.eq(cr.socket_limit(spec['code'], 99), 7, 'Specific item edit > Socketing still allows 7')
 
 
+@T.test
+def tab_buttons_right_of_the_menu_open_their_tabs():
+    """Testers could not find the Stash / Creator tabs in the Hero Editor layout: they are buttons next to Menu."""
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    import os
+    import mxl_tabs
+    win = T.chartab()
+    T.pump(3)
+    buttons = win.he_tab_buttons
+    T.check({mxl_tabs.tab_label(n) for n in ('Stash', 'Creator', 'Library', 'Bit editor')} <= set(buttons),
+            f'buttons: {sorted(buttons)}')
+    shot = os.environ.get('HE_TABS_SHOT')
+    if shot:
+        win.top.update_idletasks()
+        os.system(f'import -window root {shot}')
+    nb = win.top.master
+    for name in ('Creator', 'Stash'):
+        buttons[mxl_tabs.tab_label(name)].invoke()
+        T.pump(3)
+        T.eq(nb.select(), str(mxl_tabs._state['pages'][name]), f'{name} button selects its tab')
+
+
 
 @T.test
 def character_name_warning_and_save_anyway():

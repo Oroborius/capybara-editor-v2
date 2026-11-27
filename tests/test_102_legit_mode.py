@@ -278,9 +278,8 @@ def legit_verdicts_match_the_dev_kit_on_the_references():
 @T.test
 def mpq_reads_work_without_os_pread():
     """Windows has no os.pread (tester: Legit mode "module 'os' has no attribute 'pread'"): the stand-in reads the
-    game's archives the same way."""
+    game's archives the same way (the vendored reader's own fallback)."""
     import os
-    import mxl_legit
     from d2bt.mpq import MPQArchive
     mpq = next((p for p in GAME.glob('*.mpq') if p.name.lower() == 'patch_d2.mpq'), None)
     if mpq is None:
@@ -290,9 +289,7 @@ def mpq_reads_work_without_os_pread():
     real = os.pread
     try:
         del os.pread
-        mxl_legit._windows_pread()
-        T.check(os.pread is not real, 'stand-in installed')
-        T.eq(MPQArchive(str(mpq)).read(name), want, 'same bytes through the stand-in')
+        T.eq(MPQArchive(str(mpq)).read(name), want, 'same bytes without os.pread (the seek + read fallback)')
     finally:
         os.pread = real
 

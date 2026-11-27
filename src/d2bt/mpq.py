@@ -18,6 +18,9 @@ import base64
 import bz2
 import lzma
 import os
+import threading
+
+_PREAD_LOCK = threading.Lock()
 import struct
 import zlib
 from array import array
@@ -696,7 +699,12 @@ class MPQArchive:
     def _pread(self, off: int, n: int) -> bytes:
         if off < 0 or n <= 0 or off >= self.file_len:
             return b''
-        return os.pread(self._f.fileno(), min(n, self.file_len - off), off)
+        n = min(n, self.file_len - off)
+        if hasattr(os, 'pread'):
+            return os.pread(self._f.fileno(), n, off)
+        with _PREAD_LOCK:                  # Windows has no os.pread: positioned read under a lock
+            self._f.seek(off)
+            return self._f.read(n)
 
     # -- header and tables
     def _find_header(self):

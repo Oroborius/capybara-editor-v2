@@ -1,1 +1,1 @@
-Vendored unchanged from D2-Development-Kit commit 386f3ea (d2bt, MIT, see LICENSE): the legit validator and what it imports, so Legit mode gives the same verdict as the server.
+Vendored unchanged from D2-Development-Kit commit 67efb55 (d2bt, MIT, see LICENSE): the legit validator and what it imports, so Legit mode gives the same verdict as the server.
