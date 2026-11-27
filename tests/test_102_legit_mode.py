@@ -1212,4 +1212,28 @@ def staff_mods_section_is_in_the_gui_for_a_wand_only():
     w.top.destroy()
 
 
+
+@T.test
+def chance_to_cast_level_follows_the_item_level():
+    """Dev kit fact-check: chance-to-cast props with a sheet level <= 0 (Lightsabre, Stormrider, Hellslayer...) got
+    level 0; the game sets it from the item level (ITEMMODS_PropertyFunc11, d2bt proc_level)."""
+    need()
+    import mxl_creator as C
+    import mxl_legit
+    from mxl_rc_menu import _creator_for
+    win = T.chartab()
+    cr = _creator_for(win)
+    if not mxl_legit.prepare():
+        T.skip('stock tables unavailable')
+    for name in ('Lightsabre', 'Stormrider'):
+        row = next((k for k, label, _r in cr.uniques() if name in label), None)
+        if row is None:
+            continue
+        spec = cr.new_spec('unique', None, row)
+        blob, _rec = cr.build(spec)
+        it = C.decode_item(bytes(blob), win.data)[0]
+        procs = [x for x in it['stats'] if x['id'] in (195, 196, 197, 198, 199, 201)]
+        T.check(procs and all((x.get('param') or 0) & 63 for x in procs), f'{name}: proc levels {procs}')
+        T.eq(mxl_legit.impossible(mxl_legit.check_item(blob)), [], f'{name} passes the server')
+
 T.main(globals())

@@ -760,6 +760,12 @@ class Mod:
     def _stats(self, data):
         prop, param, lo, hi = self.raw
         funcs = data.prop_funcs[prop]
+        if data.prop_func[prop] == 11 and Creator._vanilla() and hi <= 0:
+            # chance to cast with a sheet level of 0 / negative: the level follows the item level and the skill
+            # (ITEMMODS_PropertyFunc11, the dev kit's d2bt.itemgen.stats.proc_level); chance <= 0 -> 5
+            from d2bt.itemgen.stats import proc_level
+            req, top = _skill_req(param)
+            lo, hi = (lo if lo > 0 else 5), proc_level(getattr(self, 'ilvl', 99), req, top, hi)
         if data.prop_func[prop] == 19 and Creator._vanilla():
             # charged skill (function 11, skill on hit / striking / level up, keeps the sheet's level as it is): the game's level and charges for the item level (ITEMMODS_PropertyFunc19, the dev
             # kit's d2bt.itemgen.stats.charged_level_capacity): min = charges (negative: level x |min| / 8 + |min|),

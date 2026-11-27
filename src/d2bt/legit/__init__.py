@@ -244,7 +244,7 @@ class Validator:
             else:
                 # Chance/level columns can be reversed in CubeMain; the
                 # Properties function gives them their meaning.
-                apply_property(self.item_tables, bounds, code, param, low, high, 1)
+                apply_property(self.item_tables, bounds, code, param, low, high, 1, ilvl)
         for (sid, layer), value in random.items():
             bounds.add(sid, layer, value)
         return bounds.vals

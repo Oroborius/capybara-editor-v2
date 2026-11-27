@@ -14,6 +14,16 @@ def skill_layer(skill, level):
     return (skill << 6) | (level & 63)
 
 
+def proc_level(ilvl, required, max_skill, maximum):
+    """ItemMods.cpp:3697 ITEMMODS_PropertyFunc11. Chance-to-cast level, fixed by ilvl when max <= 0."""
+    if maximum > 0:
+        return maximum
+    if maximum == 0:
+        return min(max(1, (ilvl - required) // 4 + 1), max_skill if max_skill > 0 else 20)
+    divisor = max(1, -(max(1, 99 - required) // maximum))
+    return max(1, (ilvl - required) // divisor)
+
+
 def charged_level_capacity(ilvl, required, max_skill, minimum, maximum):
     """ItemMods.cpp:3851 ITEMMODS_PropertyFunc19 (level at :3873-:3912, capacity at :3914-:3947).
     Skills: reqlevel, maxlvl. Charged property: min (charges), max (level).

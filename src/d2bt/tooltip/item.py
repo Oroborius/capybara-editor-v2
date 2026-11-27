@@ -18,7 +18,7 @@ Lines: [(segments [(text, colour code)], kind)], top to bottom; kinds: name, bas
 (green partial-set bonus), raw, blank."""
 import re
 
-from ..itemgen.stats import skill_layer, skill_tab_layer
+from ..itemgen.stats import proc_level, skill_layer, skill_tab_layer
 from .data import GameData, to_int
 from .skill import split_colours
 
@@ -170,7 +170,7 @@ class Stats:
         return self.vals.get((sid, layer), V(0))
 
 
-def apply_property(it, st, code, par, mn, mx, level):
+def apply_property(it, st, code, par, mn, mx, level, ilvl=0):
     code = str(code or '').strip()
     if not code:
         return
@@ -217,8 +217,12 @@ def apply_property(it, st, code, par, mn, mx, level):
             layer = skill_tab_layer(to_int(par))
         elif fn == 11:
             sk = it.skill_index(par)
-            layer = skill_layer(max(sk, 0), hi)
-            v = V(lo)
+            lvl = hi
+            if ilvl > 0 and hi <= 0 and 0 <= sk < len(it.skills):
+                lvl = proc_level(ilvl, to_int(it.skills.get(sk, 'reqlevel')),
+                                 to_int(it.skills.get(sk, 'maxlvl')), hi)
+            layer = skill_layer(max(sk, 0), lvl)
+            v = V(lo if lo > 0 else 5)
         elif fn in (13, 14):
             v = rng
         elif fn == 15:
@@ -520,7 +524,7 @@ class Lines(list):
     name = ''
 
 
-def item_tooltip(tables, strings, item_row, level=99, kind=None):
+def item_tooltip(tables, strings, item_row, level=99, kind=None, ilvl=0):
     """Lines of the tooltip of a uniqueitems / setitems / runes row ({column: value}, the live edited row).
 
     tables: explain.Ctx / txt folder / GameData; strings: tbl.StringSet or None (the .tbl beside the txt);
@@ -529,6 +533,7 @@ def item_tooltip(tables, strings, item_row, level=99, kind=None):
     gd = GameData(tables, strings)
     it = ItemTables(gd)
     kind = kind or detect_kind(item_row)
+    ilvl = ilvl or to_int(_get(item_row, 'lvl'))
     col = QUALITY_COLOUR.get(kind, '0')
     out = Lines()
     st = Stats()
@@ -559,12 +564,12 @@ def item_tooltip(tables, strings, item_row, level=99, kind=None):
                 c = gems.get(r, '%sMod%dCode' % (slot, m))
                 if c.strip():
                     apply_property(it, st, c, gems.get(r, '%sMod%dParam' % (slot, m)),
-                                   gems.get(r, '%sMod%dMin' % (slot, m)), gems.get(r, '%sMod%dMax' % (slot, m)), level)
+                                   gems.get(r, '%sMod%dMin' % (slot, m)), gems.get(r, '%sMod%dMax' % (slot, m)), level, ilvl)
         for i in range(1, 14):
             c = _get(item_row, 'T1Code%d' % i)
             if c.strip():
                 apply_property(it, st, c, _get(item_row, 'T1Param%d' % i), _get(item_row, 'T1Min%d' % i),
-                               _get(item_row, 'T1Max%d' % i), level)
+                               _get(item_row, 'T1Max%d' % i), level, ilvl)
         out.extend(stat_lines(it, st, level))
     else:
         name = gd.text(_get(item_row, 'index')) or _get(item_row, 'index')
@@ -576,7 +581,7 @@ def item_tooltip(tables, strings, item_row, level=99, kind=None):
             c = _get(item_row, 'prop%d' % i)
             if c.strip():
                 apply_property(it, st, c, _get(item_row, 'par%d' % i), _get(item_row, 'min%d' % i),
-                               _get(item_row, 'max%d' % i), level)
+                               _get(item_row, 'max%d' % i), level, ilvl)
         mxl = gd.version == 'mxl'
         to = gd.text('ItemStast1k') or 'to'
 
@@ -623,7 +628,7 @@ def item_tooltip(tables, strings, item_row, level=99, kind=None):
                     if c.strip():
                         apply_property(it, st2, c, _get(item_row, 'apar%d%s' % (i, ab)),
                                        _get(item_row, 'amin%d%s' % (i, ab)), _get(item_row, 'amax%d%s' % (i, ab)),
-                                       level)
+                                       level, ilvl)
             extra = stat_lines(it, st2, level, colour='2', kind='set')
             if extra:
                 out.extend(extra)
