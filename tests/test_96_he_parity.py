@@ -746,6 +746,39 @@ def any_base_can_become_any_set_item_by_name():
 
 
 @T.test
+def changing_the_base_keeps_quality_and_sockets():
+    """Tester: Choose Base Type refused socketed items and turned a Sigon's set piece into a plain item. Like Hero
+    Editor 1.04 only the code changes: quality, set row, sockets and their items stay."""
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    import tkinter as tk
+    from unittest.mock import patch
+    from mxl_vanilla_he_extras import ItemEdit
+    from mxl_vanilla_he_items import extras_entries
+
+    win = T.chartab()
+    entries = extras_entries(win.ch)
+    armor = [e for e, owner in entries if owner is False and e.it.get('defense') is not None]
+    entry = next((e for e in armor if e.it.get('socketed_count')), armor[0] if armor else None)   # socketed first
+    if entry is None:
+        T.skip('no armor piece')
+    top = tk.Toplevel(win.top)
+    editor = ItemEdit(top, win, entries, entry, 'Quality:set', tk.StringVar(top))
+    try:
+        before, kids = dict(editor.record), len(editor.children)
+        target = 'uea' if before['code'].strip() != 'uea' else 'xea'
+        with patch('mxl_rc_menu._ask_pick', lambda _p, _t, _opts, on_pick: on_pick(target.ljust(4))):
+            editor.select_base()
+        rec = editor.record
+        T.eq(rec['code'].strip(), target, 'the base changed')
+        for field in ('quality', 'set_unique_id', 'stats', 'sockets', 'ilvl', 'id'):
+            T.eq(rec.get(field), before.get(field), f'{field} kept')
+        T.eq(len(editor.children), kids, f'socketed items kept ({kids})')
+    finally:
+        top.destroy()
+
+
+@T.test
 def delete_gear_and_inventory_separately():
     """Item Deletion: "Gear" removes only the equipped items, "Inventory" only the inventory grid."""
     if not AVAILABLE:

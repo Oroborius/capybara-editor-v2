@@ -909,25 +909,40 @@ class ItemEdit:
             return
         creator = _creator_for(self.win)
         data = self.win.data
-        if self.children or self.record['flags'] & (FLAG_SOCKETED | FLAG_RUNEWORD):
-            self.error('Remove sockets before changing the base type.')
-            return
+        # Hero Editor 1.04 swaps only the code: quality (set / unique / rare...), sockets and their items, runeword,
+        # stats all stay; only what belongs to the base itself (defense, durability, quantity...) is taken from it
+        base_fields = ('defense', 'max_durability', 'durability', 'quantity', 'tome_bits', 'image', 'auto_affix')
 
         def swap(code):
             if code == self.record['code']:
                 return
             try:
                 fresh, _ = creator.build(creator.new_spec('normal', code))
-                record, _ = decode_item(fresh, data)
-                for field in self.GROUPS['Location - View Only']:
-                    record[field] = self.record[field]
-                if not record['flags'] & FLAG_SIMPLE:
-                    for field in ('id', 'ilvl', 'stats', 'personalized_name'):
-                        if field in self.record:
-                            record[field] = self.record[field]
-                    if 'personalized_name' in record:
-                        record['flags'] |= FLAG_PERSONALIZED
-                encode_modified(record, [], data)
+                base, _ = decode_item(fresh, data)
+                keep_all = not (base['flags'] & FLAG_SIMPLE) and not (self.record['flags'] & FLAG_SIMPLE)
+                if keep_all:
+                    record = dict(self.record, code=base['code'])
+                    for field in base_fields:
+                        if field in base:
+                            record[field] = base[field]
+                        else:
+                            record.pop(field, None)
+                    children = self.children
+                else:                               # a gem / potion and an item with stats: the layouts differ
+                    if self.children or self.record['flags'] & (FLAG_SOCKETED | FLAG_RUNEWORD):
+                        self.error('Remove sockets before changing between a simple item (gem, rune, potion) '
+                                   'and an item with stats.')
+                        return
+                    record, children = base, []
+                    for field in self.GROUPS['Location - View Only']:
+                        record[field] = self.record[field]
+                    if not record['flags'] & FLAG_SIMPLE:
+                        for field in ('id', 'ilvl', 'stats', 'personalized_name'):
+                            if field in self.record:
+                                record[field] = self.record[field]
+                        if 'personalized_name' in record:
+                            record['flags'] |= FLAG_PERSONALIZED
+                encode_modified(record, children, data)
             except ITEM_ERRORS as error:
                 self.error(error)
                 return
