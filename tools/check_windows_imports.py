@@ -42,6 +42,14 @@ def available(folder):
     for f in os.listdir(internal):
         if f.endswith('.pyd'):
             have.add(f.split('.')[0])
+    # source packages shipped as folders in _internal (on sys.path at run time, e.g. d2bt): their modules count
+    for root, _dirs, files in os.walk(internal):
+        rel = os.path.relpath(root, internal)
+        if rel == '.' or not os.path.isfile(os.path.join(root, '__init__.py')):
+            continue
+        pkg = rel.replace(os.sep, '.')
+        have.add(pkg)
+        have |= {f'{pkg}.{f[:-3]}' for f in files if f.endswith('.py') and f != '__init__.py'}
     return have | WIN_BUILTIN
 
 
