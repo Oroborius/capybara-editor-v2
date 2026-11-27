@@ -274,4 +274,49 @@ def legit_verdicts_match_the_dev_kit_on_the_references():
                        else len(mxl_legit.impossible(fs)))
         T.eq(got, want, f'{d}: impossible findings per save, as the dev kit')
 
+
+@T.test
+def creator_offers_only_what_the_server_accepts():
+    """Every magic affix the item creator offers (one base per item type, a low and a high item level), built at its
+    max roll, passes the server's checker; the rare offers are the same rows with the rare flag (user: the creator
+    offered a 50% resist rare ring the game cannot drop)."""
+    import collections
+    import time
+    import mxl_legit
+    from mxl_rc_menu import _creator_for
+    if not mxl_legit.prepare():
+        T.skip('stock tables unavailable')
+    win = T.chartab()
+    cr = _creator_for(win)
+    v = mxl_legit._validator()
+    reps = {}
+    for code, (kind, row) in v.bases.items():
+        if row.get('spawnable') == '1' and row.get('type') not in reps and (code.ljust(4)) in win.data.bases:
+            if cr.can_have_quality(code.ljust(4), 'magic'):
+                reps[row.get('type')] = code.ljust(4)
+    bad, built, t0 = collections.Counter(), 0, time.time()
+    examples = []
+    for code in reps.values():
+        for ilvl in (30, 99):
+            for kind, key in (('magicprefix', 'prefix'), ('magicsuffix', 'suffix')):
+                for idx, label, _a in cr.affix_choices(kind, code, ilvl):
+                    spec = cr.new_spec('magic', code)
+                    spec['ilvl'] = ilvl
+                    spec[key] = idx
+                    for m in cr.mods(spec):
+                        if m.variable:
+                            spec['rolls'][m.source] = m.max
+                    try:
+                        blob, _rec = cr.build(spec)
+                    except Exception as e:
+                        bad[('build', type(e).__name__)] += 1
+                        continue
+                    built += 1
+                    for f in mxl_legit.impossible(mxl_legit.check_item(blob)):
+                        bad[(f.rule, f.detail.split(' ')[0])] += 1
+                        if len(examples) < 12:
+                            examples.append(f'{code.strip()} ilvl {ilvl} {label}: {f.rule} {f.detail}')
+    T.check(built > 1000, f'{built} items built over {len(reps)} item types in {time.time() - t0:.0f} s')
+    T.eq(dict(bad), {}, 'creator offers the server rejects; e.g. ' + ' | '.join(examples))
+
 T.main(globals())

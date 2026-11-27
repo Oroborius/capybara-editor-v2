@@ -916,9 +916,25 @@ class Creator:
                 cache[key] = bool(pre or suf)
         return cache[key]
 
+    def affix_level(self, code, ilvl):
+        """The level the game picks affixes at. Vanilla: the item level clamped to 99 and raised to the base's
+        qlvl, plus its magic level, else lowered by qlvl / 2 (2 x level - 99 near the top) - the server's legit
+        rule (d2bt.legit.affix_level). Median: the item level, as before."""
+        if not self._vanilla():
+            return ilvl
+        it = self.t.item.get(code, {})
+        qlvl, magic = it.get('qlvl', 1) or 0, it.get('magic_lvl', 0) or 0
+        level = max(min(ilvl, 99), qlvl)
+        if magic:
+            return min(99, level + magic)
+        half = qlvl // 2
+        return level - half if level < 99 - half else 2 * level - 99
+
     def _affix_ok(self, a, extra, anc, ilvl, rare=False):
         if not a['spawnable'] or a['level'] > ilvl or (a['maxlevel'] and ilvl > a['maxlevel']):
             return False
+        if self._vanilla() and not extra.get('freq'):
+            return False                  # frequency 0: the game never rolls the row (the old 31-50% resist rings)
         if rare and not extra['rare']:
             return False
         return bool(a['itypes'] & anc) and not (a['etypes'] & anc)
@@ -927,6 +943,7 @@ class Creator:
         """[(save id, label, affix)] of magic prefixes / suffixes that can spawn on this base at this ilvl."""
         anc = self.types_of(code)
         out = []
+        ilvl = self.affix_level(code, ilvl)
         for i, a in enumerate(self.data.affixes[kind]):
             if self._affix_ok(a, self.t.affix_extra[kind][i], anc, ilvl, rare):
                 out.append((i + 1, self.affix_label(kind, i + 1), a))
@@ -995,6 +1012,7 @@ class Creator:
             return []
         anc = self.types_of(code)
         out = []
+        ilvl = self.affix_level(code, ilvl)                 # like magic affixes (the server's legit rule)
         for i, a in enumerate(self.data.affixes['automagic']):
             if a['group'] == b.auto_group and self._affix_ok(a, self.t.affix_extra['automagic'][i], anc, ilvl):
                 out.append((i + 1, self.affix_label('automagic', i + 1), a))
