@@ -277,6 +277,7 @@ class EmbedHost(tk.Frame):
         self.dying = True
         import mxl_tabs
         if mxl_tabs._state.get('embed') is self:
+            self._collector_bar(False)
             mxl_tabs._state['embed'] = None
         self._restore_stash()
         super().destroy()
@@ -325,10 +326,14 @@ class EmbedHost(tk.Frame):
         self.current = page
         page.pack(fill='both', expand=True)
         self.page_var.set(page._key)
+        self._collector_bar(page._key == 'Stash')
         if page._key == 'Stash':
             body = self._stash_body()
             if body is not None:
                 body.lift()
+        elif page._key == 'Bit editor' and not page.built:
+            import mxl_bitedit
+            mxl_bitedit.reopen_last(win.app)
         elif page._key == 'Library' and not page.built:
             import mxl_itemlib
             mxl_itemlib.open_library(win.app)
@@ -340,6 +345,19 @@ class EmbedHost(tk.Frame):
                 paint_tree(page)
         except tk.TclError:
             pass
+
+    def _collector_bar(self, on):
+        """The collector's top bar (character list ...) belongs to the Stash page, as in the Stash tab."""
+        import mxl_tabs
+        if bool(mxl_tabs._state.get('chrome_forced')) == bool(on):
+            return
+        mxl_tabs._state['chrome_forced'] = bool(on)
+        update = mxl_tabs._state.get('chrome_update')
+        if update is not None:
+            try:
+                update()
+            except tk.TclError:
+                pass
 
     def _hide_current(self):
         if self.current is not None:
@@ -353,6 +371,7 @@ class EmbedHost(tk.Frame):
         self._hide_current()
         self.pack_forget()
         self.page_var.set('')
+        self._collector_bar(False)
         if self.scroll_pack:
             self.win.scroll.pack(**{k: v for k, v in self.scroll_pack.items() if k != 'in'})
 
@@ -635,6 +654,14 @@ def chrome(win, bottom, actions):
     if mock_mode is not None:
         mock_button = tab_button('Mock', mxl_mock_gui.TAB)
 
+        def open_mock():
+            try:
+                embed = win.he_embed
+                if mock_mode.get() and mxl_tabs.embed_host() is embed:
+                    embed.show(embed.page(mxl_mock_gui.TAB))
+            except tk.TclError:
+                pass
+
         def show_mock(*_a):
             try:
                 if mock_mode.get():
@@ -644,6 +671,7 @@ def chrome(win, bottom, actions):
             except tk.TclError:
                 pass
         mock_mode.trace_add('write', show_mock)
+        mock_mode.trace_add('write', lambda *_a: win.top.after_idle(open_mock) if mock_mode.get() else None)
         show_mock()
         if mxl_mock_gui._state.get('page') is not None:      # built in a notebook tab before this window: rebuild here
             nb = win.top.master

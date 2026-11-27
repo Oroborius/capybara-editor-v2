@@ -107,7 +107,7 @@ def _vanilla_host(app, nb):
         nb.configure(style='CharacterHost.TNotebook' if editing else 'TNotebook')
         trailing = nb
         for widget, layout, before in chrome:
-            if editing:
+            if editing and not _state.get('chrome_forced'):
                 widget.pack_forget()
             elif before:
                 widget.pack(before=nb, **layout)
@@ -116,6 +116,7 @@ def _vanilla_host(app, nb):
                 trailing = widget
 
     nb.bind('<<NotebookTabChanged>>', update, add='+')
+    _state['chrome_update'] = update
     update()
 
 
@@ -213,7 +214,7 @@ class TabPage(tk.Frame):
         """A short hint shown in an empty tab (removed again when the window builds into it)."""
         from mxl_lang import T
         if self._key == 'Bit editor':
-            text = T('tab.bitedit.empty', 'Bit editor: right-click an item -> "Open in Bit editor".')
+            text = T('tab.bitedit.empty', 'Right-click an item > Open in Bit editor')
         else:
             text = T('tab.empty', '{name}: empty - use the matching button in the toolbar above.',
                      name=tab_label(self._key))

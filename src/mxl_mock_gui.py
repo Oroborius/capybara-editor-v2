@@ -215,6 +215,7 @@ def _set_mode(on, select=True):
         _state['page'] = None
         if page is None:
             return
+        _state['snap'] = page.snapshot()                 # the inputs carry over to the next page
         job = getattr(page, '_live_job', None)
         if job:                                        # no re-check of a page that is going away
             try:
@@ -378,7 +379,10 @@ class MockPage:
         nb.add(a, text=T('mock.ana', 'Analyzer'))
         self._analyzer(a)
         self._generator(g)
-        host.bind('<Map>', lambda e: self.analyze() if e.widget is host else None, add='+')
+        # an embedded page's frame outlives the MockPage built into it (it is only emptied): a Map or Destroy event
+        # of the frame must not reach a page that was replaced or switched off
+        host.bind('<Map>', lambda e: self.analyze() if e.widget is host and _state.get('page') is self else None,
+                  add='+')
 
     # ------------------------------------------------------------------ generator
     def _generator(self, f):
@@ -488,8 +492,8 @@ class MockPage:
         snap = _state.pop('snap', None)                   # a page rebuilt with another character's window:
         if snap:                                          # the user's inputs carry over
             self.restore(snap)
-        self.host.bind('<Destroy>', lambda e: e.widget is self.host and _state.__setitem__('snap', self.snapshot()),
-                       add='+')
+        self.host.bind('<Destroy>', lambda e: e.widget is self.host and _state.get('page') is self
+                       and _state.__setitem__('snap', self.snapshot()), add='+')
 
     def key(self):
         return self.labels.get(self.preset.get(), 'mock_high')

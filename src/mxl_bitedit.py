@@ -1082,9 +1082,13 @@ def _clean(name):
         return str(name)
 
 
+_last = {'item': None}
+
+
 def open_item(app, blob, name, source=None, reason=None):
     """Opens the item (its bytes, socketed items included) in the Bit editor tab. source: the stash item (dict with
     page, x, y, code, _offset) Apply writes back to; None = read only (reason says why)."""
+    _last['item'] = (bytes(blob), name)
     try:
         return BitEditor(app, blob, name, source, reason)
     except Exception as e:
@@ -1095,3 +1099,12 @@ def open_item(app, blob, name, source=None, reason=None):
         import traceback
         traceback.print_exc()
         return None
+
+
+def reopen_last(app):
+    """Shows the item opened before again (read only: its stash position may have moved), e.g. in a rebuilt
+    Hero Editor window. False when no item was opened yet."""
+    item = _last['item']
+    if item is None:
+        return False
+    return open_item(app, item[0], item[1], None, 'opened earlier: open it from the item again to apply') is not None

@@ -75,16 +75,46 @@ def he_menu_mock_mode_shows_the_mock_tools():
     T.check(var.get() and mxl_mock_gui._state['page'] is not None, 'Mock page created')
     menu.tk.call(menu.cget('postcommand'))
     T.eq(menu.entrycget(idx['Open Mock Tools'], 'state'), 'normal', 'tools entry on')
-    menu.invoke(idx['Open Mock Tools'])
-    T.pump(10)
     page = mxl_mock_gui._state['page']
     nb = mxl_tabs._state['nb']
+    T.check(page.host.winfo_ismapped(), 'switching Mock Mode on opens the Mock page right away')
+    menu.invoke(idx['Open Mock Tools'])                 # toggles it off ...
+    T.pump(10)
+    T.check(not page.host.winfo_ismapped(), 'the tools entry closes the open Mock page')
+    menu.invoke(idx['Open Mock Tools'])                 # ... and on again
+    T.pump(10)
     T.check(str(page.host).startswith(nb.select()), 'the Mock tools page is shown in the Hero Editor window')
     T.check(page.host.winfo_ismapped(), 'Mock page is visible')
     T.check(cw.he_back is not None if hasattr(cw, 'he_back') else True, 'ok')
     menu.invoke(idx['Mock Mode'])
     T.pump(10)
     T.check(mxl_mock_gui._state['page'] is None, 'Mock page removed again')
+
+
+@T.test
+def he_stash_page_shows_the_collector_bar_and_bit_editor_hint():
+    if not AVAILABLE:
+        T.skip('no 1.14d game data or sample character')
+    import mxl_tabs
+    cw = T.chartab()
+    T.pump(5)
+    embed = cw.he_embed
+    bar = T.G.app.char_combo.master
+    T.check(not bar.winfo_ismapped(), 'collector bar hidden in the character view')
+    embed.toggle('Stash')
+    T.pump(10)
+    T.check(bar.winfo_ismapped(), 'collector bar shown on the embedded Stash page')
+    embed.toggle('Stash')
+    T.pump(10)
+    T.check(not bar.winfo_ismapped(), 'collector bar hidden again on leave')
+    embed.toggle('Bit editor')
+    T.pump(10)
+    page = embed.page('Bit editor')
+    texts = [w.cget('text') for w in page.winfo_children() if hasattr(w, 'cget') and 'text' in w.keys()]
+    T.check(any('Right-click an item > Open in Bit editor' in t for t in texts) or page.built,
+            f'Bit editor hint or the last item: {texts}')
+    embed.leave()
+    T.pump(5)
 
 
 T.main(globals())
