@@ -496,6 +496,24 @@ def calc_keeps_a_typed_holy_freeze_level():
     T.check(int(vals['hf_level']) != hf, 'with an HF damage target typed, Calc solves the HF level')
 
 @T.test
+def max_holy_fire_and_smite_stay_under_the_roll_unrounded():
+    """Tester: a max Holy Fire and a max Smite rolled in game. Holy Fire (HitShift 7) has half points that its
+    mastery multiplies; str/lvl strength keeps its fraction. Both are checked with no rounding."""
+    M = engine().M
+    r = M.solve_aura_dmg(M.HOLY_FIRE, M.ROLL)
+    lo, hi = M.aura_raw_dmg(M.HOLY_FIRE, r['level'])
+    internal = hi + hi * r['mast'] // 100
+    T.check(internal < 2 ** 31, f'Holy Fire max {internal} (1/256) stays under 2^31')
+    T.check(Fraction(hi, 256) * (100 + r['mast']) / 100 < M.ROLL + 1, 'exact Holy Fire max under the roll')
+    T.check(r['max'] >= M.ROLL * 0.999, f"still a max Holy Fire: {r['max']}")
+    P = M.plan('mock_high', 'X', smite_max=True)
+    sm = P['smite']
+    _smin, smax = M.shield_dmg(M.SHIELD_DEFAULT)
+    mult = Fraction(sm['mult'])
+    T.check((smax + sm['dmg']) * mult / 100 < M.ROLL + 1, f"exact max Smite under the roll: {sm['max']}")
+    T.check(mult.denominator in (1, 2, 4, 8), 'the strength keeps its str/lvl fraction')
+
+@T.test
 def smite_max_and_efficient_modes():
     """Max smite: max = 8388607 exactly, min = (shield min + damage) x mult (no +min line: stat 21 does not reach
     Smite in game, duel 2026-11-22); the analyzer ignores stat 21 too. Efficient: within 0.1% of the cap."""

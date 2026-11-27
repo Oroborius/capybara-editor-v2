@@ -882,11 +882,12 @@ def set_data(data):
     _DMG_CACHE.clear()
 
 
-def aura_base_dmg(sid, lvl):
-    """(min, max) PvM damage of one aura source at a total level, before mastery: skills.bin of the selected game
-    (EMin / EMax with their EMinLev1-5 / EMaxLev1-5 level brackets and the EDmgSymPerCalc synergy, evaluated by
-    mxl_skilldesc.Calc, so every aura has its own formula). Holy Freeze falls back to its fixed formula without
-    tables; the others need them (PlanError)."""
+def aura_raw_dmg(sid, lvl):
+    """(min, max) PvM damage of one aura source at a total level, before mastery, in the game's 1/256 units:
+    skills.bin of the selected game (EMin / EMax with their EMinLev1-5 / EMaxLev1-5 level brackets, HitShift and
+    the EDmgSymPerCalc synergy, evaluated by mxl_skilldesc.Calc). Kept unrounded: Holy Fire (HitShift 7) has
+    half points that its mastery multiplies (a floored base put a max Holy Fire over the roll in game). Holy
+    Freeze falls back to its fixed formula without tables; the others need them (PlanError)."""
     key = (id(_DATA), sid, lvl)
     if key in _DMG_CACHE:
         return _DMG_CACHE[key]
@@ -895,21 +896,28 @@ def aura_base_dmg(sid, lvl):
         try:
             import mxl_skilldesc as SD
             c = SD.Calc(SD.tables(_DATA), {sid: lvl}, 127)
-            out = (max(c.elem(sid, lvl), 0), max(c.elem(sid, lvl, True), 0))
+            out = (max(c.elem(sid, lvl, shift=False), 0), max(c.elem(sid, lvl, True, shift=False), 0))
         except Exception:
             out = None
     if out is None:
         if sid != HOLY_FREEZE:
             raise PlanError(f'{AURA_NAMES.get(sid, sid)} damage needs the game tables (select a game folder)')
-        out = (holy_freeze_dmg(lvl), holy_freeze_dmg(lvl, True))
+        out = (holy_freeze_dmg(lvl) * 256, holy_freeze_dmg(lvl, True) * 256)
     _DMG_CACHE[key] = out
     return out
 
 
+def aura_base_dmg(sid, lvl):
+    """(min, max) PvM damage per source before mastery, exact (Fractions of a point)."""
+    lo, hi = aura_raw_dmg(sid, lvl)
+    return Fraction(lo, 256), Fraction(hi, 256)
+
+
 def aura_damage(sid, lvl, mast=0):
-    """(min, max) PvM damage per source at a level with the matching mastery %."""
-    lo, hi = aura_base_dmg(sid, lvl)
-    return lo * (100 + mast) // 100, hi * (100 + mast) // 100
+    """(min, max) PvM damage per source at a level with the matching mastery %: the mastery multiplies the
+    unrounded 1/256 value, then the whole points count (the roll is at 8388607 whole points)."""
+    lo, hi = aura_raw_dmg(sid, lvl)
+    return (lo + lo * mast // 100) >> 8, (hi + hi * mast // 100) >> 8
 
 
 def _solve_thorns_damage(target, max_lines, dr, dr_pct, es):
@@ -953,6 +961,8 @@ def solve_aura_dmg(sid, target, max_lines=200, *, dr=0, dr_pct=0, es=ES_ABSORB):
         min_mast = max(0, -(-((target - tolerance) * 100) // base) - 100)
         # Within the tolerance, buy only as many lines as needed and use their spare capacity.
         mast = min(max_mast, -(-min_mast // mline) * mline)
+        while mast > 0 and aura_damage(sid, lo, mast)[1] > target:     # exact game rounding has the last word
+            mast -= 1
         d = aura_damage(sid, lo, mast)
         bits = k * line_bits(151) + -(-mast // mline) * line_bits(mid)
         gap = target - d[1]
@@ -1098,7 +1108,8 @@ def smite_of(model, t):
     smin, smax = (shield_dmg(shield) if shield else None) or (0, 0)
     # effective level at most 99, like BO (bo_pct): clone-45' two Smite 63 lines give a capped 8382830, not 8462500
     slvl = min(99, t['nonclass'].get(SMITE, 0) + (model['skills'].get(SMITE, 0)))
-    strength = model['base_str'] + T.get(0, 0) + T.get(220, 0) * lvl // 8
+    # str/lvl counts with its fraction (the game: a floored strength put a max Smite 1 str over the roll)
+    strength = model['base_str'] + T.get(0, 0) + Fraction(T.get(220, 0) * lvl, 8)
     mult = 100 + 15 * slvl + strength
     hs_lvl = min(99, t['nonclass'].get(HOLY_SHIELD, 0) + model['skills'].get(HOLY_SHIELD, 0))
     hmin, hmax = holy_shield_dmg(hs_lvl)
@@ -1106,7 +1117,8 @@ def smite_of(model, t):
     # +min damage (stat 21) does not reach Smite (duel 2026-11-22: hits spread over the whole shield range with it)
     lo = (smin + T.get(111, 0)) * mult // 100
     hi = (smax + T.get(111, 0)) * mult // 100       # +min / +max damage lines do not reach Smite: only +Damage (111)
-    return dict(shield=shield, slvl=slvl, strength=strength, mult=mult, min=lo, max=hi, hs_lvl=hs_lvl,
+    lo, hi = int(lo), int(hi)
+    return dict(shield=shield, slvl=slvl, strength=float(strength), mult=mult, min=lo, max=hi, hs_lvl=hs_lvl,
                 hs_min=hmin, hs_max=hmax)
 
 
@@ -1270,7 +1282,7 @@ def analyze(model, side=None, bo=False, energy=False, *, targets=None):
     add('life', 'Life', _num(life), BAD if life >= ROLL else WARN if life > 7900000 else GOOD)
     st = BAD if sm['max'] > ROLL else WARN if sm['max'] < ROLL * 0.95 else GOOD
     hs = f", Holy Shield {sm['hs_lvl']} +{sm['hs_min']}-{sm['hs_max']}" if sm['hs_lvl'] else ''
-    add('damage', 'Smite damage', f"PvM {sm['min']}-{sm['max']} (lvl {sm['slvl']}, str {sm['strength']}, "
+    add('damage', 'Smite damage', f"PvM {sm['min']}-{sm['max']} (lvl {sm['slvl']}, str {sm['strength']:g}, "
         f"shield {shield_label(sm['shield']) if sm['shield'] else '-'}{hs}); PvP after DR {float(pvp):.0f} / cap "
         f"{float(DMG_CAP_PVP):.0f}; spread {float((sm['max'] - sm['min']) * PVP):.0f} PvP before DR",
         st if sm['slvl'] else INFO)
@@ -1682,21 +1694,22 @@ def solve_life(target, base_raw, oak_min, oak_max, max_lines, extra_pct=0, allow
 
 def solve_smite(target_pvm, level, shield, max_lines, base_str=1023, slvl=63, mode='efficient', hs_lvl=0):
     """Max Smite damage = (shield max + Holy Shield max + sum(+damage lines <= 491)) x (100 + 15 slvl + str%) / 100
-    <= target, str = base + floor(sum(str/lvl lines <= 63) x clvl / 8). Smallest gap, then fewest bits. hs_lvl:
+    <= target, str = base + sum(str/lvl lines <= 63) x clvl / 8 (with its fraction, like the game and the
+    community calculators). Smallest gap, then fewest bits. hs_lvl:
     the Holy Shield level cast before the duel (its damage adds to the shield's range, see smite_of)."""
     smin, smax = shield_dmg(shield)
     hmin, hmax = holy_shield_dmg(hs_lvl)
     smin, smax = smin + hmin, smax + hmax
     cands = []
     for S in range(0, 63 * max_lines + 1):
-        mult = 100 + 15 * slvl + base_str + S * level // 8
-        D = ((target_pvm + 1) * 100 - 1) // mult - smax
+        mult = 100 + 15 * slvl + base_str + Fraction(S * level, 8)
+        D = math.ceil(Fraction((target_pvm + 1) * 100) / mult) - 1 - smax     # (smax + D) x mult / 100 < target + 1
         if D < 0:
             break
         m = -(-D // 491)
         if m > max_lines:
             continue
-        hi = (smax + D) * mult // 100
+        hi = int((smax + D) * mult // 100)
         cost = 15 * -(-S // 63) + 18 * m
         cands.append((target_pvm - hi, cost, S, D, hi, mult))
     if not cands:
@@ -1705,11 +1718,11 @@ def solve_smite(target_pvm, level, shield, max_lines, base_str=1023, slvl=63, mo
         # the largest max under the target, then fewest bits; the min stays the shield's min (+min damage does
         # not reach Smite in game), so hits spread over (smax - smin) x mult / 100 below the max
         gap, cost, S, D, hi, mult = min(cands, key=lambda c: (c[0], c[1]))
-        return dict(str_points=S, dmg=D, max=hi, min=(smin + D) * mult // 100, mult=mult, min_add=0)
+        return dict(str_points=S, dmg=D, max=hi, min=int((smin + D) * mult // 100), mult=mult, min_add=0)
     # efficient: fewest bits among the plans within 0.1% of the target, then the closest
     near = [c for c in cands if c[4] * 1000 >= target_pvm * 999] or cands
     gap, cost, S, D, hi, mult = min(near, key=lambda c: (c[1], c[0]))
-    return dict(str_points=S, dmg=D, max=hi, min=(smin + D) * mult // 100, mult=mult, min_add=0)
+    return dict(str_points=S, dmg=D, max=hi, min=int((smin + D) * mult // 100), mult=mult, min_add=0)
 
 
 def split(total, per_line):
