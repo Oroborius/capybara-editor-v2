@@ -1,4 +1,4 @@
-"""Save safety follow-ups: the newest N backups per file are kept (setting "backups_keep", default 5, at least 1;
+"""Save safety follow-ups: the newest N backups per file are kept (setting "backups_keep", default 0 = keep all;
 docs/review/save-safety.md F10), and Ctrl+Z (mxl_undo 'files') undoes a drag move (stash page -> other page,
 stash -> inventory: both files byte for byte) and a SAVE of the Character tab; an undo is refused when a file
 changed since."""
@@ -30,7 +30,7 @@ def _dated(path):
 
 # ------------------------------------------------------------------------------------------- backups
 @T.test
-def save_safety_keeps_the_newest_five_backups():
+def save_safety_keeps_every_backup_by_default():
     import mxl_save
     path = G.app.character_file()
     stash = G.app.path
@@ -52,8 +52,8 @@ def save_safety_keeps_the_newest_five_backups():
         T.check(bak and os.path.isfile(bak), f'no backup returned: {bak!r}')
         T.eq(T.read(bak) if bak else None, raw, 'the backup holds the file before the write')
         now = _dated(path)
-        # numeric order of -n: -10 is newer than -2; the oldest three seeds are gone
-        T.eq(now, seeds[3:5] + [seeds[5], seeds[6], os.path.basename(bak)], 'kept backups (default 5)')
+        # numeric order of -n: -10 is newer than -2; nothing removed by default (the editor saves on every edit)
+        T.eq(now, seeds + [os.path.basename(bak)], 'kept backups (default: all)')
         for n in others:
             T.check(os.path.isfile(os.path.join(folder, n)), f'{n} was removed')
         _setting(2)
@@ -61,7 +61,8 @@ def save_safety_keeps_the_newest_five_backups():
         T.eq(_dated(path), [os.path.basename(bak), os.path.basename(bak2)], 'kept backups (backups_keep 2)')
         _setting(0)
         bak3 = mxl_save.commit_file(path, raw, lambda tmp: None, True)
-        T.eq(_dated(path), [os.path.basename(bak3)], 'kept backups (backups_keep 0 -> 1)')
+        T.eq(_dated(path), [os.path.basename(bak), os.path.basename(bak2), os.path.basename(bak3)],
+             'kept backups (backups_keep 0: all)')
         for n in others:
             T.check(os.path.isfile(os.path.join(folder, n)), f'{n} was removed')
         T.eq(T.read(path), raw, 'the file itself')

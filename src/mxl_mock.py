@@ -1512,7 +1512,7 @@ DEFAULTS = dict(cls=1, level=127, position='LPJ', life=7300000, damage=Fraction(
                 # every category the proven clones carry (docs/review/mock-pi-data/clone-profile.txt, CLONE_PROFILE):
                 # the clone median unless a preset says otherwise
                 thorns=None, thorns_target=0, barbs=None, dtm=None, es=ES_PCT, tk=TK_DEFAULT, holy_shield_cast=0,   # None: solved
-                hf_cap=True, hf_target=HF_MOCK_TARGET, thorns_lvl=0, hsk_level=0, hsk_sources=0, hfire_level=0, hfire_sources=0, hfire_target=0, hsk_target=0, abs_cold=0, abs_fire=0, abs_light=0, hf_solve=False,
+                hf_cap=True, hf_target=HF_MOCK_TARGET, thorns_lvl=0, hsk_level=0, hsk_sources=0, hfire_level=0, hfire_sources=0, hfire_target=0, hsk_target=0, hf_mast_pct=0, hsk_mast_pct=0, hfire_mast_pct=0, abs_cold=0, abs_fire=0, abs_light=0, hf_solve=False,
                 ias=-121, frw=107, fhr=-36, fcr=-121, nv_ias=0, nv_frw=97,      # IAS 93, FRW 96, FHR 99, FCR 105, 68, 67
                 curse_res=511, target_def=381, dodge=127, ow=127,
                  itd=False, cbf=False,
@@ -1840,6 +1840,9 @@ def plan(preset='mock_high', name='Mock', **over):
                 o['hf_sources'] = 1
             o[lk] = r['level']
             o['aura_mast'][aid] = r['mast']
+    for mk, aid in (('hf_mast_pct', HOLY_FREEZE), ('hsk_mast_pct', HOLY_SHOCK), ('hfire_mast_pct', HOLY_FIRE)):
+        if int(o.get(mk) or 0) > 0:                       # a mastery % typed by hand wins over the solver / HF cap
+            o['aura_mast'][aid] = int(o[mk])
     nl_est = sum(6 + (2 * JEWELS if g[4] else 0) for g in list(GEAR) + ([WEAPON] if o['weapon'] and not o['ith_weapon'] else [])) \
         + CHARM_COUNT - o['ith_inv']
     for el in ('cold', 'fire', 'light'):                # the typed TOTAL resist -> the per-level sum
@@ -2788,54 +2791,68 @@ SWITCHES = ('none', 'balance')
 # stat totals have no made-up upper limit: the file size is the limit (size_estimate); only the bit fields keep theirs
 UNCAPPED = 10 ** 9
 FIELDS = (
-    ('Mana / TK', (('tk', 'TK', 'int', (0, 99)), ('es', 'Energy Shield %', 'int', (0, 99)),
-                   ('mana', 'Mana (BO)', 'int', (1, 16777215)),
-                   ('bo', 'BO level', 'int', (0, 99)), ('level', 'Level', 'int', (99, 127)),
+    ('Mana / TK', (('tk', 'TK level', 'int', (0, 99)), ('es', 'Energy Shield %', 'int', (0, 99)),
+                   ('mana', 'Mana (with BO)', 'int', (1, 16777215)),
+                   ('bo', 'BO level', 'int', (0, 99)), ('level', 'Character level', 'int', (99, 127)),
                    ('cls', 'Class', 'choice', CLASSES), ('position', 'Position', 'choice', tuple(POSITIONS)),
                    ('enemy_aura', 'Enemy aura', 'choice', ('preset',) + tuple(ENEMY_AURA_MANA)))),
-    ('Life / regen', (('life', 'Life (BO)', 'int', (1, ROLL - 1)), ('med', 'Meditation', 'int', (0, UNCAPPED)),
-                      ('regen', 'Regen % line', 'int', (0, 255)), ('replenish', 'Replenish bulk', 'bool', None))),
-    ('Auras', (('prayer', 'Prayer', 'int', (0, UNCAPPED)), ('prayer_sources', 'Prayer src', 'int', (0, CHARM_COUNT)),
+    ('Life / regen', (('life', 'Life (with BO)', 'int', (1, ROLL - 1)), ('med', 'Meditation level', 'int', (0, UNCAPPED)),
+                      ('regen', 'Mana regen % per line', 'int', (0, 255)),
+                      ('replenish', 'Replenish life (bulk lines)', 'bool', None))),
+    ('Auras', (('prayer', 'Prayer level', 'int', (0, UNCAPPED)),
+               ('prayer_sources', 'Prayer sources', 'int', (0, CHARM_COUNT)),
                ('ith_inv', 'Ith charms (inventory)', 'int', (0, CHARM_COUNT - 1)),
                ('ith_charms', 'Ith charms (stash, move in by hand)', 'int', (0, ITH_STASH_MAX)),
-               ('thorns', 'Thorns', 'int', (0, UNCAPPED)), ('barbs', 'Barbs', 'int', (0, UNCAPPED)),
-               ('oak', 'Oak Sage', 'int', (0, UNCAPPED)), ('hf_level', 'Holy Freeze', 'int', (0, UNCAPPED)),
-               ('hf_sources', 'HF src', 'int', (0, 49)), ('hsk_level', 'Holy Shock', 'int', (0, UNCAPPED)),
-               ('hsk_sources', 'HS src', 'int', (0, 49)),
-               ('hfire_level', 'Holy Fire', 'int', (0, UNCAPPED)), ('hfire_sources', 'Holy Fire src', 'int', (0, 49)),
-               ('hfire_target', 'Holy Fire dmg / src', 'int', (0, ROLL)), ('hsk_target', 'Holy Shock dmg / src', 'int', (0, ROLL)),
-               ('hf_solve', 'Solve HF level for HF per src', 'bool', None), ('hf_target', 'HF per src', 'int', (0, ROLL)),
-               ('thorns_target', 'Thorns dmg / src', 'int', (0, ROLL)),
-               ('hf_cap', 'HF mastery', 'bool', None), ('thorns_lvl', 'Thorns / lvl', 'int', (0, UNCAPPED)))),
-    ('Damage', (('damage', 'Smite PvP', 'int', (0, int(DMG_CAP_PVP))), ('smite_max', 'Max smite', 'bool', None),
+               ('oak', 'Oak Sage level', 'int', (0, UNCAPPED)),
+               ('thorns', 'Thorns level', 'int', (0, UNCAPPED)),
+               ('thorns_target', 'Thorns damage per source', 'int', (0, ROLL)),
+               ('thorns_lvl', 'Thorns damage per character level', 'int', (0, UNCAPPED)),
+               ('barbs', 'Barbs level', 'int', (0, UNCAPPED)),
+               ('hf_level', 'Holy Freeze level', 'int', (0, UNCAPPED)),
+               ('hf_sources', 'Holy Freeze sources', 'int', (0, 49)),
+               ('hf_target', 'Holy Freeze damage per source', 'int', (0, ROLL)),
+               ('hf_solve', 'Holy Freeze: solve level from damage', 'bool', None),
+               ('hf_cap', 'Holy Freeze: cap damage with mastery', 'bool', None),
+               ('hf_mast_pct', 'Holy Freeze mastery %', 'int', (0, UNCAPPED)),
+               ('hsk_level', 'Holy Shock level', 'int', (0, UNCAPPED)),
+               ('hsk_sources', 'Holy Shock sources', 'int', (0, 49)),
+               ('hsk_target', 'Holy Shock damage per source', 'int', (0, ROLL)),
+               ('hsk_mast_pct', 'Holy Shock mastery %', 'int', (0, UNCAPPED)),
+               ('hfire_level', 'Holy Fire level', 'int', (0, UNCAPPED)),
+               ('hfire_sources', 'Holy Fire sources', 'int', (0, 49)),
+               ('hfire_target', 'Holy Fire damage per source', 'int', (0, ROLL)),
+               ('hfire_mast_pct', 'Holy Fire mastery %', 'int', (0, UNCAPPED)))),
+    ('Damage', (('damage', 'Smite PvP damage', 'int', (0, int(DMG_CAP_PVP))), ('smite_max', 'Max Smite', 'bool', None),
                 ('shield', 'Smite shield', 'choice', shield_choices),
-                ('holy_shield_cast', 'Holy Shield lvl', 'int', (0, 99)),
-                ('ow', 'Open wounds', 'int', (0, UNCAPPED)), ('target_def', '-% Target def', 'int', (0, UNCAPPED)),
-                ('dtm', 'DTM %', 'int', (0, UNCAPPED)), ('pierce', 'Cold pierce', 'int', (0, UNCAPPED)),
-                ('pierce_fire', 'Fire pierce', 'int', (0, UNCAPPED)),
-                ('pierce_light', 'Lightning pierce', 'int', (0, UNCAPPED)),
-                ('itd', 'Ignore target def', 'bool', None),
-                ('weapon', 'Weapon (+20 lists)', 'bool', None),
+                ('holy_shield_cast', 'Holy Shield level', 'int', (0, 99)),
+                ('ow', 'Open Wounds', 'int', (0, UNCAPPED)), ('target_def', '-% Target defense', 'int', (0, UNCAPPED)),
+                ('dtm', 'Damage to mana %', 'int', (0, UNCAPPED)), ('pierce', 'Cold pierce %', 'int', (0, UNCAPPED)),
+                ('pierce_fire', 'Fire pierce %', 'int', (0, UNCAPPED)),
+                ('pierce_light', 'Lightning pierce %', 'int', (0, UNCAPPED)),
+                ('itd', 'Ignore target defense', 'bool', None),
+                ('weapon', 'Socketed weapon', 'bool', None),
                 ('ith_weapon', 'Ith weapon (vanishes, sources only)', 'bool', None))),
     ('Stun / Delirium', (('stun', 'Stun slider', 'int', (0, 100)), ('stun_pct', 'Stun % per line', 'int', (0, 100)),
                          ('stun_lvl', 'Stun level', 'int', (0, 63)),
-                         ('deli_attack', f'Deli att {DELIRIUM_CHANCE}%', 'int', (1, 63)),
-                         ('deli_strike', f'Deli hit {DELIRIUM_CHANCE}%', 'int', (1, 63)))),
-    ('Defenses', (('dr', 'DR / list', 'int', (0, 63)), ('dr_total', 'DR total', 'int', (0, UNCAPPED)), ('dr_pct', 'DR %', 'int', (0, UNCAPPED)),
-                  ('mdr', 'Magic DR', 'int', (0, UNCAPPED)), ('abs_pct', 'Absorb %', 'int', (0, UNCAPPED)),
-                  ('abs_flat', 'Absorb flat', 'int', (0, UNCAPPED)),
-                  ('abs_cold', 'Absorb cold (total)', 'int', (0, UNCAPPED)), ('abs_fire', 'Absorb fire (total)', 'int', (0, UNCAPPED)),
-                  ('abs_light', 'Absorb lightning (total)', 'int', (0, UNCAPPED)), ('res_cold', 'Resist cold (total)', 'int', (-200, UNCAPPED)),
-                  ('res_fire', 'Resist fire (total)', 'int', (-200, UNCAPPED)), ('res_light', 'Resist lightning (total)', 'int', (-200, UNCAPPED)),
-                  ('res_flat', 'Resist all', 'int', (-200, UNCAPPED)), ('curse_res', 'Curse res', 'int', (0, UNCAPPED)),
-                  ('dodge', 'Dodge/avoid/evade', 'int', (0, UNCAPPED)), ('abs_lvl', 'Absorb / lvl', 'bool', None),
+                         ('deli_attack', f'Delirium on attack level ({DELIRIUM_CHANCE}%)', 'int', (1, 63)),
+                         ('deli_strike', f'Delirium on hit level ({DELIRIUM_CHANCE}%)', 'int', (1, 63)))),
+    ('Defenses', (('dr', 'DR per list', 'int', (0, 63)), ('dr_total', 'DR total', 'int', (0, UNCAPPED)),
+                  ('dr_pct', 'DR %', 'int', (0, UNCAPPED)), ('mdr', 'Magic DR', 'int', (0, UNCAPPED)),
+                  ('abs_pct', 'Absorb %', 'int', (0, UNCAPPED)), ('abs_flat', 'Absorb flat (each element)', 'int', (0, UNCAPPED)),
+                  ('abs_cold', 'Cold absorb (total)', 'int', (0, UNCAPPED)), ('abs_fire', 'Fire absorb (total)', 'int', (0, UNCAPPED)),
+                  ('abs_light', 'Lightning absorb (total)', 'int', (0, UNCAPPED)),
+                  ('res_cold', 'Cold resist (total)', 'int', (-200, UNCAPPED)),
+                  ('res_fire', 'Fire resist (total)', 'int', (-200, UNCAPPED)),
+                  ('res_light', 'Lightning resist (total)', 'int', (-200, UNCAPPED)),
+                  ('res_flat', 'All resist', 'int', (-200, UNCAPPED)), ('curse_res', 'Curse resist', 'int', (0, UNCAPPED)),
+                  ('dodge', 'Dodge / avoid / evade %', 'int', (0, UNCAPPED)), ('abs_lvl', 'Absorb by character level', 'bool', None),
                   ('abs_time', 'Absorb by time', 'bool', None), ('cbf', 'Cannot be frozen', 'bool', None))),
     ('Speeds', (('ias', 'IAS', 'int', (-200, 1000)), ('frw', 'FRW', 'int', (-200, 1000)),
                 ('fhr', 'FHR', 'int', (-200, 1000)), ('fcr', 'FCR', 'int', (-200, 1000)),
                 ('nv_ias', 'NV IAS', 'int', (-300, 1000)), ('nv_frw', 'NV FRW', 'int', (-300, 1000)))),
     ('NV / switch', (('dopplezon', 'Dopplezon', 'bool', None), ('just_hit', 'Just Hit', 'bool', None),
                      ('holy_shield', 'Holy Shield', 'bool', None), ('switch', 'Weapon switch', 'choice', SWITCHES),
-                     ('mana_b', 'Side B mana', 'int', (0, 16777215)))),
+                     ('mana_b', 'Side B mana (with BO)', 'int', (0, 16777215)))),
 )
 FIELD_KEYS = tuple(f[0] for _, fs in FIELDS for f in fs)
 FIELD_KIND = {f[0]: f[2] for _, fs in FIELDS for f in fs}
@@ -2859,13 +2876,16 @@ HINTS = dict(tk='hard TK points 0-99 (default 31; 31: band 524288, 30: funky 104
                     'safe with ES up and gone', barbs='Barbs total level (one source); 0 unless Thorns alone is '
                     'not safe',
              med='Meditation level (one source: mana regen to the cap)',
+             hf_mast_pct='cold mastery % (0: solved from the Holy Freeze damage per source / the mastery cap)',
+             hsk_mast_pct='lightning mastery % (0: solved from the Holy Shock damage per source)',
+             hfire_mast_pct='fire mastery % (0: solved from the Holy Fire damage per source)',
              regen='mana regen % line 0-255', hf_level='Holy Freeze total level',
              hf_sources='Holy Freeze sources 0-42 (gear jewels)',
              hsk_level='Holy Shock total level', hsk_sources='Holy Shock sources (gear jewels after the Holy Freeze ones; 1 when a level is set)',
              hfire_level='Holy Fire total level', hfire_sources='Holy Fire sources (gear jewels after the Holy Shock ones; 1 when a level is set)',
              hfire_target='damage per Holy Fire source (PvM) to reach: the solver picks the level and fire mastery with the fewest bits (0 = off, the level field rules)',
              hsk_target='damage per Holy Shock source (PvM): the solver picks the level and lightning mastery with the fewest bits (0 = off)',
-             hf_solve='solve the Holy Freeze level AND cold mastery for HF per src (instead of the level field)',
+             hf_solve='solve the Holy Freeze level AND cold mastery for the Holy Freeze damage per source (instead of the level field)',
              hf_target='Holy Freeze damage per source (PvM), solves level and mastery; cap 8388607 (x 0.17 PvP)',
              hf_cap='cold mastery up to the per-source target (the clones: 43k-82k%)',
              thorns_target='Thorns return from a capped incoming hit, with the target ES up; '
@@ -2884,7 +2904,7 @@ HINTS = dict(tk='hard TK points 0-99 (default 31; 31: band 524288, 30: funky 104
              target_def='-% target defense (clones 254-1016)',
              dtm='damage taken goes to mana %: solved as the position\'s (Host 500 / HPJ 420 / LPJ 330) or the ES refill '
                  '(ES% / TK), whichever is higher, never over the LPJ ceiling (mana, DR, Prayer drain, TK)',
-             itd="ignore target's defense", pierce='-% enemy cold resist (clone-05: 255 on every list)', weapon='a socketed weapon (198 lists)',
+             itd="ignore target's defense", pierce='-% enemy cold resist (clone-05: 255 on every list)', weapon='a socketed weapon: 20 more stat lists (198 in all)',
              dr='flat damage reduced on every list (63 max per line)', abs_cold='TOTAL absorb of the element (by level lines + one by-time line); 0 = the need at its resist', abs_fire='total fire absorb', abs_light='total lightning absorb',
              dr_total='total flat DR: the full 63 on every list gives 11221; lower puts lines only on the lists it needs', dr_pct='damage reduced %',
              mdr='magic damage reduced', abs_pct='absorb % per element (cold, fire, lightning)',
@@ -2933,21 +2953,30 @@ CALC_GROUPS = {'Mana / TK': ('mana',), 'Life / regen': ('oak', 'med', 'regen'),
                'Damage': ('thorns', 'barbs', 'dtm', 'damage'), 'Defenses': ('dr_total',)}
 
 
+# an aura level typed by hand is kept by Calc unless its damage target is set (then the target decides the level):
+# Calc for Holy Fire must not put a typed Holy Freeze level back (tester report)
+LEVEL_TARGET = {'hf_level': 'hf_target', 'hsk_level': 'hsk_target', 'hfire_level': 'hfire_target',
+                'thorns': 'thorns_target'}
+
+
+def _calc(preset, keys, fields, pre):
+    ed = edited(fields, pre)
+    solve = {k for k in keys if not (k in LEVEL_TARGET and k in ed and not ed.get(LEVEL_TARGET[k]))}
+    over = {k: v for k, v in ed.items() if k not in solve}
+    post = prefill(preset, **over)
+    return {k: post[k] for k in solve}
+
+
 def calc_group(preset, group, fields, pre):
     """{field: value} the group's solvers give for the form as it is: the group's own fields are re-solved (their
-    typed values dropped), every other typed field stays. Raises PlanError."""
-    keys = CALC_GROUPS[group]
-    over = {k: v for k, v in edited(fields, pre).items() if k not in keys}
-    post = prefill(preset, **over)
-    return {k: post[k] for k in keys}
+    typed values dropped; a typed aura level without a damage target stays), every other typed field stays.
+    Raises PlanError."""
+    return _calc(preset, CALC_GROUPS[group], fields, pre)
 
 
 def calc_all(preset, fields, pre):
     """Every group's solved values at once (the union of CALC_GROUPS)."""
-    keys = {k for ks in CALC_GROUPS.values() for k in ks}
-    over = {k: v for k, v in edited(fields, pre).items() if k not in keys}
-    post = prefill(preset, **over)
-    return {k: post[k] for k in keys}
+    return _calc(preset, {k for ks in CALC_GROUPS.values() for k in ks}, fields, pre)
 
 
 def sources_of(P):

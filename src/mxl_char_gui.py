@@ -775,6 +775,9 @@ class CharacterWindow(StatEditMixin):
         written from the Stash tab): the edits pending on the pages - stats, skills, waypoints, quests, the
         plug-in pages - stay pending on top of the file as it is now. keep=False is the RELOAD button: the file
         as it is, nothing pending."""
+        if getattr(self, 'items_pending', False) and keep:
+            print('character read again: item edits not yet saved (Mock Mode) are dropped')
+        self.items_pending = False
         self.ch = Character(self.ch.path, self.app.data)
         self.data = self.ch.data
         if self.vanilla_he and not keep:
@@ -853,6 +856,14 @@ class CharacterWindow(StatEditMixin):
             self.reload()
             self.set_status('This change is disabled in the Hero Editor Options tab.', True)
             return False
+        if operation != 'character' and _mock_holds():      # Mock Mode: no autosave, SAVE writes it
+            self.items_pending = True
+            self.selected = None
+            self.redraw()
+            self._init_state(keep=True)
+            self.refresh_progress(keep=True)
+            self.set_status(msg + T('mock.unsaved', ' - not saved yet (Mock Mode): SAVE writes it, RELOAD drops it'))
+            return True
         if self.changed_on_disk():
             self.reload()
             self.set_status(T('ch.err.changed_on_disk', 'The character file changed on disk since this item was '
@@ -881,6 +892,7 @@ class CharacterWindow(StatEditMixin):
             self.reload()
             return False
         app.backup_made(self.ch.path, bak)
+        self.items_pending = False
         self.selected = None
         self.redraw()
         self._init_state(keep=True)
@@ -1746,7 +1758,8 @@ class CharacterWindow(StatEditMixin):
         sk0 = getattr(self, 'sk0', {})
         sk_typed = any(sk0.get(sid, 0) != self._level_of(v) for sid, v in self.sk_vars.items())
         typed = any(e.get() != str(self.st_value(k)) for k, e in getattr(self, 'sv', {}).items() if self._grey_editable(k))
-        return (self.qstate != self.q0 or self.wstate != self.w0 or self.st_dirty() or typed
+        return (getattr(self, 'items_pending', False)
+                or self.qstate != self.q0 or self.wstate != self.w0 or self.st_dirty() or typed
                 or bool(getattr(self, 'he_quest_stages', {}))
                 or bool(getattr(self, 'he_header_bytes', {}))
                 or bool(getattr(self, 'he_binary_edits', {}))
@@ -2207,3 +2220,11 @@ def install(App):
         ttk.Button(bar, text=T('ch.title', 'Character'), command=lambda: CharacterWindow(self, 'stats')).pack(side='left', padx=2)
 
     App._build = _build
+
+
+def _mock_holds():
+    try:
+        import mxl_mock_gui
+        return mxl_mock_gui.holds_saves()
+    except Exception:
+        return False

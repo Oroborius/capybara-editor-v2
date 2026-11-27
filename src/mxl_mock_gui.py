@@ -41,6 +41,15 @@ def _put(value):
         print('mock mode setting not saved:', e)
 
 
+def holds_saves():
+    """Mock Mode is on: item edits of the Character tab stay in memory until SAVE (no autosave)."""
+    var = _state.get('var')
+    try:
+        return var is not None and bool(var.get()) and enabled()
+    except tk.TclError:
+        return False
+
+
 def enabled():
     """Show Mock Mode for a loaded Diablo II folder profile."""
     try:

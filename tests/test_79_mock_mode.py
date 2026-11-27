@@ -467,6 +467,34 @@ def read_only_clone_stays_read_only_after_an_editor_save():
     T.eq(T.read(p), ch.raw, 'the save went through')
     E.MC.set_read_only(p, False)
 
+
+@T.test
+def mastery_percent_per_holy_aura():
+    """Holy Freeze / Shock / Fire each take a mastery % typed by hand (tester: only HF had a mastery setting)."""
+    M = engine().M
+    names = {k for _tab, fields in M.FIELDS for k, *_r in fields}
+    P = M.plan('mock_high', 'Mast', hfire_level=500, hfire_sources=2, hsk_level=500, hsk_sources=2,
+               hf_mast_pct=1234, hsk_mast_pct=2345, hfire_mast_pct=3456)
+    t = M.totals(M.model_from_plan(P))['T']
+    T.eq((t.get(331), t.get(330), t.get(329)), (1234, 2345, 3456), 'cold / lightning / fire mastery written')
+    T.check({'hf_mast_pct', 'hsk_mast_pct', 'hfire_mast_pct'} <= names, 'the three fields are on the form')
+
+@T.test
+def calc_keeps_a_typed_holy_freeze_level():
+    """Calc of the Auras page solves Holy Fire from its target and keeps a Holy Freeze level typed by hand
+    (tester: Calc put Holy Freeze back while setting Holy Fire)."""
+    M = engine().M
+    pre = M.prefill('mock_high')
+    fields = dict(pre)
+    hf = int(pre['hf_level']) + 7
+    fields.update(hf_level=str(hf), hfire_target='2000000', hfire_sources='1')
+    vals = M.calc_group('mock_high', 'Auras', fields, pre)
+    T.check('hf_level' not in vals or int(vals['hf_level']) == hf, f"typed Holy Freeze level kept: {vals.get('hf_level')}")
+    T.check(int(vals['hfire_level']) > 0, f"Holy Fire level solved from its target: {vals['hfire_level']}")
+    fields.update(hf_target='5000000', hf_solve=True)
+    vals = M.calc_group('mock_high', 'Auras', fields, pre)
+    T.check(int(vals['hf_level']) != hf, 'with an HF damage target typed, Calc solves the HF level')
+
 @T.test
 def smite_max_and_efficient_modes():
     """Max smite: max = 8388607 exactly, min = (shield min + damage) x mult (no +min line: stat 21 does not reach

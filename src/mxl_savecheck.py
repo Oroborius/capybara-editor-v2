@@ -32,7 +32,7 @@ kept as a new backup; the confirmation is asked in the window itself).
 Backups (F10 of docs/review/save-safety.md): install() also replaces the collector's mxl_save.make_backup, which
 kept ONE <file>.bak-<date>-<time> per file (each new backup deleted the older ones). The replacement makes the
 same backup (same name, -2, -3... when the name exists) and keeps the newest N of that file (setting
-"backups_keep" of settings.json, default 5, at least 1); only that file's dated backups are counted and removed
+"backups_keep" of settings.json, default 0 = keep all); only that file's dated backups are counted and removed
 (<file>.bak-savecheck-*, .bak-before-restore-* and other files' backups are never touched).
 """
 import functools
@@ -46,7 +46,7 @@ import time
 
 SETTING = 'savecheck'
 KEEP_SETTING = 'backups_keep'
-KEEP_DEFAULT = 5
+KEEP_DEFAULT = 0                     # 0: every backup is kept (the editor saves on every edit)
 MODES = ('strict', 'warn', 'off')
 EXTRA_TAG = 'savecheck'
 TEST_HOOK = None            # tests: function(path, content) -> content, applied before the check AND the write
@@ -291,7 +291,7 @@ def _warn_user(text):
 
 
 def backups_keep():
-    """How many dated backups per file make_backup keeps (settings.json "backups_keep", default 5, at least 1)."""
+    """How many dated backups per file make_backup keeps (settings.json "backups_keep"; default 0 = all)."""
     try:
         import settings
         v = settings.get(KEEP_SETTING)
@@ -300,7 +300,7 @@ def backups_keep():
     if v is None or v == '':
         return KEEP_DEFAULT
     try:
-        return max(1, int(v))
+        return max(0, int(v))
     except (TypeError, ValueError):
         return KEEP_DEFAULT
 
@@ -339,6 +339,8 @@ def make_backup(path):
                 return bak
             if policy == 'one':
                 keep = 1
+    if keep <= 0:
+        return bak
     old = [f for _k, f in _dated(path) if f != bak]
     for f in old[:max(0, len(old) - (keep - 1))]:
         try:

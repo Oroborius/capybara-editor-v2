@@ -90,4 +90,45 @@ def mock_zoom_scales_with_the_window():
     T.eq(abs(tkfont.nametofont('TkDefaultFont').cget('size')), d0, 'TkDefaultFont restored')
 
 
+@T.test
+def mock_mode_holds_item_edits_until_save():
+    if not AVAILABLE:
+        T.skip('no 1.14d game data or sample character')
+    import mxl_mock_gui
+    cw = T.chartab()
+    T.pump(5)
+    mxl_mock_gui.set_mode(True, select=False)
+    T.pump(5)
+    path = cw.ch.path
+    before = T.read(path)
+    e = cw.ch.items[0]
+    n = len(cw.ch.items)
+    cw.ch.remove(e, False)
+    T.check(cw.save('deleted', operation='item'), 'item action accepted')
+    T.eq(T.read(path), before, 'Mock Mode: the file is not written by an item action')
+    T.check(cw.dirty(), 'the pending item edit counts as unsaved')
+    T.eq(len(cw.ch.items), n - 1, 'the edit stays in memory')
+    cw.discard()
+    T.pump(3)
+    T.eq(len(cw.ch.items), n, 'RELOAD drops it')
+    T.check(not cw.dirty(), 'nothing pending after RELOAD')
+    cw.ch.remove(cw.ch.items[0], False)
+    cw.save('deleted', operation='item')
+    cw.save_progress()
+    T.pump(3)
+    T.check(T.read(path) != before, 'SAVE writes the held item edit')
+    T.check(not cw.dirty(), 'nothing pending after SAVE')
+    mxl_mock_gui.set_mode(False)
+    T.pump(3)
+    with open(path, 'wb') as f:
+        f.write(before)
+    cw.discard()
+    T.pump(3)
+    cw.ch.remove(cw.ch.items[0], False)
+    cw.save('deleted', operation='item')
+    T.check(T.read(path) != before, 'Mock Mode off: item actions save at once again')
+    with open(path, 'wb') as f:
+        f.write(before)
+
+
 T.main(globals())
