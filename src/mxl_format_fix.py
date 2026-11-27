@@ -537,6 +537,31 @@ def _with_shown_sockets(it):
     return c
 
 
+def _fit_jewels(it, data):
+    """Display only: at most one socket / jewel per cell of the item. Mock items carry more socketed items than
+    their shape holds (a 1x1 ring with 7 jewels, a 2x2 circlet with 7): the extras were drawn outside the item,
+    over its neighbours. The item and the save keep them all; the tooltip still counts them."""
+    try:
+        from mxl_profile import is_median
+        if is_median() or not isinstance(it, dict) or data is None:
+            return it
+        kids = it.get('socketed') or []
+        n = max(it.get('sockets') or 0, len(kids))
+        if not n:
+            return it
+        real = getattr(data, '_data', data)          # an enlarged picture (_install_oversize_art): the base's own cells
+        w, h = real.base(it['code']).size
+        room = min(w * h, 6)
+        if n <= room:
+            return it
+        c = dict(it)
+        c['sockets'] = min(it.get('sockets') or 0, room) or (room if kids else 0)
+        c['socketed'] = list(kids[:room])
+        return c
+    except Exception:
+        return it
+
+
 def _install_socket_display():
     """Draw and print field + 194 sockets (display only: the item dict and the save keep the field)."""
     import sys
@@ -570,7 +595,7 @@ def _install_socket_display():
     mxl_gfx.socket_positions = socket_positions
 
     def icon_layers(it, *a, **k):
-        return orig(_with_shown_sockets(it), *a, **k)
+        return orig(_fit_jewels(_with_shown_sockets(it), a[0] if a else k.get('data')), *a, **k)
     icon_layers._shown_sock = True
     for name in ('mxl_gfx', 'mxl_gui', 'mxl_library_gui'):
         m = sys.modules.get(name)
