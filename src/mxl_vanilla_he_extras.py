@@ -158,7 +158,8 @@ def put_picked_up(win, blob):
     item = blob_item(blob, win.data)
     if getattr(win.data, 'beta_items', False):
         blob = BetaItemBlob(blob)
-    win.app._capy_clip = blob, clean(item.get('name') or item['code'])
+    from mxl_creator import ClipItem
+    win.app._capy_clip = ClipItem(blob, clean(item.get('name') or item['code']), win.data)
     draw_pickup(win)
     win.set_status('Item copied into Picked Up.')
     return 'Item copied into Picked Up.'

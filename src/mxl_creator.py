@@ -623,6 +623,45 @@ def decode_item(blob, data, *, offsets=None):
     return r, 2 + (br.pos + 7) // 8
 
 
+def renew_item_ids(blob, data):
+    """A copy of blob (an item and its socketed items) with a fresh random 32-bit item id in each record. The game
+    gives every item its own id; copies sharing one are what the server reports as duplicates. Vanilla only
+    (Median keeps its copies as they are); other blobs are returned unchanged."""
+    if not Creator._vanilla() or type(blob) not in (bytes, bytearray) or bytes(blob[:2]) != b'JM':
+        return blob
+    ba = bytearray(blob)
+    pos = 0
+    try:
+        while pos < len(ba) and ba[pos:pos + 2] == b'JM':
+            off = {}
+            rec, size = decode_item(bytes(ba[pos:]), data, offsets=off)
+            if 'id' in off:
+                start, value = pos * 8 + off['id'], random.getrandbits(32)
+                for i in range(32):
+                    k = start + i
+                    ba[k // 8] = (ba[k // 8] & ~(1 << (k % 8))) | (((value >> i) & 1) << (k % 8))
+            pos += size
+    except Exception:
+        return blob
+    return bytes(ba)
+
+
+class ClipItem(tuple):
+    """The item clipboard entry (blob, name): every read of the blob gives a copy with its own fresh item id, so
+    pasting twice (or Paste All) never makes duplicates."""
+
+    def __new__(cls, blob, name, data=None):
+        self = super().__new__(cls, (blob, name))
+        self.data = data
+        return self
+
+    def __getitem__(self, i):
+        v = super().__getitem__(i)
+        if i == 0 and self.data is not None:
+            return renew_item_ids(v, self.data)
+        return v
+
+
 def decode_blob(blob, data, *, exact=False):
     """Item + socketed children of a stash entry: (record, [child records])."""
     rec, n = decode_item(blob, data)

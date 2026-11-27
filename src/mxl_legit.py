@@ -131,6 +131,28 @@ def check_item(blob):
     return out
 
 
+def max_sockets(rec, have=0):
+    """Most sockets the server accepts on the item record rec (d2bt.legit validate_item's rule): the base's gemsockets
+    capped by its item type's MaxSock at the item level; magic / rare / set / unique / crafted items only up to the
+    quest allowance (2 magic, 1 others) or the sockets they already have (innate). None when it cannot be told."""
+    try:
+        from d2bt.legit import to_int
+    except ImportError:
+        from d2bt.tooltip.data import to_int
+    try:
+        v = _validator()
+        base = v.bases[rec['code'].strip()][1]
+        ilvl = rec.get('ilvl') or 1
+        col = 'maxsock1' if ilvl <= 25 else 'maxsock25' if ilvl <= 40 else 'maxsock40'
+        top = min(to_int(base.get('gemsockets')), to_int(v.item_types.get(base.get('type'), {}).get(col)))
+        q = rec.get('quality')
+        if q in ('magic', 'rare', 'set', 'unique', 'crafted'):
+            top = min(top, max(2 if q == 'magic' else 1, have))
+        return top
+    except Exception:
+        return None
+
+
 def impossible(findings):
     return [f for f in findings if f.severity == IMPOSSIBLE]
 

@@ -2953,11 +2953,22 @@ class CreatorWindow:
             if n:
                 probs.append(T('cr.warn.kept', "{n} stat(s) kept as they were on the item (outside the game's ranges "
                                'or from upgrades the editor does not model)', n=n))
+        server = None
+        if self._no_shared_stash():       # vanilla: the server's own verdict, never the older range check
+            try:
+                import mxl_legit
+                server = mxl_legit.impossible(mxl_legit.check_item(blob))
+                probs = [f'{f.item}: {f.rule} - {f.detail}' for f in server[:4]]
+            except Exception:
+                server = None
         if probs:
             self.set_status(T('cr.warning', 'Warning: {text}', text='; '.join(str(p) for p in probs)), error=True)
         else:
             w, h = self.data.base(it['code']).size
-            self.set_status(T('cr.legit', "Legit: every value is within the game's ranges. Size {w}x{h}.", w=w, h=h))
+            if server is not None:
+                self.set_status(T('cr.legit_server', 'Legit (server rules). Size {w}x{h}.', w=w, h=h))
+            else:
+                self.set_status(T('cr.legit', "Legit: every value is within the game's ranges. Size {w}x{h}.", w=w, h=h))
         self.btn_ok.state(['!disabled'])
         return blob
 

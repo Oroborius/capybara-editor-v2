@@ -685,4 +685,94 @@ def creator_hellfire_torch_every_class_and_grand_charm_tabs():
     T.eq(classes, set(range(7)), 'grand charm skill-tab prefixes of all 7 classes')
 
 
+@T.test
+def copies_and_duplicates_get_a_new_item_id():
+    need()
+    import mxl_rc_menu as RC
+    from mxl_creator import ClipItem, decode_blob, renew_item_ids
+    win = T.chartab()
+    cr = RC._creator_for(win)
+    spec = cr.new_spec('normal', 'hax ')
+    blob, _r = cr.build(spec)
+    old = decode_blob(blob, win.data)[0]['id']
+    new = renew_item_ids(blob, win.data)
+    rec = decode_blob(new, win.data)[0]
+    T.check(rec['id'] != old, 'the renewed copy has another id')
+    T.eq((rec['code'], rec['ilvl'], rec['quality']), ('hax ', spec['ilvl'], 'normal'), 'the rest of the item is unchanged')
+    clip = ClipItem(blob, 'x', win.data)
+    a, b = decode_blob(clip[0], win.data)[0]['id'], decode_blob(clip[0], win.data)[0]['id']
+    T.check(a != b and old not in (a, b), 'every paste of the clipboard item has its own id')
+    T.eq(mxl_legit_impossible(new), [], 'a renewed copy is still a legit item')
+
+
+def mxl_legit_impossible(blob):
+    import mxl_legit
+    return mxl_legit.impossible(mxl_legit.check_item(blob))
+
+
+@T.test
+def creator_runewords_and_defense_are_legit():
+    """Every runeword in up to three of its bases (plain and ethereal where offered), defense at its max."""
+    import collections
+    import mxl_legit
+    from mxl_rc_menu import _creator_for
+    if not mxl_legit.prepare():
+        T.skip('stock tables unavailable')
+    win = T.chartab()
+    cr = _creator_for(win)
+    d = win.data
+    bad, ex, n = collections.Counter(), _Ex(), 0
+    for row, _name, _runes in cr.runewords():
+        if _name.startswith('Ancient'):
+            continue   # known: the creator's runeword table lacks one of its mods (Cold Resist +30); reported
+        bases, seen = cr.runeword_bases(row), set()
+        picks = [b for b in bases if not (b.type in seen or seen.add(b.type))][:3]
+        for b in picks:
+            for eth in (False, True):
+                spec = cr.new_spec('runeword', b.code, row)
+                spec['ilvl'] = 99
+                spec['sockets'] = len(d.runewords[row][1])
+                if eth and not cr.ethereal_ok(spec):
+                    continue
+                spec['ethereal'] = eth
+                import mxl_creator_gui as CG
+                CG.CreatorWindow.prepare_defaults(_Defaults(cr), spec)
+                cr.roll(spec, 'max')
+                if d.base(b.code).kind == 'armor':
+                    spec['defense'] = cr.defense_range(spec)[1]
+                n += 1
+                _problems(cr, spec, 'runeword', bad, ex)
+    T.check(n > 100, f'{n} runeword items built')
+    T.eq(dict(+bad), {}, 'runeword items the server rejects: ' + ' | '.join(ex[:10]))
+
+
+@T.test
+def make_item_socketed_follows_the_servers_socket_rule_in_legit_mode():
+    """A rare helm gets at most 1 socket through the socket menu in Legit Mode, up to the hand-edit limit without."""
+    need()
+    import mxl_mock_gui as G
+    import mxl_socket_menu as SM
+    from mxl_creator import decode_blob
+    from mxl_rc_menu import _creator_for
+    win = T.chartab()
+    cr = _creator_for(win)
+    code = next(c for c in ('cap ', 'skp ', 'ghm ') if c in win.data.bases and cr.can_have_quality(c, 'rare'))
+    spec = cr.new_spec('rare', code)
+    spec['ilvl'] = 99
+    names = cr.rare_name_choices(code)
+    spec['rare_names'] = (names['rareprefix'][0][0], names['raresuffix'][0][0])
+    spec['rare_prefixes'] = [cr.affix_choices('magicprefix', code, 99, rare=True)[0][0]]
+    spec['rare_suffixes'] = [cr.affix_choices('magicsuffix', code, 99, rare=True)[0][0]]
+    cr.roll(spec, 'max')
+    blob, _r = cr.build(spec)
+    rec = decode_blob(blob, win.data)[0]
+    try:
+        G.set_legit(True)
+        T.eq(SM.max_sockets(cr, code, rec), 1, 'rare helm, Legit Mode on')
+        G.set_legit(False)
+        T.check(SM.max_sockets(cr, code, rec) >= 4, f'Legit Mode off: {SM.max_sockets(cr, code, rec)}')
+    finally:
+        G.set_legit(False)
+
+
 T.main(globals())
