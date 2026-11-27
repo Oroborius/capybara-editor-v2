@@ -688,6 +688,22 @@ def band_info(mana, tk):
                 exact=Fraction(mana) == int(mana))
 
 
+def mana_ranges(tk, top=1 << 23):
+    """Text of the good mana bands and the funky values of a TK, up to top (the Mana field's live range line):
+    band width 2^19 x (32 - TK); even bands are good, odd ones negative; a funky zero is an odd band's first
+    mana, exactly (no fraction)."""
+    w = (1 << 19) * max(32 - int(tk), 1)
+    good, funky = [], []
+    k = 0
+    while k * w < top and len(good) + len(funky) < 12:
+        if k % 2 == 0:
+            good.append(f'{k * w:,}-{(k + 1) * w - 1:,}')
+        else:
+            funky.append(f'{k * w:,}.000')
+        k += 1
+    return (f'TK {tk}: good mana {", ".join(good)}' + (f'; funky (exact) {", ".join(funky)}' if funky else ''))
+
+
 def regen_cap(mana):
     """Highest mana regen % before the per-frame regen rolls over: floor((8388607 / mana) x 3000 - 100)."""
     return math.floor(Fraction(ROLL) * 3000 / Fraction(mana) - 100) if mana > 0 else 10 ** 9
@@ -1248,7 +1264,7 @@ def analyze(model, side=None, bo=False, energy=False, *, targets=None):
     if b['funky']:
         how = 'stable, q even' if b['stable'] else 'UNSTABLE, q odd'
         frac = not b['exact'] and (bo or not bo_pct(model, t))      # a funky must be EXACT (x256 fixed point, low 8 bits 0)
-        add('mana', 'Mana', f"{_num(mana)}  FUNKY zero (k={b['band']}, {how})"
+        add('mana', 'Mana', f"{_num(mana) + ('.000' if b['exact'] else '')}  FUNKY zero (k={b['band']}, {how})"
             + (f"  FRACTION .{int(mana % 1 * 1000):03d}: not exact" if frac else ''),
             BAD if frac else GOOD if b['stable'] else WARN)
     elif b['good']:
@@ -1773,6 +1789,9 @@ def options(preset='mock_high', **over):
     o.setdefault('dopplezon', True)
     # Dopplezon morph: a weapon vanishes in the morph, so none is equipped unless the build is a dex-bug build or
     # the weapon is Ith (user rule)
+    if o['dopplezon'] and o['weapon'] and over.get('weapon') and not o['ith_weapon']:
+        o['dex_bug'] = True         # a weapon asked for by hand in a Dopplezon build: a dex-bug one (requirements
+                                    # stay unmet, Smite still works) instead of none (tester: 178 lists for 5242880)
     if o['dopplezon'] and not (o['dex_bug'] or o['ith_weapon']):
         o['weapon'] = False
     o.setdefault('switch', None)
@@ -2877,8 +2896,7 @@ AURA_FIELD_SOURCE = dict(prayer=PRAYER, thorns=THORNS, barbs=BARBS, oak=OAK, med
 HINTS = dict(tk='hard TK points 0-99 (default 31; 31: band 524288, 30: funky 1048576); changing it re-solves the '
              'DTM, its ceilings and a funky\'s mana',
              es='Energy Shield % of the damage that goes to mana (default 95, ES 99): the Thorns / Barbs safety '
-                '(ES up and gone), the DTM refill and the solved Thorns / Barbs / DTM follow it', mana='max mana after BO; TK31 '
-             '1210000-1572863', bo='BO level cast before the duel, 0-99 (0 = none; % = 35 + 3 per level)',
+                '(ES up and gone), the DTM refill and the solved Thorns / Barbs / DTM follow it', mana='max mana after BO; the good ranges and funky values of the TK are shown under the Mana / TK fields', bo='BO level cast before the duel, 0-99 (0 = none; % = 35 + 3 per level)',
              level='character level 99-127', cls='character class (TK / ES need a Sorceress)',
              position='Host: DTM 500, no stun; HPJ / LPJ: high / low ping joiner (DTM 420 / 330, stun)',
              enemy_aura='TK31 mana by the enemy aura: high -> 1211974, mid -> 1310719, low -> 1572500, none -> 1572863',
@@ -2917,7 +2935,7 @@ HINTS = dict(tk='hard TK points 0-99 (default 31; 31: band 524288, 30: funky 104
              target_def='-% target defense (clones 254-1016)',
              dtm='damage taken goes to mana %: solved as the position\'s (Host 500 / HPJ 420 / LPJ 330) or the ES refill '
                  '(ES% / TK), whichever is higher, never over the LPJ ceiling (mana, DR, Prayer drain, TK)',
-             itd="ignore target's defense", pierce='-% enemy cold resist (clone-05: 255 on every list)', weapon='a socketed weapon: 20 more stat lists (198 in all)',
+             itd="ignore target's defense", pierce='-% enemy cold resist (clone-05: 255 on every list)', weapon='a socketed weapon: 20 more stat lists (198 in all); with Dopplezon it is a dex-bug weapon (requirements stay unmet, so Smite still works)',
              dr='flat damage reduced on every list (63 max per line)', abs_cold='TOTAL absorb of the element (by level lines + one by-time line); 0 = the need at its resist', abs_fire='total fire absorb', abs_light='total lightning absorb',
              dr_total='total flat DR: the full 63 on every list gives 11221; lower puts lines only on the lists it needs', dr_pct='damage reduced %',
              mdr='magic damage reduced', abs_pct='absorb % per element (cold, fire, lightning)',

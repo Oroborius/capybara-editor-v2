@@ -514,6 +514,25 @@ def max_holy_fire_and_smite_stay_under_the_roll_unrounded():
     T.check(mult.denominator in (1, 2, 4, 8), 'the strength keeps its str/lvl fraction')
 
 @T.test
+def funky_mana_shows_a_flat_000():
+    """A funky mana is exact and shown as such (.000); the mana ranges follow the TK."""
+    M = engine().M
+    P = M.plan('funky', 'Fk')
+    a = M.analyze(M.model_from_plan(P), bo=True)
+    line = next(text for key, _lab, text, _st in a['checks'] if key == 'mana')
+    T.check(line.startswith('1048576.000'), line)
+    T.check('1,048,576.000' in M.mana_ranges(30) and '2,097,152-3,145,727' in M.mana_ranges(30), M.mana_ranges(30))
+
+@T.test
+def weapon_by_hand_in_a_dopplezon_build_adds_its_lists():
+    """Tester: Weapon on + a 5242880 funky said "cannot be hit on 178 lists" (Dopplezon dropped the weapon). A
+    weapon asked for by hand is a dex-bug weapon there: 198 lists, the mana exact."""
+    M = engine().M
+    P = M.plan('funky', 'Fk', tk=30, mana=5242880, weapon=True)
+    T.eq((P['mana']['mana'], len(P['lists']), P['o']['dex_bug']), (5242880, 198, True), 'weapon kept as dex-bug')
+    T.eq(len(M.plan('funky', 'Fk')['lists']), 178, 'no weapon unless asked for')
+
+@T.test
 def smite_max_and_efficient_modes():
     """Max smite: max = 8388607 exactly, min = (shield min + damage) x mult (no +min line: stat 21 does not reach
     Smite in game, duel 2026-11-22); the analyzer ignores stat 21 too. Efficient: within 0.1% of the cap."""
@@ -1303,7 +1322,8 @@ def rule_no_prayer_aura_on_funky_and_no_weapon_in_dopplezon():
     for key in M.PRESET_ORDER:
         o = M.plan(key, 'Dz')['o']
         T.check(not (o['dopplezon'] and o['weapon']) or o['dex_bug'] or o['ith_weapon'], f'{key}: weapon rule')
-    T.eq(M.plan('mock_high', 'W', weapon=True)['o']['weapon'], False, 'weapon dropped in a Dopplezon morph')
+    o = M.plan('mock_high', 'W', weapon=True)['o']
+    T.eq((o['weapon'], o['dex_bug']), (True, True), 'a weapon asked for in a Dopplezon morph is a dex-bug one')
     T.eq(M.plan('mock_high', 'W', weapon=True, dex_bug=True)['o']['weapon'], True, 'dex-bug build keeps it')
     T.eq(M.plan('mock_high', 'W', weapon=True, dopplezon=False)['o']['weapon'], True, 'no morph keeps it')
 
@@ -1370,7 +1390,7 @@ def ith_items_vanish_but_keep_their_sources():
     T.eq(src(mc) - src(M.model_from_plan(base)), 1 + 7 + 3 - 3, 'Ith items in the inventory add Prayer sources (3 replace charms); the stash adds none')
     T.check(any(c[0] == 'ith_stash' and 'by hand' in c[2] for c in M.analyze(mc, 'A', bo=True)['checks']), 'stash label: move in by hand')
     # Dopplezon morph weapon rule
-    T.check(not M.plan('mock_high', 'Nw', weapon=True)['o']['weapon'], 'a plain weapon is dropped in the morph')
+    T.check(M.plan('mock_high', 'Nw', weapon=True)['o']['dex_bug'], 'a weapon in the morph keeps its requirements unmet')
     P2 = M.plan('mock_high', 'Dx', weapon=True, dex_bug=True)
     T.check(P2['o']['weapon'], 'dex-bug weapon kept: its requirements stay unmet (dexterity 1 < 27)')
     d = M.WEAPON_REQ[M.WEAPON[2]]

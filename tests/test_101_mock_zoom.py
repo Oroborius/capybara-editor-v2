@@ -131,4 +131,25 @@ def mock_mode_holds_item_edits_until_save():
         f.write(before)
 
 
+
+@T.test
+def mana_ranges_follow_the_tk():
+    if not AVAILABLE:
+        T.skip('no 1.14d game data or sample character')
+    import mxl_mock_gui
+    T.chartab()
+    mxl_mock_gui.set_mode(True, select=False)
+    T.pump(5)
+    page = mxl_mock_gui._state['page']
+    page.ov['tk'].set('31')
+    T.pump(2)
+    T.check('TK 31' in page.mana_ranges.cget('text') and '1,048,576-1,572,863' in page.mana_ranges.cget('text'),
+            page.mana_ranges.cget('text'))
+    page.ov['tk'].set('30')
+    T.pump(2)
+    text = page.mana_ranges.cget('text')
+    T.check('TK 30' in text and '1,048,576.000' in text, f'TK 30 ranges and funky value: {text}')
+    mxl_mock_gui.set_mode(False)
+    T.pump(3)
+
 T.main(globals())

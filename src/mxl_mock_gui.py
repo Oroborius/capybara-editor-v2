@@ -394,6 +394,11 @@ class MockPage:
                 if kind != 'bool':                  # Enter / leaving the field re-solves the untouched fields at once
                     w.bind('<Return>', lambda _e: self._live(0), add='+')
                     w.bind('<FocusOut>', lambda _e: self._live(0), add='+')
+            if 'tk' in self.ov and self.field_tab.get('tk') == gi and not hasattr(self, 'mana_ranges'):
+                # the TK's good mana ranges and funky values, live (they change with the TK)
+                self.mana_ranges = ttk.Label(box, text='', wraplength=300, justify='left')
+                self.mana_ranges.grid(row=len(fields) + 1, column=0, columnspan=3, sticky='w', pady=(4, 0))
+                self.ov['tk'].trace_add('write', lambda *_a: self._show_mana_ranges())
         self.summary = SummaryPanel(right, title=T('mock.sum.plan', 'Summary of the plan'))
         self.summary.frame.pack(fill='both', expand=True)
         self._preset_changed()
@@ -422,6 +427,17 @@ class MockPage:
                     w.configure(values=list(fn(cls, data=getattr(self.app, 'data', None))))
                 except tk.TclError:
                     pass
+
+    def _show_mana_ranges(self):
+        label = getattr(self, 'mana_ranges', None)
+        if label is None:
+            return
+        try:
+            tk_level = int(float(self.ov['tk'].get()))
+        except (ValueError, tk.TclError):
+            return
+        if 0 <= tk_level <= 99:
+            label.configure(text=M.mana_ranges(tk_level))
 
     def calc(self, group=None):
         """Calc / Calc all: the solved values of a group (or every group) replace the boxes; they become the
