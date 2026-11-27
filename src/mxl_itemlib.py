@@ -117,7 +117,19 @@ def add(blob, name, data, code=None):
     entries = load()
     entries.append(entry)
     _save(entries)
+    _refresh_open()
     return entry
+
+
+def _refresh_open():
+    """A built Library tab shows an added item at once."""
+    try:
+        import mxl_tabs
+        w = mxl_tabs.built_owner('Library')
+        if w is not None and w.top.winfo_exists():
+            w.refresh()
+    except Exception:
+        pass
 
 
 def blob_of(entry):
@@ -353,8 +365,16 @@ class LibraryWindow:
             from mxl_save import blob_item
             from paths import ICONS_DIR
             it = blob_item(blob_of(entry), self.app.data)
+            import mxl_vanilla_he as V
+            on = V.active()
+            if on:
+                it = V.picture_item(it)
             layers = icon_layers(it, self.app.data, (20, 16, 16), ICONS_DIR)
             im = layers.get(1) if layers else None
+            if im is not None and on:           # sockets and the socketed items, as in the inventory
+                for layer in (2, 3):
+                    if layers.get(layer) is not None:
+                        im.alpha_composite(layers[layer])
             if im is not None:
                 f = self.ICON / max(im.width, im.height)
                 im = im.resize((max(1, int(im.width * f)), max(1, int(im.height * f))), Image.LANCZOS)
@@ -411,6 +431,8 @@ class LibraryWindow:
         try:
             from mxl_save import blob_item
             it = blob_item(blob_of(e), self.app.data)
+            import mxl_vanilla_he as V
+            it = V.description_item(V.picture_item(it))
             if self.panel is None:
                 raise RuntimeError('no panel')
             self.panel.show(it)

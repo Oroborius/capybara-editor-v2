@@ -70,6 +70,30 @@ class SocketChild:
     index: int
 
 
+class _PickedUp:
+    """Owner marker for the item held in Picked Up (the item clipboard)."""
+    def __repr__(self):
+        return 'PICKED'
+
+
+PICKED = _PickedUp()
+
+
+def picked_entry(win):
+    from mxl_char import Entry
+
+    clip = getattr(win.app, '_capy_clip', None)
+    if not clip:
+        return None
+    try:
+        blob = clip[0]          # every read of a clip gives a fresh item id: read once
+        entry = Entry(blob_item(blob, win.data), blob)
+        entry.clip = clip
+        return entry
+    except ITEM_ERRORS:
+        return None
+
+
 def socket_parts(blob, data):
     from mxl_socket_insert import children
 
@@ -100,6 +124,11 @@ def extras_entries(ch, *, include_socketed=False):
 
 
 def current_extras_entry(win, entry, owner):
+    if owner is PICKED:
+        now = picked_entry(win)
+        if now is None or getattr(entry, 'clip', now.clip) is not now.clip:
+            return None         # Picked Up was replaced since this entry was listed
+        return now
     if isinstance(owner, SocketChild):
         from mxl_char import Entry
 
@@ -171,6 +200,19 @@ def edit_item(win, entry, group='Basic1'):
     return extras(win, entry=entry, group=group)
 
 
+def _replace_picked(win, entry, before, blob, allow_type_change):
+    from mxl_creator import decode_blob
+    from mxl_vanilla_he_extras import put_picked_up
+
+    current = current_extras_entry(win, entry, PICKED)
+    if current is None:
+        raise CharError('The selected item has changed.')
+    decode_blob(blob, win.data, exact=True)
+    if blob_item(blob, win.data)['code'] != current.it['code'] and not allow_type_change:
+        raise CharError('The replacement changes the item type.')
+    put_picked_up(win, blob)
+
+
 def replace_item(win, entry, before, blob, caption, owner=None, *, allow_type_change=False, commit=True):
     """Verify a replacement and preserve its position, including belt items."""
     import mxl_profile
@@ -178,6 +220,8 @@ def replace_item(win, entry, before, blob, caption, owner=None, *, allow_type_ch
 
     if mxl_profile.is_median():
         raise CharError('This command requires a vanilla character.')
+    if owner is PICKED:
+        return _replace_picked(win, entry, before, blob, allow_type_change)
     original = win.ch
     if commit:
         win.sync_file()

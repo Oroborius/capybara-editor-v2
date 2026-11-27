@@ -8,7 +8,7 @@ from mxl_creator import (
     FLAG_EAR, FLAG_IDENTIFIED, FLAG_RUNEWORD, FLAG_SIMPLE, NUM_SOCKETS, build_blob, decode_blob, decode_item,
 )
 from mxl_vanilla_he_items import (
-    ITEM_ERRORS, SocketChild, current_extras_entry, extras_entries, replace_item,
+    ITEM_ERRORS, PICKED, SocketChild, picked_entry, current_extras_entry, extras_entries, replace_item,
     special_sections, write_special_sections,
 )
 
@@ -183,6 +183,8 @@ def open_extras(win, entry=None, group='Basic1'):
     header = ttk.Frame(top, padding=pixels(top, 8, 3))
     header.pack(fill='x')
     entries = extras_entries(win.ch, include_socketed=True)
+    if (picked := picked_entry(win)) is not None:
+        entries.append((picked, PICKED))
     total = sum(1 + len(e.it.get('socketed', ())) for e, owner in entries if not isinstance(owner, SocketChild))
     def box(text, width, disabled=False, anchor='center'):
         cell = tk.Entry(header, width=width, font=font(), justify=anchor, relief='sunken', bd=2,
@@ -421,6 +423,8 @@ def _area(entry, owner):
     from mxl_char import LOC_BELT, LOC_EQUIPPED, PANEL_CUBE, PANEL_INVENTORY, slot_name
     from mxl_creator import PANEL_STASH
     it = entry.it
+    if owner is PICKED:
+        return 'Picked Up'
     if isinstance(owner, SocketChild):
         return f'Socket {owner.index + 1}'
     if isinstance(owner, tuple):
@@ -785,9 +789,9 @@ class ItemEdit:
         self.items.bind('<<ListboxSelect>>', self.load)
         self.tree.bind('<<TreeviewSelect>>', self.display)
         if entries:
-            self.selection = next((i for i, (entry, _merc) in enumerate(entries)
-                                   if entry is initial or (
-                                       isinstance(initial, tuple) and _merc == initial)), 0)
+            self.selection = next((i for i, (entry, owner) in enumerate(entries)
+                                   if entry is initial or owner is initial is PICKED or (
+                                       isinstance(initial, tuple) and owner == initial)), 0)
             self.items.selection_clear(0, 'end')
             self.items.selection_set(self.selection)
             self.items.see(self.selection)
