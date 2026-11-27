@@ -1128,4 +1128,88 @@ def disabled_unique_rows_are_not_offered():
     for name in ('Hellfire Torch', 'Annihilus', "Gheed's Fortune"):
         T.check(any(name in x for x in labels), f'{name} still offered')
 
+@T.test
+def staff_mods_of_a_wand_build_and_validate():
+    """Bone Wand: up to 3 Necromancer staff mods (native stat 107), none of another class, a 4th refused."""
+    need()
+    import mxl_legit
+    from mxl_creator import CreateError, decode_blob
+    from mxl_rc_menu import _creator_for
+    if not mxl_legit.prepare():
+        T.skip('stock tables unavailable')
+    win = T.chartab()
+    cr = _creator_for(win)
+    spec = cr.new_spec('magic', 'bwn ')
+    spec['ilvl'] = 99
+    spec['prefix'] = cr.affix_choices('magicprefix', 'bwn ', 99)[0][0]
+    T.eq(spec['staffmods'], [], 'a new item starts with none')
+    ch = cr.staffmod_choices(spec)
+    names = [n for _i, n, _m in ch]
+    T.check(len(ch) >= 4, f'choices offered: {names}')
+    v = mxl_legit._validator()
+    T.check(all((v.rows('skills')[i].get('charclass') or '').strip() == 'nec' for i, _n, _m in ch), 'only Necromancer skills')
+    T.check(not any((v.rows('skills')[i].get('charclass') or '').strip() == 'sor' for i, _n, _m in ch), 'no Sorceress skill')
+    sor = next(i for i, r in enumerate(v.rows('skills')) if (r.get('charclass') or '').strip() == 'sor')
+    spec['staffmods'] = [(sor, 1)]
+    try:
+        cr.build(spec)
+        T.check(False, 'a Sorceress skill on a wand is refused')
+    except CreateError:
+        pass
+    spec['staffmods'] = [(i, 3) for i, _n, _m in ch[:3]]
+    blob, _r = cr.build(spec)
+    T.eq(mxl_legit.impossible(mxl_legit.check_item(blob)), [], 'three staff mods at level 3 validate')
+    got = sorted((s['param'], s['value']) for s in decode_blob(bytes(blob), win.data)[0]['stats'] if s['id'] == 107)
+    T.eq(got, sorted(spec['staffmods']), 'written as stat 107')
+    spec2 = cr.spec_from_item(decode_blob(bytes(blob), win.data)[0])
+    T.eq(sorted(spec2['staffmods']), sorted(spec['staffmods']), 'edit item recognises them')
+    T.check(not any(x['id'] == 107 for x in spec2['extra']), 'not kept as unknown stats')
+    spec['staffmods'] = [(i, 3) for i, _n, _m in ch[:4]]
+    try:
+        cr.build(spec)
+        T.check(False, 'a 4th staff mod is refused')
+    except CreateError:
+        pass
+    spec['staffmods'] = [(ch[0][0], 3), (ch[0][0], 2)]
+    try:
+        cr.build(spec)
+        T.check(False, 'a duplicate is refused')
+    except CreateError:
+        pass
+    spec['staffmods'] = [(ch[0][0], 4)]
+    try:
+        cr.build(spec)
+        T.check(False, 'level 4 is refused')
+    except CreateError:
+        pass
+    low = cr.new_spec('magic', 'bwn ')
+    low['ilvl'] = 1
+    T.check(len(cr.staffmod_choices(low)) < len(ch), 'a low item level reaches fewer tiers')
+    T.eq(cr.staffmod_choices(cr.new_spec('magic', 'lsd ')), [], 'a sword has none')
+
+
+@T.test
+def staff_mods_section_is_in_the_gui_for_a_wand_only():
+    need()
+    win = T.chartab()
+    w = _open_creator(win, target=lambda blob: 'ok', target_label='x')
+    for code, want in (('bwn ', True), ('lsd ', False)):
+        spec = w.cr.new_spec('magic', code)
+        spec['ilvl'] = 99
+        w.spec = spec
+        w.load_spec(spec)
+        T.pump(5)
+        kinds = [k for k, _w in w.staffmod_widgets]
+        T.eq(kinds.count('skill'), 3 if want else 0, f'{code}: skill rows')
+        T.eq(kinds.count('level'), 3 if want else 0, f'{code}: level rows')
+    spec = w.cr.new_spec('magic', 'bwn ')
+    spec['ilvl'] = 99
+    w.spec = spec
+    w.load_spec(spec)
+    first = w.cr.staffmod_choices(spec)[0][0]
+    w.set_staffmod(0, sid=first)
+    T.eq(w.spec['staffmods'], [(first, 3)], 'picking a skill sets it')
+    w.top.destroy()
+
+
 T.main(globals())

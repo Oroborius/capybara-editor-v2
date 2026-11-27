@@ -1024,6 +1024,9 @@ class CreatorWindow:
             spec['auto'] = None
         if keep_none:
             spec['auto'] = None
+        if spec.get('staffmods') and not spec.get('_from_item'):     # a new base / level / quality: only what it can roll
+            ok = {i for i, _n, _m in cr.staffmod_choices(spec)}
+            spec['staffmods'] = [x for x in spec['staffmods'] if x[0] in ok]
         if q == 'superior' and spec.get('superior') not in cr.superior_choices(code):
             ch = cr.superior_choices(code)
             spec['superior'] = ch[-1] if ch else None
@@ -1311,6 +1314,32 @@ class CreatorWindow:
                     cur = next((vals[n + 1] for n, (i, _, _) in enumerate(ch) if i == cur_id), NONE)
                     combo(f'{lab} {k + 1}', vals, cur, lambda i, key=key, k=k, ch=ch:
                           self.set_rare_affix(key, k, None if i == 0 else ch[i - 1][0]))
+        self.staffmod_widgets = []
+        sm_choices = cr.staffmod_choices(spec)
+        if sm_choices:
+            cls = cr.staffmod_class_name(code)
+            head = row(T('cr.staffmods', 'Staff mods ({cls} only)', cls=cls))
+            self.staffmod_widgets.append(('heading', f.grid_slaves(row=head, column=0)[0]))
+            cur_mods = list(spec.get('staffmods') or [])
+            for k in range(3):
+                cur_id, cur_lv = cur_mods[k] if k < len(cur_mods) else (None, 1)
+                taken = {s_ for j, (s_, _l) in enumerate(cur_mods) if j != k}
+                shown = [(i, n, m) for i, n, m in sm_choices if i not in taken or i == cur_id]
+                vals = [NONE] + [n for _, n, _ in shown]
+                cur = next((n for i, n, _ in shown if i == cur_id), NONE)
+                lvmax = next((m for i, _n, m in shown if i == cur_id), 1)
+                lvvar = tk.StringVar(value=str(cur_lv))
+
+                def tail(host, k=k, lvvar=lvvar, lvmax=lvmax, enabled=cur_id is not None):
+                    lc = ttk.Combobox(host, state='readonly' if enabled else 'disabled', width=3, textvariable=lvvar,
+                                      values=[str(v) for v in range(1, lvmax + 1)])
+                    lc.pack(side='left', padx=(6, 0))
+                    lc.bind('<<ComboboxSelected>>', lambda _e, k=k, lvvar=lvvar: self.set_staffmod(k, level=int(lvvar.get())))
+                    self.scroll.no_wheel(lc)
+                    self.staffmod_widgets.append(('level', lc))
+                c, rr = combo(f'  {T("cr.staffmod_n", "Skill {n}", n=k + 1)}', vals, cur, lambda i, k=k, shown=shown:
+                              self.set_staffmod(k, sid=None if i == 0 else shown[i - 1][0]), tail=tail)
+                self.staffmod_widgets.append(('skill', c))
         corr = cr.corrupt_choices(spec)
         if corr or spec.get('corrupt') is not None:
             vals = [T('cr.cor.none', '(not corrupted)')] + [lab for _, _, _, lab in corr]
@@ -2773,6 +2802,23 @@ class CreatorWindow:
         rn[n] = i
         self.spec['rare_names'] = tuple(rn)
         self.refresh()
+
+    def set_staffmod(self, k, sid=-1, level=None):
+        """Slot k of the staff mods: a skill (None clears it) and / or its level."""
+        spec = self.spec
+        lst = list(spec.get('staffmods') or [])
+        if sid != -1:
+            if sid is None:
+                if k < len(lst):
+                    del lst[k]
+            elif k < len(lst):
+                lst[k] = (sid, min(lst[k][1], dict((i, m) for i, _n, m in self.cr.staffmod_choices(spec)).get(sid, 1)))
+            else:
+                lst.append((sid, 3))
+        if level is not None and k < len(lst):
+            lst[k] = (lst[k][0], level)
+        spec['staffmods'] = lst
+        self.render_options()
 
     def set_rare_affix(self, key, k, sid):
         spec = self.spec

@@ -1116,6 +1116,82 @@ class Creator:
         half = qlvl // 2
         return level - half if level < 99 - half else 2 * level - 99
 
+    # ---- staff mods (vanilla): the native "+1..3 to <Skill> (<Class> Only)" of bases whose itemtypes StaffMods names
+    # a class (Items.cpp ITEMS_AssignModernStaffMods, vendored as d2bt.itemgen.stats.staffmods)
+    STAFFMOD_QUALITIES = ('normal', 'superior', 'magic', 'rare', 'crafted')
+    STAFFMOD_MAX = 3
+
+    def staffmod_class(self, code):
+        """Class code (e.g. 'nec') whose skills the base rolls as staff mods, '' when it has none (or in Median)."""
+        if not self._vanilla() or code not in self.data.bases:
+            return ''
+        try:
+            import mxl_legit
+            v = mxl_legit._validator()
+            return (v.item_types.get(v.bases[code.strip()][1].get('type'), {}).get('staffmods') or '').strip()
+        except Exception:
+            return ''
+
+    def staffmod_class_name(self, code):
+        cls = self.staffmod_class(code)
+        names = dict(ama='Amazon', sor='Sorceress', nec='Necromancer', pal='Paladin', bar='Barbarian',
+                     dru='Druid', ass='Assassin')
+        return names.get(cls, cls)
+
+    def staffmod_choices(self, spec):
+        """[(skill id, name, highest level)] of the staff mods the game can roll on the spec's base at its item
+        level and quality; [] when the base or quality has none."""
+        code = spec.get('code')
+        if spec.get('quality') not in self.STAFFMOD_QUALITIES or not code:
+            return []
+        cls = self.staffmod_class(code)
+        if not cls:
+            return []
+        try:
+            import mxl_legit
+            from d2bt.itemgen.stats import staffmod_class_matches, staffmod_tier
+            v = mxl_legit._validator()
+            rows = v.rows('skills')
+            ids = [i for i, r in enumerate(rows) if staffmod_class_matches({'staffmods': cls}, (r.get('charclass') or '').strip())]
+            if not ids:
+                return []
+            first = min(ids)
+            base = v.bases[code.strip()][1]
+            anc = v.save_tables.ancestors(base.get('type')) | v.save_tables.ancestors(base.get('type2'))
+            tier = staffmod_tier(spec.get('ilvl') or 1, 100, 2)
+            out = []
+            for sid in ids:
+                if not first + 5 * (tier - 1) + 5 > sid:
+                    continue
+                r = rows[sid]
+                it, et = (r.get('itypea1') or '').strip(), (r.get('etypea1') or '').strip()
+                if (it and it not in anc) or (et and et in anc):
+                    continue
+                name = str(self.data.skill_names.get(sid) or r.get('skill') or '').strip()
+                if name:
+                    out.append((sid, name, self.STAFFMOD_MAX))
+            return out
+        except Exception:
+            return []
+
+    def staffmod_stats(self, spec):
+        return [dict(id=107, param=sk, value=lv) for sk, lv in spec.get('staffmods') or []]
+
+    def _check_staffmods(self, spec):
+        sm = list(spec.get('staffmods') or [])
+        if not sm:
+            return
+        if len(sm) > 3:
+            raise CreateError(T('cr.err.staffmods_count', 'at most 3 staff mods (skill bonuses of the base)'))
+        if len({s for s, _ in sm}) != len(sm):
+            raise CreateError(T('cr.err.staffmods_dup', 'the same staff mod twice'))
+        ok = {s: m for s, _n, m in self.staffmod_choices(spec)}
+        for sk, lv in sm:
+            if sk not in ok:
+                raise CreateError(T('cr.err.staffmods_skill', 'this skill is not a staff mod of this base at this item level'))
+            if not 1 <= lv <= ok[sk]:
+                raise CreateError(T('cr.err.staffmods_level', 'a staff mod is +1 to +{n}', n=ok[sk]))
+
     def _legal(self, code, ilvl, quality):
         """legal_affixes of the validator for base code (cached): the rows it accepts at ilvl and quality id."""
         cache = self.__dict__.setdefault('_legal_cache', {})
@@ -2203,7 +2279,7 @@ class Creator:
         spec = dict(quality=quality, code=code, row=row, ilvl=None, ethereal=False, sockets=0,
                     socketed=[], image=None, auto=None, superior=None, prefix=None, suffix=None,
                     rare_names=None, rare_prefixes=[], rare_suffixes=[], quantity=None, defense=None,
-                    rolls={}, craft=None, extra=[], corrupt=None, corrupt_roll=None, max_sockets=False)
+                    rolls={}, craft=None, extra=[], staffmods=[], corrupt=None, corrupt_roll=None, max_sockets=False)
         if quality == 'unique':
             spec['code'] = self.data.uniques[row]['code']
         elif quality == 'set':
@@ -2494,6 +2570,7 @@ class Creator:
             raise CreateError(T('cr.err.picture', 'invalid picture'))
         if spec.get('corrupt') is not None and spec['corrupt'] not in {r for r, *_ in self.corrupt_choices(spec)}:
             raise CreateError(T('cr.err.corrupt', 'this item cannot be corrupted that way'))
+        self._check_staffmods(spec)
         for m in self.mods(spec):
             if m.variable and not m.min <= m.value <= m.max:
                 if spec.get('unrestricted'):
@@ -2578,6 +2655,7 @@ class Creator:
         if q == 'runeword' and self._vanilla():
             rw = self._runeword_api_stats(spec, rw)
         own += [dict(x) for x in spec.get('extra') or []]              # kept as they were on an edited item
+        own += self.staffmod_stats(spec)
         if fresh:                    # a new reagent: what the game's own making recipe puts on it (display text...)
             have = {(s['id'], s.get('param')) for s in own}
             own += [s for s in fresh if (s['id'], s.get('param')) not in have]
@@ -3038,6 +3116,15 @@ class Creator:
             for x in m.stats(d):
                 k = (x['id'], x.get('param'))
                 made[k] = made.get(k, 0) + x['value']
+        if self._vanilla() and spec['quality'] in self.STAFFMOD_QUALITIES:
+            ok = {s for s, _n, _m in self.staffmod_choices(spec)}
+            for x in it.get('stats') or []:      # the native skill bonuses of the base are staff mods
+                sk = x.get('param')
+                if x['id'] == 107 and sk in ok and 1 <= x['value'] - made.get((107, sk), 0) <= self.STAFFMOD_MAX \
+                        and len(spec['staffmods']) < 3 and sk not in {s for s, _ in spec['staffmods']}:
+                    spec['staffmods'].append((sk, x['value'] - made.get((107, sk), 0)))
+            for x in self.staffmod_stats(spec):
+                made[(107, x['param'])] = made.get((107, x['param']), 0) + x['value']
         have = {}
         for x in it.get('stats') or []:
             k = (x['id'], x.get('param'))
