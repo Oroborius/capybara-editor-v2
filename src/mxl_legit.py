@@ -170,8 +170,27 @@ def refusal(findings):
             f'{"thing" if len(findings) == 1 else "things"} found.\n' + summary(findings))
 
 
-def guard_character(content):
-    """Called with the bytes about to be written. -> suspicious findings (warn); raises LegitError (impossible)."""
+def _new_findings(bad, before):
+    """The impossible findings of bad that the file did not already have (an edit is judged by what it adds: a
+    character holding other non-legit items can still have one item edited - user report)."""
+    import collections
+    try:
+        old = collections.Counter((f.item, f.rule, f.detail) for f in impossible(check_character(before)))
+    except Exception:
+        return bad
+    out = []
+    for f in bad:
+        k = (f.item, f.rule, f.detail)
+        if old[k] > 0:
+            old[k] -= 1
+        else:
+            out.append(f)
+    return out
+
+
+def guard_character(content, before=None):
+    """Called with the bytes about to be written (and the file's bytes before, when there are any).
+    -> suspicious findings (warn); raises LegitError for impossible findings the change ADDS."""
     if not enabled():
         return []
     try:
@@ -179,6 +198,8 @@ def guard_character(content):
     except Unavailable as e:
         raise LegitError(f'{LABEL}.\nNothing was written: {e}')
     bad = impossible(findings)
+    if bad and before:
+        bad = _new_findings(bad, before)
     if bad:
         raise LegitError(refusal(bad), bad)
     return [f for f in findings if f.severity == SUSPICIOUS]

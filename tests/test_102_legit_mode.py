@@ -851,4 +851,38 @@ def make_item_socketed_follows_the_servers_socket_rule_in_legit_mode():
         G.set_legit(False)
 
 
+
+@T.test
+def legit_save_judges_only_what_the_edit_adds():
+    """User report: editing one item refused because of OTHER non-legit items on the character. A save is refused
+    only for impossible findings the change adds; a new hacked value is still refused."""
+    need()
+    import shutil
+    import mxl_char
+    import mxl_legit
+    import mxl_mock_gui as G
+    T.chartab()
+    path = SAVES / 'mixed.d2s'
+    shutil.copy2(SOURCE / 'complex.d2s', path)                 # holds editor-made items (many findings)
+    if not mxl_legit.prepare() or not mxl_legit.impossible(mxl_legit.check_character(path.read_bytes())):
+        T.skip('stock tables unavailable or the sample has no findings')
+    G.set_legit(True)
+    try:
+        ch = mxl_char.Character(str(path), T.G.app.data)
+        ch.remove(ch.items[0], False)                         # an edit that adds nothing illegal
+        ch.save(backup=False)
+        T.check(len(mxl_char.Character(str(path), T.G.app.data).items) == len(ch.items), 'saved despite old findings')
+        ch = mxl_char.Character(str(path), T.G.app.data)
+        before = path.read_bytes()
+        ch.set_stat(0, 1000)                                  # adds a stat-points finding
+        try:
+            ch.save(backup=False)
+        except mxl_char.CharError as e:
+            T.check(isinstance(e, mxl_legit.LegitError), f'new finding refused: {e}')
+        else:
+            T.check(False, 'a new hacked value was written in Legit mode')
+        T.eq(path.read_bytes(), before, 'file unchanged after the refusal')
+    finally:
+        G.set_legit(False)
+
 T.main(globals())
