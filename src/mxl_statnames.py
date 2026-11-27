@@ -156,7 +156,8 @@ def vanilla_stat_value(data, sid, param, value):
     if sid == STATE_STAT and param is not None and _vanilla_state_names():
         name = _vanilla_state_names().get(param)
         if name and _is_vanilla():
-            return f'NV state: {param} - {name}'
+            note = VANILLA_STATE_NOTES.get(param)
+            return f'NV state: {param} - {name}' + (f' ({note})' if note else '')
     line = vocab_line(sid, param, value) or rendered_line(data, sid, param, value)
     return (fallback_stat_line(data, dict(id=sid, param=param, value=value))
             if missing_stat_text(line) else line)
@@ -874,6 +875,14 @@ def _vanilla_state_names():
 
 _VANILLA_STATES = None
 
+# What an NV state does on an item (1.14d states.txt transform / gfxtype / setfunc, dev kit): only the player-graphics
+# states morph from an item; wolf / bear need the Werewolf / Werebear skill (an oskill or charges) to shapeshift
+VANILLA_STATE_NOTES = {
+    63: 'morphs: Amazon', 93: 'likely morphs: Amazon, untested', 119: 'likely morphs, untested',
+    139: 'state only: no shapeshift from items', 140: 'state only: no shapeshift from items',
+    176: 'morph from items untested', 177: 'morph from items untested',
+}
+
 
 def _is_vanilla():
     try:
@@ -943,7 +952,8 @@ def state_names_sorted(data):
     the states table (named by its buff icon, the skills that set it, or its own row)."""
     vanilla = _vanilla_state_names() if _is_vanilla() else {}
     if vanilla:                  # vanilla: all 185 NV states by number ("101 - Holy Shield"), none merged or dropped
-        return [(f'{sid} - {name}', sid) for sid, name in sorted(vanilla.items())]
+        return [(f'{sid} - {name}' + (f' ({VANILLA_STATE_NOTES[sid]})' if sid in VANILLA_STATE_NOTES else ''), sid)
+                for sid, name in sorted(vanilla.items())]
     out = []
     for sid in sorted(set(_state_skills(data)) | set(_state_icon_names(data)) | set(_state_row_names(data))):
         n = state_name(data, sid)

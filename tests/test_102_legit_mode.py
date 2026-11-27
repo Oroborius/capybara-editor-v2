@@ -1377,6 +1377,7 @@ def nv_states_use_the_dev_kit_names():
     T.eq(len({label for label, _sid in picks}), 185, 'every label unique')
     T.eq(picks[86], ('86 - Just Hit', 86), 'numbered, by id')
     T.eq(picks[101], ('101 - Holy Shield', 101), '101')
+    T.eq(picks[139][0], '139 - Wolf (state only: no shapeshift from items)', 'wolf does not morph from an item')
     blob = bytes.fromhex('4a4d100080006400403ad616030200000080bf0000c458157269cc4ff67bf537f67bf51ff67bf567f7affbd5fd54ff53ff52ff88fe87fe62c0fe07')
     rec, _n = decode_item(blob, win.data)
     lines = [str(vanilla_stat_value(win.data, x['id'], x.get('param'), x['value'])) for x in rec['stats'] if x['id'] == 98]
