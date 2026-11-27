@@ -63,3 +63,19 @@ def runeword_stats(validator, runeword_key, code, ilvl=0):
             for (sid, layer), value in validator._bounds([mod], ilvl).items():
                 stats.append((sid, layer, value.lo, value.hi, source))
     return stats
+
+
+MAX_ITEM_LEVEL = 110   # Uber Tristram / Pandemonium sources (mlvl 110); the validator accepts 1..110
+
+
+def ilvl_range(validator, code, quality, row=None):
+    """Legal item-level range the validator accepts for an item.
+
+    General: 1..110 (item_level(); the level-110 Uber sources exceed the player cap).
+    Set/unique: the row's `lvl` column is the minimum (legit 'identity-level' rule), so
+    rows like Hellfire Torch / Annihilus (lvl 110) only exist at ilvl 110.
+    """
+    lo = 1
+    if row is not None and quality in (5, 7):
+        lo = max(lo, int(row.get('lvl') or 0))
+    return (lo, MAX_ITEM_LEVEL) if lo <= MAX_ITEM_LEVEL else None
