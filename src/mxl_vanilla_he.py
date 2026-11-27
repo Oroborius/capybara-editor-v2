@@ -529,6 +529,14 @@ def chrome(win, bottom, actions):
     if mock_mode is not None:
         menu.configure(postcommand=lambda: menu.entryconfigure(
             mock_tools_index, state='normal' if mock_mode.get() else 'disabled'))
+    import settings
+    for key, label in (('autosave', 'Autosave'), ('auto_reload', 'Auto-reload')):
+        var = tk.BooleanVar(menu, value=settings.get(key) is not False)          # both on unless switched off
+
+        def toggle(key=key, var=var):
+            settings.put(key, bool(var.get()))
+        menu.add_checkbutton(label=label, variable=var, command=toggle)
+        setattr(win, f'he_{key}_var', var)
     menu.add_command(label='Hero Editor folder...', command=lambda: choose_art_folder(win))
     menu.add_command(label='Use drawn Hero Editor art', command=lambda: set_art_folder(win, ''))
     add_toolbar_menu(win.app, menu)

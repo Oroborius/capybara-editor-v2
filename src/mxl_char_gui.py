@@ -880,7 +880,7 @@ class CharacterWindow(StatEditMixin):
             self.redraw()
             self._init_state(keep=True)
             self.refresh_progress(keep=True)
-            self.set_status(msg + T('mock.unsaved', ' - not saved yet (Mock Mode): SAVE writes it, RELOAD drops it'))
+            self.set_status(msg + T('mock.unsaved', ' - not saved yet: SAVE writes it, RELOAD drops it'))
             return True
         if self.changed_on_disk():
             self.reload()
@@ -2248,6 +2248,13 @@ def install(App):
 
 
 def _mock_holds():
+    """Item edits wait for SAVE: Mock Mode, or Autosave switched off (Menu > Autosave; setting 'autosave')."""
+    try:
+        import settings
+        if settings.get('autosave') is False:
+            return True
+    except Exception:
+        pass
     try:
         import mxl_mock_gui
         return mxl_mock_gui.holds_saves()

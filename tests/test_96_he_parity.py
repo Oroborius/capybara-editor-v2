@@ -901,6 +901,33 @@ def clicking_an_item_grid_takes_the_focus_for_the_shortcuts():
         T.eq(str(cv.focus_get()), str(cv), f'a click on {cv} takes the focus')
 
 
+@T.test
+def menu_autosave_and_auto_reload_toggles():
+    """Menu > Autosave / Auto-reload (both on by default). Autosave off: an item action waits for SAVE."""
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    from pathlib import Path
+    import settings
+    win = T.chartab()
+    T.pump(3)
+    labels = [win.he_menu.entrycget(i, 'label') for i in range(win.he_menu.index('end') + 1)
+              if win.he_menu.type(i) == 'checkbutton']
+    T.check({'Autosave', 'Auto-reload'} <= set(labels), f'menu toggles: {labels}')
+    T.check(win.he_autosave_var.get() and win.he_auto_reload_var.get(), 'both on by default')
+    before = Path(win.ch.path).read_bytes()
+    try:
+        win.he_autosave_var.set(False)
+        settings.put('autosave', False)
+        win.ch.remove(win.ch.items[0], False)
+        T.check(win.save('deleted', operation='item'), 'item action accepted')
+        T.eq(Path(win.ch.path).read_bytes(), before, 'Autosave off: the file is not written')
+        T.check(win.dirty(), 'the edit waits for SAVE')
+    finally:
+        settings.put('autosave', True)
+        Path(win.ch.path).write_bytes(before)
+        win.reload(keep=False)
+
+
 
 @T.test
 def character_name_warning_and_save_anyway():

@@ -215,6 +215,13 @@ def _set_mode(on, select=True):
         _state['page'] = None
         if page is None:
             return
+        job = getattr(page, '_live_job', None)
+        if job:                                        # no re-check of a page that is going away
+            try:
+                page.host.after_cancel(job)
+            except Exception:
+                pass
+            page._live_job = None
         host = page.host
         try:
             if nb is not None and str(host) in nb.tabs():
@@ -545,8 +552,16 @@ class MockPage:
 
     def _live_run(self):
         self._live_job = None
+        try:
+            if not self.host.winfo_exists():            # Mock Mode switched off while the re-check waited
+                return
+        except tk.TclError:
+            return
         if self.touched and not self._filling:
-            self.check()
+            try:
+                self.check()
+            except tk.TclError:                         # an old page's widgets are gone (Mock Mode switched off)
+                pass
 
     def _fill(self, values, keys):
         self._filling = True
@@ -574,7 +589,10 @@ class MockPage:
 
     def _show_errors(self, errs):
         for k, e in self.err.items():
-            e.configure(text=errs.get(k, ''))
+            try:
+                e.configure(text=errs.get(k, ''))
+            except tk.TclError:                        # the page is being taken down (Mock Mode off)
+                return
         if errs:
             k = next(iter(errs))
             if k in self.field_tab:                         # the first problem's group comes to the front

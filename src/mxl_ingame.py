@@ -426,6 +426,12 @@ def tick(app):
             return False
         new = {f: _sig(f) for f in files}
         changed = [f for f in files if new[f] != old.get(f) and new[f] != _own.get(f)]
+        try:
+            import settings
+            if settings.get('auto_reload') is False:     # Menu > Auto-reload off: the files are not read again
+                changed = []
+        except Exception:
+            pass
         if not changed:
             app._ig_sigs = new
             return False
