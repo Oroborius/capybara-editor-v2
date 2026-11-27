@@ -371,7 +371,7 @@ class MainInventory:
     def size(self, it):
         return self.data.base(it['code']).size
 
-    def draw_item(self, cv, it, x0, y0, x1, y1, sel, check_req=True):
+    def draw_item(self, cv, it, x0, y0, x1, y1, sel, check_req=True, blob=None):
         d, char = self.data, self.app.char
         try:
             unmet = check_req and char is not None and requirements_unmet(it, d, char)
@@ -390,6 +390,11 @@ class MainInventory:
         else:
             cv.create_text((x0 + x1) / 2, (y0 + y1) / 2, text=clean(it['name']), fill=col,
                            width=max(20, x1 - x0 - 6), font=('Segoe UI', 8), justify='center')
+        if blob is not None:
+            import mxl_legit
+            if mxl_legit.item_is_illegit(blob):       # Legit Mode: a box around an item the server would reject
+                cv.create_rectangle(x0 + 1, y0 + 1, x1 - 1, y1 - 1, outline=mxl_legit.ILLEGIT_BORDER, width=2,
+                                    tags='illegit')
 
     def redraw(self):
         c = self.cell
@@ -428,7 +433,7 @@ class MainInventory:
             dv.create_rectangle(x0, y0, x1, y1, fill=EMPTY, outline=GRID_LINE)
             e = eq.get(slot)
             if e is not None:
-                self.draw_item(dv, e.it, x0, y0, x1, y1, e is self.selected, check_req=not merc)
+                self.draw_item(dv, e.it, x0, y0, x1, y1, e is self.selected, check_req=not merc, blob=e.blob)
             elif box in (4, 5) and not merc:
                 dv.create_text((x0 + x1) / 2, (y0 + y1) / 2, text='I' if self.wset.get() == 1 else 'II',
                                fill='#444444', font=('Segoe UI', 14))
@@ -447,7 +452,7 @@ class MainInventory:
             it = e.it
             w, h = self.size(it)
             x0, y0 = it['x'] * c, it['y'] * c
-            self.draw_item(cv, it, x0, y0, x0 + w * c, y0 + h * c, e is self.selected)
+            self.draw_item(cv, it, x0, y0, x0 + w * c, y0 + h * c, e is self.selected, blob=e.blob)
 
     def redraw_d2(self):
         """The standard Diablo II character screen (the game's own base art): the paperdoll with every
@@ -478,7 +483,7 @@ class MainInventory:
             if e is not None:
                 i = D2.GEAR_D2_INSET
                 self.draw_item_d2(dv, e.it, (x + i) * k, (y + i) * k, (x + w - i) * k, (y + h - i) * k,
-                                  e is self.selected, check_req=not merc)
+                                  e is self.selected, check_req=not merc, blob=e.blob)
         if not merc and (4 in self.visible_boxes() or 5 in self.visible_boxes()):
             tw, th = D2.WSET_TAB_D2
             for tx, ty in D2.WSET_TABS_D2.get(self.wset.get(), ()):     # the game's own tabs, active set marked
@@ -504,7 +509,7 @@ class MainInventory:
             it = e.it
             w, h = self.size(it)
             x0, y0 = it['x'] * c, it['y'] * c
-            self.draw_item_d2(cv, it, x0, y0, x0 + w * c, y0 + h * c, e is self.selected)
+            self.draw_item_d2(cv, it, x0, y0, x0 + w * c, y0 + h * c, e is self.selected, blob=e.blob)
 
     def redraw_sigma(self):
         """Dark look: Median XL's own inventory panel, gear frames (silhouette when empty), weapon-set tabs, gold,
@@ -535,7 +540,7 @@ class MainInventory:
                 w, h = D2.GEAR_SIZE[sil]
                 i = D2.GEAR_INSET
                 self.draw_item_d2(dv, e.it, (x + i) * k, (y + i) * k, (x + w - i) * k, (y + h - i) * k,
-                                  e is self.selected, check_req=not merc)
+                                  e is self.selected, check_req=not merc, blob=e.blob)
         if not merc and (4 in boxes or 5 in boxes):        # the mercenary has one weapon set: no tabs
             f = D2.WSET_TAB[0] if self.wset.get() == 1 else D2.WSET_TAB[1]
             for tx, ty in D2.WSET_TABS:
@@ -555,9 +560,9 @@ class MainInventory:
             it = e.it
             w, h = self.size(it)
             x0, y0 = it['x'] * c, it['y'] * c
-            self.draw_item_d2(cv, it, x0, y0, x0 + w * c, y0 + h * c, e is self.selected)
+            self.draw_item_d2(cv, it, x0, y0, x0 + w * c, y0 + h * c, e is self.selected, blob=e.blob)
 
-    def draw_item_d2(self, cv, it, x0, y0, x1, y1, sel, check_req=True):
+    def draw_item_d2(self, cv, it, x0, y0, x1, y1, sel, check_req=True, blob=None):
         d, char = self.data, self.app.char
         try:
             unmet = check_req and char is not None and requirements_unmet(it, d, char)
@@ -577,6 +582,11 @@ class MainInventory:
         else:
             cv.create_text((x0 + x1) / 2, (y0 + y1) / 2, text=clean(it['name']), fill=col,
                            width=max(20, x1 - x0 - 6), font=('Segoe UI', 8), justify='center')
+        if blob is not None:
+            import mxl_legit
+            if mxl_legit.item_is_illegit(blob):       # Legit Mode: a box around an item the server would reject
+                cv.create_rectangle(x0 + 1, y0 + 1, x1 - 1, y1 - 1, outline=mxl_legit.ILLEGIT_BORDER, width=2,
+                                    tags='illegit')
 
     def wset_tab_at(self, x, y):
         """Weapon set (1 / 2) of the "I" / "II" tab under (x, y) of the D2 panel, or None."""

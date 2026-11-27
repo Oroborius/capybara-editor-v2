@@ -180,3 +180,25 @@ class LegitItemError(Exception):
     def __init__(self, message, findings=()):
         super().__init__(message)
         self.findings = list(findings)
+
+
+_BLOB_VERDICT = {}
+
+
+def item_is_illegit(blob):
+    """Legit Mode on and the item blob has impossible findings (cached by its bytes; the pages draw a red border).
+    False when the mode is off or the tables cannot be read."""
+    if not blob or not enabled():
+        return False
+    key = bytes(blob)
+    if key not in _BLOB_VERDICT:
+        try:
+            _BLOB_VERDICT[key] = bool(impossible(check_item(key)))
+        except Exception:
+            return False
+        if len(_BLOB_VERDICT) > 4000:
+            _BLOB_VERDICT.clear()
+    return _BLOB_VERDICT[key]
+
+
+ILLEGIT_BORDER = '#ff3030'

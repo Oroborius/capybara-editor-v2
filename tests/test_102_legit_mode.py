@@ -251,9 +251,9 @@ def convert_menu_entry_only_for_illegit_items_in_legit_mode():
 # impossible findings per private reference save (sorted order), as the dev kit's checker at the vendored commit
 # reports them (None: unreadable = hacked). The saves are private (.cache/samples, never committed): skipped without.
 REF_EXPECTED = {
-    'legit-ref': [0, 59, 81, 124, 150, 81, 90, 85, 28, 28, 45, 12, 87, 94, 123, 123, 127, None, 48, 26, 77, 15, 82,
-                  0, 79, 78, 79, 78, 14, 111, 116, 12, 59, 52, 45, 77],
-    'lld-ref': [163, 163, 166, 166, 128, 166, 40],
+    'legit-ref': [0, 65, 102, 133, 156, 93, 99, 96, 45, 45, 54, 22, 94, 102, 131, 131, 137, None, 57, 36, 93, 22, 100,
+                  0, 92, 90, 88, 91, 29, 123, 127, 26, 65, 63, 54, 93],
+    'lld-ref': [163, 164, 168, 168, 129, 168, 41],
 }
 
 
@@ -292,5 +292,65 @@ def mpq_reads_work_without_os_pread():
         T.eq(MPQArchive(str(mpq)).read(name), want, 'same bytes without os.pread (the seek + read fallback)')
     finally:
         os.pread = real
+
+
+@T.test
+def illegit_items_get_a_red_border_in_legit_mode():
+    """In Legit Mode an item the server would reject has a red box around it on the Character tab; none without
+    the mode (user: they see at once what is not legit)."""
+    need()
+    import mxl_mock_gui as G
+    win = T.chartab()
+    T.pump(5)
+
+    def boxes():
+        n = 0
+        stack = [win.top]
+        while stack:
+            w = stack.pop()
+            stack.extend(w.winfo_children())
+            if w.winfo_class() == 'Canvas':
+                n += len(w.find_withtag('illegit'))
+        return n
+    G.set_legit(False)
+    T.pump(5)
+    T.eq(boxes(), 0, 'no borders with Legit Mode off')
+    G.set_legit(True)
+    T.pump(10)
+    shot = os.environ.get('LEGIT_SHOT')
+    if shot:
+        win.top.update_idletasks()
+        os.system(f'import -window root {shot}')
+    T.check(boxes() > 0, f'{boxes()} red borders on the sample character (it holds editor-made items)')
+    G.set_legit(False)
+    T.pump(5)
+    T.eq(boxes(), 0, 'borders gone with the mode off')
+
+
+@T.test
+def dev_kit_item_vectors_give_their_expected_verdicts():
+    """The dev kit's item-generation test vectors (tests/data/itemgen_vectors.json, vendored with d2bt): each item
+    gets exactly the expected findings from the vendored validator, as in the dev kit's own itemgen_test."""
+    import collections
+    import json
+    import mxl_legit
+    from d2bt.lint.savescan import ParsedItem
+    if not mxl_legit.prepare():
+        T.skip('stock tables unavailable')
+    v = mxl_legit._validator()
+
+    def parsed_item(fields):
+        fields = dict(fields)
+        fields['children'] = [parsed_item(child) for child in fields.get('children', [])]
+        fields['set_stats'] = {int(k): val for k, val in fields.get('set_stats', {}).items()}
+        return ParsedItem(**fields)
+    vectors = json.loads((Path(T.REPO) / 'tests' / 'data' / 'itemgen_vectors.json').read_text())
+    bad = []
+    for vector in vectors:
+        got = collections.Counter(f.rule for f in v.validate_item(parsed_item(vector['item'])))
+        if got != collections.Counter(vector['rules']):
+            bad.append(f"{vector['name']}: {sorted(got.elements())} != {sorted(vector['rules'])}")
+    T.check(len(vectors) >= 40, f'{len(vectors)} vectors')
+    T.eq(bad, [], 'vectors with other findings than expected')
 
 T.main(globals())

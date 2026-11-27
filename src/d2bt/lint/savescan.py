@@ -10,6 +10,7 @@ Never writes anything; callers should scan a COPY of the save folder (copy_saves
 import os
 import shutil
 import struct
+from ..itemgen.stats import decode_save_value
 from dataclasses import dataclass, field
 
 from .common import TxtDir
@@ -137,6 +138,10 @@ class ParsedItem:
     stats: list = field(default_factory=list)
     set_stats: dict = field(default_factory=dict)
     runeword_stats: list = field(default_factory=list)
+    location: int = 0
+    body_slot: int = 0
+    storage: int = 0
+    section: str = ''
 
 
 @dataclass
@@ -148,6 +153,8 @@ class ParsedCharacter:
     skills: tuple = ()
     quests: tuple = ()
     items: list = field(default_factory=list)
+    version: int = 0
+    file_size: int = 0
 
 
 def parse_d2s(path, tab):
@@ -158,7 +165,8 @@ def parse_d2s(path, tab):
         raise SaveError('expected a LoD v96 character save')
     if data[0x14f:0x153] != b'Woo!':
         raise SaveError('missing quest header')
-    character = ParsedCharacter(level=data[43], quests=tuple(
+    character = ParsedCharacter(level=data[43], file_size=len(data),
+                                version=int.from_bytes(data[4:8], 'little'), quests=tuple(
         struct.unpack_from('<48H', data, 0x159 + 96 * diff) for diff in range(3)))
     _scan_d2s(path, data, tab, character)
     return character
@@ -175,7 +183,7 @@ def _stats(br, tab, u, values=None):
                 raise UnknownStatError(x)
             u.stats.add(x)
             layer = br.read(sd[2]) if sd[2] else 0
-            value = br.read(sd[0]) - sd[1]
+            value = decode_save_value(br.read(sd[0]), sd[1])
             if values is not None:
                 values.append((x, layer, value))
 
@@ -192,9 +200,12 @@ def _item(buf, pos, tab, u, items=None):
         while br.read(7):
             pass
         return br.end_byte(), flags, 0
-    br.read(10 + 3 + 4 + 4 + 4 + 3)
+    br.read(10)
+    location, body_slot = br.read(3), br.read(4)
+    br.read(4 + 4)  # item coordinates
+    storage = br.read(3)
     code = ''.join(chr(br.read(8)) for _ in range(4))
-    item = ParsedItem(code.strip(), flags)
+    item = ParsedItem(code.strip(), flags, location=location, body_slot=body_slot, storage=storage)
     if items is not None:
         items.append(item)
     u.codes.add(code)
@@ -271,18 +282,21 @@ def _item(buf, pos, tab, u, items=None):
     return br.end_byte(), flags, nsock
 
 
-def _item_list(buf, pos, tab, u, items=None):
+def _item_list(buf, pos, tab, u, items=None, section=''):
     if pos + 4 > len(buf) or buf[pos:pos + 2] != b'JM':
         raise SaveError(f"'JM' expected at byte {pos}")
     n = struct.unpack_from('<H', buf, pos + 2)[0]
     pos += 4
     for _ in range(n):
-        pos = _item_with_sockets(buf, pos, tab, u, items)
+        pos = _item_with_sockets(buf, pos, tab, u, items, section)
     return pos
 
 
-def _item_with_sockets(buf, pos, tab, u, items):
+def _item_with_sockets(buf, pos, tab, u, items, section=''):
+    start = len(items) if items is not None else 0
     pos, flags, count = _item(buf, pos, tab, u, items)
+    if items is not None and len(items) > start:
+        items[-1].section = section
     for _ in range(count if flags >> 11 & 1 else 0):
         children = items[-1].children if items is not None else None
         pos, _, _ = _item(buf, pos, tab, u, children)
@@ -341,14 +355,14 @@ def _scan_d2s(path, b, tab, character=None):
         nc = struct.unpack_from('<H', b, p + 2)[0]
         p += 4
         for _ in range(nc):
-            p = _item_list(b, p + 12, tab, u, items)
+            p = _item_list(b, p + 12, tab, u, items, 'Corpse')
     if b[p:p + 2] == b'jf':
         p += 2
         if b[p:p + 2] == b'JM':
-            p = _item_list(b, p, tab, u, items)
+            p = _item_list(b, p, tab, u, items, 'Merc')
     if b[p:p + 2] == b'kf':
         if b[p + 2:p + 3] == b'\x01':
-            p = _item_with_sockets(b, p + 3, tab, u, items)
+            p = _item_with_sockets(b, p + 3, tab, u, items, 'Iron golem')
         elif b[p + 2:p + 3] == b'\x00':
             p += 3
         else:

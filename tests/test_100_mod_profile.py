@@ -303,5 +303,29 @@ def removed_game_folder_skips_live_extraction():
         extract.assert_not_called()
 
 
+
+@T.test
+def legit_mode_reads_only_the_stock_archives():
+    """Legit Mode: the tables come from Patch_D2 > d2exp > d2data only (like the server's checker); extra archives
+    and loose Excel files are left out, in a profile of their own."""
+    from unittest.mock import patch
+    import mxl_profile as P
+    game = Path(T.tmp()) / 'stockgame'
+    (game / 'data' / 'global' / 'excel').mkdir(parents=True)
+    for n in ('d2data.mpq', 'd2exp.mpq', 'Patch_D2.mpq', 'd2char.mpq', 'zmod.mpq'):
+        (game / n).write_bytes(b'')
+    (game / 'data' / 'global' / 'excel' / 'uniqueitems.txt').write_text('x')
+    info = {'kind': 'd2', 'version': '1.14d', 'mod': True, 'core_dir': None, 'base_dir': str(game)}
+    with patch.object(P, '_raw_settings', lambda: {'legit_mode': True}):
+        names = [os.path.basename(p).lower() for p in P.archive_order(str(game), info)]
+        T.check('zmod.mpq' not in names and {'patch_d2.mpq', 'd2exp.mpq', 'd2data.mpq'} <= set(names), names)
+        T.eq(P._loose_excel(str(game)), {}, 'no loose Excel files')
+        T.check(P.profile_id(str(game), info).endswith('-stock'), 'a profile of its own')
+        T.check(P.has_non_stock(str(game)), 'the folder has other table sources (restart prompt)')
+    with patch.object(P, '_raw_settings', lambda: {}):
+        names = [os.path.basename(p).lower() for p in P.archive_order(str(game), info)]
+        T.check('zmod.mpq' in names, "Legit Mode off: the folder's own archives")
+        T.check(not P.profile_id(str(game), info).endswith('-stock'), 'the usual profile')
+
 if __name__ == '__main__':
     T.main(globals())

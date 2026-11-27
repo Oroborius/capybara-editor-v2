@@ -91,7 +91,8 @@ def _make_toggle(app):
     lb.pack(side='right', padx=(2, 2), before=b)
     _Tip(lb, T('legit.label', mxl_legit.LABEL))
     ll = ttk.Label(bar, text=T('legit.label', mxl_legit.LABEL))
-    _state.update(app=app, var=var, button=b, lvar=lvar, lbutton=lb, llabel=ll)
+    _state.update(app=app, var=var, button=b, lvar=lvar, lbutton=lb, llabel=ll,
+                  legit_tables=bool(mxl_legit.enabled()))   # the tables this run loaded (stock-only or not)
     if lvar.get():
         ll.pack(side='right', padx=(2, 4), before=lb)
         mxl_legit.set_enabled(True)
@@ -140,6 +141,17 @@ def set_legit(on):
     if lvar.get() != on:
         lvar.set(on)
     mxl_legit.set_enabled(on)
+    _state.setdefault('legit_tables', on)
+    try:
+        import mxl_profile
+        if on != _state['legit_tables'] and mxl_profile.has_non_stock(mxl_legit.game_dir()):
+            from tkinter import messagebox
+            messagebox.showinfo('Legit Mode', 'This game folder has other .mpq archives or loose Excel files. '
+                                'Legit Mode reads only the stock tables (Patch_D2, d2exp, d2data), like the server: '
+                                'restart the editor to load ' + ('them.' if on else 'your folder\'s own tables again.'),
+                                parent=_state['app'].root)
+    except Exception:
+        pass
     if on:
         if _state['var'] is not None and _state['var'].get():
             set_mode(False)
@@ -147,6 +159,10 @@ def set_legit(on):
         _warm_legit()
     else:
         ll.pack_forget()
+    try:
+        _state['app'].root.event_generate('<<LegitChanged>>')   # the pages redraw their "not legit" borders
+    except Exception:
+        pass
     tb = getattr(_state['app'], 'toolbar', None)
     if tb is not None and hasattr(tb, 'layout'):
         tb.state = None

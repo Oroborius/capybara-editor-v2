@@ -977,6 +977,13 @@ def bind_inventory(win):
             if hint.owner is cv:
                 hint.leave(cv)
 
+        # a click on any item grid (inventory, paperdoll, belt, stash, cube) takes the keyboard focus first, in a
+        # bind tag of its own: Del / Ctrl+C / Ctrl+V are ignored while a text field has the focus (testers: they
+        # stopped working after the first use, and on the belt)
+        if 'HEItemFocus' not in cv.bindtags():
+            cv.bindtags(('HEItemFocus',) + tuple(cv.bindtags()))
+        for sequence in ('<ButtonPress-1>', '<ButtonPress-3>'):
+            cv.bind_class('HEItemFocus', sequence, lambda e: e.widget.focus_set())
         for sequence in ('<Enter>', '<Motion>'):
             cv.bind(sequence, hover)
         for sequence in ('<ButtonPress-1>', '<ButtonRelease-1>', '<ButtonRelease-3>'):

@@ -817,6 +817,79 @@ def tab_buttons_right_of_the_menu_open_their_tabs():
         T.eq(nb.select(), str(mxl_tabs._state['pages'][name]), f'{name} button selects its tab')
 
 
+@T.test
+def delete_key_keeps_working_after_the_focus_was_in_a_field():
+    """Tester: Del deleted one inventory item, then never another, whatever was clicked: a text field kept the
+    focus (Del is ignored there) and clicking items did not take it. A click on the items takes the focus."""
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    from pathlib import Path
+    import tkinter as tk
+    win = T.chartab()
+    T.pump(3)
+    original = bytes(win.ch.raw)
+    cv = win.inv
+    try:
+        items = [e for e in win.ch.inventory()]
+        if len(items) < 2:
+            T.skip('the sample needs two inventory items')
+        entries = []
+        stack = [win.top]
+        while stack:
+            w = stack.pop()
+            stack.extend(w.winfo_children())
+            if w.winfo_class() in ('Entry', 'TEntry') and w.winfo_ismapped():
+                entries.append(w)
+        c = win.cell
+        for e in items[:2]:
+            if entries:
+                entries[0].focus_force()                       # the focus sits in a field, as after an edit
+                T.pump(2)
+            x, y = int((e.it['x'] + 0.5) * c), int((e.it['y'] + 0.5) * c)
+            cv.event_generate('<Motion>', warp=True, x=x, y=y)
+            cv.event_generate('<Button-1>', x=x, y=y)
+            cv.event_generate('<ButtonRelease-1>', x=x, y=y)
+            T.pump(3)
+            n = len(win.ch.inventory())
+            win.top.event_generate('<Delete>')
+            T.pump(5)
+            T.eq(len(win.ch.inventory()), n - 1, 'Del removed the clicked item')
+    finally:
+        Path(win.ch.path).write_bytes(original)
+        win.reload(keep=False)
+
+
+@T.test
+def clicking_an_item_grid_takes_the_focus_for_the_shortcuts():
+    """Ctrl+C / Ctrl+V / Del are ignored while a text field has the focus; a click on any item grid (inventory, the
+    belt of the Stash / Cube / Belt page) takes it (tester: copy / paste did not work on the belt)."""
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    win = T.chartab()
+    T.pump(3)
+    field = None
+    stack = [win.top]
+    while stack:
+        w = stack.pop()
+        stack.extend(w.winfo_children())
+        if w.winfo_class() in ('Entry', 'TEntry') and w.winfo_ismapped():
+            field = w
+            break
+    grids = [win.inv]
+    page = win.extra.get('containers')
+    if page is not None and 'belt' in page.canvases:
+        grids.append(page.canvases['belt'])
+    for cv in grids:
+        if field is not None:
+            field.focus_force()
+            T.pump(2)
+        cv.event_generate('<ButtonPress-1>', x=5, y=5)
+        cv.event_generate('<ButtonRelease-1>', x=5, y=5)
+        T.pump(2)
+        T.check('HEItemFocus' in cv.bindtags() or cv is win.inv, f'{cv} has the focus bind tag')
+        T.eq(str(cv.focus_get()), str(cv), f'a click on {cv} takes the focus')
+
+
 
 @T.test
 def character_name_warning_and_save_anyway():

@@ -85,7 +85,26 @@ def _directory_archives(game_dir):
     return [path for _, _, path in opened]
 
 
-def archive_order(game_dir, info=None):
+STOCK_TABLE_ARCHIVES = ('patch_d2.mpq', 'd2exp.mpq', 'd2data.mpq')
+
+
+def legit_stock():
+    """Legit Mode reads the game tables the way the server's checker does: only Patch_D2 > d2exp > d2data (no
+    extra .mpq, no loose data\\global\\excel files), so the creator offers exactly what the checker knows."""
+    return bool(_raw_settings().get('legit_mode'))
+
+
+def has_non_stock(game_dir):
+    """The folder (or its base) has table sources Legit Mode ignores: other .mpq archives or loose Excel files."""
+    try:
+        extra = [p for p in archive_order(game_dir, stock=False)
+                 if os.path.basename(p).lower() not in BASE_ARCHIVE_NAMES]
+        return bool(extra or _loose_excel(game_dir, stock=False))
+    except Exception:
+        return False
+
+
+def archive_order(game_dir, info=None, stock=None):
     """Highest priority first, with the mod above its core and base install."""
     info = info or detect(game_dir)
     folders = (game_dir, info.get('core_dir'), info.get('base_dir'))
@@ -96,7 +115,10 @@ def archive_order(game_dir, info=None):
         if folder:
             for path in _directory_archives(folder):
                 paths.setdefault(os.path.normcase(os.path.abspath(path)), path)
-    return list(paths.values())
+    out = list(paths.values())
+    if legit_stock() if stock is None else stock:
+        out = [p for p in out if os.path.basename(p).lower() in BASE_ARCHIVE_NAMES]   # no mod / extra archives
+    return out
 
 
 def base_archives(game_dir):
@@ -170,7 +192,9 @@ def _game_version(folder):
     return None
 
 
-def _loose_excel(folder):
+def _loose_excel(folder, stock=None):
+    if legit_stock() if stock is None else stock:
+        return {}                                   # Legit Mode: the stock archives only
     for part in ('data', 'global', 'excel'):
         folder = _child(folder, part)
         if folder is None:
@@ -340,7 +364,7 @@ def _use_save_dir(game_dir, root=None, info=None):
 
 def profile_id(game_dir, info):
     h = hashlib.sha1(os.path.normcase(os.path.abspath(game_dir)).encode('utf-8', 'replace')).hexdigest()[:8]
-    return f"{info['kind']}-{info['version'] or 'unknown'}-{h}"
+    return f"{info['kind']}-{info['version'] or 'unknown'}-{h}" + ('-stock' if legit_stock() else '')
 
 
 # ---------------------------------------------------------------------------------------------------- selection
@@ -470,6 +494,8 @@ def extract(game_dir, out, progress=None, icons=True):
     phase('detect extraction profile', started)
     started = perf_counter()
     local = _directory_archives(game_dir) if info.get('mod') else []
+    if legit_stock():
+        local = [p for p in local if os.path.basename(p).lower() in BASE_ARCHIVE_NAMES]
     mod_stack = _open([p for p in local if not os.path.basename(p).lower().startswith(_NO_DATA)], extracting=True)
     base_stack = _open([p for p in fingerprint['archive_order']
                         if p not in local and not os.path.basename(p).lower().startswith(_NO_DATA)], extracting=True)

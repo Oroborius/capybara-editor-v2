@@ -124,7 +124,7 @@ def _children(path):
     return {p.name.lower(): p for p in path.iterdir()} if path.is_dir() else {}
 
 
-def game_tables(game):
+def game_tables(game, tables=TABLES):
     game = Path(game).resolve()
     files = _children(game)
     archives = [files[n] for n in ('patch_d2.mpq', 'd2exp.mpq', 'd2data.mpq') if n in files]
@@ -132,7 +132,7 @@ def game_tables(game):
     for part in ('data', 'global', 'excel'):
         loose = _children(loose).get(part, loose / part)
     local = _children(loose)
-    names = {f'{name}.{ext}' for name in TABLES for ext in ('bin', 'txt')}
+    names = {f'{name}.{ext}' for name in tables for ext in ('bin', 'txt')}
     if not archives and not (names & local.keys()):
         raise FileNotFoundError(f'no LoD game tables found in {game}')
     sources = archives + [local[n] for n in sorted(names & local.keys())]
@@ -140,7 +140,7 @@ def game_tables(game):
     for path in sources:
         st = path.stat()
         stamp.append((str(path), st.st_size, st.st_mtime_ns))
-    digest = hashlib.sha256(repr((TABLES, TBL_BASE, stamp)).encode()).hexdigest()
+    digest = hashlib.sha256(repr((tables, TBL_BASE, stamp)).encode()).hexdigest()
     root = cache_root() / 'legit-tables'
     dest = root / digest
     with _LOCK:
@@ -149,7 +149,7 @@ def game_tables(game):
         root.mkdir(parents=True, exist_ok=True)
         staging = Path(tempfile.mkdtemp(dir=root))
         try:
-            _extract(archives, local, staging)
+            _extract(archives, local, staging, tables)
             try:
                 os.rename(staging, dest)
             except OSError:
@@ -161,10 +161,10 @@ def game_tables(game):
     return dest
 
 
-def _extract(archives, local, staging):
+def _extract(archives, local, staging, tables):
     stack = MPQStack(archives)
     try:
-        for table in TABLES:
+        for table in tables:
             filenames = [f'{table}.{suffix}' for suffix in ('txt', 'bin')]
             paths = [f'data\\global\\excel\\{name}' for name in filenames]
             # Choose both representations from the same priority tier. The text
@@ -189,7 +189,7 @@ def _extract(archives, local, staging):
             if stack.find(path):
                 (staging / filename).write_bytes(stack.read(path))
         context = bin2txt.Context(bin_dir=str(staging), version='114d')
-        for table in TABLES:
+        for table in tables:
             dst = staging / f'{table}.txt'
             if not dst.exists():
                 src = staging / f'{table}.bin'

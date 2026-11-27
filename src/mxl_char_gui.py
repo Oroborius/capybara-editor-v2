@@ -83,6 +83,16 @@ class CharacterWindow(StatEditMixin):
         except (FormatError, CharError, OSError, KeyError) as e:
             messagebox.showerror(T('ch.title', 'Character'), f'{path}\n\n{e}')
             return
+
+        def legit_changed(_e=None):                  # Legit Mode on / off: the red "not legit" borders follow
+            try:
+                self.redraw()
+            except Exception:
+                pass
+        try:
+            app.root.bind('<<LegitChanged>>', legit_changed, add='+')
+        except Exception:
+            pass
         self.data = self.ch.data
         self.merc = tk.BooleanVar(value=False)
         self.wset = tk.IntVar(value=1)
@@ -364,7 +374,10 @@ class CharacterWindow(StatEditMixin):
             self.he_inventory_footer.pack()
             self.he_inventory_art = V.inventory_images(self.inv, INV_W, INV_H, c, self.he_footer_height)
         for cv in (self.doll, self.inv):
-            cv.bind('<Button-1>', self.on_press)
+            # a click on the items takes the keyboard focus first: Del is ignored while a text field has it (tester:
+            # Del worked once, then never again - the focus stayed in a field and clicking items did not move it)
+            cv.bind('<Button-1>', lambda e: (e.widget.focus_set(), self.on_press(e))[1])
+            cv.bind('<Button-3>', lambda e: e.widget.focus_set(), add='+')
             cv.bind('<B1-Motion>', self.on_drag)
             cv.bind('<ButtonRelease-1>', self.on_release)
             cv.bind('<Double-Button-1>', self.on_double)
@@ -574,7 +587,7 @@ class CharacterWindow(StatEditMixin):
             except tk.TclError:
                 pass
 
-    def draw_item(self, cv, it, x0, y0, x1, y1, selected):
+    def draw_item(self, cv, it, x0, y0, x1, y1, selected, blob=None):
         d = self.data
         unmet = (not self.is_merc()) and self.app.char is not None and requirements_unmet(it, d, self.app.char)
         bg = CELL_KO if unmet else CELL_OK
@@ -592,6 +605,11 @@ class CharacterWindow(StatEditMixin):
         else:
             cv.create_text((x0 + x1) / 2, (y0 + y1) / 2, text=clean(it['name']), fill=col,
                            width=max(20, x1 - x0 - 6), font=('Segoe UI', 8), justify='center')
+        if blob is not None:
+            import mxl_legit
+            if mxl_legit.item_is_illegit(blob):       # Legit Mode: a box around an item the server would reject
+                cv.create_rectangle(x0 + 1, y0 + 1, x1 - 1, y1 - 1, outline=mxl_legit.ILLEGIT_BORDER, width=2,
+                                    tags='illegit')
 
     def redraw(self):
         c = self.cell
@@ -620,7 +638,7 @@ class CharacterWindow(StatEditMixin):
             e = eq.get(slot)
             if e is not None:
                 inset = 3 if native else 0
-                self.draw_item(cv, e.it, x0 + inset, y0 + inset, x1 - inset, y1 - inset, e is self.selected)
+                self.draw_item(cv, e.it, x0 + inset, y0 + inset, x1 - inset, y1 - inset, e is self.selected, blob=e.blob)
             elif box in (4, 5) and not merc and not native:
                 cv.create_text((x0 + x1) / 2, (y0 + y1) / 2, text='I' if self.wset.get() == 1 else 'II',
                                fill='#444444', font=('Segoe UI', 14))
@@ -653,7 +671,7 @@ class CharacterWindow(StatEditMixin):
             for e in self.ch.inventory():
                 w, h = self.data.base(e.it['code']).size
                 x0, y0 = e.it['x'] * c, e.it['y'] * c
-                self.draw_item(inv, e.it, x0, y0, x0 + w * c, y0 + h * c, e is self.selected)
+                self.draw_item(inv, e.it, x0, y0, x0 + w * c, y0 + h * c, e is self.selected, blob=e.blob)
         item = None
         if self.selected:
             item = V.description_item(V.decoded_item(self, self.selected)) if self.vanilla_he else self.selected.it

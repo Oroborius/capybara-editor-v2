@@ -18,6 +18,7 @@ Lines: [(segments [(text, colour code)], kind)], top to bottom; kinds: name, bas
 (green partial-set bonus), raw, blank."""
 import re
 
+from ..itemgen.stats import skill_layer, skill_tab_layer
 from .data import GameData, to_int
 from .skill import split_colours
 
@@ -213,11 +214,10 @@ def apply_property(it, st, code, par, mn, mx, level):
             prev = (0, v)
             continue
         elif fn == 10:
-            cls, tree = divmod(to_int(par), 3)
-            layer = (cls << 3) | tree
+            layer = skill_tab_layer(to_int(par))
         elif fn == 11:
             sk = it.skill_index(par)
-            layer = (max(sk, 0) << 6) | (hi & 0x3f)
+            layer = skill_layer(max(sk, 0), hi)
             v = V(lo)
         elif fn in (13, 14):
             v = rng
@@ -235,7 +235,7 @@ def apply_property(it, st, code, par, mn, mx, level):
             v = V(to_int(par)) if str(par).strip() else rng
         elif fn == 19:
             sk = it.skill_index(par)
-            layer = (max(sk, 0) << 6) | (hi & 0x3f)
+            layer = skill_layer(max(sk, 0), hi)
             v = V(lo | (lo << 8))
         elif fn == 21:
             layer = val

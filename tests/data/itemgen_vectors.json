@@ -1,0 +1,863 @@
+[
+  {
+    "name": "diadem uses qlvl and magic level at ilvl 1",
+    "item": {
+      "code": "ci3",
+      "ilvl": 1,
+      "quality": 4,
+      "affixes": [
+        [
+          "magicprefix",
+          447
+        ]
+      ],
+      "stats": [
+        [
+          188,
+          8,
+          3
+        ]
+      ]
+    },
+    "rules": []
+  },
+  {
+    "name": "flat tab index is not the packed layer",
+    "item": {
+      "code": "ci3",
+      "ilvl": 1,
+      "quality": 4,
+      "affixes": [
+        [
+          "magicprefix",
+          447
+        ]
+      ],
+      "stats": [
+        [
+          188,
+          3,
+          3
+        ]
+      ]
+    },
+    "rules": [
+      "stat"
+    ]
+  },
+  {
+    "name": "class-specific paladin tab on a paladin shield",
+    "item": {
+      "code": "pa9",
+      "ilvl": 65,
+      "quality": 4,
+      "affixes": [
+        [
+          "magicprefix",
+          470
+        ]
+      ],
+      "stats": [
+        [
+          188,
+          24,
+          2
+        ]
+      ]
+    },
+    "rules": []
+  },
+  {
+    "name": "sorceress tab on the wrong class shield",
+    "item": {
+      "code": "pa9",
+      "ilvl": 99,
+      "quality": 4,
+      "affixes": [
+        [
+          "magicprefix",
+          447
+        ]
+      ]
+    },
+    "rules": [
+      "affix-type"
+    ]
+  },
+  {
+    "name": "Amazon bow automagic",
+    "item": {
+      "code": "amc",
+      "ilvl": 99,
+      "automagic": 2,
+      "stats": [
+        [
+          188,
+          0,
+          2
+        ]
+      ]
+    },
+    "rules": []
+  },
+  {
+    "name": "Amazon bow automagic cannot move to a sword",
+    "item": {
+      "code": "ssd",
+      "ilvl": 99,
+      "automagic": 2
+    },
+    "rules": [
+      "affix-type"
+    ]
+  },
+  {
+    "name": "spawnable ring affix with zero frequency",
+    "item": {
+      "code": "rin",
+      "ilvl": 99,
+      "quality": 4,
+      "affixes": [
+        [
+          "magicprefix",
+          43
+        ]
+      ]
+    },
+    "rules": [
+      "affix-quality"
+    ]
+  },
+  {
+    "name": "ordinary ring prefix just below affix level",
+    "item": {
+      "code": "rin",
+      "ilvl": 3,
+      "quality": 4,
+      "affixes": [
+        [
+          "magicprefix",
+          239
+        ]
+      ]
+    },
+    "rules": [
+      "affix-level"
+    ]
+  },
+  {
+    "name": "ordinary ring prefix at affix level",
+    "item": {
+      "code": "rin",
+      "ilvl": 4,
+      "quality": 4,
+      "affixes": [
+        [
+          "magicprefix",
+          239
+        ]
+      ]
+    },
+    "rules": []
+  },
+  {
+    "name": "unique just below identity level",
+    "item": {
+      "code": "qui",
+      "ilvl": 9,
+      "quality": 7,
+      "quality_id": 79
+    },
+    "rules": [
+      "identity-level"
+    ]
+  },
+  {
+    "name": "unique exactly at identity level",
+    "item": {
+      "code": "qui",
+      "ilvl": 10,
+      "quality": 7,
+      "quality_id": 79
+    },
+    "rules": []
+  },
+  {
+    "name": "Ethereal Edge combines fixed ethereal and indestructible",
+    "item": {
+      "code": "7ba",
+      "ilvl": 82,
+      "flags": 4194304,
+      "quality": 7,
+      "quality_id": 324,
+      "stats": [
+        [
+          152,
+          0,
+          1
+        ]
+      ]
+    },
+    "rules": []
+  },
+  {
+    "name": "authored ethereal flag required",
+    "item": {
+      "code": "7gl",
+      "ilvl": 84,
+      "quality": 7,
+      "quality_id": 386
+    },
+    "rules": [
+      "ethereal"
+    ]
+  },
+  {
+    "name": "exceptional upgrade retains the original unique identity",
+    "item": {
+      "code": "9dg",
+      "ilvl": 6,
+      "quality": 7,
+      "quality_id": 39,
+      "stats": [
+        [
+          92,
+          0,
+          5
+        ]
+      ]
+    },
+    "rules": []
+  },
+  {
+    "name": "elite upgrade accumulates both tier penalties",
+    "item": {
+      "code": "7dg",
+      "ilvl": 6,
+      "quality": 7,
+      "quality_id": 39,
+      "stats": [
+        [
+          92,
+          0,
+          12
+        ]
+      ]
+    },
+    "rules": []
+  },
+  {
+    "name": "elite upgrade requires cumulative penalty",
+    "item": {
+      "code": "7dg",
+      "ilvl": 6,
+      "quality": 7,
+      "quality_id": 39,
+      "stats": [
+        [
+          92,
+          0,
+          7
+        ]
+      ]
+    },
+    "rules": [
+      "stat"
+    ]
+  },
+  {
+    "name": "normal base cannot hold a different family unique",
+    "item": {
+      "code": "ssd",
+      "ilvl": 99,
+      "quality": 7,
+      "quality_id": 39
+    },
+    "rules": [
+      "identity"
+    ]
+  },
+  {
+    "name": "three craft affixes legal at ilvl 70",
+    "item": {
+      "code": "rin",
+      "ilvl": 70,
+      "quality": 8,
+      "affixes": [
+        [
+          "magicprefix",
+          214
+        ],
+        [
+          "magicprefix",
+          239
+        ],
+        [
+          "magicsuffix",
+          115
+        ]
+      ]
+    },
+    "rules": []
+  },
+  {
+    "name": "four craft affixes required at ilvl 71",
+    "item": {
+      "code": "rin",
+      "ilvl": 71,
+      "quality": 8,
+      "affixes": [
+        [
+          "magicprefix",
+          214
+        ],
+        [
+          "magicprefix",
+          239
+        ],
+        [
+          "magicsuffix",
+          115
+        ]
+      ]
+    },
+    "rules": [
+      "craft-affix-count"
+    ]
+  },
+  {
+    "name": "four craft affixes at ilvl 71",
+    "item": {
+      "code": "rin",
+      "ilvl": 71,
+      "quality": 8,
+      "affixes": [
+        [
+          "magicprefix",
+          214
+        ],
+        [
+          "magicprefix",
+          239
+        ],
+        [
+          "magicsuffix",
+          115
+        ],
+        [
+          "magicsuffix",
+          174
+        ]
+      ]
+    },
+    "rules": []
+  },
+  {
+    "name": "same group cannot repeat",
+    "item": {
+      "code": "rin",
+      "ilvl": 99,
+      "quality": 6,
+      "affixes": [
+        [
+          "magicprefix",
+          238
+        ],
+        [
+          "magicprefix",
+          239
+        ]
+      ]
+    },
+    "rules": [
+      "affix-group"
+    ]
+  },
+  {
+    "name": "Steel on a sword",
+    "item": {
+      "code": "ssd",
+      "ilvl": 41,
+      "sockets": 2,
+      "runeword": 20639,
+      "children": [
+        {
+          "code": "r03"
+        },
+        {
+          "code": "r01"
+        }
+      ]
+    },
+    "rules": []
+  },
+  {
+    "name": "Steel cannot form in armor",
+    "item": {
+      "code": "qui",
+      "ilvl": 41,
+      "sockets": 2,
+      "runeword": 20639,
+      "children": [
+        {
+          "code": "r03"
+        },
+        {
+          "code": "r01"
+        }
+      ]
+    },
+    "rules": [
+      "runeword"
+    ]
+  },
+  {
+    "name": "Steel requires rune insertion order",
+    "item": {
+      "code": "ssd",
+      "ilvl": 41,
+      "sockets": 2,
+      "runeword": 20639,
+      "children": [
+        {
+          "code": "r01"
+        },
+        {
+          "code": "r03"
+        }
+      ]
+    },
+    "rules": [
+      "runeword"
+    ]
+  },
+  {
+    "name": "four Flail sockets above ilvl 25",
+    "item": {
+      "code": "fla",
+      "ilvl": 26,
+      "sockets": 4
+    },
+    "rules": []
+  },
+  {
+    "name": "four Flail sockets exceed the low bucket",
+    "item": {
+      "code": "fla",
+      "ilvl": 25,
+      "sockets": 4
+    },
+    "rules": [
+      "sockets"
+    ]
+  },
+  {
+    "name": "magic diadem can have two Larzuk sockets",
+    "item": {
+      "code": "ci3",
+      "ilvl": 26,
+      "quality": 4,
+      "sockets": 2,
+      "affixes": [
+        [
+          "magicprefix",
+          447
+        ]
+      ]
+    },
+    "rules": []
+  },
+  {
+    "name": "three sockets need an authored modifier",
+    "item": {
+      "code": "ci3",
+      "ilvl": 99,
+      "quality": 4,
+      "sockets": 3,
+      "affixes": [
+        [
+          "magicprefix",
+          447
+        ]
+      ]
+    },
+    "rules": [
+      "sockets"
+    ]
+  },
+  {
+    "name": "superior armor uses its saved armor and durability row",
+    "item": {
+      "code": "utp",
+      "ilvl": 99,
+      "quality": 3,
+      "quality_id": 7,
+      "stats": [
+        [
+          16,
+          0,
+          15
+        ],
+        [
+          75,
+          0,
+          15
+        ]
+      ]
+    },
+    "rules": []
+  },
+  {
+    "name": "superior weapon-only row on armor",
+    "item": {
+      "code": "utp",
+      "ilvl": 99,
+      "quality": 3,
+      "quality_id": 1
+    },
+    "rules": [
+      "quality"
+    ]
+  },
+  {
+    "name": "superior defense-only row does not grant durability",
+    "item": {
+      "code": "utp",
+      "ilvl": 99,
+      "quality": 3,
+      "quality_id": 2,
+      "stats": [
+        [
+          75,
+          0,
+          15
+        ]
+      ]
+    },
+    "rules": [
+      "stat"
+    ]
+  },
+  {
+    "name": "inferior variant ID within stock rows",
+    "item": {
+      "code": "cap",
+      "quality": 1,
+      "quality_id": 3
+    },
+    "rules": []
+  },
+  {
+    "name": "inferior variant ID beyond stock rows",
+    "item": {
+      "code": "cap",
+      "quality": 1,
+      "quality_id": 4
+    },
+    "rules": [
+      "quality"
+    ]
+  },
+  {
+    "name": "charges may be spent independently of capacity",
+    "item": {
+      "code": "cm2",
+      "ilvl": 110,
+      "quality": 7,
+      "quality_id": 400,
+      "stats": [
+        [
+          204,
+          3998,
+          2560
+        ]
+      ]
+    },
+    "rules": []
+  },
+  {
+    "name": "current charges cannot exceed capacity",
+    "item": {
+      "code": "cm2",
+      "ilvl": 110,
+      "quality": 7,
+      "quality_id": 400,
+      "stats": [
+        [
+          204,
+          3998,
+          2571
+        ]
+      ]
+    },
+    "rules": [
+      "stat"
+    ]
+  },
+  {
+    "name": "wand native necromancer skill",
+    "item": {
+      "code": "gwn",
+      "ilvl": 12,
+      "stats": [
+        [
+          107,
+          66,
+          3
+        ]
+      ]
+    },
+    "rules": []
+  },
+  {
+    "name": "wand rejects another class native skill",
+    "item": {
+      "code": "gwn",
+      "ilvl": 12,
+      "stats": [
+        [
+          107,
+          36,
+          3
+        ]
+      ]
+    },
+    "rules": [
+      "stat"
+    ]
+  },
+  {
+    "name": "wand cannot carry four native skills",
+    "item": {
+      "code": "gwn",
+      "ilvl": 12,
+      "stats": [
+        [
+          107,
+          66,
+          1
+        ],
+        [
+          107,
+          67,
+          1
+        ],
+        [
+          107,
+          68,
+          1
+        ],
+        [
+          107,
+          69,
+          1
+        ]
+      ]
+    },
+    "rules": [
+      "staffmods"
+    ]
+  },
+  {
+    "name": "Ormus random eligible sorceress skill",
+    "item": {
+      "code": "uui",
+      "ilvl": 83,
+      "quality": 7,
+      "quality_id": 358,
+      "stats": [
+        [
+          107,
+          36,
+          3
+        ]
+      ]
+    },
+    "rules": []
+  },
+  {
+    "name": "Ormus cannot roll a book skill",
+    "item": {
+      "code": "uui",
+      "ilvl": 83,
+      "quality": 7,
+      "quality_id": 358,
+      "stats": [
+        [
+          107,
+          42,
+          3
+        ]
+      ]
+    },
+    "rules": [
+      "stat"
+    ]
+  },
+  {
+    "name": "rare jewel cannot have five affixes",
+    "item": {
+      "code": "jew",
+      "ilvl": 99,
+      "quality": 6,
+      "affixes": [
+        [
+          "magicprefix",
+          139
+        ],
+        [
+          "magicprefix",
+          166
+        ],
+        [
+          "magicprefix",
+          183
+        ],
+        [
+          "magicsuffix",
+          165
+        ],
+        [
+          "magicsuffix",
+          181
+        ]
+      ]
+    },
+    "rules": [
+      "affix-count"
+    ]
+  },
+  {
+    "name": "craft fixed blood ring life roll",
+    "item": {
+      "code": "rin",
+      "ilvl": 71,
+      "quality": 8,
+      "affixes": [
+        [
+          "magicprefix",
+          214
+        ],
+        [
+          "magicprefix",
+          239
+        ],
+        [
+          "magicsuffix",
+          115
+        ],
+        [
+          "magicsuffix",
+          174
+        ]
+      ],
+      "stats": [
+        [
+          7,
+          0,
+          20
+        ]
+      ]
+    },
+    "rules": []
+  },
+  {
+    "name": "craft fixed life roll above the recipe range",
+    "item": {
+      "code": "rin",
+      "ilvl": 71,
+      "quality": 8,
+      "affixes": [
+        [
+          "magicprefix",
+          214
+        ],
+        [
+          "magicprefix",
+          239
+        ],
+        [
+          "magicsuffix",
+          115
+        ],
+        [
+          "magicsuffix",
+          174
+        ]
+      ],
+      "stats": [
+        [
+          7,
+          0,
+          51
+        ]
+      ]
+    },
+    "rules": [
+      "stat"
+    ]
+  },
+  {
+    "name": "torch rolls one class bonus",
+    "item": {
+      "code": "cm2",
+      "quality": 7,
+      "quality_id": 400,
+      "ilvl": 110,
+      "stats": [
+        [
+          83,
+          6,
+          3
+        ]
+      ]
+    },
+    "rules": []
+  },
+  {
+    "name": "torch class index beyond the stock range",
+    "item": {
+      "code": "cm2",
+      "quality": 7,
+      "quality_id": 400,
+      "ilvl": 110,
+      "stats": [
+        [
+          83,
+          7,
+          3
+        ]
+      ]
+    },
+    "rules": [
+      "stat"
+    ]
+  },
+  {
+    "name": "magic quality on a normal-only rune",
+    "item": {
+      "code": "r01",
+      "quality": 4
+    },
+    "rules": [
+      "quality",
+      "affix-count"
+    ]
+  },
+  {
+    "name": "socket affix supplies more than Larzuk can",
+    "item": {
+      "code": "ci3",
+      "ilvl": 41,
+      "quality": 4,
+      "affixes": [
+        [
+          "magicprefix",
+          422
+        ]
+      ],
+      "sockets": 3
+    },
+    "rules": []
+  }
+]
