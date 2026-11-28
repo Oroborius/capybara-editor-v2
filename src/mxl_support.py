@@ -358,6 +358,69 @@ def _hook_errors():
     tkinter.Tk.report_callback_exception = report_callback_exception
 
 
+WRITABLE_EXT = ('.d2s', '.d2x', '.key', '.ma0', '.ma1', '.ma2', '.ma3', '.map', '.sss', '.shared', '.stash', '.d2i')
+
+
+def read_only_saves(folder):
+    """The save files of the folder that are marked read-only."""
+    import stat
+    out = []
+    try:
+        names = sorted(os.listdir(folder))
+    except OSError:
+        return out
+    for n in names:
+        p = os.path.join(folder, n)
+        if n.lower().endswith(WRITABLE_EXT) and os.path.isfile(p):
+            try:
+                if not os.stat(p).st_mode & stat.S_IWUSR:
+                    out.append(p)
+            except OSError:
+                pass
+    return out
+
+
+def make_writable(paths):
+    """Clears the read-only flag (Windows attribute / write bit) of each path. -> the number done."""
+    import stat
+    n = 0
+    for p in paths:
+        try:
+            os.chmod(p, os.stat(p).st_mode | stat.S_IWUSR)
+            n += 1
+        except OSError:
+            pass
+    return n
+
+
+def writable_dialog(app):
+    """More > Make saves writable...: lists the read-only save files (the Mock generator's "Lock save file" makes
+    them) and clears the flag after a yes."""
+    from tkinter import messagebox
+    root = getattr(app, 'root', None)
+    title = T('wr.title', 'Make saves writable')
+    folder = _save_dir(app)
+    if not folder or not os.path.isdir(folder):
+        messagebox.showinfo(title, T('wr.nofolder', 'No save folder is set.'), parent=root)
+        return
+    ro = read_only_saves(folder)
+    if not ro:
+        messagebox.showinfo(title, T('wr.none', 'All save files are writable.'), parent=root)
+        return
+    names = ', '.join(os.path.basename(p) for p in ro[:12]) + (' ...' if len(ro) > 12 else '')
+    if not messagebox.askyesno(title, T('wr.ask', '{n} save file(s) are read-only, so the game cannot write them:\n'
+                                                  '{names}\n\nMake them writable?', n=len(ro), names=names),
+                               parent=root):
+        return
+    done = make_writable(ro)
+    try:
+        import mxl_log
+        mxl_log.log.info('made %d save file(s) writable', done)
+    except Exception:
+        pass
+    messagebox.showinfo(title, T('wr.done', '{n} save file(s) are writable again.', n=done), parent=root)
+
+
 CREDIT = 'by Oroborius of eroticsMafia'
 
 
@@ -382,6 +445,7 @@ def install():
     try:
         import mxl_toolbar
         mxl_toolbar.add_entry(lambda: T('sup.menu', 'Make a support zip for help...'), run)
+        mxl_toolbar.add_entry(lambda: T('wr.menu', 'Make saves writable...'), writable_dialog)
         mxl_toolbar.add_entry(lambda: T('about.menu', 'About Capybara Editor V2...'), about)
         mxl_toolbar.add_check(lambda: T('sup.offer', 'Offer to send support zips'),
                               lambda: _settings().get(ASK_SETTING) is not False, set_offer)
