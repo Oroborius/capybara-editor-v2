@@ -18,8 +18,12 @@ import threading
 
 from mxl_lang import T
 
-API = 'https://git.wyrd.games/api/v1/repos/oroborius/capybara-editor-v2/releases/latest'
-PAGE = 'https://git.wyrd.games/oroborius/capybara-editor-v2/releases'
+# GitHub is the primary release host, with certificates every system trusts; the Forgejo copy is the fallback (its
+# Let's Encrypt "YE1" chain was not trusted by some Windows certificate stores: "SSL certificate" update errors)
+APIS = ('https://api.github.com/repos/Oroborius/capybara-editor-v2/releases/latest',
+        'https://git.wyrd.games/api/v1/repos/oroborius/capybara-editor-v2/releases/latest')
+API = APIS[0]
+PAGE = 'https://github.com/Oroborius/capybara-editor-v2/releases'
 UA = {'User-Agent': 'Capybara-Editor-updater'}
 WIN_ASSET = 'MXL-Capybara-Editor-V2-windows.zip'
 LINUX_ASSET = 'MXL_Capybara_Editor_V2-x86_64.AppImage'
@@ -45,11 +49,29 @@ def newer(latest, current):
     return a is not None and (b is None or a > b)
 
 
+def _log_error(what, err):
+    """Update errors in the log too (support zips showed none: the dialog only)."""
+    try:
+        import mxl_log
+        mxl_log.log.warning('%s failed: %r', what, err)
+    except Exception:
+        pass
+
+
 def latest_release(timeout=15):
     """{'tag', 'url', 'assets': {name: download url}, 'notes'} of the newest release."""
     import urllib.request
-    with urllib.request.urlopen(urllib.request.Request(API, headers=UA), timeout=timeout) as r:
-        d = json.loads(r.read().decode('utf-8'))
+    error = None
+    for api in APIS:
+        try:
+            with urllib.request.urlopen(urllib.request.Request(api, headers=UA), timeout=timeout) as r:
+                d = json.loads(r.read().decode('utf-8'))
+            if d.get('tag_name') and d.get('assets'):
+                break
+        except Exception as e:                      # SSL, network, rate limit: the next host
+            error = e
+    else:
+        raise error or OSError('no release found')
     return dict(tag=d.get('tag_name'), url=d.get('html_url') or PAGE, notes=(d.get('body') or '').split('**Downloads**')[0].strip(),
                 assets={a['name']: a['browser_download_url'] for a in d.get('assets', [])})
 
@@ -260,6 +282,7 @@ def run(app, rel=None):
         bar.stop()
         bar.pack_forget()                     # back only while downloading
         if err:
+            _log_error('update check', err)
             msg.configure(text=T('upd.offline', 'Could not reach the release page:\n{error}', error=err))
             ttk.Button(btns, text=T('upd.close', 'Close'), command=w.destroy).pack(side='right')
             return
@@ -309,6 +332,7 @@ def run(app, rel=None):
 
     def done(path, err):
         if err:
+            _log_error('update download', err)
             msg.configure(text=T('upd.failed', 'The update failed:\n{error}\n\nYou can download it by hand from:\n{url}',
                                  error=err, url=state['rel']['url']))
             ttk.Button(btns, text=T('upd.close', 'Close'), command=w.destroy).pack(side='right')
