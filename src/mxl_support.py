@@ -140,7 +140,7 @@ def run(app):
 
 
 # ------------------------------------------------------------------ send it to LadderBot (the D2O Discord bot)
-SEND_URL = ''                    # the bot's upload address; empty: not offered (setting 'support_send_url' wins)
+SEND_URL = 'https://www.shadowdiablo.com/__upload'   # the upload address (setting 'support_send_url' wins)
 ASK_SETTING = 'support_send_ask'                 # False after "Never": the zip is only written, as before
 NAME_SETTING = 'support_discord_name'
 SEND_MAX = 24 * 1024 * 1024
@@ -200,8 +200,17 @@ def upload(path, discord='', note='', url=None, timeout=60):
     parts.append(f'--{boundary}--\r\n'.encode('utf-8'))
     req = urllib.request.Request(url, data=b''.join(parts), method='POST', headers={
         'Content-Type': f'multipart/form-data; boundary={boundary}', 'User-Agent': 'Capybara-Editor-support'})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        reply = json.loads(r.read().decode('utf-8') or '{}')
+    import urllib.error
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            reply = json.loads(r.read().decode('utf-8') or '{}')
+    except urllib.error.HTTPError as e:               # 400 / 413 / 429 ...: the reason the server gives
+        try:
+            reply = json.loads(e.read().decode('utf-8') or '{}')
+        except Exception:
+            reply = {}
+        if not reply.get('error'):
+            raise OSError(f'HTTP {e.code}') from e
     if not reply.get('ok'):
         raise OSError(reply.get('error') or 'refused')
     return str(reply.get('id') or '')

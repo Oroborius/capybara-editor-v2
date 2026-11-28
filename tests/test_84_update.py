@@ -75,7 +75,7 @@ def support_zip_upload_sends_the_fields_and_reads_the_ticket():
             got['file'] = (form['file'].filename, form['file'].value)
             ok = got['discord'] != 'refuse me'
             body = json.dumps({'ok': True, 'id': 'T42'} if ok else {'ok': False, 'error': 'nope'}).encode()
-            self.send_response(200)
+            self.send_response(200 if ok else 400)              # the live address refuses with 400 + a reason
             self.send_header('Content-Type', 'application/json')
             self.end_headers()
             self.wfile.write(body)
