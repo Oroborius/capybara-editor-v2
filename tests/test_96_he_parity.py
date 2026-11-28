@@ -1560,4 +1560,117 @@ def item_menu_is_the_same_on_the_inventory_and_the_stash():
     T.check('Edit Item… (Item Editor)' in person and 'Edit Item… (Item Editor)' in stash, f'Edit on both: {stash}')
     T.eq(stash, person, 'the same top-level entries on the inventory and the stash')
 
+
+@T.test
+def support_zip_send_dialog_never_and_the_more_check_box():
+    """Make a support zip: Send to LadderBot / No / Never. Never: only saved from now on, and the More menu's
+    "Offer to send support zips" check box turns it back on."""
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    import os
+    import subprocess
+    import tempfile
+    import tkinter as tk
+    from tkinter import ttk, messagebox
+    import mxl_support as S
+    import mxl_toolbar
+    import settings
+    win = T.chartab()
+    app = win.app
+    with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as f:
+        f.write(b'PK\x05\x06' + b'\0' * 18)
+        path = f.name
+    shown = []
+    o_info = messagebox.showinfo
+    messagebox.showinfo = lambda *a, **k: shown.append(a[1] if len(a) > 1 else k.get('message'))
+    settings.put('support_send_url', 'http://127.0.0.1:9/__upload')
+    settings.put(S.ASK_SETTING, True)
+    try:
+        T.check(S.offer_send(), 'offered with an address')
+
+        def walk(w):
+            for c in w.winfo_children():
+                yield c
+                yield from walk(c)
+
+        def click(label, shot=None):
+            for d in walk(tk._default_root):
+                if isinstance(d, tk.Toplevel) and d.title() == 'Support zip':
+                    if shot:
+                        d.update_idletasks()
+                        subprocess.run(['import', '-window', 'root', shot])
+                    for b in walk(d):
+                        if isinstance(b, ttk.Button) and str(b.cget('text')) == label:
+                            b.invoke()
+                            return
+            tk._default_root.after(50, click, label, shot)
+        shot = os.environ.get('SUPPORT_SHOT')
+        app.root.after(100, click, 'No', shot)
+        T.eq(S._ask_send(app, path), False, 'No: not sent')
+        T.check(S.offer_send(), 'No keeps asking')
+        app.root.after(100, click, 'Never')
+        T.eq(S._ask_send(app, path), False, 'Never: not sent')
+        T.check(not S.offer_send(), 'Never: not asked any more')
+        T.check(any('More > "Offer to send support zips"' in (m or '') for m in shown), f'told where: {shown}')
+        menu = tk.Menu(app.root, tearoff=False)
+        app.toolbar.populate_extra(menu)
+        idx = next(i for i in range((menu.index('end') or 0) + 1)
+                   if menu.type(i) == 'checkbutton' and menu.entrycget(i, 'label') == 'Offer to send support zips')
+        menu.invoke(idx)
+        T.check(S.offer_send(), 'the More check box turns it back on')
+        menu.destroy()
+    finally:
+        messagebox.showinfo = o_info
+        settings.put('support_send_url', '')
+        settings.put(S.ASK_SETTING, True)
+        os.remove(path)
+
+
+@T.test
+def an_unexpected_error_offers_to_send_a_support_zip():
+    """After an error in a window action: the same Send / No / Never question (once per kind of error); the zip is
+    only made when Send is clicked. Hooked on Tk.report_callback_exception."""
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    import tkinter as tk
+    from tkinter import ttk
+    import mxl_support as S
+    import settings
+    win = T.chartab()
+    root = win.app.root
+    T.check(getattr(tk.Tk.report_callback_exception, '_capy_offer', False), 'the error hook is installed')
+    settings.put('support_send_url', 'http://127.0.0.1:9/__upload')
+    settings.put(S.ASK_SETTING, True)
+    S._ERROR_OFFERED.clear()
+    seen = []
+
+    def walk(w):
+        for c in w.winfo_children():
+            yield c
+            yield from walk(c)
+
+    def answer(n=0):
+        for d in walk(tk._default_root):
+            if isinstance(d, tk.Toplevel) and d.title() == 'Support zip':
+                seen.append(' '.join(str(x.cget('text')) for x in walk(d) if isinstance(x, ttk.Label)))
+                for b in walk(d):
+                    if isinstance(b, ttk.Button) and str(b.cget('text')) == 'No':
+                        b.invoke()
+                        return
+        if n < 60:
+            root.after(50, answer, n + 1)
+    try:
+        root.after(350, answer)
+        S.offer_after_error(root, KeyError, KeyError(495))
+        T.settle(1.5)
+        T.check(seen and 'Something went wrong' in seen[0] and 'KeyError' in seen[0], f'asked after the error: {seen}')
+        seen.clear()
+        root.after(350, answer)
+        S.offer_after_error(root, KeyError, KeyError(495))
+        T.settle(1.5)
+        T.eq(seen, [], 'the same error is not asked about again')
+    finally:
+        settings.put('support_send_url', '')
+        S._ERROR_OFFERED.clear()
+
 T.main(globals())

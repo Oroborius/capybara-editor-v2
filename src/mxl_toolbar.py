@@ -21,6 +21,14 @@ def add_entry(label, command):
     EXTRA.append((label, command))
 
 
+CHECKS = []        # check boxes of the "More" menu: (label function, get() -> bool, set(bool)) - add_check()
+
+
+def add_check(label, get, set_):
+    """A check box at the end of the "More" menu: shows get(), a click calls set_(new value)."""
+    CHECKS.append((label, get, set_))
+
+
 def _pad(v):
     """padx of pack_info as (left, right)."""
     try:
@@ -114,7 +122,7 @@ class Toolbar:
                     total += inner + sum(it.opts['padx'])
             elif it not in hidden:
                 total += it.cost
-        if hidden or EXTRA:
+        if hidden or EXTRA or CHECKS:
             total += self.more.winfo_reqwidth() + GAP
         return total + 8
 
@@ -142,7 +150,7 @@ class Toolbar:
                     c.w.pack_forget()
                 it.w.pack_forget()
             self.more.pack_forget()
-            if hidden or EXTRA:                  # at the right end, before the right-side items take their room
+            if hidden or EXTRA or CHECKS:                  # at the right end, before the right-side items take their room
                 self.more.pack(side='right', padx=(GAP // 2, GAP // 2))
             for it in self.items:
                 if it.children:
@@ -204,13 +212,21 @@ class Toolbar:
             except tk.TclError:
                 continue
         if include_extra:
-            if EXTRA and seen:
+            if (EXTRA or CHECKS) and seen:
                 m.add_separator()
             self.populate_extra(m)
 
     def populate_extra(self, menu):
         for label, command in EXTRA:
             menu.add_command(label=label(), command=lambda c=command: c(self.app))
+        for label, get, set_ in CHECKS:
+            try:
+                on = bool(get())
+            except Exception:
+                on = False
+            var = tk.BooleanVar(master=menu, value=on)
+            menu.add_checkbutton(label=label(), variable=var, command=lambda v=var, f=set_: f(bool(v.get())))
+            menu._capy_vars = getattr(menu, '_capy_vars', []) + [var]       # kept alive with the menu
 
     def _leaves(self):
         out = []
