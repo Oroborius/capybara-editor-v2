@@ -18,10 +18,9 @@ import threading
 
 from mxl_lang import T
 
-# GitHub is the primary release host, with certificates every system trusts; the Forgejo copy is the fallback (its
-# Let's Encrypt "YE1" chain was not trusted by some Windows certificate stores: "SSL certificate" update errors)
-APIS = ('https://api.github.com/repos/Oroborius/capybara-editor-v2/releases/latest',
-        'https://git.wyrd.games/api/v1/repos/oroborius/capybara-editor-v2/releases/latest')
+# Updates come from the public GitHub releases only (the owner: GitHub for updates, futureproof; the Forgejo copy is
+# a mirror the editor does not use - its Let's Encrypt "YE1" chain was also not trusted by some Windows stores)
+APIS = ('https://api.github.com/repos/Oroborius/capybara-editor-v2/releases/latest',)
 API = APIS[0]
 PAGE = 'https://github.com/Oroborius/capybara-editor-v2/releases'
 UA = {'User-Agent': 'Capybara-Editor-updater'}

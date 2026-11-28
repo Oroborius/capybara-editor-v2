@@ -27,8 +27,8 @@ def tags_compare_and_mode():
 
 @T.test
 def both_hosts_are_tried_and_logged_when_they_time_out():
-    """Tester: "Could not reach the release page: timed out". Every host is tried; each failure goes to the log
-    (the support zip shows which one failed); the last error is raised for the window (which offers the page)."""
+    """Tester: "Could not reach the release page: timed out". Every host is tried (GitHub only: the owner wants
+    updates from the public GitHub releases); each failure is logged; the error is raised for the window."""
     if T.APP not in sys.path:
         sys.path.insert(0, T.APP)
     import socket
@@ -50,8 +50,9 @@ def both_hosts_are_tried_and_logged_when_they_time_out():
             T.check('timed out' in str(e), f'the error: {e}')
     finally:
         urllib.request.urlopen, U._log_error = o_open, o_log
-    T.eq(tried, list(U.APIS), 'both hosts tried, GitHub first')
-    T.eq(len(logged), 2, f'each failure logged: {logged}')
+    T.eq(tried, list(U.APIS), 'every host tried')
+    T.check(all('github.com' in u for u in U.APIS), f'GitHub only: {U.APIS}')
+    T.eq(len(logged), len(U.APIS), f'each failure logged: {logged}')
 
 
 @T.test

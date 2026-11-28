@@ -118,9 +118,9 @@ class CharacterWindow(StatEditMixin):
             self.top = mxl_tabs.host_window(app, 'Character', owner=self)
         if self.vanilla_he:
             self.top.configure(bg=V.FORM)
-            self.app.root.title(f'Capybara Editor - {self.ch.name}')
+            self.app.root.title(f'Capybara Editor V2 by Oroborius of eroticsMafia - {self.ch.name}')
         else:
-            self.top.title(f'Median XL Capybara Editor V2 - {self.ch.name}')
+            self.top.title(f'Median XL Capybara Editor V2 by Oroborius of eroticsMafia - {self.ch.name}')
             self.top.geometry('1180x930')
             self.top.configure(bg=HE_BG)
             self.top.after_idle(lambda: clamp_window(self.top, size=(1180, 930)))
@@ -1958,7 +1958,7 @@ class CharacterWindow(StatEditMixin):
                          + (T('he.saved_up', ' (+{n}: stat and skill points to spend in game)', n=ch.level - before)
                             if ch.level > before else '')
                          + (T('he.saved_rewards', ' - quest rewards: {rewards}', rewards=rewards) if rewards else ''))
-            self.top.title(f'Median XL Capybara Editor V2 - {ch.name}')
+            self.top.title(f'Median XL Capybara Editor V2 by Oroborius of eroticsMafia - {ch.name}')
             self._follow_later()
 
     def _save_undoable(self, ch):

@@ -358,6 +358,22 @@ def _hook_errors():
     tkinter.Tk.report_callback_exception = report_callback_exception
 
 
+CREDIT = 'by Oroborius of eroticsMafia'
+
+
+def about(app):
+    """More > About Capybara Editor V2...: the version and the credit."""
+    from tkinter import messagebox
+    try:
+        import mxl_update
+        tag = mxl_update.current_tag() or ''
+    except Exception:
+        tag = ''
+    messagebox.showinfo(T('about.title', 'About Capybara Editor V2'),
+                        f'MXL Capybara Editor V2 {tag}\n{CREDIT}\n\nhttps://github.com/Oroborius/capybara-editor-v2',
+                        parent=getattr(app, 'root', None))
+
+
 def install():
     try:
         _hook_errors()
@@ -366,6 +382,7 @@ def install():
     try:
         import mxl_toolbar
         mxl_toolbar.add_entry(lambda: T('sup.menu', 'Make a support zip for help...'), run)
+        mxl_toolbar.add_entry(lambda: T('about.menu', 'About Capybara Editor V2...'), about)
         mxl_toolbar.add_check(lambda: T('sup.offer', 'Offer to send support zips'),
                               lambda: _settings().get(ASK_SETTING) is not False, set_offer)
     except Exception:

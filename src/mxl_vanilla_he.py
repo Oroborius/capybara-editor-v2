@@ -17,6 +17,7 @@ SELECT = '#3096fa'
 DESCRIPTION = '#707070'
 SET_GREEN = '#00c800'
 HEX_TITLE = '#0000c0'
+CREDIT = 'by Oroborius of eroticsMafia'
 FONT = ('Tahoma', 8)
 SMALL_FONT = ('Tahoma', 7)
 LEGEND_FONT = ('Tahoma', 8, 'italic')
@@ -1494,11 +1495,11 @@ def draw_cover(panel, key):
         panel.create_text(*pixels(panel, 26, 226), text='Diablo II · Lord of Destruction', fill='#bdd8e0',
                           anchor='w', font=font(LEGEND_FONT))
     if key == 'about':
-        panel.create_rectangle(*pixels(panel, 8, 8, 324, 151), fill=BLACK, outline='')
+        panel.create_rectangle(*pixels(panel, 8, 8, 324, 165), fill=BLACK, outline='')
         panel.create_text(*pixels(panel, 166, 20), anchor='n', justify='center', fill=WHITE, font=font(),
                           text='Diablo II Character Editor\n\nHero Editor 1.04\n'
                                'ZonFire99 and Mastadex\n\nDiablo II and Lord of Destruction\n'
-                               'Blizzard Entertainment\n\nMXL Capybara Editor V2')
+                               'Blizzard Entertainment\n\nMXL Capybara Editor V2\n' + CREDIT)
 
 
 def option(key, default=None):
