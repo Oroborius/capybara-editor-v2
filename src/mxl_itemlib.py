@@ -224,7 +224,12 @@ def _place_on_character(app, entry):
         _status(app, str(e), True)
         return None
     if not cw.save(tr('placed_char', '{name} placed in the inventory ({x}, {y})', name=entry['name'], x=spot[0], y=spot[1])):
+        _status(app, cw.status.cget('text') if hasattr(cw, 'status') else '', True)
         return None
+    if getattr(cw, 'items_pending', False):          # Autosave off / Mock Mode: it waits for SAVE (a reload drops it)
+        _status(app, tr('placed_pending', 'placed in the inventory ({x}, {y}) - not saved yet: SAVE writes it',
+                        x=spot[0], y=spot[1]))
+        return ('inv',) + tuple(spot) + ('pending',)
     try:
         cw.reload()
     except Exception:
@@ -456,7 +461,8 @@ class LibraryWindow:
             if not r:
                 text = _last_msg[0] or ''
             elif r[0] == 'inv':                         # 1.14d: into the open character's inventory
-                text = tr('placed.inv', 'placed in the inventory ({x}, {y})', x=r[1], y=r[2])
+                text = (_last_msg[0] if r[-1] == 'pending' else
+                        tr('placed.inv', 'placed in the inventory ({x}, {y})', x=r[1], y=r[2]))
             else:
                 text = tr('placed.short', 'placed: page {page} ({x}, {y})', page=r[0] + 1, x=r[1], y=r[2])
             self.status.configure(text=text)

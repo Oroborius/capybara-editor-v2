@@ -1289,4 +1289,35 @@ def set_row_without_its_own_picture_draws_the_items_own_base():
     T.eq(mxl_gfx.icon_name(worn[10], win.data), 'invlgl', 'gloves slot: the gloves picture')
     T.eq(mxl_gfx.icon_name(worn[9], win.data), 'invmbt', 'boots slot: the boots picture')
 
+
+@T.test
+def library_place_a_copy_with_autosave_off_keeps_the_item_until_save():
+    """xsiv: "Place a copy" acted like a reload. With Autosave off the copy waits for SAVE; the Library then read
+    the character again, which drops what waits. Now it stays (pending) and SAVE writes it."""
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    import mxl_itemlib, mxl_tabs, mxl_char, settings
+    win = T.chartab()
+    small = min(win.ch.inventory(), key=lambda e: len(e.blob))
+    entry = mxl_itemlib.add(bytes(small.blob), 'Autosave probe', win.data)
+    win.ch.items.remove(small)
+    T.check(win.save('room'), 'room made')
+    settings.put('autosave', False)
+    try:
+        n = len(win.ch.items)
+        on_disk = len(mxl_char.Character(win.ch.path, win.data).items)
+        r = mxl_itemlib.place_copy(win.app, entry)
+        T.pump(3)
+        cw = mxl_tabs.built_owner('Character')
+        T.check(r is not None and r[0] == 'inv', f'placed: {r}')
+        T.eq(len(cw.ch.items), n + 1, 'the copy is shown (waiting for SAVE)')
+        T.eq(len(mxl_char.Character(win.ch.path, win.data).items), on_disk, 'not written yet')
+    finally:
+        settings.put('autosave', True)
+        mxl_itemlib.delete(entry)
+        try:
+            mxl_tabs.built_owner('Character').reload(keep=False)
+        except Exception:
+            pass
+
 T.main(globals())
