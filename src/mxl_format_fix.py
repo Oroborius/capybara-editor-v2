@@ -418,9 +418,9 @@ def _install_no_picture_icon():
 
 
 def _install_row_art():
-    """Vanilla: a unique / set item on another base (a Gnasher made on a charm) shows its row's picture in game.
-    The host used the row only when the item's base matched it. The picture: the row's own invfile, else the
-    unique / set picture of the row's base (items .bin offset 0x40 / 0x60), else that base's picture."""
+    """Vanilla: a unique / set item shows its row's own invfile in game, also on another base (a Gnasher made on a
+    charm). Without one: the unique / set picture of the item's OWN base (items .bin offset 0x40 / 0x60), else that
+    base's picture - never the row's base (dev kit, D2MOO item gfx)."""
     import os
     import mxl_gfx
     orig = mxl_gfx.icon_name
@@ -458,10 +458,10 @@ def _install_row_art():
             q, uid = it.get('quality'), it.get('set_unique_id')
             if not is_median() and q in ('unique', 'set') and uid is not None:
                 table = data.uniques if q == 'unique' else data.set_items
-                if 0 <= uid < len(table) and table[uid]['code'] != it['code']:
-                    row = table[uid]
-                    return (row.get('inv_file') or own_art(data, row['code'], q)
-                            or data.base(row['code']).inv_file or orig(it, data))
+                if 0 <= uid < len(table):
+                    # the row's own invfile, else the item's OWN base: its unique / set picture, then its plain
+                    # one (D2MOO item gfx; the row's base is never used: Sigon's boots row on gloves draws gloves)
+                    return (table[uid].get('inv_file') or own_art(data, it['code'], q) or orig(it, data))
         except Exception:
             pass
         return orig(it, data)
@@ -827,7 +827,7 @@ def install():
     except Exception:
         pass
     try:
-        _install_row_art()                # a unique / set row on another base: the row's picture, like the game
+        _install_row_art()                # a unique / set row: its own invfile, else the item's own base, like the game
     except Exception:
         pass
     try:

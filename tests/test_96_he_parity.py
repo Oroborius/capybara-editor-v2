@@ -1233,4 +1233,60 @@ def library_add_refreshes_and_shows_sockets():
         mxl_itemlib.delete(added)
 
 
+
+@T.test
+def library_place_a_copy_goes_into_the_inventory_in_legit_mode_too():
+    """xsiv: "Place a copy" / double-click placed nothing visible: the item went into the inventory, then the
+    Library page broke writing "page {inv + 1}" (TypeError). Both modes: one more item, the page says where."""
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    import mxl_itemlib, mxl_tabs, mxl_legit, mxl_char
+    try:
+        for legit in (False, True):
+            win = T.chartab()
+            mxl_legit.set_enabled(legit)
+            small = min(win.ch.inventory(), key=lambda e: len(e.blob))
+            entry = mxl_itemlib.add(bytes(small.blob), 'Place probe', win.data)
+            try:
+                win.ch.items.remove(small)
+                T.check(win.save('room'), 'room made')
+                T.select_tab('Library')
+                T.pump(3)
+                lib = mxl_tabs.built_owner('Library') or mxl_itemlib.open_library(win.app)
+                T.pump(3)
+                iid = next(i for i, e in lib.rows.items() if e['file'] == entry['file'])
+                lib.tree.selection_set(iid)
+                T.pump(2)
+                before = len(mxl_char.Character(win.ch.path, win.data).items)
+                lib.place()
+                T.pump(5)
+                T.eq(len(mxl_char.Character(win.ch.path, win.data).items), before + 1, f'placed (legit={legit})')
+                T.check('inventory' in lib.status.cget('text'), lib.status.cget('text'))
+            finally:
+                mxl_itemlib.delete(entry)
+    finally:
+        mxl_legit.set_enabled(False)
+
+
+@T.test
+def set_row_without_its_own_picture_draws_the_items_own_base():
+    """master86: on the "V1.12 Clone" (Sigon rows on other bases) the gloves slot showed boots and the boots slot a
+    shield. The game draws the row's own invfile, else the item's OWN base (Sigon rows have none: gloves, boots)."""
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    import json
+    from pathlib import Path
+    import mxl_char as MC, mxl_newchar, mxl_gfx
+
+    win = T.chartab()
+    t = json.loads(Path(mxl_newchar.__file__).with_name('mxl_he_clone.json').read_text(encoding='utf-8'))
+    raw = bytes.fromhex(''.join(t['bytes']))
+    ch = MC.Character.__new__(MC.Character)
+    ch.path, ch.data, ch.raw = None, win.data, raw
+    ch.parse(raw)
+    worn = {e.it['equipped']: e.it for e in ch.items if e.it['location'] == 1}
+    T.eq((worn[10]['code'], worn[9]['code']), ('lgl ', 'mbt '), 'the example wears leather gloves and mesh boots')
+    T.eq(mxl_gfx.icon_name(worn[10], win.data), 'invlgl', 'gloves slot: the gloves picture')
+    T.eq(mxl_gfx.icon_name(worn[9], win.data), 'invmbt', 'boots slot: the boots picture')
+
 T.main(globals())

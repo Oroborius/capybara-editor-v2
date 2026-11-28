@@ -167,7 +167,11 @@ def search(entries, text):
 
 
 # ------------------------------------------------------------------ actions
+_last_msg = [None]                                  # the Library page repeats why a placement failed
+
+
 def _status(app, msg, error=False):
+    _last_msg[0] = msg
     try:
         app.show_status(msg)
     except Exception:
@@ -447,9 +451,15 @@ class LibraryWindow:
     def place(self):
         e = self.current()
         if e is not None:
+            _last_msg[0] = None
             r = place_copy(self.app, e)
-            self.status.configure(text=(tr('placed.short', 'placed: page {page} ({x}, {y})', page=r[0] + 1, x=r[1],
-                                           y=r[2]) if r else ''))
+            if not r:
+                text = _last_msg[0] or ''
+            elif r[0] == 'inv':                         # 1.14d: into the open character's inventory
+                text = tr('placed.inv', 'placed in the inventory ({x}, {y})', x=r[1], y=r[2])
+            else:
+                text = tr('placed.short', 'placed: page {page} ({x}, {y})', page=r[0] + 1, x=r[1], y=r[2])
+            self.status.configure(text=text)
 
     def inspect(self):
         e = self.current()
