@@ -359,6 +359,14 @@ class SummaryPanel:
         return rows
 
 
+def _mlog(msg):
+    try:
+        import mxl_log
+        mxl_log.log.info('%s', msg)
+    except Exception:
+        pass
+
+
 def _wheel_scrolls_page(w, scrolled):
     """The wheel over a number field scrolls its page and leaves the number alone (Tk's spinbox stepped the
     value by one per notch while the page scrolled on: a value changed while scrolling past it)."""
@@ -588,7 +596,7 @@ class MockPage:
         except M.PlanError as e:
             self._show_errors({getattr(e, 'key', None) or '': str(e)})
             return
-        self._fill(vals, [k for k in vals if k in self.ov])
+        self._fill(vals, [k for k in vals if k in self.ov], why=f'calc {group or "all"}')
         self.touched.update(k for k in vals if k in self.ov)
         self.check()
 
@@ -620,14 +628,20 @@ class MockPage:
             except tk.TclError:                         # an old page's widgets are gone (Mock Mode switched off)
                 pass
 
-    def _fill(self, values, keys):
+    def _fill(self, values, keys, why='solved'):
         self._filling = True
+        changed = []
         try:
             for key in keys:
                 v = self.ov[key]
-                v.set(values[key] if isinstance(v, tk.BooleanVar) else str(values[key]))
+                new = values[key] if isinstance(v, tk.BooleanVar) else str(values[key])
+                if str(v.get()) != str(new):
+                    changed.append(f'{key}: {v.get()!r} -> {new!r}')
+                v.set(new)
         finally:
             self._filling = False
+        if changed and why != 'reset':                  # the support zip shows which box the solver rewrote
+            _mlog(f'mock fields {why}: ' + '; '.join(changed[:12]))
 
     def reset_fields(self):
         """Every field back to the preset's values (then a Check)."""
@@ -637,7 +651,7 @@ class MockPage:
             self._show_errors({'': str(e)})
             return
         self.touched.clear()
-        self._fill(self.pre, self.ov)
+        self._fill(self.pre, self.ov, why='reset')
         self.check()
 
     def form(self):
@@ -665,6 +679,8 @@ class MockPage:
         recomputed on every key stroke). switch: the first problem's group comes to the front (not while typing:
         the re-check after a pause stays on the page you are on)."""
         over, raw, P, errs = M.validate(self.key(), self.form(), self.pre)
+        _mlog(f'mock check ({self.key()}): edited {sorted(self.form().items())[:12]}'
+              + (f'; problems {dict(list(errs.items())[:4])}' if errs else ''))
         self._show_errors(errs, switch)
         self.defense_targets = M.defense_targets(P) if P is not None else None
         if errs:
