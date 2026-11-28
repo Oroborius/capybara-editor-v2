@@ -1465,4 +1465,54 @@ def text_size_scales_the_fonts_and_comes_back():
         T.pump(5)
     T.eq(abs(int(f.cget('size'))), size0, 'back to 100 %')
 
+
+@T.test
+def hotkeys_work_on_the_inventory_pages_stash_view():
+    """Doc #6: hotkeys on the stash. Inventory page > (2) Stash: Ctrl+C on an item copies it, Ctrl+V on a free cell
+    pastes it there."""
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    import mxl_char
+    import mxl_vanilla_he as V
+    win = T.chartab()
+    V.set_tab(win, 'inventory')
+    T.pump(5)
+    win._show_inventory('stash')
+    T.pump(10)
+    page = win.extra.get('containers')
+    cv = page.canvases.get('stash')
+    T.check(cv is not None and cv.winfo_viewable(), 'the stash grid is shown')
+    stored = [e for e in win.ch.items if e.it['location'] == 0 and e.it.get('panel') == 5]
+    if not stored:
+        T.skip('nothing in the sample stash')
+    e = stored[0]
+    occupied = set()
+    for x in stored:
+        w, h = win.data.base(x.it['code']).size
+        occupied |= {(x.it['x'] + i, x.it['y'] + j) for i in range(w) for j in range(h)}
+    w, h = win.data.base(e.it['code']).size
+    cols, rows = 6, 8
+    free = next(((x, y) for y in range(rows - h + 1) for x in range(cols - w + 1)
+                 if not {(x + i, y + j) for i in range(w) for j in range(h)} & occupied), None)
+    if free is None:
+        T.skip('no room in the sample stash')
+
+    def at(cell, key):
+        x, y = cell[0] * page.cell + 3, cell[1] * page.cell + 3
+        cv.focus_force()
+        T.pump(2)
+        cv.event_generate('<Enter>', x=x, y=y)
+        cv.event_generate('<Motion>', x=x, y=y)
+        T.pump(3)
+        cv.event_generate(key, x=x, y=y)
+        T.pump(5)
+
+    win.app._capy_clip = None
+    at((e.it['x'], e.it['y']), '<Control-KeyPress-c>')
+    T.check(win.app._capy_clip is not None, 'Ctrl+C copied the stash item')
+    n = len(mxl_char.Character(win.ch.path, win.data).items)
+    at(free, '<Control-KeyPress-v>')
+    T.eq(len(mxl_char.Character(win.ch.path, win.data).items), n + 1, 'Ctrl+V pasted into the free stash cell')
+    win.app._capy_clip = None
+
 T.main(globals())

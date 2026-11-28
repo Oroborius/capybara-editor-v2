@@ -47,14 +47,30 @@ def findings_of(blob):
         return []
 
 
-def needs_conversion(blob):
-    """Legit mode on and the item has impossible findings."""
+def needs_conversion(blob, data=None):
+    """Legit mode on and the item has impossible findings (or socketed items sharing one item id: data needed)."""
     if not mxl_legit.enabled():
         return False
     try:
-        return bool(_fixable(findings_of(blob)))
+        return bool(_fixable(findings_of(blob))) or (data is not None and _shared_ids(blob, data))
     except Exception:
         return False
+
+
+def _shared_ids(blob, data=None):
+    """The item and its socketed items do not all have their own item id (copies made by older editors: five
+    Rainbow Facets in one Caduceus sharing one id, which the server reports as duplicates)."""
+    from mxl_creator import decode_item
+    buf, pos, ids = bytes(blob), 0, []
+    try:
+        while pos < len(buf) and buf[pos:pos + 2] == b'JM':
+            rec, size = decode_item(buf[pos:], data)
+            if rec.get('id') is not None:
+                ids.append(rec['id'])
+            pos += size
+    except Exception:
+        return False
+    return len(ids) != len(set(ids))
 
 
 def _fixable(found):
@@ -138,7 +154,7 @@ def _slots(rec):
     return out
 
 
-def _fix_affixes(v, rec, base, changes):
+def _fix_affixes(v, rec, base, changes, fill=False):
     from d2bt.itemgen import legal_affixes
     from d2bt.tooltip.data import to_int
     q = {'magic': 4, 'rare': 6, 'crafted': 8}.get(rec['quality'], 2)
@@ -224,7 +240,8 @@ def _fix_affixes(v, rec, base, changes):
         for b in bad:
             if b[3] != idx or b[0] != table:
                 others |= set(_sig(v, b[4])) if b[4] else set()
-        best = covering(table, row, others)
+        # a crafted item's recipe stats are no affix stats: only the old same-stats match there
+        best = covering(table, row, others) if rec['quality'] != 'crafted' else None
         if best:
             unexplained -= set(_sig(v, best[2]))
         elif want:
@@ -251,7 +268,7 @@ def _fix_affixes(v, rec, base, changes):
             set_(0)
             changes.append(f'{old} ({old_where}) dropped (no allowed row has its stats)')
 
-    if rec['quality'] in ('magic', 'rare', 'crafted') and unexplained:
+    if fill and rec['quality'] in ('magic', 'rare') and unexplained:
         for table, get, set_ in slots:              # empty affix slots: rows for the stats nothing explains
             if not unexplained:
                 break
@@ -310,6 +327,33 @@ def _fix_superior(v, rec, kids, data, changes):
     rec['quality'] = 'normal'
     rec.pop('subquality', None)
     changes.append('superior -> normal (no superior variant of this base fits)')
+
+
+def _convert_kids(kids, data, changes):
+    """Each socketed item with impossible findings converted (a rare jewel with stats and no affix in a Diadem).
+    -> (kids, number of findings they had)."""
+    from mxl_creator import decode_blob, encode_item
+    out, fixed = [], 0
+    for k in kids:                                   # decoded records (decode_blob)
+        try:
+            blob = bytes(encode_item(k, data, preserve_stat_order=True))
+        except Exception:
+            blob = None
+        bad = mxl_legit.impossible(findings_of(blob)) if blob else []
+        if bad:
+            r = convert(blob, data)
+            if r.blob is not None:
+                fixed += len(bad)
+                changes.append('socketed item: ' + '; '.join(r.changes[:6]))
+                out.append(decode_blob(r.blob, data)[0])
+                continue
+        out.append(k)
+    return out, fixed
+
+
+def renew_kids(blob, data):
+    from mxl_creator import renew_item_ids
+    return renew_item_ids(blob, data)
 
 
 def _entries(rec):
@@ -382,9 +426,17 @@ def convert(blob, data):
         return Result(None, [], [], 0, 0)
     before = mxl_legit.impossible(found)
     base = v.bases.get(rec['code'].strip(), (None, None))[1]
-    if base is None or not _fixable(found):
-        return Result(None, [], before, len(before), len(before))
     changes = []
+    kids, kid_fixed = _convert_kids(kids, data, changes)   # socketed items are checked by the server too
+    if kid_fixed and (base is None or not _fixable(found)):
+        new = bytes(renew_kids(build_blob(rec, kids, data, preserve_stat_order=True), data))
+        after = mxl_legit.impossible(findings_of(new))
+        return Result(new, changes, after, len(before) + kid_fixed, len(after))
+    if base is None or not _fixable(found):
+        if _shared_ids(blob, data):                    # nothing else wrong: only the shared ids
+            new = bytes(renew_kids(blob, data))
+            return Result(new, ['item IDs renewed (socketed items shared one)'], before, len(before), len(before))
+        return Result(None, [], before, len(before), len(before))
     rules = {f.rule for f in before}
 
     need = [int(m.group(1)) for f in before if f.rule == 'identity-level'
@@ -401,7 +453,7 @@ def convert(blob, data):
     if 'rare-name' in rules and rec.get('rare_names') and rec['quality'] in ('rare', 'crafted'):
         _fix_rare_name(v, rec, base, changes)
     if rules & {'affix-type', 'affix-level', 'affix-quality', 'affix-group', 'affix-id', 'affix-count'} or 'item-level' in rules:
-        _fix_affixes(v, rec, base, changes)
+        _fix_affixes(v, rec, base, changes, fill='affix-count' in rules)
     if rec['quality'] == 'superior' and any(f.rule == 'quality' and 'superior variant cannot spawn' in f.detail
                                             for f in before):
         _fix_superior(v, rec, kids, data, changes)
@@ -489,7 +541,7 @@ def add_menu_entry(win, menu, entry):
     if entry is None or getattr(win.ch, 'old', False) or not mxl_legit.enabled():
         return False
     try:
-        if not needs_conversion(bytes(entry.blob)):
+        if not needs_conversion(bytes(entry.blob), win.data):
             return False
     except Exception:
         return False

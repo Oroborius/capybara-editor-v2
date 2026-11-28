@@ -1576,4 +1576,117 @@ def convert_fixes_runeword_charges_and_superior_variant():
         T.eq(mxl_legit.impossible(mxl_legit.check_item(res.blob)), [], f'legit: {res.changes}')
 
 
+
+@T.test
+def convert_leaves_a_crafted_items_recipe_stats_alone():
+    """The new Convert passes (rows that carry the item's own stats) must not take a crafted item's recipe stats
+    for affix stats: an illegal affix row on a legit crafted item is replaced, no row is added for the recipe's
+    stats and no stat goes or comes (a value may be clamped into the replacement row's range)."""
+    need()
+    import mxl_legit
+    import mxl_legit_convert as LC
+    from mxl_creator import build_blob, decode_blob
+    from mxl_rc_menu import _creator_for
+    if not mxl_legit.prepare():
+        T.skip('stock tables unavailable')
+    win = T.chartab()
+    cr = _creator_for(win)
+    v = mxl_legit._validator()
+    tried = 0
+    why = []
+    for code in ('rin ', 'amu ', 'vgl ', 'tbl '):
+        if not cr.can_have_quality(code, 'crafted'):
+            why.append((code, 'no crafted'))
+            continue
+        spec = cr.new_spec('crafted', code)
+        spec['ilvl'] = 80
+        crafts = cr.craft_choices(code)
+        if not crafts:
+            why.append((code, 'no recipe'))
+            continue
+        spec['craft'] = crafts[0][0]
+        names = cr.rare_name_choices(code)
+        spec['rare_names'] = (names['rareprefix'][0][0], names['raresuffix'][0][0])
+        cr.reroll_crafted(spec)
+        cr.roll(spec, 'max')
+        try:
+            blob, _r = cr.build(spec)
+        except Exception as e:
+            why.append((code, 'build', str(e)[:80]))
+            continue
+        if mxl_legit.impossible(mxl_legit.check_item(blob)):
+            why.append((code, 'not legit', [f.detail for f in mxl_legit.impossible(mxl_legit.check_item(blob))][:3]))
+            continue
+        rec, kids = decode_blob(blob, win.data)
+        k = next((i for i, a in enumerate(rec['rare_affixes']) if a), None)
+        if k is None:
+            why.append((code, 'no affix', rec['rare_affixes']))
+            continue
+        table = 'magicprefix' if k % 2 == 0 else 'magicsuffix'
+        old_row = v.affixes[(table, rec['rare_affixes'][k])][1]
+        from d2bt.itemgen import legal_affixes
+        legal = {r['id'] for r in legal_affixes(v, code.strip(), 99, 8)['prefix' if k % 2 == 0 else 'suffix']}
+        twin = next((i for (t, i), (_t, r) in v.affixes.items() if t == table and i not in legal
+                     and LC._sig(v, r) == LC._sig(v, old_row)), None)
+        if twin is None:
+            why.append((code, 'no twin'))
+            continue
+        stats = sorted((s['id'], s.get('param') or 0, s['value']) for s in rec['stats'])
+        rec['rare_affixes'][k] = twin
+        bad = build_blob(rec, kids, win.data, preserve_stat_order=True)
+        if not mxl_legit.impossible(mxl_legit.check_item(bad)):
+            why.append((code, 'twin accepted'))
+            continue
+        tried += 1
+        res = LC.convert(bad, win.data)
+        T.check(res.blob is not None, f'{code}: converted {res.changes}')
+        T.check(not any('added for its stats' in c for c in res.changes), f'{code}: nothing added: {res.changes}')
+        T.eq(mxl_legit.impossible(mxl_legit.check_item(res.blob)), [], f'{code}: legit {res.changes}')
+        T.eq(sorted((s['id'], s.get('param') or 0) for s in decode_blob(res.blob, win.data)[0]['stats']),
+             [x[:2] for x in stats], f'{code}: the same stats (values may be clamped): {res.changes}')
+    if not tried:
+        T.skip(f'no crafted item with a replaceable affix row: {why}')
+
+
+@T.test
+def convert_renews_item_ids_socketed_items_share():
+    """Doc #4: five Rainbow Facets in one Caduceus shared one item id (the server: duplicates). Convert is offered
+    and gives every socketed item its own id."""
+    need()
+    import mxl_legit
+    import mxl_legit_convert as LC
+    from mxl_creator import build_blob, decode_blob
+    from mxl_rc_menu import _creator_for
+    if not mxl_legit.prepare():
+        T.skip('stock tables unavailable')
+    win = T.chartab()
+    cr = _creator_for(win)
+    jspec = cr.new_spec('magic', 'jew ')
+    jspec['ilvl'] = 80
+    jspec['prefix'] = cr.affix_choices('magicprefix', 'jew ', 80)[0][0]
+    cr.roll(jspec, 'max')
+    jrec = decode_blob(cr.build(jspec)[0], win.data)[0]
+    spec = cr.new_spec('normal', 'cap ')
+    spec['ilvl'] = 80
+    spec['sockets'] = 2
+    rec, _kids = decode_blob(cr.build(spec)[0], win.data)
+    T.check(rec.get('sockets') == 2, f'two sockets: {rec.get("sockets")}')
+    import copy
+    kids = [copy.deepcopy(jrec), copy.deepcopy(jrec)]
+    for k in kids:
+        k['id'] = 12345678
+    rec['socketed_count'] = 2
+    same = build_blob(rec, kids, win.data, preserve_stat_order=True)
+    mxl_legit.set_enabled(True)
+    try:
+        T.check(LC.needs_conversion(same, win.data), 'Convert offered')
+    finally:
+        mxl_legit.set_enabled(False)
+    res = LC.convert(same, win.data)
+    T.check(res.blob is not None, f'converted: {res.changes}')
+    r2, k2 = decode_blob(res.blob, win.data)
+    ids = [r2['id']] + [k['id'] for k in k2]
+    T.eq(len(set(ids)), len(ids), f'every record its own id: {ids}')
+    T.eq(mxl_legit.impossible(mxl_legit.check_item(res.blob)), [], 'still legit')
+
 T.main(globals())
