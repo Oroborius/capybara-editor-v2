@@ -92,7 +92,7 @@ def he_menu_mock_mode_shows_the_mock_tools():
 
 
 @T.test
-def he_stash_page_shows_the_collector_bar_and_bit_editor_hint():
+def he_stash_opens_the_inventory_stash_view_and_bit_editor_hint():
     if not AVAILABLE:
         T.skip('no 1.14d game data or sample character')
     import mxl_tabs
@@ -101,12 +101,10 @@ def he_stash_page_shows_the_collector_bar_and_bit_editor_hint():
     embed = cw.he_embed
     bar = T.G.app.char_combo.master
     T.check(not bar.winfo_ismapped(), 'collector bar hidden in the character view')
-    embed.toggle('Stash')
+    embed.toggle('Stash')                  # doc #6: one inventory screen - the Inventory page's stash view
     T.pump(10)
-    T.check(bar.winfo_ismapped(), 'collector bar shown on the embedded Stash page')
-    embed.toggle('Stash')
-    T.pump(10)
-    T.check(not bar.winfo_ismapped(), 'collector bar hidden again on leave')
+    T.eq((embed.current, cw.tab.get(), cw.inv_view.get()), (None, 'inventory', 'stash'), 'Stash: Inventory > (2) Stash')
+    T.check(not bar.winfo_ismapped(), 'no collector bar: its entries are in the Hero Editor Menu')
     embed.toggle('Bit editor')
     T.pump(10)
     page = embed.page('Bit editor')

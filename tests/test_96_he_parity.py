@@ -873,12 +873,15 @@ def tab_buttons_right_of_the_menu_open_their_tabs():
     if shot:
         win.top.update_idletasks()
         os.system(f'import -window root {shot}')
-    for name in ('Creator', 'Stash'):
-        buttons[mxl_tabs.tab_label(name)].invoke()
-        T.pump(3)
-        page = win.he_embed.pages[name]
-        T.eq(win.he_embed.current, page, f'{name} button shows its page inside the Hero Editor')
-        T.eq(win.top.master.select(), str(win.top), f'{name} does not leave the Character tab')
+    buttons[mxl_tabs.tab_label('Creator')].invoke()
+    T.pump(3)
+    T.eq(win.he_embed.current, win.he_embed.pages['Creator'], 'Creator button shows its page inside the Hero Editor')
+    T.eq(win.top.master.select(), str(win.top), 'Creator does not leave the Character tab')
+    buttons[mxl_tabs.tab_label('Stash')].invoke()        # doc #6: one inventory screen
+    T.pump(3)
+    T.eq(win.he_embed.current, None, 'Stash: no separate page')
+    T.eq((win.tab.get(), win.inv_view.get()), ('inventory', 'stash'), 'Stash: the Inventory page, (2) Stash')
+    T.eq(win.top.master.select(), str(win.top), 'Stash does not leave the Character tab')
 
 
 def _descends_from(widget, top):
@@ -896,8 +899,8 @@ def _descends_from(widget, top):
 
 @T.test
 def tab_buttons_embed_each_page_in_the_hero_editor_window():
-    """Stash / Creator / Library / Bit editor open as pages inside the Hero Editor window: no new toplevel, the
-    page is a descendant of the window, and the character view comes back from its own tabs."""
+    """Creator / Library / Bit editor open as pages inside the Hero Editor window: no new toplevel, the page is a
+    descendant of the window, and the character view comes back from its own tabs. (Stash: the Inventory page.)"""
     if not AVAILABLE:
         T.skip('vanilla game data or sample character is unavailable')
     import mxl_tabs
@@ -918,7 +921,7 @@ def tab_buttons_embed_each_page_in_the_hero_editor_window():
     win.he_embed.leave()
     before = toplevels()
     shots = os.environ.get('HE_TABS_SHOTS')
-    for name in ('Stash', 'Creator', 'Library', 'Bit editor'):
+    for name in ('Creator', 'Library', 'Bit editor'):     # Stash: the Inventory page's stash view (doc #6)
         button = win.he_tab_buttons[mxl_tabs.tab_label(name)]
         button.invoke()
         T.pump(5)
@@ -965,6 +968,7 @@ def delete_key_keeps_working_after_the_focus_was_in_a_field():
     cv = win.inv
     import mxl_vanilla_he as V
     V.set_tab(win, 'inventory')
+    win._show_inventory('person')                      # (the Stash button leaves the page on its stash view)
     win.top.update()
     T.pump(5)
     try:

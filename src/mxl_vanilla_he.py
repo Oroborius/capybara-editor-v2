@@ -314,6 +314,9 @@ class EmbedHost(tk.Frame):
         return page
 
     def show(self, page):
+        if page._key == 'Stash':                  # one inventory screen (doc #6): the Inventory page's stash view
+            self.open_stash_view()
+            return
         if page is self.current:
             return
         win = self.win
@@ -380,7 +383,22 @@ class EmbedHost(tk.Frame):
         if page is self.current:
             self.leave()
 
+    def open_stash_view(self):
+        """Stash (bar button, Menu): the Inventory page on its (2) Stash view - the full item menu, the hotkeys and
+        Create / Paste / Import into the stash, instead of the collector's read-only stash panel."""
+        win = self.win
+        self.leave()
+        self.page_var.set('')
+        try:
+            set_tab(win, 'inventory')
+            win._show_inventory('stash')
+        except (AttributeError, tk.TclError) as e:
+            print('stash view:', e)
+
     def toggle(self, name):
+        if name == 'Stash':
+            self.open_stash_view()
+            return
         page = self.page(name)
         if page is self.current:
             self.leave()
