@@ -575,8 +575,20 @@ class ContainersPage:
                 paste = lambda: self.paste_here(key, cell, clip)
             else:
                 paste = lambda: paste_one(win, e, clip, lambda: self.paste_over(e, clip))
-            RC._vanilla_char_commands(win, menu, e, clip, paste=paste,
-                                      delete=lambda: self.delete(e), extensions=False)
+            def place_tools(more):
+                if key != 'belt':
+                    more.add_command(label=rc('duplicate', 'Duplicate'), command=lambda: self.duplicate(e, key))
+                    for k, lab in (('inv', T('van.to_inv', 'To inventory')), ('stash', T('van.to_stash', 'To stash')),
+                                   ('cube', T('van.to_cube', 'To Horadric Cube'))):
+                        if k != key and not (k == 'cube' and e.it['code'] == CUBE_CODE):
+                            more.add_command(label=lab, command=lambda k=k: self.move_to(e, k))
+            # the same menu as the inventory's (testers: Edit was missing here, the rest in another order)
+            RC._vanilla_char_commands(win, menu, e, clip, paste=paste, delete=lambda: self.delete(e),
+                                      extensions=e is not None, editable=key != 'belt',
+                                      edit=(lambda: self.edit(e)) if e is not None else None,
+                                      place_tools=place_tools)
+            if e is not None:
+                return
             menu.add_separator()
         if e is not None:
             import mxl_he_stats

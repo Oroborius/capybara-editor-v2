@@ -528,7 +528,12 @@ def _char_menu(win, cv, ev):
         menu.grab_release()
 
 
-def _vanilla_char_commands(win, menu, entry, clip, *, paste=None, delete=None, extensions=True):
+def _vanilla_char_commands(win, menu, entry, clip, *, paste=None, delete=None, extensions=True, edit=None,
+                           place_tools=None, editable=True):
+    """The Hero Editor item menu, the same on every grid (inventory, paperdoll, stash, cube: doc #6 / tester):
+    its own entries, Edit Item (the Item Editor), Convert when illegit, and More Item Tools. edit: the grid's Item
+    Editor action (default the character window's); place_tools(more): the grid's own entries (To stash / To
+    inventory / To cube, Duplicate) - default the character window's."""
     from tkinter import filedialog, messagebox
     from mxl_statnames import vanilla_stat_value
     from mxl_vanilla_he import allows, set_tab
@@ -635,10 +640,16 @@ def _vanilla_char_commands(win, menu, entry, clip, *, paste=None, delete=None, e
     menu.add_command(label='Help', accelerator='F1', command=lambda: set_tab(win, 'info'))
     if not extensions:
         return
+    menu.add_separator()                                 # the editor's own entries after Hero Editor 1.04's
+    if entry is not None and editable:
+        if edit is None:
+            def edit():
+                win.selected = entry
+                win.edit()
+        menu.add_command(label='Edit Item… (Item Editor)', command=edit)
     if entry is not None:
         from mxl_legit_convert import add_menu_entry
         add_menu_entry(win, menu, entry)
-    menu.add_separator()
     more = submenu(menu, 'More Item Tools')
     buffered = getattr(win.app, '_capy_he_buffer', ())
     if entry is not None and buffered:
@@ -646,10 +657,18 @@ def _vanilla_char_commands(win, menu, entry, clip, *, paste=None, delete=None, e
                          command=lambda: mutate(win, entry, 'Applied magic attribute buffer.',
                                                 lambda rec: paste_attributes(rec, buffered)))
     if entry is not None:
-        _socket_cascade(win, more, win=win, e=entry)
-        more.add_command(label='To stash', command=win.to_stash)
-        more.add_command(label='Duplicate', command=lambda: _char_duplicate(win, entry))
+        import mxl_he_stats
+        more.add_command(label='Item stats…', command=lambda: mxl_he_stats.open_char_item_stats(win, entry))
+        if editable:                                     # (belt items are shown, not edited)
+            _char_quantity_cascade(win, more, entry)
+            _socket_cascade(win, more, win=win, e=entry)
+        if place_tools is None:
+            more.add_command(label='To stash', command=win.to_stash)
+            more.add_command(label='Duplicate', command=lambda: _char_duplicate(win, entry))
+        else:
+            place_tools(more)
         more.add_command(label='Open in Bit editor', command=lambda: _inspect_char(win, entry))
+        more.add_command(label='Add to library…', command=lambda: _library_char(win, entry))
 
 
 def _char_copy(win, e):

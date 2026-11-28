@@ -1519,4 +1519,45 @@ def hotkeys_work_on_the_inventory_pages_stash_view():
     T.eq(len(mxl_char.Character(win.ch.path, win.data).items), n + 1, 'Ctrl+V pasted into the free stash cell')
     win.app._capy_clip = None
 
+
+@T.test
+def item_menu_is_the_same_on_the_inventory_and_the_stash():
+    """Tester (xsiv): the stash's right-click menu was not the inventory's (Edit missing on one, the other entries
+    in another order). Both grids build one menu: same entries, Edit Item at the top, More Item Tools."""
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    from types import SimpleNamespace
+    import mxl_rc_menu
+    import mxl_vanilla_he as V
+    win = T.chartab()
+    menus = []
+    o = V.popup
+    V.popup = lambda m, e: menus.append(m)
+
+    def labels(m):
+        return [m.entrycget(i, 'label') for i in range((m.index('end') or -1) + 1) if m.type(i) != 'separator']
+
+    def ev(cv, x, y):
+        return SimpleNamespace(widget=cv, x=x, y=y, x_root=cv.winfo_rootx() + x, y_root=cv.winfo_rooty() + y)
+    try:
+        V.set_tab(win, 'inventory')
+        win._show_inventory('person')
+        T.pump(5)
+        e = win.ch.inventory()[0]
+        mxl_rc_menu._char_menu(win, win.inv, ev(win.inv, e.it['x'] * win.cell + 3, e.it['y'] * win.cell + 3))
+        person = labels(menus[-1])
+        win._show_inventory('stash')
+        T.pump(5)
+        page = win.extra['containers']
+        cv = page.canvases['stash']
+        st = [x for x in win.ch.items if x.it['location'] == 0 and x.it.get('panel') == 5]
+        if not st:
+            T.skip('nothing in the sample stash')
+        page.on_menu('stash', ev(cv, st[0].it['x'] * page.cell + 3, st[0].it['y'] * page.cell + 3))
+        stash = labels(menus[-1])
+    finally:
+        V.popup = o
+    T.check('Edit Item… (Item Editor)' in person and 'Edit Item… (Item Editor)' in stash, f'Edit on both: {stash}')
+    T.eq(stash, person, 'the same top-level entries on the inventory and the stash')
+
 T.main(globals())
