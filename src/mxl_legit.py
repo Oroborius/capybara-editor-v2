@@ -253,3 +253,32 @@ def item_is_illegit(blob):
 
 
 ILLEGIT_BORDER = '#ff3030'
+
+
+def carry1_extras(ch):
+    """Legit Mode: id()s of the blobs of the character's carry1 uniques beyond the first of each row (Annihilus,
+    Hellfire Torch, Gheed's Fortune: one carried; inventory, stash, cube, belt all count, the worn one and the
+    mercenary's do not - dev kit e5ae31d, Game.exe 0x55CA40). The first copy stays clean, the extras get the red
+    border. Empty when the mode is off."""
+    if ch is None or not enabled():
+        return set()
+    try:
+        uniques = _validator().uniques
+    except Exception:
+        return set()
+    seen, extras = set(), set()
+    for e in getattr(ch, 'items', ()):
+        it = e.it
+        uid = it.get('set_unique_id')
+        if it.get('quality') != 'unique' or it.get('location') == 1 or uid is None or not 0 <= uid < len(uniques):
+            continue
+        if uniques[uid].get('carry1') != '1':
+            continue
+        if uid in seen:
+            extras.add(id(e.blob))
+        seen.add(uid)
+    return extras
+
+
+def entry_is_illegit(blob, extras=()):
+    return id(blob) in extras or item_is_illegit(blob)

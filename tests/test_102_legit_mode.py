@@ -251,9 +251,9 @@ def convert_menu_entry_only_for_illegit_items_in_legit_mode():
 # impossible findings per private reference save (sorted order), as the dev kit's checker at the vendored commit
 # reports them (None: unreadable = hacked). The saves are private (.cache/samples, never committed): skipped without.
 REF_EXPECTED = {
-    'legit-ref': [0, 69, 102, 135, 163, 93, 100, 96, 48, 48, 54, 27, 94, 106, 131, 131, 155, 27, 66, 41, 93, 32, 100,
-                  0, 93, 90, 91, 91, 29, 125, 133, 26, 69, 63, 54, 98],
-    'lld-ref': [166, 167, 171, 171, 129, 171, 41],
+    'legit-ref': [0, 69, 102, 135, 163, 93, 100, 96, 48, 48, 54, 28, 94, 109, 131, 131, 155, 27, 67, 42, 93, 34, 101,
+                  0, 93, 90, 91, 91, 30, 125, 134, 26, 69, 63, 54, 98],
+    'lld-ref': [166, 167, 171, 171, 129, 172, 42],
 }
 
 
@@ -1688,5 +1688,95 @@ def convert_renews_item_ids_socketed_items_share():
     ids = [r2['id']] + [k['id'] for k in k2]
     T.eq(len(set(ids)), len(ids), f'every record its own id: {ids}')
     T.eq(mxl_legit.impossible(mxl_legit.check_item(res.blob)), [], 'still legit')
+
+
+@T.test
+def legit_mode_refuses_a_second_annihilus():
+    """Dev kit e5ae31d (carry1, Game.exe 0x55CA40): one Annihilus / Hellfire Torch / Gheed's Fortune carried, stash
+    and cube included. In Legit Mode a save that adds a second copy is refused, the file stays as it was."""
+    need()
+    import mxl_legit
+    from mxl_char import Character
+    from mxl_rc_menu import _creator_for
+    if not mxl_legit.prepare():
+        T.skip('stock tables unavailable')
+    win = T.chartab()
+    cr = _creator_for(win)
+    row = next((k for k, label, _r in cr.uniques() if label.startswith('Annihilus')), None)
+    if row is None:
+        T.skip('no Annihilus row')
+    spec = cr.new_spec('unique', None, row)
+    blob, _r = cr.build(spec)
+    T.eq(mxl_legit.impossible(mxl_legit.check_item(blob)), [], 'one Annihilus is legit')
+    for e in [e for e in win.ch.items if e.it['code'] == 'cm1 ' and e.it['quality'] == 'unique']:
+        win.ch.items.remove(e)
+    for e in list(win.ch.inventory())[:4]:
+        win.ch.items.remove(e)
+    T.check(win.save('room'), 'room made')
+    mxl_legit.set_enabled(True)
+    try:
+        spot = win.ch.free_inventory_spot(win.ch.data and __import__('mxl_save').blob_item(blob, win.data))
+        win.ch.place(bytes(blob), ('inv',) + tuple(spot))
+        T.check(win.save('first'), 'the first Annihilus is saved')
+        on_disk = open(win.ch.path, 'rb').read()
+        spot = win.ch.free_inventory_spot(__import__('mxl_save').blob_item(blob, win.data))
+        win.ch.place(bytes(blob), ('inv',) + tuple(spot))
+        import tkinter.messagebox as mb
+        o = mb.showerror
+        mb.showerror = lambda *a, **k: None
+        try:
+            T.check(not win.save('second'), 'a second Annihilus is refused')
+        finally:
+            mb.showerror = o
+        T.eq(open(win.ch.path, 'rb').read(), on_disk, 'the file stays as it was')
+        n = sum(1 for e in Character(win.ch.path, win.data).items if e.it['code'] == 'cm1 ' and e.it['quality'] == 'unique')
+        T.eq(n, 1, 'one Annihilus in the saved character')
+    finally:
+        mxl_legit.set_enabled(False)
+
+
+@T.test
+def legit_mode_marks_a_second_annihilus_in_the_stash():
+    """carry1 extras already in a save: the first Annihilus stays clean, the copy in the stash gets the red border
+    (the stash grid drew no border at all before)."""
+    need()
+    import mxl_legit
+    import mxl_vanilla_he as V
+    from mxl_rc_menu import _creator_for
+    from mxl_save import blob_item
+    if not mxl_legit.prepare():
+        T.skip('stock tables unavailable')
+    win = T.chartab()
+    cr = _creator_for(win)
+    row = next((k for k, label, _r in cr.uniques() if label.startswith('Annihilus')), None)
+    if row is None:
+        T.skip('no Annihilus row')
+    blob, _r = cr.build(cr.new_spec('unique', None, row))
+    page = win.extra.get('containers')
+    for e in [e for e in win.ch.items if e.it['code'] == 'cm1 ' and e.it['quality'] == 'unique']:
+        win.ch.items.remove(e)
+    for e in list(win.ch.inventory())[:2]:
+        win.ch.items.remove(e)
+    spot = win.ch.free_inventory_spot(blob_item(blob, win.data))
+    win.ch.place(bytes(blob), ('inv',) + tuple(spot))
+    where = page.free_spot('stash', bytes(blob))
+    T.check(where is not None, 'room in the stash')
+    win.ch.place(bytes(blob), where)
+    T.check(win.save('two Annihilus (Legit Mode off)'), 'saved with Legit Mode off')
+    mxl_legit.set_enabled(True)
+    try:
+        V.set_tab(win, 'inventory')
+        win._show_inventory('stash')
+        win.redraw()
+        page.refresh()
+        T.pump(5)
+        T.eq(len(mxl_legit.carry1_extras(win.ch)), 1, 'one extra')
+        T.check(page.canvases['stash'].find_withtag('illegit'), 'the stash copy has the red border')
+        first = next(e for e in win.ch.items if e.it['code'] == 'cm1 ' and e.it['location'] == 0
+                     and e.it.get('panel') == 1)
+        T.check(not mxl_legit.entry_is_illegit(first.blob, mxl_legit.carry1_extras(win.ch)),
+                'the first copy (inventory) stays clean')
+    finally:
+        mxl_legit.set_enabled(False)
 
 T.main(globals())

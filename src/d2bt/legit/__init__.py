@@ -32,6 +32,7 @@ from .data import game_tables, runeword_strings
 # One-time rewards per difficulty. The scroll from Anya grants resistance.
 STAT_REWARDS = {17: 5}  # Lam Esen's Tome
 SKILL_REWARDS = {1: 1, 9: 1, 25: 2}  # Den of Evil, Radament, Izual
+STASH_GOLD_CAP = 2500000  # 1.14d
 
 
 @dataclass(frozen=True)
@@ -555,6 +556,94 @@ class Validator:
         used = stats.get(5, 0) + sum(char.skills)
         if used > skill_budget or max(char.skills, default=0) > 20:
             yield Finding(char.name, 'skill-points', f'{used} skill points against budget {skill_budget}, max 20 per skill')
+        yield from self._vital_findings(char, row)
+        yield from self._header_findings(char, row)
+        yield from self._skill_findings(char)
+
+    def _vital_findings(self, char, row):
+        stats, level = char.stats, char.level
+        if not 1 <= level <= 99:
+            return
+        start_vit, start_int = to_int(row.get('vit')), to_int(row.get('int'))
+        # Gear and charms may raise the saved maximums and may or may not be folded into the saved attributes: flat
+        # life/mana/stamina, vitality/energy and life/mana percent. The floor discounts gear attributes, the ceiling adds them.
+        gain = {7: 20 * 256 * sum(diff[20] & 1 for diff in char.quests), 9: 0, 11: 0}  # Potion of Life, Golden Bird
+        percent = {7: 0, 9: 0}
+        item_attr = {1: 0, 3: 0}
+        buffs = self._buff_slots(char.cls)
+        unbounded = any(points for i, points in enumerate(char.skills) if i in buffs)
+        for item in flatten(char.items):
+            for sid, _, value in item.stats + item.runeword_stats + [t for s in item.set_stats.values() for t in s]:
+                if sid in gain:
+                    gain[sid] += value * 256
+                elif sid in item_attr:
+                    item_attr[sid] += value
+                elif sid in (76, 77):
+                    percent[7 if sid == 76 else 9] += value
+                elif sid >= 214:
+                    unbounded = True  # per-level and other scripted bonuses
+        gain[7] += item_attr[3] * to_int(row.get('lifepervitality')) * 64
+        gain[11] += item_attr[3] * to_int(row.get('staminapervitality')) * 64
+        gain[9] += item_attr[1] * to_int(row.get('manapermagic')) * 64
+        # Quarter-point gains: 64 units of the 8-bit fixed point per quarter. Only Golden Bird touches these.
+        grow = level - 1
+        base_vit = max(start_vit, stats.get(3, 0) - item_attr[3])
+        base_int = max(start_int, stats.get(1, 0) - item_attr[1])
+        expected = {
+            7: (to_int(row.get('hpadd')) + start_vit) * 256 + 64 * (
+                grow * to_int(row.get('lifeperlevel')) + (base_vit - start_vit) * to_int(row.get('lifepervitality'))),
+            9: start_int * 256 + 64 * (
+                grow * to_int(row.get('manaperlevel')) + (base_int - start_int) * to_int(row.get('manapermagic'))),
+            11: to_int(row.get('stamina')) * 256 + 64 * (
+                grow * to_int(row.get('staminaperlevel')) + (base_vit - start_vit) * to_int(row.get('staminapervitality'))),
+        }
+        slack = 8 * 256  # the game rounds each level gain, so its totals run a few points off the table sums
+        for sid, label in ((7, 'life'), (9, 'mana'), (11, 'stamina')):
+            have = stats.get(sid, 0)
+            if have < expected[sid] - slack:
+                yield Finding(char.name, 'vitals', f'max {label} {have / 256:g} is below the {expected[sid] / 256:g} '
+                                                   f'a level {level} {row["class"]} can have')
+            ceiling = (expected[sid] + gain[sid]) * (100 + percent.get(sid, 0)) // 100 + slack
+            if not unbounded and have > ceiling:
+                yield Finding(char.name, 'vitals', f'max {label} {have / 256:g} is above the {ceiling / 256:g} '
+                                                   f'a level {level} {row["class"]} can reach')
+
+    def _buff_slots(self, cls):
+        # Class skills that raise life or stamina while active (Vigor, Battle Orders, Oak Sage).
+        ids = {120, 149, 226}
+        return {i for i, sid in enumerate(self._class_skill_ids(cls)) if sid in ids}
+
+    def _class_skill_ids(self, cls):
+        code = self.save_tables.class_codes[cls] if cls < len(self.save_tables.class_codes) else None
+        return [i for i, r in enumerate(self.rows('skills')) if r.get('charclass') == code]
+
+    def _header_findings(self, char, row):
+        stats = char.stats
+        unknown = sorted(sid for sid in stats if sid > 15)
+        if unknown:
+            yield Finding(char.name, 'stat-id', f'character stat list holds item stat ids {unknown}', 'suspicious')
+        if stats.get(14, 0) > max(char.level, 1) * 10000:
+            yield Finding(char.name, 'gold', f'{stats[14]} gold carried at level {char.level}, cap {char.level * 10000}')
+        if stats.get(15, 0) > STASH_GOLD_CAP:
+            yield Finding(char.name, 'gold', f'{stats[15]} gold stashed, cap {STASH_GOLD_CAP}')
+
+    def _skill_findings(self, char):
+        ids = self._class_skill_ids(char.cls)
+        rows = self.rows('skills')
+        names = {rows[sid]['skill']: i for i, sid in enumerate(ids)}
+        for i, points in enumerate(char.skills):
+            if not points:
+                continue
+            if i >= len(ids):
+                yield Finding(char.name, 'skill-class', f'skill slot {i} is not a skill of this class')
+                continue
+            skill = rows[ids[i]]
+            if char.level < to_int(skill.get('reqlevel')):
+                yield Finding(char.name, 'skill-level', f'{skill["skill"]} needs level {skill["reqlevel"]}, character is {char.level}')
+            for col in ('reqskill1', 'reqskill2', 'reqskill3'):
+                need = skill.get(col)
+                if need and (names.get(need) is None or not char.skills[names[need]]):
+                    yield Finding(char.name, 'skill-prerequisite', f'{skill["skill"]} needs {need}')
 
     def validate(self, character, peers=()):
         findings = list(self._character_findings(character))
@@ -578,7 +667,25 @@ class Validator:
                 inspect(item.children, item)
 
         inspect(character.items)
+        findings.extend(self._carry1_findings(character))
         return findings
+
+    def _carry1_findings(self, character):
+        """1.14d D2Game 0x55CA40 (the pickup, buy and trade check) walks the character's whole item list and refuses
+        a carry1 unique when another item of the same unique row is on any page but the worn one. So inventory,
+        stash, cube, belt and cursor all count together, and every Hellfire Torch is one group. Mercenary and corpse
+        sections are other lists."""
+        held = defaultdict(list)
+        for item in character.items:
+            if (item.quality == 7 and item.location != 1 and not item.section and item.quality_id is not None
+                    and 0 <= item.quality_id < len(self.uniques)
+                    and self.uniques[item.quality_id].get('carry1') == '1'):
+                held[item.quality_id].append(item)
+        for quality_id, items in held.items():
+            if len(items) > 1:
+                yield Finding(self.item_name(items[1]), 'carry1',
+                              f'{len(items)} copies carried; only one may be carried',
+                              'impossible', item_location(items[1]))
 
     def item_name(self, item):
         if item.quality in (5, 7) and item.quality_id is not None:

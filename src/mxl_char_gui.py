@@ -610,11 +610,13 @@ class CharacterWindow(StatEditMixin):
                            width=max(20, x1 - x0 - 6), font=('Segoe UI', 8), justify='center')
         if blob is not None:
             import mxl_legit
-            if mxl_legit.item_is_illegit(blob):       # Legit Mode: a box around an item the server would reject
+            if mxl_legit.entry_is_illegit(blob, getattr(self, '_carry1_extras', ())):   # Legit Mode: a box around
                 cv.create_rectangle(x0 + 1, y0 + 1, x1 - 1, y1 - 1, outline=mxl_legit.ILLEGIT_BORDER, width=2,
-                                    tags='illegit')
+                                    tags='illegit')                                     # what the server would reject
 
     def redraw(self):
+        import mxl_legit
+        self._carry1_extras = mxl_legit.carry1_extras(self.ch)     # a second Annihilus / Torch / Gheed's
         c = self.cell
         if not self.ch.merc_hired:                   # none, or dismissed on the Mercenary page
             self.merc.set(False)

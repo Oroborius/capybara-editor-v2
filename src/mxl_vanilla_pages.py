@@ -333,6 +333,8 @@ class ContainersPage:
             self._sig = sig
         c = self.cell
         sel = getattr(self.win, 'selected', None)
+        import mxl_legit
+        extras = mxl_legit.carry1_extras(ch)
         for key, _title, cols, rows, entries in boxes:
             cv = self.canvases[key]
             cv.delete('all')
@@ -364,6 +366,9 @@ class ContainersPage:
                     cv.create_image(x0 + w * c / 2, y0 + h * c / 2, image=img)
                 else:
                     cv.create_text(x0 + w * c / 2, y0 + h * c / 2, text=it['code'].strip(), fill='#c0c0c0')
+                if mxl_legit.entry_is_illegit(e.blob, extras):   # Legit Mode: as on the inventory
+                    cv.create_rectangle(x0 + 1, y0 + 1, x0 + w * c - 1, y0 + h * c - 1,
+                                        outline=mxl_legit.ILLEGIT_BORDER, width=2, tags='illegit')
                 hits.append((x, y, w, h, e))
             out = self.frames[key][1]
             if outside:

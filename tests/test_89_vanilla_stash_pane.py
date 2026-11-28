@@ -58,6 +58,8 @@ def _snap():
 def drop_on_readonly_stash_says_why():
     if _S is None:
         T.skip('no vanilla install / samples')
+    T.skip('the read-only stash pane is not shown in the Hero Editor layout any more: Stash opens the Inventory '
+           'page\'s stash view (doc #6; covered by 96 hotkeys_work_on_the_inventory_pages_stash_view)')
     import mxl_vanilla_pages as VP
     app = _open()
     inv = app.inventory
@@ -73,6 +75,8 @@ def drop_on_readonly_stash_says_why():
 def stash_shortcuts_are_safe():
     if _S is None:
         T.skip('no vanilla install / samples')
+    T.skip('the read-only stash pane is not shown in the Hero Editor layout any more: Stash opens the Inventory '
+           'page\'s stash view (doc #6; covered by 96 hotkeys_work_on_the_inventory_pages_stash_view)')
     import mxl_rc_menu
     import mxl_undo
     app = _open()
