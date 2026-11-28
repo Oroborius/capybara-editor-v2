@@ -174,7 +174,7 @@ def upload(path, discord='', note='', url=None, timeout=60):
     """POSTs the zip (multipart: file, discord, version, note). -> the ticket id; raises on failure."""
     import json
     import urllib.request
-    import uuid
+
     url = url or send_url()
     if not url:
         raise OSError('no upload address')
@@ -185,7 +185,7 @@ def upload(path, discord='', note='', url=None, timeout=60):
         version = mxl_update.current_tag() or ''
     except Exception:
         version = ''
-    boundary = uuid.uuid4().hex
+    boundary = os.urandom(16).hex()
     parts = []
     for name, value in (('discord', discord[:64]), ('version', version), ('note', note[:500])):
         parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode('utf-8'))
