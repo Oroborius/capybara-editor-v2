@@ -108,8 +108,12 @@ def library_add_list_place_undo():
     T.check(os.path.realpath(mxl_itemlib.folder()).startswith(os.path.realpath(G.user_dir)),
             'library folder is not in the (copied) user folder')
     before = len(mxl_itemlib.load())
-    G.answers['str'] = 'Tests/My test item'
-    T.invoke(T.stash_menu(it['page'], it['x'], it['y']), 'Add to library...')
+    ask = mxl_itemlib.ask_name_folder
+    mxl_itemlib.ask_name_folder = lambda *_a, **_k: ('My test item', 'Tests')   # the Name / Folder dialog
+    try:
+        T.invoke(T.stash_menu(it['page'], it['x'], it['y']), 'Add to library...')
+    finally:
+        mxl_itemlib.ask_name_folder = ask
     entries = mxl_itemlib.load()
     T.eq(len(entries), before + 1, 'library entries after Add')
     e = entries[-1]
@@ -150,8 +154,11 @@ def library_add_list_place_undo():
     T.check(msg and 'removed' in msg, f'undo message {msg!r}')
     T.eq(T.read(path), raw0, 'stash bytes after the undo')
     # rename + delete
-    G.answers['str'] = 'Other/Renamed'
-    w.rename()
+    mxl_itemlib.ask_name_folder = lambda *_a, **_k: ('Renamed', 'Other')
+    try:
+        w.rename()
+    finally:
+        mxl_itemlib.ask_name_folder = ask
     e2 = next(x for x in mxl_itemlib.load() if x['file'] == e['file'])
     T.eq((e2['folder'], e2['name']), ('Other', 'Renamed'), 'renamed entry')
     w.q.set('')

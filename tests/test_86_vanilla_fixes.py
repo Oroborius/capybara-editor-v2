@@ -67,7 +67,7 @@ def library_lists_this_game_only():
     import mxl_creator
     cr = mxl_creator.Creator(cw.data)
     blob, _rec = cr.build(cr.new_spec('normal', 'rin '))
-    e = L.add(bytes(blob), 'T86/Vanilla ring', cw.data)
+    e = L.add(bytes(blob), 'Vanilla ring', cw.data, folder_name='T86')
     T.eq(e.get('game'), L.game_tag(), 'a new entry records its game')
     T.check(L.game_tag().startswith('d2-1.14'), f'vanilla tag: {L.game_tag()}')
     p = os.path.join(L.folder(), L.INDEX)

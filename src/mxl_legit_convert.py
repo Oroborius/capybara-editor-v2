@@ -184,20 +184,17 @@ def _fix_affixes(v, rec, base, changes):
             row = (v.affixes.get((table, idx)) or (None, None))[1]
             if row is not None:
                 unexplained -= set(_sig(v, row))
-    for table, get, set_, idx, row in bad:
-        want = _sig(v, row) if row else frozenset()
+    def covering(table, row, others):
+        """The allowed row of `table` that carries most of the item's unexplained stats (not those another bad
+        slot stands for), at the item's level first, else at the lowest level it rolls at (the item level is
+        raised to it). None when no row carries any."""
+        nonlocal legal_ids
         best = None
-        # first: the allowed row that carries the item's own stats (a charm's four 5% resists under a fire-resist
-        # row are the all-resistances affix, not fire resist plus three stats to drop)
-        others = set()
-        for b in bad:
-            if b[3] != idx or b[0] != table:
-                others |= set(_sig(v, b[4])) if b[4] else set()
         for (t, i), (_t, cand) in v.affixes.items():
             if t != table or not ok(table, cand, seen, i, legal_at(99)):
                 continue
             keys = set(_sig(v, cand))
-            covered = keys & (unexplained - others)        # not the stats another bad slot stands for
+            covered = keys & (unexplained - others)
             if not covered or not keys <= have:
                 continue
             dist = 0
@@ -205,7 +202,7 @@ def _fix_affixes(v, rec, base, changes):
                 lo, hi = sorted((iv.lo, iv.hi))
                 val = current.get(key, 0)
                 dist += max(0, lo - val, val - hi)
-            needs = 0 if (t, i) in legal_ids else 1          # one that rolls at the item's level first
+            needs = 0 if (t, i) in legal_ids else 1
             score = (-len(covered), needs, cand.get('name') != (row or {}).get('name'), dist,
                      abs(to_int(cand.get('level')) - to_int((row or {}).get('level'))), -i)
             if best is None or score < best[0]:
@@ -213,11 +210,21 @@ def _fix_affixes(v, rec, base, changes):
         if best and (table, best[1]) not in legal_ids:   # the item level it rolls at (a 5% all-res charm: 44+)
             lv = next((lv for lv in range(rec['ilvl'] + 1, 100) if (table, best[1]) in legal_at(lv)), None)
             if lv is None:
-                best = None
-            else:
-                changes.append(f"item level {rec['ilvl']} -> {lv}")
-                rec['ilvl'] = lv
-                legal_ids = legal_at(lv)
+                return None
+            changes.append(f"item level {rec['ilvl']} -> {lv}")
+            rec['ilvl'] = lv
+            legal_ids = legal_at(lv)
+        return best
+
+    for table, get, set_, idx, row in bad:
+        want = _sig(v, row) if row else frozenset()
+        # first: the allowed row that carries the item's own stats (a charm's four 5% resists under a fire-resist
+        # row are the all-resistances affix, not fire resist plus three stats to drop)
+        others = set()
+        for b in bad:
+            if b[3] != idx or b[0] != table:
+                others |= set(_sig(v, b[4])) if b[4] else set()
+        best = covering(table, row, others)
         if best:
             unexplained -= set(_sig(v, best[2]))
         elif want:
@@ -244,6 +251,21 @@ def _fix_affixes(v, rec, base, changes):
             set_(0)
             changes.append(f'{old} ({old_where}) dropped (no allowed row has its stats)')
 
+    if rec['quality'] in ('magic', 'rare', 'crafted') and unexplained:
+        for table, get, set_ in slots:              # empty affix slots: rows for the stats nothing explains
+            if not unexplained:
+                break
+            if table == 'automagic' or get():
+                continue
+            best = covering(table, None, set())
+            if best:
+                set_(best[1])
+                g = to_int(best[2].get('group'))
+                if g:
+                    seen.add(g)
+                unexplained -= set(_sig(v, best[2]))
+                changes.append(f"{best[2]['name']} ({_where(v, best[2])}) added for its stats")
+
 
 def _fix_rare_name(v, rec, base, changes):
     from d2bt.legit import allowed
@@ -265,6 +287,31 @@ def _fix_rare_name(v, rec, base, changes):
     rec['rare_names'] = tuple(names)
 
 
+def _fix_superior(v, rec, kids, data, changes):
+    """A superior variant the base cannot have (other editors write 0 on any base): the variant of this base whose
+    stats the item carries, else normal quality (a runeword on a normal base)."""
+    from mxl_creator import build_blob
+    old = rec.get('subquality')
+    best = None
+    for q in range(len(v.superior or ())):
+        rec['subquality'] = q
+        try:
+            found = findings_of(build_blob(rec, kids, data, preserve_stat_order=True))
+        except Exception:
+            continue
+        bad = mxl_legit.impossible(found)
+        if not any(f.rule == 'quality' for f in bad) and (best is None or len(bad) < best[0]):
+            best = (len(bad), q)
+    if best is not None and best[0] == 0:
+        rec['subquality'] = best[1]
+        changes.append(f'superior variant {old} -> {best[1]}')
+        return
+    rec['subquality'] = old
+    rec['quality'] = 'normal'
+    rec.pop('subquality', None)
+    changes.append('superior -> normal (no superior variant of this base fits)')
+
+
 def _entries(rec):
     for key in ('stats', 'stats_runeword', *(f'set_stats_{i}' for i in range(5))):
         for s in rec.get(key, ()):
@@ -276,6 +323,13 @@ def _fix_stats(v, rec, findings, changes, repacked=None):
         if f.rule != 'stat':
             continue
         m = _RANGE.match(f.detail)
+        if m and m.group(1) == 'item_charged_skill':     # charges / capacity the row fixes: full at that capacity
+            val, hi = int(m.group(2)), int(m.group(4))
+            hit = next((s for _k, s in _entries(rec) if s['id'] == 204 and s['value'] == val), None)
+            if hit is not None:
+                hit['value'] = hi
+                changes.append(f'charges {val >> 8}/{val & 255} -> {hi >> 8}/{hi & 255}')
+            continue
         if m:
             name, val, lo, hi = m.group(1), int(m.group(2)), int(m.group(3)), int(m.group(4))
             hit = next((s for _k, s in _entries(rec) if s['value'] == val and _stat_name(v, s['id']) == name
@@ -346,8 +400,11 @@ def convert(blob, data):
         changes.append('ethereal cleared')
     if 'rare-name' in rules and rec.get('rare_names') and rec['quality'] in ('rare', 'crafted'):
         _fix_rare_name(v, rec, base, changes)
-    if rules & {'affix-type', 'affix-level', 'affix-quality', 'affix-group', 'affix-id'} or 'item-level' in rules:
+    if rules & {'affix-type', 'affix-level', 'affix-quality', 'affix-group', 'affix-id', 'affix-count'} or 'item-level' in rules:
         _fix_affixes(v, rec, base, changes)
+    if rec['quality'] == 'superior' and any(f.rule == 'quality' and 'superior variant cannot spawn' in f.detail
+                                            for f in before):
+        _fix_superior(v, rec, kids, data, changes)
     for f in before:
         m = f.rule == 'sockets' and _SOCK.search(f.detail)
         if m and rec.get('sockets', 0) > int(m.group(1)):

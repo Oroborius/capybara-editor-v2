@@ -454,6 +454,23 @@ def choose_character(win):
     center_mouse(dialog)
 
 
+def _mode_toggles(win, bar):
+    """Legit Mode / Mock Mode at the right end of the Hero Editor bar: on every page, not only on Stash (doc #7).
+    The same switches as the Stash bar's (shared variables: both stay in step)."""
+    import mxl_mock_gui
+    st = mxl_mock_gui._state
+    win.he_mode_buttons = {}
+    for key, label, cmd in (('var', 'Mock Mode', mxl_mock_gui.set_mode), ('lvar', 'Legit Mode', mxl_mock_gui.set_legit)):
+        var = st.get(key)
+        if var is None:
+            continue
+        b = role(tk.Checkbutton(bar, text=label, variable=var, indicatoron=0, font=font(), bd=1, relief='raised',
+                                offrelief='raised', padx=pixels(bar, 7)[0], pady=0, takefocus=False,
+                                command=lambda v=var, c=cmd: c(v.get())), 'tab')
+        b.pack(side='right', ipady=0, padx=(1, 2))
+        win.he_mode_buttons[label] = b
+
+
 def check_open_version(win, path):
     import struct
     from mxl_char import MAGIC
@@ -637,6 +654,8 @@ def chrome(win, bottom, actions):
     menu.add_separator()
     for name in ('Stash', 'Creator', 'Library', 'Bit editor'):
         menu.add_command(label=mxl_tabs.tab_label(name), command=lambda key=name: win.he_embed.toggle(key))
+    import mxl_mock_zoom
+    menu.add_cascade(label='Text size', menu=mxl_mock_zoom.text_size_menu(menu))
     mock_mode = mxl_mock_gui._state['var']
     if mock_mode is not None:
         menu.add_checkbutton(label='Mock Mode', variable=mock_mode,
@@ -663,6 +682,7 @@ def chrome(win, bottom, actions):
 
     for name in names[:4]:
         tab_button(mxl_tabs.tab_label(name), name)
+    _mode_toggles(win, bar)
     if mock_mode is not None:
         mock_button = tab_button('Mock', mxl_mock_gui.TAB)
 

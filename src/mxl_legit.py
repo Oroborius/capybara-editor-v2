@@ -53,6 +53,9 @@ class Unavailable(Exception):
     pass
 
 
+_VALIDATORS = {}
+
+
 def _validator():
     """The dev kit's own validator (vendored unchanged: package d2bt, commit in d2bt/VENDORED.txt), so the editor
     and the server give the same verdict. Its table cache lives in the editor's user folder."""
@@ -66,9 +69,14 @@ def _validator():
     here = os.path.dirname(os.path.abspath(__file__))     # Windows build: d2bt is a folder in _internal
     if here not in sys.path:
         sys.path.append(here)
+    key = game_dir()
+    hit = _VALIDATORS.get(key)
+    if hit is not None:                 # one per game folder: finding the tables walks the folder (~1 ms a call,
+        return hit                      # hundreds of calls per list / menu: the creator and right-click hung)
     try:
         from d2bt.legit import stock_validator
-        return stock_validator(game_dir())
+        v = _VALIDATORS[key] = stock_validator(key)
+        return v
     except Exception as e:
         raise Unavailable(f"the stock Diablo II tables could not be read ({e}); Legit mode cannot check anything")
 

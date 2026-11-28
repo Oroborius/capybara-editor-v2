@@ -1,7 +1,8 @@
 """Personal item library: items kept as .d2i files in <user dir>/library/, with an index (index.json).
 
 - right-click an item -> "Add to library...": its exact bytes (socketed items included, the same bytes as Export
-  item...) go into the folder under a name ("Folder/Name" puts it in a folder);
+  item...) go into the folder under a name, with an optional folder of its own (a separate field: slashes in a name
+  are part of the name);
 - the Library main tab (More » "Item library..." selects it): the list (icon, name, folder, base) with a search box; "Place a copy" puts a copy on
   the stash page shown (else the first page with room) through the collector's safe writer (edit_stash: verified
   write, backup policy) and records it for Ctrl+Z; Rename / Delete edit the entry.
@@ -96,12 +97,13 @@ def _split(text):
     return '', text
 
 
-def add(blob, name, data, code=None):
-    """Stores an item; returns its entry. The blob is checked first (it must read as an item)."""
+def add(blob, name, data, code=None, folder_name=''):
+    """Stores an item; returns its entry. The blob is checked first (it must read as an item). The name is kept
+    as typed ("7FHR/8life" is a name); folder_name puts it into a folder."""
     from mxl_save import blob_item
     blob = bytes(blob)
     it = blob_item(blob, data)
-    fo, nm = _split(name)
+    fo, nm = (folder_name or '').strip(' /'), (name or '').strip()
     nm = nm or it.get('name') or it['code']
     stem = re.sub(r'[^A-Za-z0-9_.-]+', '_', nm).strip('_')[:40] or 'item'
     d = folder()
@@ -137,17 +139,88 @@ def blob_of(entry):
         return f.read()
 
 
-def rename(entry, text):
+def rename(entry, text, folder_name=None):
+    """New name (as typed) and, when given, folder ('' = no folder)."""
+    text = (text or '').strip()
+    if not text:
+        return False
     entries = load()
     for e in entries:
         if e['file'] == entry['file']:
-            e['folder'], e['name'] = _split(text)
-            if not e['name']:
-                return False
+            e['name'] = text
+            if folder_name is not None:
+                e['folder'] = folder_name.strip(' /')
             _save(entries)
             entry.update(e)
             return True
     return False
+
+
+def rename_folder(old, new):
+    """Every entry of folder `old` into `new` ('' = no folder). The number moved."""
+    new = (new or '').strip(' /')
+    entries = load()
+    n = 0
+    for e in entries:
+        if e.get('folder', '') == old:
+            e['folder'] = new
+            n += 1
+    if n:
+        _save(entries)
+    return n
+
+
+def folders(entries=None):
+    return sorted({e.get('folder', '') for e in (load() if entries is None else entries)} - {''}, key=str.lower)
+
+
+def ask_name_folder(owner, title, name='', folder_name='', joinable=False):
+    """Name + Folder dialog: (name, folder) or None. The folder is picked from the library's folders or typed (empty:
+    no folder). joinable: a button puts the folder text back in front of the name (an item a slash in its name put
+    into a folder by mistake)."""
+    from tkinter import ttk as _ttk
+    out = []
+    d = tk.Toplevel(owner)
+    d.title(title)
+    d.transient(owner.winfo_toplevel())
+    d.resizable(False, False)
+    f = _ttk.Frame(d, padding=8)
+    f.pack(fill='both', expand=True)
+    nv, fv = tk.StringVar(value=name), tk.StringVar(value=folder_name)
+    _ttk.Label(f, text=tr('f.name', 'Name:')).grid(row=0, column=0, sticky='w', pady=2)
+    ent = _ttk.Entry(f, textvariable=nv, width=36)
+    ent.grid(row=0, column=1, sticky='we', pady=2)
+    _ttk.Label(f, text=tr('f.folder', 'Folder:')).grid(row=1, column=0, sticky='w', pady=2)
+    _ttk.Combobox(f, textvariable=fv, values=[''] + folders(), width=34).grid(row=1, column=1, sticky='we', pady=2)
+    _ttk.Label(f, text=tr('f.hint', 'Empty folder: not in a folder. Slashes in the name stay in the name.'),
+               foreground='gray').grid(row=2, column=0, columnspan=2, sticky='w')
+    bar = _ttk.Frame(f)
+    bar.grid(row=3, column=0, columnspan=2, sticky='e', pady=(6, 0))
+
+    def ok(_e=None):
+        if nv.get().strip():
+            out.append((nv.get().strip(), fv.get().strip(' /')))
+            d.destroy()
+
+    def join():
+        fo = fv.get().strip(' /')
+        if fo:
+            nv.set(fo + '/' + nv.get().strip())
+            fv.set('')
+    if joinable and folder_name:
+        _ttk.Button(bar, text=tr('f.join', 'Folder text back into the name'), command=join).pack(side='left', padx=2)
+    _ttk.Button(bar, text=tr('ok', 'OK'), command=ok).pack(side='left', padx=2)
+    _ttk.Button(bar, text=tr('cancel', 'Cancel'), command=d.destroy).pack(side='left', padx=2)
+    d.bind('<Return>', ok)
+    d.bind('<Escape>', lambda _e: d.destroy())
+    ent.focus_set()
+    ent.select_range(0, 'end')
+    try:
+        d.grab_set()
+    except tk.TclError:
+        pass
+    d.wait_window()
+    return out[0] if out else None
 
 
 def delete(entry):
@@ -183,14 +256,12 @@ def _status(app, msg, error=False):
 
 def ask_add(owner, blob, data, default_name):
     """Asks the name ("Folder/Name") and stores the item. The entry, or None when cancelled / failed."""
-    from tkinter import simpledialog, messagebox
-    name = simpledialog.askstring(tr('add.title', 'Add to library'),
-                                  tr('add.ask', 'Name (Folder/Name puts it into a folder):'),
-                                  initialvalue=default_name, parent=owner)
-    if not name or not name.strip():
+    from tkinter import messagebox
+    got = ask_name_folder(owner, tr('add.title', 'Add to library'), default_name)
+    if not got:
         return None
     try:
-        return add(blob, name, data)
+        return add(blob, got[0], data, folder_name=got[1])
     except Exception as e:
         messagebox.showerror(tr('add.title', 'Add to library'), str(e), parent=owner)
         return None
@@ -309,7 +380,7 @@ class LibraryWindow:
         bar.pack(side='bottom', fill='x', padx=2, pady=2)
         self.b_place = tk.Button(bar, text=tr('place', 'Place a copy'), command=self.place)
         self.b_place.pack(side='left', padx=2)
-        tk.Button(bar, text=tr('rename', 'Rename...'), command=self.rename).pack(side='left', padx=2)
+        tk.Button(bar, text=tr('rename_move', 'Rename / Move...'), command=self.rename).pack(side='left', padx=2)
         tk.Button(bar, text=tr('delete', 'Delete'), command=self.delete).pack(side='left', padx=2)
         tk.Button(bar, text=tr('inspect', 'Inspect in Bit editor'), command=self.inspect).pack(side='left', padx=2)
         self.status = tk.Label(bar, text='', anchor='w')
@@ -402,6 +473,7 @@ class LibraryWindow:
     def refresh(self):
         self.tree.delete(*self.tree.get_children())
         self.rows = {}
+        self.folder_rows = {}
         folders = {}
         first = None
         mine = for_game(load(), getattr(self.app, 'data', None))        # this game's entries only
@@ -411,6 +483,7 @@ class LibraryWindow:
             if fo:
                 if fo not in folders:
                     folders[fo] = self.tree.insert('', 'end', text=' ' + fo + '/', open=True, values=('',))
+                    self.folder_rows[folders[fo]] = fo
                 parent = folders[fo]
             kw = {}
             img = self._icon(e)
@@ -475,15 +548,25 @@ class LibraryWindow:
                                  reason=tr('ro', 'library item: read only here'))
 
     def rename(self):
+        """Rename / move the selected item (name and folder), or rename the selected folder (all its items)."""
         from tkinter import simpledialog
+        sel = self.tree.selection()
+        fo = self.folder_rows.get(sel[0]) if sel else None
+        if fo is not None:
+            new = simpledialog.askstring(tr('rename_folder', 'Rename folder'),
+                                         tr('rename_folder.ask', 'Folder name (empty: its items leave the folder):'),
+                                         initialvalue=fo, parent=self.top)
+            if new is not None:
+                rename_folder(fo, new)
+                self.refresh()
+            return
         e = self.current()
         if e is None:
             return
-        cur = (e.get('folder') + '/' if e.get('folder') else '') + e['name']
-        text = simpledialog.askstring(tr('rename.title', 'Rename'), tr('add.ask', 'Name (Folder/Name puts it into a folder):'),
-                                      initialvalue=cur, parent=self.top)
-        if text and text.strip():
-            rename(e, text)
+        got = ask_name_folder(self.top, tr('rename.title', 'Rename / move'), e['name'], e.get('folder', ''),
+                              joinable=True)
+        if got:
+            rename(e, got[0], got[1])
             self.refresh()
 
     def delete(self):

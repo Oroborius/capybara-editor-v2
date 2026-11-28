@@ -1354,4 +1354,115 @@ def open_dialog_lists_a_character_made_after_the_start():
     finally:
         os.remove(new)
 
+
+@T.test
+def library_slashes_stay_in_the_name_and_folders_are_separate():
+    """Doc #5: "7FHR/8life/10allres" made a folder. Slashes stay in the name; the folder is its own field (the
+    dialog), a folder can be renamed, and an item put in a folder by mistake gets its name back."""
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    import tkinter as tk
+    from tkinter import ttk
+    import mxl_itemlib as L
+    import mxl_tabs
+
+    win = T.chartab()
+    small = min(win.ch.inventory(), key=lambda e: len(e.blob))
+    a = L.add(bytes(small.blob), '7FHR/8life/10allres', win.data)
+    b = L.add(bytes(small.blob), 'Jewel A', win.data, folder_name='T96 jewels')
+    try:
+        T.eq((a['folder'], a['name']), ('', '7FHR/8life/10allres'), 'slashes are part of the name')
+        T.eq(L.rename_folder('T96 jewels', 'T96 gems'), 1, 'folder renamed')
+        b = next(x for x in L.load() if x['file'] == b['file'])
+        T.eq(b['folder'], 'T96 gems', 'its item moved along')
+        # the dialog: Folder text back into the name, then OK
+        root = win.top
+
+        def walk(w):
+            for c in w.winfo_children():
+                yield c
+                yield from walk(c)
+
+        tries = []
+
+        def answer():
+            tries.append(1)
+            dialogs = [d for d in walk(tk._default_root) if isinstance(d, tk.Toplevel) and d.title() == 'Rename / move']
+            if not dialogs and len(tries) < 60:
+                root.after(50, answer)
+                return
+            for d in dialogs:
+                btns = [w for w in walk(d) if isinstance(w, ttk.Button)]
+                for w in btns:
+                    if 'back into the name' in str(w.cget('text')):
+                        w.invoke()
+                for w in btns:
+                    if str(w.cget('text')) in ('OK', 'Cancel'):
+                        if str(w.cget('text')) == 'OK':
+                            w.invoke()
+                            return
+                d.destroy()
+        root.after(100, answer)
+        got = L.ask_name_folder(root, 'Rename / move', 'Jewel A', 'T96 gems', joinable=True)
+        T.eq(got, ('T96 gems/Jewel A', ''), 'folder text back into the name, no folder')
+    finally:
+        L.delete(a)
+        L.delete(b)
+
+
+@T.test
+def legit_and_mock_switches_show_on_every_page():
+    """Doc #7: Legit / Mock Mode were only on the Stash page's bar. The Hero Editor bar has them on every page, in
+    step with the Stash bar's."""
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    import mxl_legit, mxl_mock_gui
+    win = T.chartab()
+    btns = getattr(win, 'he_mode_buttons', {})
+    T.check({'Legit Mode', 'Mock Mode'} <= set(btns), f'switches on the bar: {sorted(btns)}')
+    seen = []
+    for text, tab in win.he_tab_buttons.items():
+        if text == 'Mock':
+            continue
+        tab.invoke()
+        T.pump(5)
+        seen.append((text, bool(btns['Legit Mode'].winfo_viewable()), bool(btns['Mock Mode'].winfo_viewable())))
+    win.he_embed.leave() if hasattr(win.he_embed, 'leave') else None
+    T.pump(5)
+    T.eq([x for x in seen if not (x[1] and x[2])], [], f'visible on every page: {seen}')
+    try:
+        btns['Legit Mode'].invoke()
+        T.pump(3)
+        T.check(mxl_legit.enabled() and mxl_mock_gui._state['lvar'].get(), 'Legit Mode on, the Stash bar follows')
+    finally:
+        mxl_mock_gui.set_legit(False)
+        T.pump(3)
+    T.check(not mxl_legit.enabled(), 'off again')
+
+
+@T.test
+def text_size_scales_the_fonts_and_comes_back():
+    """Doc #9: an option for bigger text. Menu > Text size scales every font (and the Hero Editor layout) and is
+    kept in the settings; 100 % gives the sizes back."""
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    from tkinter import font as tkfont
+    import mxl_mock_zoom as Z
+    import settings
+    win = T.chartab()
+    T.check(Z._ZOOM[0] is not None, 'the window has a zoom')
+    f = tkfont.nametofont('TkDefaultFont')
+    size0 = abs(int(f.cget('size')))
+    try:
+        Z.set_text_size(1.5)
+        T.pump(5)
+        T.eq(settings.get('text_size'), 1.5, 'kept in the settings')
+        T.eq(abs(int(f.cget('size'))), round(size0 * 1.5), 'default font 150 %')
+        labels = [win.he_tab_buttons[k] for k in win.he_tab_buttons]
+        T.check(labels, 'Hero Editor bar')
+    finally:
+        Z.set_text_size(1.0)
+        T.pump(5)
+    T.eq(abs(int(f.cget('size'))), size0, 'back to 100 %')
+
 T.main(globals())

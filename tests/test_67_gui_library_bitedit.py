@@ -140,8 +140,12 @@ def library_tab_place_undo():
     it, blob = next(_items(lambda it, b: it.get('stats')), (None, None))
     if it is None:
         T.skip('no item with stats')
-    G.answers['str'] = 'Tab tests/Lib item'
-    T.invoke(T.stash_menu(it['page'], it['x'], it['y']), 'Add to library...')
+    ask = mxl_itemlib.ask_name_folder
+    mxl_itemlib.ask_name_folder = lambda *_a, **_k: ('Lib item', 'Tab tests')   # the Name / Folder dialog
+    try:
+        T.invoke(T.stash_menu(it['page'], it['x'], it['y']), 'Add to library...')
+    finally:
+        mxl_itemlib.ask_name_folder = ask
     e = mxl_itemlib.load()[-1]
     entry = next(c for lab, c in mxl_toolbar.EXTRA if lab() == 'Item library...')
     entry(G.app)

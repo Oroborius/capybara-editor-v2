@@ -1503,4 +1503,77 @@ def create_here_puts_the_item_on_the_clicked_cell():
     got = [(e.it['code'], e.it['x'], e.it['y']) for e in win.ch.inventory()]
     T.eq(got, [('hax ', 6, 1)], 'at the clicked cell (3 high: moved up one row to fit)')
 
+
+@T.test
+def convert_gives_a_rare_without_affixes_rows_for_its_stats():
+    """Doc #4: rares from other communities carry stats and no affix ids ("rare item has no affix"). Convert used
+    to drop every stat; it adds the rows that carry them, so the item keeps them."""
+    need()
+    import mxl_legit
+    import mxl_legit_convert as LC
+    from mxl_creator import build_blob, decode_blob
+    from mxl_rc_menu import _creator_for
+    if not mxl_legit.prepare():
+        T.skip('stock tables unavailable')
+    win = T.chartab()
+    cr = _creator_for(win)
+    spec = cr.new_spec('rare', 'rin ')
+    spec['ilvl'] = 80
+    names = cr.rare_name_choices('rin ')
+    spec['rare_names'] = (names['rareprefix'][0][0], names['raresuffix'][0][0])
+    spec['rare_prefixes'] = [cr.affix_choices('magicprefix', 'rin ', 80, rare=True)[0][0]]
+    spec['rare_suffixes'] = [cr.affix_choices('magicsuffix', 'rin ', 80, rare=True)[0][0]]
+    cr.roll(spec, 'max')
+    blob, _r = cr.build(spec)
+    rec, kids = decode_blob(blob, win.data)
+    stats = sorted((s['id'], s['value']) for s in rec['stats'])
+    rec['rare_affixes'] = [None] * 6
+    old = build_blob(rec, kids, win.data, preserve_stat_order=True)
+    T.check(any(f.rule == 'affix-count' for f in mxl_legit.check_item(old)), 'no affix: refused')
+    res = LC.convert(old, win.data)
+    T.check(res.blob is not None, f'converted: {res.changes} / {[f.detail for f in res.remaining]}')
+    T.eq(mxl_legit.impossible(mxl_legit.check_item(res.blob)), [], f'legit: {res.changes}')
+    T.eq(sorted((s['id'], s['value']) for s in decode_blob(res.blob, win.data)[0]['stats']), stats, 'stats kept')
+
+
+@T.test
+def convert_fixes_runeword_charges_and_superior_variant():
+    """Doc #4: a Heart of the Oak with charges 14/14 and 4/4 (60 and 25 in 1.14d), and runeword bases saved as
+    superior variant 0, which the base cannot have."""
+    need()
+    import mxl_legit
+    import mxl_legit_convert as LC
+    from mxl_creator import build_blob, decode_blob
+    from mxl_rc_menu import _creator_for
+    if not mxl_legit.prepare():
+        T.skip('stock tables unavailable')
+    win = T.chartab()
+    cr = _creator_for(win)
+    hoto = next(k for k, name, _r in cr.runewords() if name == 'Heart of the Oak')
+    spec = cr.new_spec('runeword', 'fla ', hoto)
+    spec['sockets'] = 4
+    spec['ilvl'] = 99
+    cr.roll(spec, 'max')
+    blob, _r = cr.build(spec)
+    T.eq(mxl_legit.impossible(mxl_legit.check_item(blob)), [], 'made legit')
+    rec, kids = decode_blob(blob, win.data)
+    for s in rec['stats_runeword']:
+        if s['id'] == 204:
+            s['value'] = 14 * 257                     # 14/14, as another editor wrote it
+    old = build_blob(rec, kids, win.data, preserve_stat_order=True)
+    T.check(mxl_legit.impossible(mxl_legit.check_item(old)), 'wrong charges refused')
+    res = LC.convert(old, win.data)
+    T.check(res.blob is not None, f'converted: {res.changes} / {[f.detail for f in res.remaining]}')
+    T.eq(mxl_legit.impossible(mxl_legit.check_item(res.blob)), [], f'legit: {res.changes}')
+    rec['quality'], rec['subquality'] = 'superior', 0
+    for s in rec['stats_runeword']:
+        if s['id'] == 204:
+            s['value'] = 0
+    sup = build_blob(rec, kids, win.data, preserve_stat_order=True)
+    if any('superior variant cannot spawn' in f.detail for f in mxl_legit.check_item(sup)):
+        res = LC.convert(sup, win.data)
+        T.check(res.blob is not None, f'superior converted: {res.changes} / {[f.detail for f in res.remaining]}')
+        T.eq(mxl_legit.impossible(mxl_legit.check_item(res.blob)), [], f'legit: {res.changes}')
+
+
 T.main(globals())
