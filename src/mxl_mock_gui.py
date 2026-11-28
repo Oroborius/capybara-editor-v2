@@ -359,6 +359,22 @@ class SummaryPanel:
         return rows
 
 
+def _wheel_scrolls_page(w, scrolled):
+    """The wheel over a number field scrolls its page and leaves the number alone (Tk's spinbox stepped the
+    value by one per notch while the page scrolled on: a value changed while scrolling past it)."""
+    def wheel(e):
+        try:
+            if e.num in (4, 5):
+                scrolled.canvas.yview_scroll(-1 if e.num == 4 else 1, 'units')
+            elif e.delta:
+                scrolled.canvas.yview_scroll(-1 if e.delta > 0 else 1, 'units')
+        except (tk.TclError, AttributeError):
+            pass
+        return 'break'
+    for seq in ('<MouseWheel>', '<Button-4>', '<Button-5>'):
+        w.bind(seq, wheel)
+
+
 class MockPage:
     """The Mock tab: Generator | Analyzer (a notebook of its own: fits 800 x 600)."""
 
@@ -438,6 +454,8 @@ class MockPage:
             pass
         gnb = self.groups = ttk.Notebook(left, style='Mock.TNotebook')
         gnb.grid(row=6, column=0, columnspan=3, sticky='nsew', pady=(2, 0))
+        for seq in ('<MouseWheel>', '<Button-4>', '<Button-5>'):   # Tk 9: the wheel over the tabs switched the
+            gnb.bind(seq, lambda _e: 'break')                       # group (tester: DR -> Auras)
         self.ov, self.pre, self.err, self.src = {}, {}, {}, {}
         self.touched, self._filling = set(), False        # the fields the user changed (the rest stay solved)
         self.field_tab, self.dyn_choice = {}, {}
@@ -471,6 +489,7 @@ class MockPage:
                             self.dyn_choice[k] = (w, extra)
                     else:
                         w = ttk.Spinbox(box, textvariable=v, from_=extra[0], to=extra[1], increment=1, width=9)
+                        _wheel_scrolls_page(w, sc)
                     w.grid(row=i, column=1, sticky='w', pady=1, padx=(2, 2))
                 _Tip(w, hint)
                 e = ttk.Label(box, text='', foreground=COLORS[M.BAD], wraplength=170, justify='left')
@@ -597,7 +616,7 @@ class MockPage:
             return
         if self.touched and not self._filling:
             try:
-                self.check()
+                self.check(switch=False)
             except tk.TclError:                         # an old page's widgets are gone (Mock Mode switched off)
                 pass
 
@@ -625,7 +644,7 @@ class MockPage:
         """The fields the user changed (the others are solved by the plan and repainted after a Check)."""
         return {k: v.get() for k, v in self.ov.items() if k in self.touched}
 
-    def _show_errors(self, errs):
+    def _show_errors(self, errs, switch=True):
         for k, e in self.err.items():
             try:
                 e.configure(text=errs.get(k, ''))
@@ -633,7 +652,7 @@ class MockPage:
                 return
         if errs:
             k = next(iter(errs))
-            if k in self.field_tab:                         # the first problem's group comes to the front
+            if switch and k in self.field_tab:              # the first problem's group comes to the front
                 try:
                     self.groups.select(self.field_tab[k])
                 except tk.TclError:
@@ -641,11 +660,12 @@ class MockPage:
             lab = next((f[1] for _, fs in M.FIELDS for f in fs if f[0] == k), '')
             self.status.configure(text=(f'{lab}: ' if lab else '') + errs[k], foreground=COLORS[M.BAD])
 
-    def check(self):
+    def check(self, switch=True):
         """The plan of the fields as they are: problems next to their fields, the summary on the right (not
-        recomputed on every key stroke)."""
+        recomputed on every key stroke). switch: the first problem's group comes to the front (not while typing:
+        the re-check after a pause stays on the page you are on)."""
         over, raw, P, errs = M.validate(self.key(), self.form(), self.pre)
-        self._show_errors(errs)
+        self._show_errors(errs, switch)
         self.defense_targets = M.defense_targets(P) if P is not None else None
         if errs:
             return None

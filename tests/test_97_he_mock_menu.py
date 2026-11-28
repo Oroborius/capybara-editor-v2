@@ -115,4 +115,58 @@ def he_stash_opens_the_inventory_stash_view_and_bit_editor_hint():
     T.pump(5)
 
 
+
+@T.test
+def mock_generator_wheel_and_live_check_stay_on_the_group():
+    """Tester (master86): changing DR jumped to the Auras group, a Mana value changed back. Tk 9: the wheel over
+    the group tabs switched the group, and over a number field it stepped the number while the page scrolled. The
+    wheel now leaves both alone, and the re-check while typing does not switch groups."""
+    if not AVAILABLE:
+        T.skip('no 1.14d game data or sample character')
+    from tkinter import ttk
+    import mxl_mock_gui as MG
+    T.chartab()
+    MG.set_mode(True)
+    T.pump(10)
+    try:
+        page = MG._state['page']
+
+        def walk(w):
+            for c in w.winfo_children():
+                yield c
+                yield from walk(c)
+
+        def field(k):
+            name = str(page.ov[k])
+            return next(x for x in walk(page.groups) if isinstance(x, ttk.Spinbox) and str(x.cget('textvariable')) == name)
+
+        def group():
+            return page.groups.tab(page.groups.select(), 'text')
+        page.groups.select(page.field_tab['dr'])
+        T.pump(3)
+        for d in (120, 120, 120):
+            page.groups.event_generate('<MouseWheel>', delta=d, x=5, y=5)
+            T.pump(2)
+        T.eq(group(), 'Defenses', 'the wheel over the tabs keeps the group')
+        w = field('mana')
+        page.groups.select(page.field_tab['mana'])
+        T.pump(3)
+        before = page.ov['mana'].get()
+        for d in (120, -120, -120):
+            w.event_generate('<MouseWheel>', delta=d, x=3, y=3)
+            T.pump(2)
+        T.eq(page.ov['mana'].get(), before, 'the wheel over Mana leaves the number alone')
+        page.groups.select(page.field_tab['dr'])
+        T.pump(2)
+        page.ov['hf_level'].set('-5')                    # a problem on another group (Auras)
+        page.ov['dr'].set('20')
+        page._live_run()
+        T.pump(3)
+        T.eq(group(), 'Defenses', 'the re-check while typing stays on the group')
+        page.check()
+        T.pump(3)
+        T.check(group() != 'Defenses' or not page.err['hf_level'].cget('text'), 'an explicit Check shows the problem')
+    finally:
+        MG.set_mode(False)
+
 T.main(globals())
