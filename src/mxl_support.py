@@ -130,8 +130,9 @@ def run(app):
         pass
     _show_in_folder(path)
     messagebox.showinfo(T('sup.title', 'Support zip'),
-                        T('sup.done', 'Done! Send this one file to whoever is helping you:\n\n{path}\n\n'
-                                      '(It holds the editor log, its settings and your character / stash files.)',
+                        T('sup.done2', 'Done! Send this one file to whoever is helping you:\n\n{path}\n\n'
+                                       'On the D2O Discord: DM it to LadderBot, never post it in public.\n'
+                                       '(It holds the editor log, its settings and your character / stash files.)',
                           path=path), parent=root)
     return path
 
