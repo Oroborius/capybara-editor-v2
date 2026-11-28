@@ -953,9 +953,9 @@ def creator_affix_inference_compares_the_skill_tab_layer():
 
 
 @T.test
-def creator_targeted_writers_go_to_the_item_buffer():
-    """create_here (character / inventory / containers page) in the Hero Editor layout: a new item lands in the
-    item buffer, the target writer is not called."""
+def create_here_writes_where_clicked_not_into_the_item_buffer():
+    """Doc #1: "Create here" put the new item into the item buffer (Picked Up) in the Hero Editor layout. A creator
+    opened for a place calls its writer; the item buffer stays as it was."""
     need()
     win = T.chartab()
     win.app._capy_clip = None
@@ -966,7 +966,7 @@ def creator_targeted_writers_go_to_the_item_buffer():
     w.load_spec(spec)
     w.commit()
     T.pump(5)
-    T.check(getattr(win.app, '_capy_clip', None) is not None and not called, 'in the item buffer, target untouched')
+    T.check(called and getattr(win.app, '_capy_clip', None) is None, 'written there, item buffer untouched')
     w.top.destroy()
     win.app._capy_clip = None
 
@@ -1003,9 +1003,10 @@ def convert_remaps_retired_affix_rows_and_rare_name_fragments():
     T.check(res.blob is not None, f'converted: {res.changes} / {[f.detail for f in res.remaining]}')
     T.eq(mxl_legit.impossible(mxl_legit.check_item(res.blob)), [], 'no impossible finding left')
     new = decode_blob(res.blob, win.data)[0]['rare_affixes']
-    twins = {v.affixes[('magicprefix', 78)][1]['name'], v.affixes[('magicsuffix', 91)][1]['name']}
-    T.eq({v.affixes[('magicprefix', new[0])][1]['name'], v.affixes[('magicsuffix', new[1])][1]['name']}, twins,
-         'same names, rolling rows')
+    made = decode_blob(blob, win.data)[0]['rare_affixes']   # the stats are still those of the rows it was made with
+    T.eq({v.affixes[('magicprefix', new[0])][1]['name'], v.affixes[('magicsuffix', new[1])][1]['name']},
+         {v.affixes[('magicprefix', made[0])][1]['name'], v.affixes[('magicsuffix', made[1])][1]['name']},
+         'the rolling rows that carry the item\'s own stats')
     T.check(new[0] != 78 and new[1] != 91, f'rows replaced: {new[:2]}')
     # the fragment: a name the base cannot have
     rec2, kids2 = decode_blob(blob, win.data)
@@ -1320,7 +1321,9 @@ def creator_offers_exactly_what_possible_lists():
                     if got != want and qn in ('magic', 'rare', 'crafted', 'normal'):
                         miss('automagic', b, f'{code} {qn} ilvl {ilvl}: got {got[:6]} want {want[:6]}')
                 if qn in cr.STAFFMOD_QUALITIES:
-                    got = sorted(i for i, _n, _m in cr.staffmod_choices(spec))
+                    # possible() lists the common rolls; a skill whose weapon type does not fit is offered too,
+                    # marked rare (kept when all 6 rerolls fail: doc #2, Holy Shield on scepters)
+                    got = sorted(i for i, n, _m in cr.staffmod_choices(spec) if not n.endswith(' (rare)'))
                     sm = p['staffmods']
                     want = sorted({s for t in sm['tiers'] for s in sm['skills'][t]}) if sm else []
                     if got != want:
@@ -1403,5 +1406,101 @@ def socketed_jewel_without_realm_bit_reads():
     T.eq(2 + (br.pos + 7) // 8, len(jewel), 'host reader too')
     rec2, n2 = decode_item(nxt, win.data)
     T.eq((n2, [x['id'] for x in rec2['stats']]), (len(nxt), [151, 135, 136, 93]), 'the last one in a list')
+
+
+@T.test
+def convert_keeps_all_resistances_on_a_charm():
+    """Doc #4.5: a small charm from another community (prefix row "Crimson" of armor, suffix "of Strength" of rings,
+    four 5% resists). Convert kept fire resist and removed the other three; it is the all-resistances prefix."""
+    need()
+    import mxl_legit
+    import mxl_legit_convert as LC
+    from mxl_creator import build_blob, decode_blob
+    from mxl_rc_menu import _creator_for
+    if not mxl_legit.prepare():
+        T.skip('stock tables unavailable')
+    win = T.chartab()
+    cr = _creator_for(win)
+    v = mxl_legit._validator()
+    from d2bt.legit import properties
+
+    def row_of(table, name, pred):
+        for (t, i), (_t, r) in v.affixes.items():
+            if t == table and r.get('name') == name and pred(r):
+                return i
+        return None
+
+    def codes(r):
+        return {c for c, *_ in properties(r, 'mod{}code mod{}param mod{}min mod{}max', range(1, 4))}
+
+    crimson = row_of('magicprefix', 'Crimson', lambda r: 'scha' not in r.values() and 'res-fire' in codes(r))
+    strength = row_of('magicsuffix', 'of Strength', lambda r: 'scha' not in r.values() and 'str' in codes(r))
+    T.check(crimson and strength, f'rows found: {crimson} {strength}')
+    spec = cr.new_spec('magic', 'cm1 ')
+    spec['ilvl'] = 40
+    blob, _r = cr.build(spec)
+    rec, kids = decode_blob(blob, win.data)
+    rec['prefix'], rec['suffix'] = crimson, strength
+    rec['stats'] = [{'id': 0, 'value': 2}] + [{'id': sid, 'value': 5} for sid in (39, 41, 43, 45)]
+    old = build_blob(rec, kids, win.data, preserve_stat_order=True)
+    T.check(mxl_legit.impossible(mxl_legit.check_item(old)), 'the charm is refused as it is')
+    res = LC.convert(old, win.data)
+    T.check(res.blob is not None, f'converted: {res.changes} / {[f.detail for f in res.remaining]}')
+    T.eq(mxl_legit.impossible(mxl_legit.check_item(res.blob)), [], f'legit after: {res.changes}')
+    stats = {s['id']: s['value'] for s in decode_blob(res.blob, win.data)[0]['stats']}
+    T.eq([stats.get(sid) for sid in (39, 41, 43, 45)], [5, 5, 5, 5], f'all four resists kept: {res.changes}')
+    T.eq(stats.get(0), 2, 'strength kept')
+
+
+
+@T.test
+def scepter_offers_holy_shield_as_a_rare_staff_mod():
+    """Doc #2: Holy Shield was missing on Paladin scepters. Its weapon type (shield) only makes it rare: the game
+    rerolls up to 6 times and keeps it when every reroll fails; the server accepts it."""
+    need()
+    import mxl_legit
+    from mxl_rc_menu import _creator_for
+    if not mxl_legit.prepare():
+        T.skip('stock tables unavailable')
+    win = T.chartab()
+    cr = _creator_for(win)
+    v = mxl_legit._validator()
+    hs = next(i for i, r in enumerate(v.rows('skills')) if (r.get('skill') or '').strip() == 'Holy Shield')
+    spec = cr.new_spec('magic', 'scp ')
+    spec['ilvl'] = 99
+    spec['prefix'] = cr.affix_choices('magicprefix', 'scp ', 99)[0][0]
+    names = {i: n for i, n, _m in cr.staffmod_choices(spec, any_level=True)}
+    T.check(hs in names, f'Holy Shield offered: {sorted(names.values())}')
+    T.check('rare' in names[hs], names[hs])
+    spec['staffmods'] = [(hs, 3)]
+    blob, _r = cr.build(spec)
+    T.eq(mxl_legit.impossible(mxl_legit.check_item(blob)), [], 'the server accepts it')
+
+
+@T.test
+def create_here_puts_the_item_on_the_clicked_cell():
+    """Doc #1: the new item's top-left is the inventory cell right-clicked (moved in when it would stick out)."""
+    need()
+    import mxl_char_gui
+    win = T.chartab()
+    for e in list(win.ch.inventory()):
+        win.ch.items.remove(e)
+    T.check(win.save('empty inventory'), 'inventory emptied')
+    opened = []
+    orig = mxl_char_gui.CreatorWindow
+    mxl_char_gui.CreatorWindow = lambda app, **kw: opened.append(kw)
+    try:
+        win.create_here(cell=(6, 2))
+    finally:
+        mxl_char_gui.CreatorWindow = orig
+    w = _open_creator(win, target=opened[0]['target'], target_label='x')
+    spec = w.cr.new_spec('normal', 'hax ')
+    w.spec = spec
+    w.load_spec(spec)
+    w.commit()
+    T.pump(5)
+    w.top.destroy()
+    got = [(e.it['code'], e.it['x'], e.it['y']) for e in win.ch.inventory()]
+    T.eq(got, [('hax ', 6, 1)], 'at the clicked cell (3 high: moved up one row to fit)')
 
 T.main(globals())

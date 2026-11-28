@@ -1260,11 +1260,12 @@ class Creator:
                     continue
                 r = rows[sid]
                 it, et = (r.get('itypea1') or '').strip(), (r.get('etypea1') or '').strip()
-                if (it and it not in anc) or (et and et in anc):
-                    continue
+                # a skill whose weapon type does not fit (Holy Shield, Smite: shield) is rerolled up to 6 times and
+                # kept when every reroll fails (D2MOO ITEMS_AssignModernStaffMods): legal, only rare
+                rare = (it and it not in anc) or (et and et in anc)
                 name = str(self.data.skill_names.get(sid) or r.get('skill') or '').strip()
                 if name:
-                    out.append((sid, name, top))
+                    out.append((sid, name + (T('cr.staffmod.rare', ' (rare)') if rare else ''), top))
             return out
         except Exception:
             return []

@@ -1056,9 +1056,11 @@ class CharacterWindow(StatEditMixin):
             return T('ch.item_replaced', '{name}: item replaced', name=self.ch.name)
         CreatorWindow(self.app, edit_item=e.it, target=write, target_label=f'{self.ch.name}', data=self.data)
 
-    def create_here(self):
+    def create_here(self, cell=None):
+        """The Item Creator for an empty slot / inventory cell: the new item goes there (cell: the inventory cell
+        clicked, the item's top-left when it fits there; else the first free place)."""
         merc = self.is_merc()
-        slot = self.sel_slot
+        slot = None if cell is not None else self.sel_slot
 
         def write(blob):
             self.sync_file()                  # the file may have been written while the creator was open
@@ -1067,7 +1069,8 @@ class CharacterWindow(StatEditMixin):
             else:
                 if merc:
                     raise CharError(T('ch.err.merc_slot', 'select an empty mercenary slot first'))
-                spot = self.ch.free_inventory_spot(MC.blob_item(blob, self.data))
+                spot = self._spot_at(blob, cell) if cell is not None else None
+                spot = spot or self.ch.free_inventory_spot(MC.blob_item(blob, self.data))
                 if spot is None:
                     raise CharError(T('ch.err.inv_full', 'no free place in the inventory'))
                 where = ('inv',) + spot
@@ -1084,6 +1087,18 @@ class CharacterWindow(StatEditMixin):
                  + (slot_name(slot, T('ch.inventory_l', 'inventory')) if slot else T('ch.inventory_l', 'inventory')))
         CreatorWindow(self.app, target=write, target_label=label, data=self.data)
 
+    def _spot_at(self, blob, cell):
+        """cell when the item fits there (its top-left), else None."""
+        try:
+            it = MC.blob_item(blob, self.data)
+            w, h = self.data.base(it['code']).size
+            x, y = min(cell[0], MC.INV_W - w), min(cell[1], MC.INV_H - h)   # near the edge: moved in to fit
+            if x >= 0 and y >= 0 and self.ch.inventory_error(it, x, y) is None:
+                return x, y
+        except Exception:
+            pass
+        return None
+
     # ---- mouse extras: double-click opens the item editor / creates in an empty spot
     def on_double(self, ev):
         cv = ev.widget
@@ -1094,7 +1109,7 @@ class CharacterWindow(StatEditMixin):
         if e is not None:
             self.edit()
         elif slot is not None or cv is self.inv:
-            self.create_here()
+            self.create_here(cell=(ev.x // self.cell, ev.y // self.cell) if cv is self.inv else None)
 
     def on_delete_key(self, _e=None):
         """Del over the paperdoll / inventory: the item under the mouse pointer is deleted at once

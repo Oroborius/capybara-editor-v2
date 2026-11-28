@@ -483,7 +483,8 @@ def _char_menu(win, cv, ev):
                 paste = lambda: _char_paste_slot(win, slot, clip)
         _vanilla_char_commands(win, menu, e, clip, paste=paste, extensions=e is not None)
         if e is None:
-            menu.add_command(label='Create here…', command=win.create_here)
+            win.sel_slot = slot                      # this empty slot / cell, not an earlier selection
+            menu.add_command(label='Create here…', command=_create_here_cmd(win, cv, ev))
     elif e is not None:
         menu.add_command(label=rc('edit', 'Edit item...'), command=win.edit)
         menu.add_command(label=rc('stats', 'Item stats...'), command=lambda: mxl_he_stats.open_char_item_stats(win, e))
@@ -513,7 +514,9 @@ def _char_menu(win, cv, ev):
                              command=lambda: _char_paste_slot(win, slot, clip))
         if cv is win.inv:
             menu.add_command(label=rc('import', 'Import item...'), command=lambda: _import_char(win, ev))
-        menu.add_command(label=rc('create_here', 'Create here...'), command=win.create_here)
+        win.sel_slot = slot
+        menu.add_command(label=rc('create_here', 'Create here...'),
+                         command=_create_here_cmd(win, cv, ev))
     if vanilla:
         from mxl_vanilla_he import popup
 
@@ -778,6 +781,26 @@ def _char_duplicate(win, e):
         win.set_status(str(err), True)
         return
     win.save(rc('duplicated_char', '{name} duplicated', name=clean_name(win, e)))
+
+
+def _create_here_cmd(win, cv, ev):
+    """Create here for the window: the character window takes the clicked cell; the main window's panel keeps its
+    own (PanelWin._cell)."""
+    import inspect
+    try:
+        takes_cell = 'cell' in inspect.signature(win.create_here).parameters
+    except (TypeError, ValueError):
+        takes_cell = False
+    if takes_cell:
+        return lambda: win.create_here(cell=_inv_cell(win, cv, ev))
+    return win.create_here
+
+
+def _inv_cell(win, cv, ev):
+    """The inventory cell under a right-click (None off the inventory grid)."""
+    if cv is not getattr(win, 'inv', None):
+        return None
+    return ev.x // win.cell, ev.y // win.cell
 
 
 def _char_paste(win, ev, clip):

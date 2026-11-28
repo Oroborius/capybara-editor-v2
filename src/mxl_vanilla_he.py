@@ -397,7 +397,11 @@ def choose_character(win):
     """Use the collector's character list and selection handler."""
     from tkinter import messagebox
 
-    choices = win.app.char_combo.cget('values')
+    try:                                  # the save folder as it is now: a character made since the start shows
+        choices = list(win.app.characters())
+        win.app.char_combo.configure(values=choices)
+    except Exception:
+        choices = win.app.char_combo.cget('values')
     if not choices:
         return
     dialog = tk.Toplevel(win.top)

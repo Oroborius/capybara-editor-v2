@@ -142,12 +142,19 @@ def _fix_affixes(v, rec, base, changes):
     from d2bt.itemgen import legal_affixes
     from d2bt.tooltip.data import to_int
     q = {'magic': 4, 'rare': 6, 'crafted': 8}.get(rec['quality'], 2)
-    legal = legal_affixes(v, rec['code'].strip(), rec['ilvl'], q)
-    legal_ids = {('magicprefix', r['id']) for r in legal['prefix']} | {('magicsuffix', r['id']) for r in legal['suffix']} \
-        | {('automagic', r['id']) for r in legal['automagic']}
+    cache = {}
 
-    def ok(table, row, group_used=(), idx=None):
-        if not row or (table, idx) not in legal_ids:
+    def legal_at(lv):
+        if lv not in cache:
+            legal = legal_affixes(v, rec['code'].strip(), lv, q)
+            cache[lv] = {('magicprefix', r['id']) for r in legal['prefix']} \
+                | {('magicsuffix', r['id']) for r in legal['suffix']} | {('automagic', r['id']) for r in legal['automagic']}
+        return cache[lv]
+
+    legal_ids = legal_at(rec['ilvl'])
+
+    def ok(table, row, group_used=(), idx=None, ids=None):
+        if not row or (table, idx) not in (legal_ids if ids is None else ids):
             return False
         g = to_int(row.get('group'))
         return not (g and table != 'automagic' and g in group_used)
@@ -169,10 +176,51 @@ def _fix_affixes(v, rec, base, changes):
         else:
             bad.append((table, get, set_, idx, row))
     current = _value(rec)
+    have = set(current)
+    unexplained = set(have)                         # stats no good affix of the item accounts for
+    for table, get, set_ in slots:
+        idx = get()
+        if idx and not any(idx == b[3] and table == b[0] for b in bad):
+            row = (v.affixes.get((table, idx)) or (None, None))[1]
+            if row is not None:
+                unexplained -= set(_sig(v, row))
     for table, get, set_, idx, row in bad:
         want = _sig(v, row) if row else frozenset()
         best = None
-        if want:
+        # first: the allowed row that carries the item's own stats (a charm's four 5% resists under a fire-resist
+        # row are the all-resistances affix, not fire resist plus three stats to drop)
+        others = set()
+        for b in bad:
+            if b[3] != idx or b[0] != table:
+                others |= set(_sig(v, b[4])) if b[4] else set()
+        for (t, i), (_t, cand) in v.affixes.items():
+            if t != table or not ok(table, cand, seen, i, legal_at(99)):
+                continue
+            keys = set(_sig(v, cand))
+            covered = keys & (unexplained - others)        # not the stats another bad slot stands for
+            if not covered or not keys <= have:
+                continue
+            dist = 0
+            for key, iv in v._bounds(_mods(cand)).items():
+                lo, hi = sorted((iv.lo, iv.hi))
+                val = current.get(key, 0)
+                dist += max(0, lo - val, val - hi)
+            needs = 0 if (t, i) in legal_ids else 1          # one that rolls at the item's level first
+            score = (-len(covered), needs, cand.get('name') != (row or {}).get('name'), dist,
+                     abs(to_int(cand.get('level')) - to_int((row or {}).get('level'))), -i)
+            if best is None or score < best[0]:
+                best = (score, i, cand)
+        if best and (table, best[1]) not in legal_ids:   # the item level it rolls at (a 5% all-res charm: 44+)
+            lv = next((lv for lv in range(rec['ilvl'] + 1, 100) if (table, best[1]) in legal_at(lv)), None)
+            if lv is None:
+                best = None
+            else:
+                changes.append(f"item level {rec['ilvl']} -> {lv}")
+                rec['ilvl'] = lv
+                legal_ids = legal_at(lv)
+        if best:
+            unexplained -= set(_sig(v, best[2]))
+        elif want:
             for (t, i), (_t, cand) in v.affixes.items():
                 if t != table or not ok(table, cand, seen, i) or _sig(v, cand) != want:
                     continue

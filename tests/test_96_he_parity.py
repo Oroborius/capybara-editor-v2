@@ -1320,4 +1320,38 @@ def library_place_a_copy_with_autosave_off_keeps_the_item_until_save():
         except Exception:
             pass
 
+
+@T.test
+def open_dialog_lists_a_character_made_after_the_start():
+    """Doc #3: a new character showed only after the editor was restarted. The Open dialog reads the folder again."""
+    if not AVAILABLE:
+        T.skip('vanilla game data or sample character is unavailable')
+    import os
+    import shutil
+    import tkinter as tk
+    import mxl_vanilla_he
+
+    win = T.chartab()
+    path = win.app.character_file()
+    new = os.path.join(os.path.dirname(path), 'Newcomer.d2s')
+    shutil.copyfile(path, new)
+    try:
+        def tops(w):
+            for c in w.winfo_children():
+                if isinstance(c, tk.Toplevel):
+                    yield c
+                yield from tops(c)
+
+        before = set(tops(tk._default_root))
+        mxl_vanilla_he.choose_character(win)
+        T.pump(3)
+        dialogs = [w for w in tops(tk._default_root) if w not in before]
+        lists = [c for d in dialogs for c in d.winfo_children() if isinstance(c, tk.Listbox)]
+        T.check(lists, 'the Open dialog is shown')
+        T.check('Newcomer' in lists[0].get(0, 'end'), f'listed: {lists[0].get(0, "end")}')
+        for d in dialogs:
+            d.destroy()
+    finally:
+        os.remove(new)
+
 T.main(globals())
