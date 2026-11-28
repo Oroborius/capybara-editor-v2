@@ -70,6 +70,7 @@ def latest_release(timeout=15):
                 break
         except Exception as e:                      # SSL, network, rate limit: the next host
             error = e
+            _log_error(f'update check ({api.split("/")[2]})', e)   # each host: the support zip shows which failed
     else:
         raise error or OSError('no release found')
     return dict(tag=d.get('tag_name'), url=d.get('html_url') or PAGE, notes=(d.get('body') or '').split('**Downloads**')[0].strip(),
@@ -283,8 +284,16 @@ def run(app, rel=None):
         bar.pack_forget()                     # back only while downloading
         if err:
             _log_error('update check', err)
-            msg.configure(text=T('upd.offline', 'Could not reach the release page:\n{error}', error=err))
-            ttk.Button(btns, text=T('upd.close', 'Close'), command=w.destroy).pack(side='right')
+            msg.configure(text=T('upd.offline2', 'Could not reach the release page:\n{error}\n\nThe editor itself '
+                                 'could not connect (a firewall, antivirus or proxy can block it while the browser '
+                                 'works). You can download the new version from the page instead.', error=err))
+            ttk.Button(btns, text=T('upd.close', 'Close'), command=w.destroy).pack(side='right', padx=(4, 0))
+
+            def open_page():
+                import webbrowser
+                webbrowser.open(PAGE)
+                w.destroy()
+            ttk.Button(btns, text=T('upd.open_page', 'Open the download page'), command=open_page).pack(side='right')
             return
         cur = current_tag()
         state['rel'] = rel
@@ -335,7 +344,13 @@ def run(app, rel=None):
             _log_error('update download', err)
             msg.configure(text=T('upd.failed', 'The update failed:\n{error}\n\nYou can download it by hand from:\n{url}',
                                  error=err, url=state['rel']['url']))
-            ttk.Button(btns, text=T('upd.close', 'Close'), command=w.destroy).pack(side='right')
+            ttk.Button(btns, text=T('upd.close', 'Close'), command=w.destroy).pack(side='right', padx=(4, 0))
+
+            def open_page():
+                import webbrowser
+                webbrowser.open(state['rel']['url'] or PAGE)
+                w.destroy()
+            ttk.Button(btns, text=T('upd.open_page', 'Open the download page'), command=open_page).pack(side='right')
             return
         try:
             import mxl_log
